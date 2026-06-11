@@ -28,6 +28,14 @@ export default function Home() {
           dangerouslySetInnerHTML={{ __html: html }}
         />
       </section>
+      <div>
+        <a
+          href="/workspace"
+          className="inline-block rounded-md bg-zinc-900 px-4 py-2 font-medium text-white hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
+        >
+          Open your workspace
+        </a>
+      </div>
       <footer className="text-xs text-zinc-500">
         package schema v{PACKAGE_SCHEMA_VERSION} · {rendererVersion()}
       </footer>

@@ -28,7 +28,24 @@ export default function RootLayout({
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        <header className="border-b border-zinc-200 dark:border-zinc-800">
+          <nav className="mx-auto flex w-full max-w-3xl items-center justify-between px-6 py-3">
+            <a href="/" className="font-semibold tracking-tight">
+              Alembic
+            </a>
+            <div className="flex items-center gap-4 text-sm">
+              <a href="/workspace" className="hover:underline">
+                Workspace
+              </a>
+              <a href="/signin" className="hover:underline">
+                Sign in
+              </a>
+            </div>
+          </nav>
+        </header>
+        {children}
+      </body>
     </html>
   );
 }

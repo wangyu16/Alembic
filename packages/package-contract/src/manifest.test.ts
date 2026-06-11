@@ -23,6 +23,13 @@ describe("parseManifest", () => {
     expect(parseManifest(sandbox).privateRepo).toBeUndefined();
   });
 
+  it("allows sandbox packages with no repos at all", () => {
+    const { privateRepo: _p, publicRepo: _q, ...sandbox } = valid;
+    const manifest = parseManifest(sandbox);
+    expect(manifest.publicRepo).toBeUndefined();
+    expect(manifest.privateRepo).toBeUndefined();
+  });
+
   it("rejects unknown licenses", () => {
     expect(() => parseManifest({ ...valid, license: "all-rights-reserved" })).toThrow();
   });

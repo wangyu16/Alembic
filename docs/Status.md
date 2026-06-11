@@ -48,16 +48,16 @@ unless a dependency is noted.
 
 | # | Sub-module | Verify by | Status |
 | --- | --- | --- | --- |
-| 1.1 | Supabase project + schema (users, packages, events tables) | migration applies; tables queryable | ⬜ |
-| 1.2 | GitHub OAuth sign-in (identity only) | sign in/out round-trip; user row created; no repo scopes on token | ⬜ |
-| 1.3 | App shell (nav, workspace layout, route structure) | authed layout renders; unauthed redirect | ⬜ |
-| 1.4 | Trial sandbox workspace (server-side storage, layer-aware) | create sandbox package; layers enforced in storage paths | ⬜ |
+| 1.1 | Supabase project + schema (users, packages, events tables) | migration applies; tables queryable | 🔄 code done; apply pending Supabase project |
+| 1.2 | GitHub OAuth sign-in (identity only) | sign in/out round-trip; user row created; no repo scopes on token | 🔄 code done; live verify pending credentials |
+| 1.3 | App shell (nav, workspace layout, route structure) | authed layout renders; unauthed redirect | 🔄 code done; live verify pending credentials |
+| 1.4 | Trial sandbox workspace (server-side storage, layer-aware) | create sandbox package; layers enforced in storage paths | 🔄 code done (layer enforcement unit-tested); live verify pending credentials |
 
 ### M2 — Package builder & block editor
 
 | # | Sub-module | Verify by | Status |
 | --- | --- | --- | --- |
-| 2.1 | Package operations API (create/read/update/save; UI-independent) | unit tests against sandbox storage; no UI imports | ⬜ |
+| 2.1 | Package operations API (create/read/update/save; UI-independent) | unit tests against sandbox storage; no UI imports | 🔄 started early (`@alembic/package-ops`: create op + PackageStore interface) |
 | 2.2 | Package creation flow (title, course context, license, concepts/objectives lists) | created package validates against contract | ⬜ |
 | 2.3 | Block editor UI (add/edit/reorder/delete heading-bounded blocks) | manual: author 5-block module; delete honors new-ID rule | ⬜ |
 | 2.4 | Live orz-markdown preview pane | chemistry sample renders while typing | ⬜ |
@@ -124,3 +124,4 @@ hold before calling v0.1 shipped.
 
 - 2026-06-11 — M0.1, M0.2 complete; repo live at github.com/wangyu16/Alembic; CI green. M0.3 spec + M0.4 spike started.
 - 2026-06-11 — **M0 complete.** Contract spec written (docs/specs/package-contract-v1.md); orz-markdown spike done: heading block IDs work natively via `{{attrs[#blk-…]}}`; 5 upstream gaps filed in the table above (none block M1–M2). CLAUDE.md + this tracker added.
+- 2026-06-11 — **M1 code complete.** Supabase migration (profiles/packages/sandbox_files/research_events with RLS), GitHub sign-in via Supabase Auth, app shell, sandbox package creation through new `@alembic/package-ops` (M2.1 started early). Contract refined: `publicRepo` now optional (sandbox packages have no repos until graduation). Live verification awaits the user's Supabase project + GitHub OAuth app. orz-markdown Phase A fixes in progress on branch `phase-a-alembic-fixes` (see orz-stack/docs/ConsolidationPlan.md).

@@ -1,0 +1,17 @@
+{
+  "name": "@alembic/package-ops",
+  "version": "0.1.0",
+  "private": true,
+  "description": "UI-independent package operations (create/save/etc.) over a pluggable PackageStore. The editor UI is a replaceable client of this API.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@alembic/package-contract": "workspace:*"
+  }
+}

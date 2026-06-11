@@ -41,8 +41,9 @@ export const PackageManifestSchema = z.object({
     })
     .default({}),
   license: LicenseSchema,
-  publicRepo: RepoRefSchema,
-  /** Absent only in sandbox (pre-GitHub) packages. */
+  /** Absent only in sandbox (pre-GitHub) packages; set by graduation. */
+  publicRepo: RepoRefSchema.optional(),
+  /** Absent only in sandbox (pre-GitHub) packages; set by graduation. */
   privateRepo: RepoRefSchema.optional(),
   createdAt: z.iso.datetime(),
 });

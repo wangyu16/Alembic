@@ -215,8 +215,8 @@ Authoritative schema: `PackageManifestSchema` in [`manifest.ts`](../../packages/
 | `discipline` | string | no (default `"chemistry"`) | Discipline tag (chemistry-first, STEM later). |
 | `courseContext` | object | no (default `{}`) | All sub-fields optional strings: `courseName`, `level`, `institutionType`. |
 | `license` | enum | yes | One of `CC-BY-4.0`, `CC-BY-SA-4.0`, `CC-BY-NC-4.0`, `CC-BY-NC-SA-4.0`, `CC0-1.0`. Closed set in v1; extending it is an additive contract change. |
-| `publicRepo` | `{ owner, name }` | yes | The public repository, both fields non-empty. |
-| `privateRepo` | `{ owner, name }` | no | The companion private repository. **Absent only in sandbox (pre-GitHub) packages**; the graduation flow fills it in when the repo pair is created. |
+| `publicRepo` | `{ owner, name }` | no | The public repository, both fields non-empty. **Absent only in sandbox (pre-GitHub) packages**; the graduation flow fills it in when the repo pair is created. |
+| `privateRepo` | `{ owner, name }` | no | The companion private repository. Same sandbox rule as `publicRepo`. |
 | `createdAt` | ISO 8601 datetime string | yes | Package creation time. |
 
 Example:
@@ -240,7 +240,7 @@ Example:
 }
 ```
 
-> **Spec note:** [goal.md §4](../goal.md) says "the package manifest links the two repositories"; the optional `privateRepo` is the deliberate sandbox exception from the v0.1 plan, not a divergence. A GitHub-published package MUST have both refs; tools SHOULD treat a published package with no `privateRepo` as a gate failure.
+> **Spec note:** [goal.md §4](../goal.md) says "the package manifest links the two repositories"; the optional repo refs are the deliberate sandbox exception from the v0.1 plan, not a divergence (a sandbox package has *neither* repository until graduation — refined during M1). A GitHub-published package MUST have both refs; release gates MUST treat a publish attempt with either ref missing as a failure.
 
 ## 8. Derived-artifact records (generate-then-own)
 
