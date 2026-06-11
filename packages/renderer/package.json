@@ -1,0 +1,20 @@
+{
+  "name": "@alembic/renderer",
+  "version": "0.1.0",
+  "private": true,
+  "description": "orz-markdown wrapper: study-guide rendering, student-page HTML, dual-extension artifact generation.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "orz-markdown": "^1.0.0"
+  },
+  "devDependencies": {
+    "@types/markdown-it": "^14.1.2"
+  }
+}

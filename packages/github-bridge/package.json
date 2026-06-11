@@ -1,0 +1,17 @@
+{
+  "name": "@alembic/github-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The only code that talks to GitHub: App auth, repo templates, commits, Pages publish. Enforces the two-repo invariant on every commit.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@alembic/package-contract": "workspace:*"
+  }
+}

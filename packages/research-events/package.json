@@ -1,0 +1,17 @@
+{
+  "name": "@alembic/research-events",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Research event taxonomy and logger client. Events go to platform-side storage, never into package repositories.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "zod": "^4.4.3"
+  }
+}

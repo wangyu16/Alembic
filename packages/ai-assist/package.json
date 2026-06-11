@@ -1,0 +1,17 @@
+{
+  "name": "@alembic/ai-assist",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Provider-swappable AI interface. Development-phase provider: Google Gemini.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@google/genai": "^2.8.0"
+  }
+}

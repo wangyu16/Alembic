@@ -1,0 +1,22 @@
+{
+  "name": "alembic",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Alembic — an open educational resource ecosystem for STEM",
+  "engines": {
+    "node": ">=22"
+  },
+  "packageManager": "pnpm@10.33.0",
+  "scripts": {
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "build": "pnpm -r build",
+    "dev:web": "pnpm --filter @alembic/web dev",
+    "dev:worker": "pnpm --filter @alembic/worker dev"
+  },
+  "devDependencies": {
+    "@types/node": "^22.19.21",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.8"
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "name": "@alembic/package-contract",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Alembic package contract: schema, layers, block identity, two-repo invariant, release gates. Pure TypeScript — no IO.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "zod": "^4.4.3"
+  }
+}
