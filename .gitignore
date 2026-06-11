@@ -1,0 +1,25 @@
+# Dependencies
+node_modules/
+
+# Builds
+.next/
+out/
+dist/
+build/
+.turbo/
+
+# Environment — never commit secrets
+.env
+.env.*
+!.env.example
+
+# Vercel / Supabase local state
+.vercel/
+.supabase/
+
+# Logs and OS noise
+*.log
+.DS_Store
+
+# Test coverage
+coverage/
