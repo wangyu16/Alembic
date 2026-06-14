@@ -3,7 +3,7 @@
 Live view of what is done, in progress, and coming. Update this file in the
 same commit as the work it tracks. Statuses: ✅ done · 🔄 in progress · ⬜ pending · ⏸ deferred.
 
-**Current focus: v0.1 (Phase 1) — milestone M7 (portal index & hardening).** M1–M5 live-verified (sign-in → edit → AI draft → worksheet → publish to a GitHub repo pair; two-repo invariant confirmed on real repos). M6 (app-side build → GitHub Pages) code complete + unit-tested; **live verify needs Pages:write added to the GitHub App.** See [LocalSetup.md](LocalSetup.md) + [GitHubAppSetup.md](GitHubAppSetup.md).
+**Current focus: v0.1 (Phase 1) — milestone M8 (pilot & ship).** M1–M6 live-verified — the full loop runs end to end including a live GitHub Pages student site (https://wangyu16.github.io/test-chemistry-gegpm8vz-oer/). M7 (portal index + error boundaries) code complete; **live verify needs migration 0004 applied.** See [LocalSetup.md](LocalSetup.md) + [GitHubAppSetup.md](GitHubAppSetup.md).
 
 **Deferred chore:** bump renderer to orz-markdown 1.1.0 (published) — reverted to 1.0.0 temporarily because the npm registry was unreachable during M2 and CI uses `--frozen-lockfile`. Behavior is unaffected (1.0.0 supports the attrs block-ID syntax); redo when the registry is reachable.
 
@@ -106,8 +106,8 @@ unless a dependency is noted.
 
 | # | Sub-module | Verify by | Status |
 | --- | --- | --- | --- |
-| 7.1 | Package registration + generated public index page | published package appears on index after gates | ⬜ |
-| 7.2 | Failure recovery UX (build, GitHub API, AI provider failures) | each failure mode shows actionable educator-facing message | ⬜ |
+| 7.1 | Package registration + generated public index page | published package appears on index after gates | 🔄 code done (gated register/unregister, public `/portal` index, nav link); live verify pending migration 0004 |
+| 7.2 | Failure recovery UX (build, GitHub API, AI provider failures) | each failure mode shows actionable educator-facing message | ✅ retryable educator-facing errors across publish/site/AI/save/restore + app error.tsx / not-found.tsx |
 
 ### M8 — Pilot & ship
 
@@ -131,6 +131,8 @@ hold before calling v0.1 shipped.
 - 2026-06-11 — **M2 code complete.** Block-source parser in package-contract (`{{attrs[#blk-…]}}`, code-fence aware, idempotent); `@alembic/package-ops` load/save study guide with ID minting + integrity validation on save; block editor UI (add/edit/reorder/delete) with debounced server-rendered live preview; research events for create/save. 59 unit tests green. Live verify of the editor pending credentials.
 - 2026-06-11 — **M1 + M2 live-verified.** Supabase project provisioned, migration applied (4 tables, RLS). Full loop run against real backend: GitHub sign-in → workspace → create package → editor (seeded blocks load) → live preview (chemistry + KaTeX) → save. Setup steps documented in [LocalSetup.md](LocalSetup.md).
 - 2026-06-11 — **M3 live-verified.** In-app AI confirmed against real Gemini + Supabase (migration 0002 applied): drafted a section, generated a worksheet from selected blocks, governance log writing (no errors). Worksheet viewer added (open generated worksheets).
+- 2026-06-11 — **M6 live-verified.** Published study guide live on GitHub Pages. Root cause of the missing URL: App's new Pages permission was pending acceptance on the installation (fixed: accept the update; site-publish messaging clarified). Full v0.1 loop now works end to end with a live student site.
+- 2026-06-11 — **M7 code complete.** Public discovery index (`/portal`, public read via RLS) + gated register/unregister (Tier-3) with `portal_registrations` (migration 0004); nav "Discover" link; app-level error.tsx + not-found.tsx and retryable educator-facing errors throughout. Live verify needs migration 0004.
 - 2026-06-11 — **M6 code complete.** App-side static-site build (`buildSite` in renderer: index + worksheet pages + build-info with renderer version + .nojekyll), pushed to a clean `gh-pages` branch via the bridge (`publishToBranch` orphan commit) with Pages auto-enabled (`enablePages`). Release gates (license/content/IDs/public-private separation) + Tier-3 confirm gate publishing; in-app student-page preview via `/site-preview` (same build path). Build runs in-process for v0.1 (queue/worker deferred). 99 unit tests green. Live verify needs Pages:write on the App.
 - 2026-06-11 — **M5 code complete.** GitHub bridge with native fetch + node:crypto (RS256 App JWT, installation token, Git Data API commits, generate-from-template) — no Octokit; commit transport enforces the two-repo invariant (adversarial-tested). Web: connect publishing, sandbox→GitHub graduation (paired repos + separate public/private commits), save→commit, version list, restore. Migrations 0003 + GitHubAppSetup.md. 88 unit tests green. Live verify pending the user's GitHub App.
 - 2026-06-11 — **M4 code complete.** `.md.html` dual-extension export: `buildMdHtml`/`extractMdHtml` in `@alembic/renderer` with a `data-orz-format` version marker (legacy = format 0), byte-identical source round-trip, embedded source hash; download routes + buttons for study guide and worksheets; `export.dual-extension` events. Candidate for extraction into the shared `orz-artifacts` package (consolidation Phase B) once the registry is reachable. 82 unit tests green.

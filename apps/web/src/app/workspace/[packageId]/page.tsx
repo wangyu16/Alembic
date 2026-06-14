@@ -50,6 +50,12 @@ export default async function EditorPage({
     }
   }
 
+  const { data: registration } = await supabase
+    .from("portal_registrations")
+    .select("package_id")
+    .eq("package_id", packageId)
+    .maybeSingle();
+
   const publishing = {
     configured: Boolean(cfg),
     connected: Boolean(profile?.github_installation_id),
@@ -57,6 +63,7 @@ export default async function EditorPage({
     publicRepoUrl: pub ? `https://github.com/${pub.owner}/${pub.name}` : null,
     installUrl: cfg ? installUrl(cfg.appSlug) : null,
     versions,
+    registered: Boolean(registration),
   };
 
   return (

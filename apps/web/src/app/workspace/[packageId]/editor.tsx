@@ -19,6 +19,10 @@ import {
   restoreStudyGuideAction,
 } from "./github-actions";
 import { publishSiteAction } from "./site-actions";
+import {
+  registerPackageAction,
+  unregisterPackageAction,
+} from "./portal-actions";
 
 export interface PackageVersion {
   sha: string;
@@ -33,6 +37,7 @@ export interface PublishingState {
   publicRepoUrl: string | null;
   installUrl: string | null;
   versions: PackageVersion[];
+  registered: boolean;
 }
 
 interface EditorBlock extends StudyGuideBlock {
@@ -555,6 +560,11 @@ function PublishingPanel({
             </div>
           )}
           <SitePanel packageId={packageId} />
+          <PortalPanel
+            packageId={packageId}
+            registered={publishing.registered}
+            onChanged={onChanged}
+          />
         </>
       ) : !publishing.connected ? (
         <>
@@ -681,6 +691,88 @@ function SitePanel({ packageId }: { packageId: string }) {
               : "(may take a minute to go live)"}
           </span>
         </p>
+      )}
+      {error && <p className="mt-2 text-sm text-red-600 dark:text-red-400">{error}</p>}
+    </div>
+  );
+}
+
+function PortalPanel({
+  packageId,
+  registered,
+  onChanged,
+}: {
+  packageId: string;
+  registered: boolean;
+  onChanged: () => void;
+}) {
+  const [pending, start] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+  const [gateFailures, setGateFailures] = useState<
+    Array<{ name: string; message: string }>
+  >([]);
+
+  const run = (fn: () => Promise<{ ok: boolean; error?: string; gateFailures?: Array<{ name: string; message: string }> }>, confirmMsg?: string) => {
+    if (confirmMsg && !window.confirm(confirmMsg)) return;
+    setError(null);
+    setGateFailures([]);
+    start(async () => {
+      const r = await fn();
+      if (r.ok) onChanged();
+      else if (r.gateFailures?.length) setGateFailures(r.gateFailures);
+      else setError(r.error ?? "Action failed.");
+    });
+  };
+
+  return (
+    <div className="mt-3 border-t border-zinc-200 pt-3 dark:border-zinc-800">
+      <div className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+        Discovery index
+      </div>
+      {registered ? (
+        <div className="mt-2 flex items-center gap-3">
+          <span className="text-sm text-green-700 dark:text-green-400">
+            Listed on the index
+          </span>
+          <button
+            onClick={() =>
+              run(
+                () => unregisterPackageAction(packageId),
+                "Remove this package from the public index?",
+              )
+            }
+            disabled={pending}
+            className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-700 dark:hover:bg-zinc-900"
+          >
+            Remove from index
+          </button>
+        </div>
+      ) : (
+        <>
+          <p className="mt-1 text-xs text-zinc-500">
+            List this package on the public discovery index so other educators
+            can find it.
+          </p>
+          <button
+            onClick={() =>
+              run(
+                () => registerPackageAction(packageId),
+                "List this package on the public index?",
+              )
+            }
+            disabled={pending}
+            className="mt-2 rounded-md bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-zinc-700 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
+          >
+            {pending ? "Listing…" : "List on index"}
+          </button>
+        </>
+      )}
+      {gateFailures.length > 0 && (
+        <ul className="mt-2 list-disc pl-4 text-xs text-amber-700 dark:text-amber-300">
+          {gateFailures.map((g) => (
+            <li key={g.name}>{g.message}</li>
+          ))}
+        </ul>
       )}
       {error && <p className="mt-2 text-sm text-red-600 dark:text-red-400">{error}</p>}
     </div>

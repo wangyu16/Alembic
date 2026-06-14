@@ -27,6 +27,9 @@ export async function SiteHeader() {
           Alembic
         </a>
         <div className="flex items-center gap-4 text-sm">
+          <a href="/portal" className="hover:underline">
+            Discover
+          </a>
           {user ? (
             <>
               <a href="/workspace" className="hover:underline">
