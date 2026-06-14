@@ -8,8 +8,19 @@ import {
 } from "@alembic/package-contract";
 import type { PackageStore } from "./store";
 
+/**
+ * Repo path for a chapter's study guide. One chapter == one file == one
+ * student webpage. Centralizes the convention so multi-chapter courses are an
+ * additive extension (see docs/specs/course-structure.md); v0.1 uses a single
+ * chapter via DEFAULT_STUDY_GUIDE_PATH.
+ */
+export function chapterStudyGuidePath(slug: string): string {
+  return `study-guide/${slug}.md`;
+}
+
 /** Default single-chapter study-guide path for v0.1 packages. */
-export const DEFAULT_STUDY_GUIDE_PATH = "study-guide/01-getting-started.md";
+export const DEFAULT_STUDY_GUIDE_PATH =
+  chapterStudyGuidePath("01-getting-started");
 
 export interface StudyGuideDoc {
   path: string;

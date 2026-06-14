@@ -48,6 +48,7 @@ Deliberately deferred: agent harness, Ketcher, question templates, adaptation, s
 
 **Goal: make the workspace genuinely good for a chemist, not just functional.**
 
+- **Multi-chapter courses** — a course as one site with an index and many chapters (each: study-guide page + concept map + objectives + slides + question templates). The target model and additive evolution path from v0.1's single-chapter case are specified in [specs/course-structure.md](specs/course-structure.md).
 - Ketcher integration for chemical structure editing; structures as addressable blocks with SMILES/molfile stored as source.
 - Import pipeline: Word, PDF, PowerPoint, images → AI-assisted restructuring into study-guide blocks (Tier-2 review queue).
 - Risk-tiered approval system implemented as policy (Tier 1 auto-apply + changelog/undo, Tier 2 batch queue, Tier 3 itemized — Tier 3 gates existed in v0.1 for publish; this phase generalizes the machinery).
