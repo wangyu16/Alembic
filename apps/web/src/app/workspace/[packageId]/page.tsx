@@ -2,7 +2,7 @@ import { notFound, redirect } from "next/navigation";
 import { listArtifacts, loadStudyGuide } from "@alembic/package-ops";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
-import { githubConfig, installUrl } from "@/lib/github";
+import { clientForUser, githubConfig, installUrl } from "@/lib/github";
 import { StudyGuideEditor } from "./editor";
 
 export const dynamic = "force-dynamic";
@@ -33,12 +33,30 @@ export default async function EditorPage({
     .maybeSingle();
   const cfg = githubConfig();
   const pub = record.manifest.publicRepo;
+
+  // For published packages, load the saved-version history (best-effort).
+  let versions: Array<{ sha: string; message: string; date: string }> = [];
+  if (record.storage === "github" && pub) {
+    try {
+      const gh = await clientForUser(supabase, user.id);
+      if (gh) {
+        versions = await gh.client.listCommits(
+          { owner: pub.owner, repo: pub.name },
+          { perPage: 15 },
+        );
+      }
+    } catch {
+      /* history is non-essential; show none on failure */
+    }
+  }
+
   const publishing = {
     configured: Boolean(cfg),
     connected: Boolean(profile?.github_installation_id),
     published: record.storage === "github",
     publicRepoUrl: pub ? `https://github.com/${pub.owner}/${pub.name}` : null,
     installUrl: cfg ? installUrl(cfg.appSlug) : null,
+    versions,
   };
 
   return (

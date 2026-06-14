@@ -14,7 +14,16 @@ import {
   logDraftDecisionAction,
   regenerateWorksheetAction,
 } from "./ai-actions";
-import { publishToGitHubAction } from "./github-actions";
+import {
+  publishToGitHubAction,
+  restoreStudyGuideAction,
+} from "./github-actions";
+
+export interface PackageVersion {
+  sha: string;
+  message: string;
+  date: string;
+}
 
 export interface PublishingState {
   configured: boolean;
@@ -22,6 +31,7 @@ export interface PublishingState {
   published: boolean;
   publicRepoUrl: string | null;
   installUrl: string | null;
+  versions: PackageVersion[];
 }
 
 interface EditorBlock extends StudyGuideBlock {
@@ -42,6 +52,7 @@ type SaveState =
   | { kind: "dirty" }
   | { kind: "saving" }
   | { kind: "saved" }
+  | { kind: "warning"; message: string }
   | { kind: "error"; message: string };
 
 const newKey = () => crypto.randomUUID();
@@ -148,7 +159,11 @@ export function StudyGuideEditor({
     });
     if (result.ok && result.blocks) {
       setBlocks((bs) => bs.map((b, i) => ({ ...b, id: result.blocks![i]?.id ?? b.id })));
-      setSave({ kind: "saved" });
+      setSave(
+        result.warning
+          ? { kind: "warning", message: result.warning }
+          : { kind: "saved" },
+      );
     } else {
       setSave({ kind: "error", message: result.error ?? "Save failed." });
     }
@@ -458,6 +473,15 @@ function PublishingPanel({
     });
   };
 
+  const act = (fn: () => Promise<{ ok: boolean; error?: string }>) => {
+    setError(null);
+    start(async () => {
+      const r = await fn();
+      if (!r.ok) setError(r.error ?? "Action failed.");
+      else onChanged();
+    });
+  };
+
   return (
     <div className="rounded-lg border border-zinc-200 p-3 dark:border-zinc-800">
       <h3 className="text-sm font-medium">Publishing</h3>
@@ -467,17 +491,49 @@ function PublishingPanel({
           GitHub publishing isn’t set up on this deployment yet.
         </p>
       ) : publishing.published || publishedUrl ? (
-        <p className="mt-1 text-sm">
-          Published ·{" "}
-          <a
-            href={publishedUrl ?? "#"}
-            target="_blank"
-            rel="noreferrer"
-            className="text-blue-700 hover:underline dark:text-blue-400"
-          >
-            view repository
-          </a>
-        </p>
+        <>
+          <p className="mt-1 text-sm">
+            Published ·{" "}
+            <a
+              href={publishedUrl ?? "#"}
+              target="_blank"
+              rel="noreferrer"
+              className="text-blue-700 hover:underline dark:text-blue-400"
+            >
+              view repository
+            </a>
+          </p>
+          {publishing.versions.length > 0 && (
+            <div className="mt-3">
+              <div className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+                Saved versions
+              </div>
+              <ul className="mt-1 divide-y divide-zinc-200 dark:divide-zinc-800">
+                {publishing.versions.map((v, i) => (
+                  <li key={v.sha} className="flex items-center justify-between gap-2 py-1.5">
+                    <div className="min-w-0">
+                      <div className="truncate text-sm">{v.message}</div>
+                      <div className="text-xs text-zinc-500">
+                        {new Date(v.date).toLocaleString()}
+                      </div>
+                    </div>
+                    {i > 0 && (
+                      <button
+                        onClick={() =>
+                          act(() => restoreStudyGuideAction(packageId, v.sha))
+                        }
+                        disabled={pending}
+                        className="shrink-0 rounded border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-700 dark:hover:bg-zinc-900"
+                      >
+                        Restore
+                      </button>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </>
       ) : !publishing.connected ? (
         <>
           <p className="mt-1 text-xs text-zinc-500">
@@ -522,13 +578,16 @@ function SaveBadge({ state }: { state: SaveState }) {
   if (state.kind === "dirty") label = "Unsaved changes";
   else if (state.kind === "saving") label = "Saving…";
   else if (state.kind === "saved") label = "Saved";
+  else if (state.kind === "warning") label = state.message;
   else if (state.kind === "error") label = state.message;
 
   const tone =
     state.kind === "error"
       ? "text-red-600 dark:text-red-400"
-      : state.kind === "saved"
-        ? "text-green-600 dark:text-green-400"
-        : "text-zinc-500";
+      : state.kind === "warning"
+        ? "text-amber-600 dark:text-amber-400"
+        : state.kind === "saved"
+          ? "text-green-600 dark:text-green-400"
+          : "text-zinc-500";
   return <span className={`text-xs ${tone}`}>{label}</span>;
 }

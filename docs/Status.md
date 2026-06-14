@@ -3,7 +3,7 @@
 Live view of what is done, in progress, and coming. Update this file in the
 same commit as the work it tracks. Statuses: ✅ done · 🔄 in progress · ⬜ pending · ⏸ deferred.
 
-**Current focus: v0.1 (Phase 1) — milestone M5 (GitHub bridge & two-repo flow).** M1–M3 **live-verified** end to end against real Supabase + Gemini (sign-in → edit → AI draft → worksheet → view). M4 (`.md.html` dual-extension export) code complete + unit-tested. See [LocalSetup.md](LocalSetup.md).
+**Current focus: v0.1 (Phase 1) — milestone M6 (build + Pages publish).** M1–M3 **live-verified** (sign-in → edit → AI draft → worksheet → view). M4 (`.md.html` export) + M5 (GitHub two-repo publish) code complete + unit-tested; **M5 live verification needs the user's GitHub App** (see [GitHubAppSetup.md](GitHubAppSetup.md)) and migration 0003 applied. See [LocalSetup.md](LocalSetup.md).
 
 **Deferred chore:** bump renderer to orz-markdown 1.1.0 (published) — reverted to 1.0.0 temporarily because the npm registry was unreachable during M2 and CI uses `--frozen-lockfile`. Behavior is unaffected (1.0.0 supports the attrs block-ID syntax); redo when the registry is reachable.
 
@@ -87,11 +87,11 @@ unless a dependency is noted.
 
 | # | Sub-module | Verify by | Status |
 | --- | --- | --- | --- |
-| 5.1 | GitHub App registration + installation flow ("Connect publishing") | App installs scoped to created repos only | ⬜ |
-| 5.2 | Paired repo creation from templates (public + private) | both repos created with correct layout, manifest links them | ⬜ |
-| 5.3 | Commit transport (Octokit) behind `validateCommitPlan` | adversarial private-leak attempts impossible via every API path | ⬜ |
-| 5.4 | Save → readable commits; version list; restore | restore round-trip works; history readable in educator language | ⬜ |
-| 5.5 | Sandbox → GitHub graduation | sandbox content becomes initial commits with provenance preserved | ⬜ |
+| 5.1 | GitHub App registration + installation flow ("Connect publishing") | App installs scoped to created repos only | 🔄 code done (install URL + `/api/github/installed`); live verify pending user's GitHub App |
+| 5.2 | Paired repo creation from templates (public + private) | both repos created with correct layout, manifest links them | 🔄 code done (generate-from-template ×2); live verify pending |
+| 5.3 | Commit transport behind `validateCommitPlan` | adversarial private-leak attempts impossible via every API path | ✅ fetch + Git Data API; adversarial test: private path in public commit throws with zero network calls |
+| 5.4 | Save → readable commits; version list; restore | restore round-trip works; history readable in educator language | 🔄 code done (save commits to public repo; version list; restore round-trip); live verify pending |
+| 5.5 | Sandbox → GitHub graduation | sandbox content becomes initial commits with provenance preserved | 🔄 code done (publish creates pair + commits public/private separately); live verify pending |
 
 ### M6 — Build, publish, preview
 
@@ -131,5 +131,6 @@ hold before calling v0.1 shipped.
 - 2026-06-11 — **M2 code complete.** Block-source parser in package-contract (`{{attrs[#blk-…]}}`, code-fence aware, idempotent); `@alembic/package-ops` load/save study guide with ID minting + integrity validation on save; block editor UI (add/edit/reorder/delete) with debounced server-rendered live preview; research events for create/save. 59 unit tests green. Live verify of the editor pending credentials.
 - 2026-06-11 — **M1 + M2 live-verified.** Supabase project provisioned, migration applied (4 tables, RLS). Full loop run against real backend: GitHub sign-in → workspace → create package → editor (seeded blocks load) → live preview (chemistry + KaTeX) → save. Setup steps documented in [LocalSetup.md](LocalSetup.md).
 - 2026-06-11 — **M3 live-verified.** In-app AI confirmed against real Gemini + Supabase (migration 0002 applied): drafted a section, generated a worksheet from selected blocks, governance log writing (no errors). Worksheet viewer added (open generated worksheets).
+- 2026-06-11 — **M5 code complete.** GitHub bridge with native fetch + node:crypto (RS256 App JWT, installation token, Git Data API commits, generate-from-template) — no Octokit; commit transport enforces the two-repo invariant (adversarial-tested). Web: connect publishing, sandbox→GitHub graduation (paired repos + separate public/private commits), save→commit, version list, restore. Migrations 0003 + GitHubAppSetup.md. 88 unit tests green. Live verify pending the user's GitHub App.
 - 2026-06-11 — **M4 code complete.** `.md.html` dual-extension export: `buildMdHtml`/`extractMdHtml` in `@alembic/renderer` with a `data-orz-format` version marker (legacy = format 0), byte-identical source round-trip, embedded source hash; download routes + buttons for study guide and worksheets; `export.dual-extension` events. Candidate for extraction into the shared `orz-artifacts` package (consolidation Phase B) once the registry is reachable. 82 unit tests green.
 - 2026-06-11 — **M3 code complete.** Derived-artifact records + hash-based staleness (package-contract); ai-assist drafting + worksheet generation over the swappable provider with ID-preservation (strip/reattach); governed provider wrapper (per-user rate limit + `ai_invocations` governance log, migration 0002); editor AI draft flow + worksheet panel (generate/regenerate/keep-mine); ai.* research events. 76 unit tests green; Gemini `gemini-2.5-flash` live-verified. **To use in-app AI: apply `supabase/migrations/0002_ai_invocations.sql`.**

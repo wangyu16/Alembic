@@ -2,11 +2,20 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { parseStudyGuide } from "@alembic/package-contract";
+import {
+  DEFAULT_STUDY_GUIDE_PATH,
+  saveStudyGuide,
+} from "@alembic/package-ops";
 import { commitFiles } from "@alembic/github-bridge";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
 import { supabaseEventLogger } from "@/lib/events";
-import { clientForInstallation, githubConfig } from "@/lib/github";
+import {
+  clientForInstallation,
+  clientForUser,
+  githubConfig,
+} from "@/lib/github";
 import { slugForFile } from "@/lib/export";
 
 export interface PublishResult {
@@ -151,5 +160,65 @@ export async function publishToGitHubAction(
       error:
         "Publishing didn't complete. Check that the GitHub App is installed and the template repositories exist.",
     };
+  }
+}
+
+export interface RestoreResult {
+  ok: boolean;
+  error?: string;
+}
+
+/**
+ * Restore the study guide to a previous saved version (a commit on the public
+ * repo): read the file at that commit, rebuild the local projection, and
+ * commit the restored content forward as a new commit.
+ */
+export async function restoreStudyGuideAction(
+  packageId: string,
+  commitSha: string,
+): Promise<RestoreResult> {
+  const supabase = await createSupabaseServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect("/signin");
+
+  const store = new SupabaseSandboxStore(supabase);
+  const record = await store.getPackage(packageId);
+  const repo = record?.storage === "github" ? record.manifest.publicRepo : null;
+  if (!repo) return { ok: false, error: "This package isn't published to GitHub." };
+
+  const gh = await clientForUser(supabase, user.id);
+  if (!gh) return { ok: false, error: "Connect publishing first." };
+
+  try {
+    const coords = { owner: repo.owner, repo: repo.name };
+    const path = DEFAULT_STUDY_GUIDE_PATH;
+    const content = await gh.client.getFileAtRef(coords, path, commitSha);
+    if (content === null) {
+      return { ok: false, error: "That version has no study guide to restore." };
+    }
+    const parsed = parseStudyGuide(content);
+    await saveStudyGuide(store, packageId, {
+      path,
+      preamble: parsed.preamble,
+      blocks: parsed.blocks,
+    });
+    await commitFiles(gh.client, coords, {
+      repo: "public",
+      summary: `Restore ${path} to ${commitSha.slice(0, 7)}`,
+      changes: [{ path, content }],
+    });
+    await supabaseEventLogger(supabase).log({
+      type: "restore.completed",
+      userId: user.id,
+      packageId,
+      detail: { fromCommit: commitSha.slice(0, 7) },
+      occurredAt: new Date().toISOString(),
+    });
+    revalidatePath(`/workspace/${packageId}`);
+    return { ok: true };
+  } catch {
+    return { ok: false, error: "Restore didn't complete. Please try again." };
   }
 }

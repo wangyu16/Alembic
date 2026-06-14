@@ -1,4 +1,5 @@
 import "server-only";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   getInstallationToken,
   GitHubClient,
@@ -54,4 +55,24 @@ export async function clientForInstallation(
     installationId,
   });
   return new GitHubClient(token);
+}
+
+/**
+ * A GitHub client + account login for the signed-in user, or null if
+ * publishing isn't configured or the user hasn't connected an installation.
+ */
+export async function clientForUser(
+  supabase: SupabaseClient,
+  userId: string,
+): Promise<{ client: GitHubClient; owner: string } | null> {
+  const cfg = githubConfig();
+  if (!cfg) return null;
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("github_installation_id, github_username")
+    .eq("id", userId)
+    .maybeSingle();
+  if (!profile?.github_installation_id || !profile.github_username) return null;
+  const client = await clientForInstallation(cfg, profile.github_installation_id);
+  return { client, owner: profile.github_username };
 }
