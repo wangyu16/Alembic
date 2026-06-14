@@ -1,15 +1,20 @@
 /**
- * GitHub bridge (M5 implements the GitHub App + Octokit transport).
+ * GitHub bridge — the only code that talks to GitHub.
  *
- * M0 establishes the commit-plan shape and the enforcement point: every file
- * in a commit plan passes the package-contract path invariant before anything
- * touches a transport. There is deliberately no way to skip validation.
+ * Every commit passes the package-contract path invariant before anything
+ * touches the transport (`validateCommitPlan`). There is deliberately no way
+ * to skip validation: `commitFiles` calls it first and has no override.
  */
 
 import {
   assertPathAllowedInRepo,
   type RepoKind,
 } from "@alembic/package-contract";
+import { GitHubClient, type RepoCoords } from "./client";
+
+export * from "./http";
+export * from "./app-auth";
+export * from "./client";
 
 export interface FileChange {
   path: string;
@@ -27,10 +32,29 @@ export interface CommitPlan {
 /**
  * Validate a commit plan against the two-repo invariant.
  * Throws RepoBoundaryViolation / PathLayerError on the first offending path.
- * Transports (M5) must call this before staging anything.
  */
 export function validateCommitPlan(plan: CommitPlan): void {
   for (const change of plan.changes) {
     assertPathAllowedInRepo(change.path, plan.repo);
   }
+}
+
+/**
+ * Commit a validated file set to a repository as a single commit. The plan's
+ * `repo` kind is re-checked against the invariant before any network call;
+ * the caller maps that kind to the correct physical repository.
+ */
+export async function commitFiles(
+  client: GitHubClient,
+  coords: RepoCoords,
+  plan: CommitPlan,
+  branch = "main",
+): Promise<{ commitSha: string }> {
+  validateCommitPlan(plan); // fail-closed, before the transport
+  return client.createCommitOnBranch({
+    coords,
+    branch,
+    message: plan.summary,
+    files: plan.changes,
+  });
 }
