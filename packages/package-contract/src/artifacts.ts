@@ -43,11 +43,8 @@ export const DerivedArtifactRecordSchema = z.object({
 });
 export type DerivedArtifactRecord = z.infer<typeof DerivedArtifactRecordSchema>;
 
-/** Deterministic, pure content hash (FNV-1a, 32-bit hex) for a block. */
-export function hashBlockContent(
-  block: Pick<StudyGuideBlock, "title" | "body">,
-): string {
-  const input = `${block.title}\n\n${block.body}`;
+/** Deterministic, pure content hash (FNV-1a, 32-bit hex). */
+export function hashContent(input: string): string {
   let hash = 0x811c9dc5;
   for (let i = 0; i < input.length; i++) {
     hash ^= input.charCodeAt(i);
@@ -55,6 +52,13 @@ export function hashBlockContent(
     hash = Math.imul(hash, 0x01000193) >>> 0;
   }
   return hash.toString(16).padStart(8, "0");
+}
+
+/** Content hash for a study-guide block (title + body). */
+export function hashBlockContent(
+  block: Pick<StudyGuideBlock, "title" | "body">,
+): string {
+  return hashContent(`${block.title}\n\n${block.body}`);
 }
 
 const BASE36 = "abcdefghijklmnopqrstuvwxyz0123456789";

@@ -3,7 +3,7 @@
 Live view of what is done, in progress, and coming. Update this file in the
 same commit as the work it tracks. Statuses: ✅ done · 🔄 in progress · ⬜ pending · ⏸ deferred.
 
-**Current focus: v0.1 (Phase 1) — milestone M4 (dual-extension `.md.html` export).** M1 + M2 **live-verified** end to end against real Supabase. M3 (AI assist + worksheets) code complete and unit-tested; Gemini provider live-verified; **in-app AI needs migration 0002 applied** (`ai_invocations` + rate-limit function) before the draft/worksheet flows work in the browser. See [LocalSetup.md](LocalSetup.md).
+**Current focus: v0.1 (Phase 1) — milestone M5 (GitHub bridge & two-repo flow).** M1–M3 **live-verified** end to end against real Supabase + Gemini (sign-in → edit → AI draft → worksheet → view). M4 (`.md.html` dual-extension export) code complete + unit-tested. See [LocalSetup.md](LocalSetup.md).
 
 **Deferred chore:** bump renderer to orz-markdown 1.1.0 (published) — reverted to 1.0.0 temporarily because the npm registry was unreachable during M2 and CI uses `--frozen-lockfile`. Behavior is unaffected (1.0.0 supports the attrs block-ID syntax); redo when the registry is reachable.
 
@@ -80,8 +80,8 @@ unless a dependency is noted.
 
 | # | Sub-module | Verify by | Status |
 | --- | --- | --- | --- |
-| 4.1 | `.md.html` generator (rendered HTML + versioned embedded source) | file opens standalone in a browser | ⬜ |
-| 4.2 | Source extraction + embedded-source hash in provenance | extract returns byte-identical Markdown; hash recorded | ⬜ |
+| 4.1 | `.md.html` generator (rendered HTML + versioned embedded source) | file opens standalone in a browser | ✅ `buildMdHtml` (self-contained, `data-orz-format` marker, KaTeX CSS); download from editor + worksheet viewer |
+| 4.2 | Source extraction + embedded-source hash in provenance | extract returns byte-identical Markdown; hash recorded | ✅ `extractMdHtml` byte-identical round-trip + legacy format-0; source hash embedded + logged via `export.dual-extension` event |
 
 ### M5 — GitHub bridge & two-repo flow
 
@@ -130,4 +130,6 @@ hold before calling v0.1 shipped.
 - 2026-06-11 — **orz-markdown 1.1.0 published.** Phase A merged + on npm (TOC fix, shipped Agent Skill + block-ID rules, trailing-space fix).
 - 2026-06-11 — **M2 code complete.** Block-source parser in package-contract (`{{attrs[#blk-…]}}`, code-fence aware, idempotent); `@alembic/package-ops` load/save study guide with ID minting + integrity validation on save; block editor UI (add/edit/reorder/delete) with debounced server-rendered live preview; research events for create/save. 59 unit tests green. Live verify of the editor pending credentials.
 - 2026-06-11 — **M1 + M2 live-verified.** Supabase project provisioned, migration applied (4 tables, RLS). Full loop run against real backend: GitHub sign-in → workspace → create package → editor (seeded blocks load) → live preview (chemistry + KaTeX) → save. Setup steps documented in [LocalSetup.md](LocalSetup.md).
+- 2026-06-11 — **M3 live-verified.** In-app AI confirmed against real Gemini + Supabase (migration 0002 applied): drafted a section, generated a worksheet from selected blocks, governance log writing (no errors). Worksheet viewer added (open generated worksheets).
+- 2026-06-11 — **M4 code complete.** `.md.html` dual-extension export: `buildMdHtml`/`extractMdHtml` in `@alembic/renderer` with a `data-orz-format` version marker (legacy = format 0), byte-identical source round-trip, embedded source hash; download routes + buttons for study guide and worksheets; `export.dual-extension` events. Candidate for extraction into the shared `orz-artifacts` package (consolidation Phase B) once the registry is reachable. 82 unit tests green.
 - 2026-06-11 — **M3 code complete.** Derived-artifact records + hash-based staleness (package-contract); ai-assist drafting + worksheet generation over the swappable provider with ID-preservation (strip/reattach); governed provider wrapper (per-user rate limit + `ai_invocations` governance log, migration 0002); editor AI draft flow + worksheet panel (generate/regenerate/keep-mine); ai.* research events. 76 unit tests green; Gemini `gemini-2.5-flash` live-verified. **To use in-app AI: apply `supabase/migrations/0002_ai_invocations.sql`.**

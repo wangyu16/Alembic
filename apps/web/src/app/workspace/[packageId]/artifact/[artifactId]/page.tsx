@@ -33,9 +33,17 @@ export default async function ArtifactViewerPage({
         >
           ← Back to editor
         </a>
-        <h1 className="mt-1 text-2xl font-semibold tracking-tight">
-          {loaded.record.title}
-        </h1>
+        <div className="mt-1 flex items-center justify-between gap-4">
+          <h1 className="text-2xl font-semibold tracking-tight">
+            {loaded.record.title}
+          </h1>
+          <a
+            href={`/workspace/${packageId}/artifact/${artifactId}/export`}
+            className="shrink-0 rounded-md border border-zinc-300 px-3 py-1.5 text-sm hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
+          >
+            Download .md.html
+          </a>
+        </div>
         <p className="text-xs text-zinc-500">
           Worksheet · generated from {loaded.record.sourceBlocks.length} section
           {loaded.record.sourceBlocks.length === 1 ? "" : "s"}
