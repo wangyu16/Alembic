@@ -164,6 +164,9 @@ export function StudyGuideEditor({
           ? { kind: "warning", message: result.warning }
           : { kind: "saved" },
       );
+      // Published packages just got a new commit — refresh the version list.
+      // (Editor block state is unchanged: it already equals what we saved.)
+      if (publishing.published) router.refresh();
     } else {
       setSave({ kind: "error", message: result.error ?? "Save failed." });
     }
@@ -482,6 +485,25 @@ function PublishingPanel({
     });
   };
 
+  // Restore replaces the editor's current content, so reload the page after it
+  // succeeds — router.refresh() alone would leave the client editor's in-memory
+  // blocks stale (React keeps client state across server re-renders).
+  const onRestore = (sha: string) => {
+    if (
+      !window.confirm(
+        "Restore this saved version? Any unsaved changes in the editor will be discarded.",
+      )
+    ) {
+      return;
+    }
+    setError(null);
+    start(async () => {
+      const r = await restoreStudyGuideAction(packageId, sha);
+      if (!r.ok) setError(r.error ?? "Restore failed.");
+      else window.location.reload();
+    });
+  };
+
   return (
     <div className="rounded-lg border border-zinc-200 p-3 dark:border-zinc-800">
       <h3 className="text-sm font-medium">Publishing</h3>
@@ -519,9 +541,7 @@ function PublishingPanel({
                     </div>
                     {i > 0 && (
                       <button
-                        onClick={() =>
-                          act(() => restoreStudyGuideAction(packageId, v.sha))
-                        }
+                        onClick={() => onRestore(v.sha)}
                         disabled={pending}
                         className="shrink-0 rounded border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-700 dark:hover:bg-zinc-900"
                       >
