@@ -1,15 +1,31 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import {
   serializeStudyGuide,
   type StudyGuideBlock,
 } from "@alembic/package-contract";
 import { saveStudyGuideAction } from "./actions";
+import {
+  draftSectionAction,
+  generateWorksheetAction,
+  keepWorksheetMineAction,
+  logDraftDecisionAction,
+  regenerateWorksheetAction,
+} from "./ai-actions";
 
 interface EditorBlock extends StudyGuideBlock {
-  /** Stable React key, independent of the (possibly null) block ID. */
   key: string;
+}
+
+export interface ArtifactSummary {
+  artifactId: string;
+  title: string;
+  path: string;
+  status: "fresh" | "divergent";
+  stale: boolean;
+  missingBlocks: string[];
 }
 
 type SaveState =
@@ -19,34 +35,35 @@ type SaveState =
   | { kind: "saved" }
   | { kind: "error"; message: string };
 
-function newKey(): string {
-  return crypto.randomUUID();
-}
+const newKey = () => crypto.randomUUID();
 
 export function StudyGuideEditor({
   packageId,
   initialPath,
   initialPreamble,
   initialBlocks,
+  artifacts,
 }: {
   packageId: string;
   initialPath: string;
   initialPreamble: string;
   initialBlocks: StudyGuideBlock[];
+  artifacts: ArtifactSummary[];
 }) {
+  const router = useRouter();
   const [preamble] = useState(initialPreamble);
   const [blocks, setBlocks] = useState<EditorBlock[]>(() =>
     initialBlocks.map((b) => ({ ...b, key: newKey() })),
   );
   const [save, setSave] = useState<SaveState>({ kind: "idle" });
   const [html, setHtml] = useState("");
+  const [selected, setSelected] = useState<Set<string>>(new Set());
 
   const source = useMemo(
     () => serializeStudyGuide(preamble, blocks),
     [preamble, blocks],
   );
 
-  // Debounced live preview via the server render route (single render path).
   useEffect(() => {
     const id = setTimeout(async () => {
       try {
@@ -58,33 +75,35 @@ export function StudyGuideEditor({
         const data = (await res.json()) as { html?: string };
         setHtml(data.html ?? "");
       } catch {
-        /* preview is best-effort */
+        /* best-effort */
       }
     }, 350);
     return () => clearTimeout(id);
   }, [source]);
 
+  const dirty = save.kind === "dirty" || save.kind === "error";
   const markDirty = useCallback(() => {
     setSave((s) => (s.kind === "saving" ? s : { kind: "dirty" }));
   }, []);
 
   const update = useCallback(
     (key: string, field: "title" | "body", value: string) => {
-      setBlocks((bs) =>
-        bs.map((b) => (b.key === key ? { ...b, [field]: value } : b)),
-      );
+      setBlocks((bs) => bs.map((b) => (b.key === key ? { ...b, [field]: value } : b)));
       markDirty();
     },
     [markDirty],
   );
 
-  const addBlock = useCallback(() => {
-    setBlocks((bs) => [
-      ...bs,
-      { key: newKey(), id: null, title: "New section", body: "" },
-    ]);
-    markDirty();
-  }, [markDirty]);
+  const addBlock = useCallback(
+    (block?: { title: string; body: string }) => {
+      setBlocks((bs) => [
+        ...bs,
+        { key: newKey(), id: null, title: block?.title ?? "New section", body: block?.body ?? "" },
+      ]);
+      markDirty();
+    },
+    [markDirty],
+  );
 
   const deleteBlock = useCallback(
     (key: string) => {
@@ -114,13 +133,10 @@ export function StudyGuideEditor({
     const result = await saveStudyGuideAction(packageId, {
       path: initialPath,
       preamble,
-      blocks: blocks.map(({ key: _key, ...b }) => b),
+      blocks: blocks.map(({ key: _k, ...b }) => b),
     });
     if (result.ok && result.blocks) {
-      // Sync minted IDs back by position (order is preserved server-side).
-      setBlocks((bs) =>
-        bs.map((b, i) => ({ ...b, id: result.blocks![i]?.id ?? b.id })),
-      );
+      setBlocks((bs) => bs.map((b, i) => ({ ...b, id: result.blocks![i]?.id ?? b.id })));
       setSave({ kind: "saved" });
     } else {
       setSave({ kind: "error", message: result.error ?? "Save failed." });
@@ -129,7 +145,6 @@ export function StudyGuideEditor({
 
   return (
     <div className="grid flex-1 grid-cols-1 gap-6 lg:grid-cols-2">
-      {/* Editor column */}
       <div className="flex flex-col gap-4">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-medium uppercase tracking-wide text-zinc-500">
@@ -147,47 +162,33 @@ export function StudyGuideEditor({
           </div>
         </div>
 
-        {blocks.length === 0 && (
-          <p className="text-sm text-zinc-500">
-            No sections yet. Add your first one below.
-          </p>
-        )}
-
         {blocks.map((block, i) => (
-          <div
-            key={block.key}
-            className="rounded-lg border border-zinc-200 p-3 dark:border-zinc-800"
-          >
+          <div key={block.key} className="rounded-lg border border-zinc-200 p-3 dark:border-zinc-800">
             <div className="mb-2 flex items-center gap-2">
+              {block.id && (
+                <input
+                  type="checkbox"
+                  title="Include in worksheet"
+                  checked={selected.has(block.id)}
+                  onChange={(e) =>
+                    setSelected((s) => {
+                      const next = new Set(s);
+                      if (e.target.checked) next.add(block.id!);
+                      else next.delete(block.id!);
+                      return next;
+                    })
+                  }
+                />
+              )}
               <input
                 value={block.title}
                 onChange={(e) => update(block.key, "title", e.target.value)}
                 placeholder="Section heading"
                 className="flex-1 rounded border border-zinc-200 bg-transparent px-2 py-1 font-medium dark:border-zinc-700"
               />
-              <button
-                onClick={() => move(block.key, -1)}
-                disabled={i === 0}
-                title="Move up"
-                className="rounded px-2 py-1 text-zinc-500 hover:bg-zinc-100 disabled:opacity-30 dark:hover:bg-zinc-800"
-              >
-                ↑
-              </button>
-              <button
-                onClick={() => move(block.key, 1)}
-                disabled={i === blocks.length - 1}
-                title="Move down"
-                className="rounded px-2 py-1 text-zinc-500 hover:bg-zinc-100 disabled:opacity-30 dark:hover:bg-zinc-800"
-              >
-                ↓
-              </button>
-              <button
-                onClick={() => deleteBlock(block.key)}
-                title="Delete section"
-                className="rounded px-2 py-1 text-red-600 hover:bg-red-50 dark:hover:bg-red-950"
-              >
-                ✕
-              </button>
+              <button onClick={() => move(block.key, -1)} disabled={i === 0} title="Move up" className="rounded px-2 py-1 text-zinc-500 hover:bg-zinc-100 disabled:opacity-30 dark:hover:bg-zinc-800">↑</button>
+              <button onClick={() => move(block.key, 1)} disabled={i === blocks.length - 1} title="Move down" className="rounded px-2 py-1 text-zinc-500 hover:bg-zinc-100 disabled:opacity-30 dark:hover:bg-zinc-800">↓</button>
+              <button onClick={() => deleteBlock(block.key)} title="Delete section" className="rounded px-2 py-1 text-red-600 hover:bg-red-50 dark:hover:bg-red-950">✕</button>
             </div>
             <textarea
               value={block.body}
@@ -202,24 +203,189 @@ export function StudyGuideEditor({
           </div>
         ))}
 
-        <button
-          onClick={addBlock}
-          className="rounded-md border border-dashed border-zinc-300 px-3 py-2 text-sm text-zinc-600 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-900"
-        >
+        <button onClick={() => addBlock()} className="rounded-md border border-dashed border-zinc-300 px-3 py-2 text-sm text-zinc-600 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-900">
           + Add section
         </button>
+
+        <AIDraftPanel packageId={packageId} onAccept={(d) => addBlock(d)} />
+
+        <WorksheetPanel
+          packageId={packageId}
+          artifacts={artifacts}
+          selectedBlockIds={[...selected]}
+          dirty={dirty}
+          onChanged={() => router.refresh()}
+        />
       </div>
 
-      {/* Preview column */}
       <div className="flex flex-col gap-4">
-        <h2 className="text-sm font-medium uppercase tracking-wide text-zinc-500">
-          Preview
-        </h2>
+        <h2 className="text-sm font-medium uppercase tracking-wide text-zinc-500">Preview</h2>
         <div
           className="prose prose-zinc max-w-none rounded-lg border border-zinc-200 p-4 dark:prose-invert dark:border-zinc-800"
           dangerouslySetInnerHTML={{ __html: html }}
         />
       </div>
+    </div>
+  );
+}
+
+function AIDraftPanel({
+  packageId,
+  onAccept,
+}: {
+  packageId: string;
+  onAccept: (draft: { title: string; body: string }) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [instruction, setInstruction] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [draft, setDraft] = useState<{ title: string; body: string } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function run() {
+    setBusy(true);
+    setError(null);
+    setDraft(null);
+    const result = await draftSectionAction(packageId, instruction);
+    if (result.ok && result.draft) setDraft(result.draft);
+    else setError(result.error ?? "Couldn't draft a section.");
+    setBusy(false);
+  }
+
+  if (!open) {
+    return (
+      <button onClick={() => setOpen(true)} className="rounded-md border border-zinc-300 px-3 py-2 text-sm text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-900">
+        ✨ Draft a section with AI
+      </button>
+    );
+  }
+
+  return (
+    <div className="rounded-lg border border-zinc-300 p-3 dark:border-zinc-700">
+      <div className="mb-2 flex items-center justify-between">
+        <span className="text-sm font-medium">Draft a section with AI</span>
+        <button onClick={() => setOpen(false)} className="text-xs text-zinc-500 hover:underline">Close</button>
+      </div>
+      <textarea
+        value={instruction}
+        onChange={(e) => setInstruction(e.target.value)}
+        placeholder="What should this section cover? e.g. 'Explain Le Chatelier's principle with an everyday example.'"
+        rows={2}
+        className="w-full rounded border border-zinc-200 bg-transparent px-2 py-1 text-sm dark:border-zinc-700"
+      />
+      <button onClick={run} disabled={busy || !instruction.trim()} className="mt-2 rounded-md bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-zinc-700 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300">
+        {busy ? "Drafting…" : "Draft"}
+      </button>
+      {error && <p className="mt-2 text-sm text-red-600 dark:text-red-400">{error}</p>}
+      {draft && (
+        <div className="mt-3 rounded border border-zinc-200 p-3 dark:border-zinc-800">
+          <div className="font-medium">{draft.title}</div>
+          <p className="mt-1 whitespace-pre-wrap text-sm text-zinc-600 dark:text-zinc-400">{draft.body}</p>
+          <div className="mt-3 flex gap-2">
+            <button
+              onClick={() => {
+                onAccept(draft);
+                void logDraftDecisionAction(packageId, "accepted");
+                setDraft(null);
+                setInstruction("");
+                setOpen(false);
+              }}
+              className="rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-500"
+            >
+              Add to study guide
+            </button>
+            <button
+              onClick={() => {
+                void logDraftDecisionAction(packageId, "rejected");
+                setDraft(null);
+              }}
+              className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
+            >
+              Discard
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function WorksheetPanel({
+  packageId,
+  artifacts,
+  selectedBlockIds,
+  dirty,
+  onChanged,
+}: {
+  packageId: string;
+  artifacts: ArtifactSummary[];
+  selectedBlockIds: string[];
+  dirty: boolean;
+  onChanged: () => void;
+}) {
+  const [pending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+
+  const act = (fn: () => Promise<{ ok: boolean; error?: string }>) => {
+    setError(null);
+    startTransition(async () => {
+      const r = await fn();
+      if (!r.ok) setError(r.error ?? "Action failed.");
+      else onChanged();
+    });
+  };
+
+  return (
+    <div className="rounded-lg border border-zinc-200 p-3 dark:border-zinc-800">
+      <h3 className="text-sm font-medium">Worksheets</h3>
+      <p className="mt-1 text-xs text-zinc-500">
+        Generated from your saved study guide. Tick sections above to target them,
+        or generate from all saved sections.
+      </p>
+
+      <button
+        onClick={() => act(() => generateWorksheetAction(packageId, selectedBlockIds))}
+        disabled={pending || dirty}
+        title={dirty ? "Save your changes first" : undefined}
+        className="mt-2 rounded-md bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-zinc-700 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
+      >
+        {pending ? "Working…" : selectedBlockIds.length ? `Generate worksheet (${selectedBlockIds.length} selected)` : "Generate worksheet (all sections)"}
+      </button>
+      {dirty && <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">Save your changes before generating.</p>}
+      {error && <p className="mt-2 text-sm text-red-600 dark:text-red-400">{error}</p>}
+
+      {artifacts.length > 0 && (
+        <ul className="mt-3 divide-y divide-zinc-200 dark:divide-zinc-800">
+          {artifacts.map((a) => (
+            <li key={a.artifactId} className="flex items-center justify-between gap-2 py-2">
+              <div className="min-w-0">
+                <div className="truncate text-sm font-medium">{a.title}</div>
+                <div className="text-xs text-zinc-500">
+                  {a.stale ? (
+                    <span className="text-amber-600 dark:text-amber-400">
+                      Out of date{a.missingBlocks.length ? " (a source section was removed)" : ""}
+                    </span>
+                  ) : a.status === "divergent" ? (
+                    "Kept as your own version"
+                  ) : (
+                    "Up to date"
+                  )}
+                </div>
+              </div>
+              {a.stale && (
+                <div className="flex shrink-0 gap-2">
+                  <button onClick={() => act(() => regenerateWorksheetAction(packageId, a.artifactId))} disabled={pending} className="rounded border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-700 dark:hover:bg-zinc-900">
+                    Regenerate
+                  </button>
+                  <button onClick={() => act(() => keepWorksheetMineAction(packageId, a.artifactId))} disabled={pending} className="rounded border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-700 dark:hover:bg-zinc-900">
+                    Keep mine
+                  </button>
+                </div>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

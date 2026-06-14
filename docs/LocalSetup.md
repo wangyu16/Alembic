@@ -48,11 +48,12 @@ The part of the URL before `.supabase.co` (here `abcdefgh`) is your
 ## 4. Apply the database schema
 
 1. Supabase dashboard → **SQL Editor → New query**.
-2. Paste the entire contents of
-   [`supabase/migrations/0001_init.sql`](../supabase/migrations/0001_init.sql)
-   and **Run**.
-3. Confirm in **Table Editor** that these tables exist: `profiles`,
-   `packages`, `sandbox_files`, `research_events`.
+2. Run **each** file in [`supabase/migrations/`](../supabase/migrations/) in
+   order, pasting the contents and clicking **Run**:
+   - `0001_init.sql` → `profiles`, `packages`, `sandbox_files`, `research_events`
+   - `0002_ai_invocations.sql` → `ai_invocations` + the rate-limit function
+     (required for the M3 AI features)
+3. Confirm in **Table Editor** that the five tables exist.
 
 ## 5. Local environment file
 
@@ -61,9 +62,12 @@ Create `apps/web/.env.local` (gitignored) with the values from step 1:
 ```
 NEXT_PUBLIC_SUPABASE_URL=https://<project-ref>.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=<anon / publishable key>
+
+# For the M3 AI features (draft a section, generate worksheets)
+GEMINI_API_KEY=<key from https://aistudio.google.com/apikey>
 ```
 
-(The AI key, `GEMINI_API_KEY`, isn't needed until M3.)
+Restart `pnpm dev:web` after editing `.env.local` so the new values load.
 
 ## 6. Run it
 

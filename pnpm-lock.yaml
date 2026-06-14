@@ -109,6 +109,9 @@ importers:
 
   packages/package-ops:
     dependencies:
+      '@alembic/ai-assist':
+        specifier: workspace:*
+        version: link:../ai-assist
       '@alembic/package-contract':
         specifier: workspace:*
         version: link:../package-contract

@@ -1,5 +1,5 @@
 import { notFound, redirect } from "next/navigation";
-import { loadStudyGuide } from "@alembic/package-ops";
+import { listArtifacts, loadStudyGuide } from "@alembic/package-ops";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
 import { StudyGuideEditor } from "./editor";
@@ -23,6 +23,7 @@ export default async function EditorPage({
   if (!record) notFound();
 
   const doc = await loadStudyGuide(store, packageId);
+  const artifacts = await listArtifacts(store, packageId);
 
   return (
     <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-4 px-6 py-8">
@@ -39,6 +40,14 @@ export default async function EditorPage({
         initialPath={doc.path}
         initialPreamble={doc.preamble}
         initialBlocks={doc.blocks}
+        artifacts={artifacts.map((a) => ({
+          artifactId: a.record.artifactId,
+          title: a.record.title,
+          path: a.record.path,
+          status: a.record.status,
+          stale: a.stale,
+          missingBlocks: a.missingBlocks,
+        }))}
       />
     </main>
   );

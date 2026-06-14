@@ -12,6 +12,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@alembic/ai-assist": "workspace:*",
     "@alembic/package-contract": "workspace:*"
   }
 }
