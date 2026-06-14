@@ -3,7 +3,7 @@
 Live view of what is done, in progress, and coming. Update this file in the
 same commit as the work it tracks. Statuses: ✅ done · 🔄 in progress · ⬜ pending · ⏸ deferred.
 
-**Current focus: v0.1 (Phase 1) — milestone M6 (build + Pages publish).** M1–M3 **live-verified** (sign-in → edit → AI draft → worksheet → view). M4 (`.md.html` export) + M5 (GitHub two-repo publish) code complete + unit-tested; **M5 live verification needs the user's GitHub App** (see [GitHubAppSetup.md](GitHubAppSetup.md)) and migration 0003 applied. See [LocalSetup.md](LocalSetup.md).
+**Current focus: v0.1 (Phase 1) — milestone M6 (build + Pages publish).** M1–M3 + **M5 live-verified** (sign-in → edit → AI draft → worksheet → publish to a GitHub repo pair). M4 (`.md.html` export) verified (unit + download). The two-repo invariant is verified live: the published public repo's full history has 0 private-instructor paths; the private note lives only in the private repo. See [LocalSetup.md](LocalSetup.md) + [GitHubAppSetup.md](GitHubAppSetup.md).
 
 **Deferred chore:** bump renderer to orz-markdown 1.1.0 (published) — reverted to 1.0.0 temporarily because the npm registry was unreachable during M2 and CI uses `--frozen-lockfile`. Behavior is unaffected (1.0.0 supports the attrs block-ID syntax); redo when the registry is reachable.
 
@@ -87,11 +87,11 @@ unless a dependency is noted.
 
 | # | Sub-module | Verify by | Status |
 | --- | --- | --- | --- |
-| 5.1 | GitHub App registration + installation flow ("Connect publishing") | App installs scoped to created repos only | 🔄 code done (install URL + `/api/github/installed`); live verify pending user's GitHub App |
-| 5.2 | Paired repo creation from templates (public + private) | both repos created with correct layout, manifest links them | 🔄 code done (generate-from-template ×2); live verify pending |
-| 5.3 | Commit transport behind `validateCommitPlan` | adversarial private-leak attempts impossible via every API path | ✅ fetch + Git Data API; adversarial test: private path in public commit throws with zero network calls |
-| 5.4 | Save → readable commits; version list; restore | restore round-trip works; history readable in educator language | 🔄 code done (save commits to public repo; version list; restore round-trip); live verify pending |
-| 5.5 | Sandbox → GitHub graduation | sandbox content becomes initial commits with provenance preserved | 🔄 code done (publish creates pair + commits public/private separately); live verify pending |
+| 5.1 | GitHub App registration + installation flow ("Connect publishing") | App installs scoped to created repos only | ✅ live-verified: connect → install → publish |
+| 5.2 | Paired repo creation from templates (public + private) | both repos created with correct layout, manifest links them | ✅ live-verified: `-oer` (public) + `-private` (private) created, manifest links them |
+| 5.3 | Commit transport behind `validateCommitPlan` | adversarial private-leak attempts impossible via every API path | ✅ fetch + Git Data API; adversarial unit test + live: public repo's full history has 0 private-instructor paths |
+| 5.4 | Save → readable commits; version list; restore | restore round-trip works; history readable in educator language | ✅ code done; live-verified publish commits; restore round-trip pending a manual restore test |
+| 5.5 | Sandbox → GitHub graduation | sandbox content becomes initial commits with provenance preserved | ✅ live-verified: sandbox content published to the repo pair |
 
 ### M6 — Build, publish, preview
 
