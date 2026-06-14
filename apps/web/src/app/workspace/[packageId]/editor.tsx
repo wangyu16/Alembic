@@ -359,7 +359,12 @@ function WorksheetPanel({
           {artifacts.map((a) => (
             <li key={a.artifactId} className="flex items-center justify-between gap-2 py-2">
               <div className="min-w-0">
-                <div className="truncate text-sm font-medium">{a.title}</div>
+                <a
+                  href={`/workspace/${packageId}/artifact/${a.artifactId}`}
+                  className="truncate text-sm font-medium text-blue-700 hover:underline dark:text-blue-400"
+                >
+                  {a.title}
+                </a>
                 <div className="text-xs text-zinc-500">
                   {a.stale ? (
                     <span className="text-amber-600 dark:text-amber-400">
@@ -372,16 +377,24 @@ function WorksheetPanel({
                   )}
                 </div>
               </div>
-              {a.stale && (
-                <div className="flex shrink-0 gap-2">
-                  <button onClick={() => act(() => regenerateWorksheetAction(packageId, a.artifactId))} disabled={pending} className="rounded border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-700 dark:hover:bg-zinc-900">
-                    Regenerate
-                  </button>
-                  <button onClick={() => act(() => keepWorksheetMineAction(packageId, a.artifactId))} disabled={pending} className="rounded border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-700 dark:hover:bg-zinc-900">
-                    Keep mine
-                  </button>
-                </div>
-              )}
+              <div className="flex shrink-0 gap-2">
+                <a
+                  href={`/workspace/${packageId}/artifact/${a.artifactId}`}
+                  className="rounded border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
+                >
+                  View
+                </a>
+                {a.stale && (
+                  <>
+                    <button onClick={() => act(() => regenerateWorksheetAction(packageId, a.artifactId))} disabled={pending} className="rounded border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-700 dark:hover:bg-zinc-900">
+                      Regenerate
+                    </button>
+                    <button onClick={() => act(() => keepWorksheetMineAction(packageId, a.artifactId))} disabled={pending} className="rounded border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-700 dark:hover:bg-zinc-900">
+                      Keep mine
+                    </button>
+                  </>
+                )}
+              </div>
             </li>
           ))}
         </ul>

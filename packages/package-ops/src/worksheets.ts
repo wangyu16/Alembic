@@ -159,6 +159,20 @@ async function loadRecord(
   return record;
 }
 
+/** Load an artifact's record together with its file content (for viewing). */
+export async function loadArtifactContent(
+  store: PackageStore,
+  packageId: string,
+  artifactId: string,
+): Promise<{ record: DerivedArtifactRecord; content: string } | null> {
+  const records = await readRecords(store, packageId);
+  const record = records.find((r) => r.artifactId === artifactId);
+  if (!record) return null;
+  const files = await store.listFiles(packageId);
+  const file = files.find((f) => f.repo === "public" && f.path === record.path);
+  return { record, content: file?.content ?? "" };
+}
+
 /** Regenerate a worksheet from current block content; resets it to fresh. */
 export async function regenerateWorksheetArtifact(
   store: PackageStore,
