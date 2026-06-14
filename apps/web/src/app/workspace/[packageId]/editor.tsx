@@ -14,6 +14,15 @@ import {
   logDraftDecisionAction,
   regenerateWorksheetAction,
 } from "./ai-actions";
+import { publishToGitHubAction } from "./github-actions";
+
+export interface PublishingState {
+  configured: boolean;
+  connected: boolean;
+  published: boolean;
+  publicRepoUrl: string | null;
+  installUrl: string | null;
+}
 
 interface EditorBlock extends StudyGuideBlock {
   key: string;
@@ -43,12 +52,14 @@ export function StudyGuideEditor({
   initialPreamble,
   initialBlocks,
   artifacts,
+  publishing,
 }: {
   packageId: string;
   initialPath: string;
   initialPreamble: string;
   initialBlocks: StudyGuideBlock[];
   artifacts: ArtifactSummary[];
+  publishing: PublishingState;
 }) {
   const router = useRouter();
   const [preamble] = useState(initialPreamble);
@@ -220,6 +231,13 @@ export function StudyGuideEditor({
           packageId={packageId}
           artifacts={artifacts}
           selectedBlockIds={[...selected]}
+          dirty={dirty}
+          onChanged={() => router.refresh()}
+        />
+
+        <PublishingPanel
+          packageId={packageId}
+          publishing={publishing}
           dirty={dirty}
           onChanged={() => router.refresh()}
         />
@@ -406,6 +424,95 @@ function WorksheetPanel({
           ))}
         </ul>
       )}
+    </div>
+  );
+}
+
+function PublishingPanel({
+  packageId,
+  publishing,
+  dirty,
+  onChanged,
+}: {
+  packageId: string;
+  publishing: PublishingState;
+  dirty: boolean;
+  onChanged: () => void;
+}) {
+  const [pending, start] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+  const [publishedUrl, setPublishedUrl] = useState<string | null>(
+    publishing.publicRepoUrl,
+  );
+
+  const onPublish = () => {
+    setError(null);
+    start(async () => {
+      const r = await publishToGitHubAction(packageId);
+      if (r.ok) {
+        setPublishedUrl(r.publicRepoUrl ?? null);
+        onChanged();
+      } else {
+        setError(r.error ?? "Publishing failed.");
+      }
+    });
+  };
+
+  return (
+    <div className="rounded-lg border border-zinc-200 p-3 dark:border-zinc-800">
+      <h3 className="text-sm font-medium">Publishing</h3>
+
+      {!publishing.configured ? (
+        <p className="mt-1 text-xs text-zinc-500">
+          GitHub publishing isn’t set up on this deployment yet.
+        </p>
+      ) : publishing.published || publishedUrl ? (
+        <p className="mt-1 text-sm">
+          Published ·{" "}
+          <a
+            href={publishedUrl ?? "#"}
+            target="_blank"
+            rel="noreferrer"
+            className="text-blue-700 hover:underline dark:text-blue-400"
+          >
+            view repository
+          </a>
+        </p>
+      ) : !publishing.connected ? (
+        <>
+          <p className="mt-1 text-xs text-zinc-500">
+            Connect your GitHub account to publish. Alembic only touches the
+            repositories it creates for you.
+          </p>
+          <a
+            href={publishing.installUrl ?? "#"}
+            className="mt-2 inline-block rounded-md bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
+          >
+            Connect publishing
+          </a>
+        </>
+      ) : (
+        <>
+          <p className="mt-1 text-xs text-zinc-500">
+            Creates a public + private repository pair and saves your materials
+            there. Private notes never go to the public repository.
+          </p>
+          <button
+            onClick={onPublish}
+            disabled={pending || dirty}
+            title={dirty ? "Save your changes first" : undefined}
+            className="mt-2 rounded-md bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-zinc-700 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
+          >
+            {pending ? "Publishing…" : "Publish to GitHub"}
+          </button>
+          {dirty && (
+            <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
+              Save your changes before publishing.
+            </p>
+          )}
+        </>
+      )}
+      {error && <p className="mt-2 text-sm text-red-600 dark:text-red-400">{error}</p>}
     </div>
   );
 }

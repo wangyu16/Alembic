@@ -2,6 +2,7 @@ import { notFound, redirect } from "next/navigation";
 import { listArtifacts, loadStudyGuide } from "@alembic/package-ops";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
+import { githubConfig, installUrl } from "@/lib/github";
 import { StudyGuideEditor } from "./editor";
 
 export const dynamic = "force-dynamic";
@@ -24,6 +25,21 @@ export default async function EditorPage({
 
   const doc = await loadStudyGuide(store, packageId);
   const artifacts = await listArtifacts(store, packageId);
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("github_installation_id")
+    .eq("id", user.id)
+    .maybeSingle();
+  const cfg = githubConfig();
+  const pub = record.manifest.publicRepo;
+  const publishing = {
+    configured: Boolean(cfg),
+    connected: Boolean(profile?.github_installation_id),
+    published: record.storage === "github",
+    publicRepoUrl: pub ? `https://github.com/${pub.owner}/${pub.name}` : null,
+    installUrl: cfg ? installUrl(cfg.appSlug) : null,
+  };
 
   return (
     <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-4 px-6 py-8">
@@ -48,6 +64,7 @@ export default async function EditorPage({
           stale: a.stale,
           missingBlocks: a.missingBlocks,
         }))}
+        publishing={publishing}
       />
     </main>
   );

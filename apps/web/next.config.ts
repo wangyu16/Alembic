@@ -7,6 +7,7 @@ const nextConfig: NextConfig = {
     "@alembic/package-ops",
     "@alembic/renderer",
     "@alembic/ai-assist",
+    "@alembic/github-bridge",
     "@alembic/research-events",
   ],
 };

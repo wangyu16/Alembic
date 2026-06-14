@@ -23,6 +23,9 @@ importers:
       '@alembic/ai-assist':
         specifier: workspace:*
         version: link:../../packages/ai-assist
+      '@alembic/github-bridge':
+        specifier: workspace:*
+        version: link:../../packages/github-bridge
       '@alembic/package-contract':
         specifier: workspace:*
         version: link:../../packages/package-contract
