@@ -3,7 +3,9 @@
 Live view of what is done, in progress, and coming. Update this file in the
 same commit as the work it tracks. Statuses: ✅ done · 🔄 in progress · ⬜ pending · ⏸ deferred.
 
-**Current focus: v0.1 (Phase 1) — milestone M1 (auth & shell).**
+**Current focus: v0.1 (Phase 1) — milestone M3 (AI assist & derived artifact).** M1 + M2 code complete; live verification of M1/M2 pending the user's Supabase project + GitHub OAuth app.
+
+**Deferred chore:** bump renderer to orz-markdown 1.1.0 (published) — reverted to 1.0.0 temporarily because the npm registry was unreachable during M2 and CI uses `--frozen-lockfile`. Behavior is unaffected (1.0.0 supports the attrs block-ID syntax); redo when the registry is reachable.
 
 ## Phase overview (full project)
 
@@ -57,12 +59,12 @@ unless a dependency is noted.
 
 | # | Sub-module | Verify by | Status |
 | --- | --- | --- | --- |
-| 2.1 | Package operations API (create/read/update/save; UI-independent) | unit tests against sandbox storage; no UI imports | 🔄 started early (`@alembic/package-ops`: create op + PackageStore interface) |
-| 2.2 | Package creation flow (title, course context, license, concepts/objectives lists) | created package validates against contract | ⬜ |
-| 2.3 | Block editor UI (add/edit/reorder/delete heading-bounded blocks) | manual: author 5-block module; delete honors new-ID rule | ⬜ |
-| 2.4 | Live orz-markdown preview pane | chemistry sample renders while typing | ⬜ |
-| 2.5 | Block-ID integrity validation on every save | corrupted-ID save is rejected with educator-facing error | ⬜ |
-| 2.6 | Research event wiring for authoring steps | events rows appear for create/edit/save with timings | ⬜ |
+| 2.1 | Package operations API (create/read/update/save; UI-independent) | unit tests against sandbox storage; no UI imports | ✅ `@alembic/package-ops`: create + load/save study guide, PackageStore, MemoryPackageStore; 10 tests |
+| 2.2 | Package creation flow (title, course context, license, concepts/objectives lists) | created package validates against contract | ✅ workspace create form (title + license); concepts/objectives lists deferred within M2 |
+| 2.3 | Block editor UI (add/edit/reorder/delete heading-bounded blocks) | manual: author 5-block module; delete honors new-ID rule | 🔄 code done; live verify pending credentials |
+| 2.4 | Live orz-markdown preview pane | chemistry sample renders while typing | 🔄 code done (server `/api/preview`, debounced); live verify pending |
+| 2.5 | Block-ID integrity validation on every save | corrupted-ID save is rejected with educator-facing error | ✅ `saveStudyGuide` validates; duplicate-ID save rejected (unit-tested) |
+| 2.6 | Research event wiring for authoring steps | events rows appear for create/edit/save with timings | 🔄 `package.created` + `save.completed` with timings; per-block `block.edited` deferred |
 
 ### M3 — AI assist & derived artifact
 
@@ -125,3 +127,5 @@ hold before calling v0.1 shipped.
 - 2026-06-11 — M0.1, M0.2 complete; repo live at github.com/wangyu16/Alembic; CI green. M0.3 spec + M0.4 spike started.
 - 2026-06-11 — **M0 complete.** Contract spec written (docs/specs/package-contract-v1.md); orz-markdown spike done: heading block IDs work natively via `{{attrs[#blk-…]}}`; 5 upstream gaps filed in the table above (none block M1–M2). CLAUDE.md + this tracker added.
 - 2026-06-11 — **M1 code complete.** Supabase migration (profiles/packages/sandbox_files/research_events with RLS), GitHub sign-in via Supabase Auth, app shell, sandbox package creation through new `@alembic/package-ops` (M2.1 started early). Contract refined: `publicRepo` now optional (sandbox packages have no repos until graduation). Live verification awaits the user's Supabase project + GitHub OAuth app. orz-markdown Phase A fixes in progress on branch `phase-a-alembic-fixes` (see orz-stack/docs/ConsolidationPlan.md).
+- 2026-06-11 — **orz-markdown 1.1.0 published.** Phase A merged + on npm (TOC fix, shipped Agent Skill + block-ID rules, trailing-space fix).
+- 2026-06-11 — **M2 code complete.** Block-source parser in package-contract (`{{attrs[#blk-…]}}`, code-fence aware, idempotent); `@alembic/package-ops` load/save study guide with ID minting + integrity validation on save; block editor UI (add/edit/reorder/delete) with debounced server-rendered live preview; research events for create/save. 59 unit tests green. Live verify of the editor pending credentials.

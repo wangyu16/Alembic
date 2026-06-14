@@ -27,4 +27,8 @@ export interface PackageRecord {
 
 export interface PackageStore {
   createPackage(record: PackageRecord, files: PackageFile[]): Promise<void>;
+  getPackage(packageId: string): Promise<PackageRecord | null>;
+  listFiles(packageId: string): Promise<PackageFile[]>;
+  /** Upsert files by (repo, path). Callers validate paths first. */
+  putFiles(packageId: string, files: PackageFile[]): Promise<void>;
 }

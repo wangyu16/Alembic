@@ -99,7 +99,12 @@ export default async function WorkspacePage() {
                     created {new Date(pkg.created_at).toLocaleDateString()}
                   </div>
                 </div>
-                <span className="text-sm text-zinc-400">Editor opens in M2</span>
+                <a
+                  href={`/workspace/${pkg.id}`}
+                  className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
+                >
+                  Open editor
+                </a>
               </li>
             ))}
           </ul>
