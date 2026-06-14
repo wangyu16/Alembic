@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { PACKAGE_SCHEMA_VERSION } from "@alembic/package-contract";
 import { rendererVersion } from "@alembic/renderer";
 
@@ -17,12 +18,12 @@ export default function Home() {
       </div>
 
       <div className="flex flex-wrap items-center gap-4">
-        <a href="/workspace" className="btn btn-primary">
+        <Link href="/workspace" className="btn btn-primary">
           Open your workspace
-        </a>
-        <a href="/portal" className="btn btn-ghost">
+        </Link>
+        <Link href="/portal" className="btn btn-ghost">
           Browse the index
-        </a>
+        </Link>
       </div>
 
       <dl className="grid gap-x-8 gap-y-5 border-t border-edge-soft pt-8 sm:grid-cols-3">

@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 export default function Error({ reset }: { error: Error; reset: () => void }) {
   return (
     <main className="mx-auto flex w-full max-w-md flex-1 flex-col justify-center gap-4 px-6 py-16 text-center">
@@ -17,12 +19,9 @@ export default function Error({ reset }: { error: Error; reset: () => void }) {
         >
           Try again
         </button>
-        <a
-          href="/workspace"
-          className="btn btn-ghost"
-        >
+        <Link href="/workspace" className="btn btn-ghost">
           Back to workspace
-        </a>
+        </Link>
       </div>
     </main>
   );

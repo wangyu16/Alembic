@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createPackageAction } from "./actions";
@@ -82,9 +83,9 @@ export default async function WorkspacePage() {
                     created {new Date(pkg.created_at).toLocaleDateString()}
                   </div>
                 </div>
-                <a href={`/workspace/${pkg.id}`} className="btn btn-ghost btn-sm">
+                <Link href={`/workspace/${pkg.id}`} className="btn btn-ghost btn-sm">
                   Open editor
-                </a>
+                </Link>
               </li>
             ))}
           </ul>

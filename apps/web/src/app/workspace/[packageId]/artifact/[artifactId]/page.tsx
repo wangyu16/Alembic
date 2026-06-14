@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { loadArtifactContent } from "@alembic/package-ops";
 import { renderDocument } from "@alembic/renderer";
@@ -27,12 +28,12 @@ export default async function ArtifactViewerPage({
   return (
     <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-4 px-6 py-8">
       <header>
-        <a
+        <Link
           href={`/workspace/${packageId}`}
           className="text-sm text-muted hover:text-ink"
         >
           ← Back to editor
-        </a>
+        </Link>
         <div className="mt-1 flex items-center justify-between gap-4">
           <h1 className="font-serif text-2xl tracking-tight text-ink">
             {loaded.record.title}

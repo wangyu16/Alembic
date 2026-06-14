@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { serializeStudyGuide } from "@alembic/package-contract";
 import {
@@ -53,9 +54,9 @@ export default async function SitePreviewPage({
   return (
     <main className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-3 px-6 py-6">
       <div className="flex items-center justify-between">
-        <a href={`/workspace/${packageId}`} className="text-sm text-muted hover:text-ink">
+        <Link href={`/workspace/${packageId}`} className="text-sm text-muted hover:text-ink">
           ← Back to editor
-        </a>
+        </Link>
         <span className="text-xs text-faint">
           Preview of the student-facing page (same build as published)
         </span>

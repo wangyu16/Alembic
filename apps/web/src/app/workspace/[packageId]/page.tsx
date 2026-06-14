@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { listArtifacts, loadStudyGuide } from "@alembic/package-ops";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -70,9 +71,9 @@ export default async function EditorPage({
     <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-4 px-6 py-8">
       <header className="flex items-center justify-between">
         <div>
-          <a href="/workspace" className="text-sm text-muted hover:text-ink">
+          <Link href="/workspace" className="text-sm text-muted hover:text-ink">
             ← Workspace
-          </a>
+          </Link>
           <h1 className="font-serif text-2xl tracking-tight text-ink">{record.title}</h1>
         </div>
       </header>

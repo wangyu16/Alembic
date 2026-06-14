@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   serializeStudyGuide,
@@ -452,12 +453,12 @@ function WorksheetPanel({
           {artifacts.map((a) => (
             <li key={a.artifactId} className="flex items-center justify-between gap-2 py-2">
               <div className="min-w-0">
-                <a
+                <Link
                   href={`/workspace/${packageId}/artifact/${a.artifactId}`}
                   className="truncate text-sm font-medium link"
                 >
                   {a.title}
-                </a>
+                </Link>
                 <div className="text-xs text-faint">
                   {a.stale ? (
                     <span className="text-warn">
@@ -471,12 +472,12 @@ function WorksheetPanel({
                 </div>
               </div>
               <div className="flex shrink-0 gap-2">
-                <a
+                <Link
                   href={`/workspace/${packageId}/artifact/${a.artifactId}`}
                   className="btn btn-ghost btn-sm"
                 >
                   View
-                </a>
+                </Link>
                 {a.stale && (
                   <>
                     <button onClick={() => act(() => regenerateWorksheetAction(packageId, a.artifactId))} disabled={pending} className="btn btn-ghost btn-sm">
@@ -523,15 +524,6 @@ function PublishingPanel({
       } else {
         setError(r.error ?? "Publishing failed.");
       }
-    });
-  };
-
-  const act = (fn: () => Promise<{ ok: boolean; error?: string }>) => {
-    setError(null);
-    start(async () => {
-      const r = await fn();
-      if (!r.ok) setError(r.error ?? "Action failed.");
-      else onChanged();
     });
   };
 
@@ -690,12 +682,12 @@ function SitePanel({ packageId }: { packageId: string }) {
         Student website
       </div>
       <div className="mt-2 flex items-center gap-3">
-        <a
+        <Link
           href={`/workspace/${packageId}/site-preview`}
           className="btn btn-ghost btn-sm"
         >
           Preview student page
-        </a>
+        </Link>
         <button
           onClick={onPublishSite}
           disabled={pending}
