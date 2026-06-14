@@ -42,6 +42,7 @@ export interface PublishingState {
 
 interface EditorBlock extends StudyGuideBlock {
   key: string;
+  collapsed?: boolean;
 }
 
 export interface ArtifactSummary {
@@ -156,6 +157,16 @@ export function StudyGuideEditor({
     [markDirty],
   );
 
+  const toggleCollapse = useCallback((key: string) => {
+    setBlocks((bs) =>
+      bs.map((b) => (b.key === key ? { ...b, collapsed: !b.collapsed } : b)),
+    );
+  }, []);
+
+  const setAllCollapsed = useCallback((collapsed: boolean) => {
+    setBlocks((bs) => bs.map((b) => ({ ...b, collapsed })));
+  }, []);
+
   const onSave = useCallback(async () => {
     setSave({ kind: "saving" });
     const result = await saveStudyGuideAction(packageId, {
@@ -204,9 +215,30 @@ export function StudyGuideEditor({
           </div>
         </div>
 
+        {blocks.length > 1 && (
+          <div className="flex justify-end">
+            <button
+              onClick={() => setAllCollapsed(!blocks.every((b) => b.collapsed))}
+              className="text-xs text-muted transition-colors hover:text-ink"
+            >
+              {blocks.every((b) => b.collapsed) ? "Expand all" : "Collapse all"}
+            </button>
+          </div>
+        )}
+
         {blocks.map((block, i) => (
           <div key={block.key} className="panel p-3">
-            <div className="mb-2 flex items-center gap-2">
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => toggleCollapse(block.key)}
+                title={block.collapsed ? "Expand section" : "Collapse section"}
+                aria-expanded={!block.collapsed}
+                className="rounded px-1 py-1 text-muted transition-colors hover:text-ink"
+              >
+                <span className="inline-block w-3 text-center">
+                  {block.collapsed ? "▸" : "▾"}
+                </span>
+              </button>
               {block.id && (
                 <input
                   type="checkbox"
@@ -232,16 +264,27 @@ export function StudyGuideEditor({
               <button onClick={() => move(block.key, 1)} disabled={i === blocks.length - 1} title="Move down" className="rounded px-2 py-1 text-muted transition-colors hover:bg-elevated disabled:opacity-30">↓</button>
               <button onClick={() => deleteBlock(block.key)} title="Delete section" className="rounded px-2 py-1 text-danger transition-colors hover:bg-[var(--elevated)]">✕</button>
             </div>
-            <textarea
-              value={block.body}
-              onChange={(e) => update(block.key, "body", e.target.value)}
-              placeholder="Write in Markdown — chemistry (H~2~O) and math ($E=mc^2$) supported."
-              rows={Math.max(3, block.body.split("\n").length + 1)}
-              className="field w-full resize-y font-mono text-sm"
-            />
-            <p className="mt-1 text-xs text-faint">
-              {block.id ? `id ${block.id}` : "new — id assigned on save"}
-            </p>
+            {block.collapsed ? (
+              <button
+                onClick={() => toggleCollapse(block.key)}
+                className="mt-2 block w-full truncate text-left text-xs text-faint"
+              >
+                {block.body.trim().split("\n")[0] || "Empty section — click to edit"}
+              </button>
+            ) : (
+              <>
+                <textarea
+                  value={block.body}
+                  onChange={(e) => update(block.key, "body", e.target.value)}
+                  placeholder="Write in Markdown — chemistry (H~2~O) and math ($E=mc^2$) supported."
+                  rows={Math.max(3, block.body.split("\n").length + 1)}
+                  className="field mt-2 w-full resize-y font-mono text-sm"
+                />
+                <p className="mt-1 text-xs text-faint">
+                  {block.id ? `id ${block.id}` : "new — id assigned on save"}
+                </p>
+              </>
+            )}
           </div>
         ))}
 
