@@ -598,6 +598,7 @@ function PublishingPanel({
 function SitePanel({ packageId }: { packageId: string }) {
   const [pending, start] = useTransition();
   const [siteUrl, setSiteUrl] = useState<string | null>(null);
+  const [pagesPending, setPagesPending] = useState(false);
   const [warning, setWarning] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [gateFailures, setGateFailures] = useState<
@@ -619,7 +620,8 @@ function SitePanel({ packageId }: { packageId: string }) {
       const r = await publishSiteAction(packageId);
       if (r.ok) {
         setSiteUrl(r.siteUrl ?? null);
-        if (r.warning) setWarning(r.warning);
+        setPagesPending(Boolean(r.pagesPending));
+        setWarning(r.warning ?? null);
       } else if (r.gateFailures?.length) {
         setGateFailures(r.gateFailures);
       } else {
@@ -661,9 +663,10 @@ function SitePanel({ packageId }: { packageId: string }) {
           </ul>
         </div>
       )}
+      {warning && <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">{warning}</p>}
       {siteUrl && (
         <p className="mt-2 text-sm">
-          Live site:{" "}
+          {pagesPending ? "Site address:" : "Live site:"}{" "}
           <a
             href={siteUrl}
             target="_blank"
@@ -672,10 +675,13 @@ function SitePanel({ packageId }: { packageId: string }) {
           >
             {siteUrl}
           </a>{" "}
-          <span className="text-xs text-zinc-500">(may take a minute to go live)</span>
+          <span className="text-xs text-zinc-500">
+            {pagesPending
+              ? "(live once GitHub Pages is enabled)"
+              : "(may take a minute to go live)"}
+          </span>
         </p>
       )}
-      {warning && <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">{warning}</p>}
       {error && <p className="mt-2 text-sm text-red-600 dark:text-red-400">{error}</p>}
     </div>
   );

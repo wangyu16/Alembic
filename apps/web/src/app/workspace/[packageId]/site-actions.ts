@@ -20,6 +20,8 @@ const PAGES_BRANCH = "gh-pages";
 export interface PublishSiteResult {
   ok: boolean;
   siteUrl?: string;
+  /** True when the site was pushed but GitHub Pages isn't enabled yet. */
+  pagesPending?: boolean;
   /** Failed release-gate checks (Tier-3: publishing is blocked until fixed). */
   gateFailures?: Array<{ name: string; message: string }>;
   warning?: string;
@@ -102,24 +104,26 @@ export async function publishSiteAction(
     });
 
     let siteUrl = `https://${repo.owner}.github.io/${repo.name}/`;
+    let pagesPending = false;
     let warning: string | undefined;
     try {
       const pages = await gh.client.enablePages(coords, PAGES_BRANCH);
       siteUrl = pages.url;
     } catch {
+      pagesPending = true;
       warning =
-        "Site built and pushed, but Alembic couldn't enable GitHub Pages automatically. Enable it once in the repo's Settings → Pages (branch: gh-pages).";
+        "Your site files were published, but GitHub Pages isn't switched on yet. This usually means the GitHub App's new “Pages” permission is still pending — accept it under Settings → Applications → your Alembic app — or turn Pages on once in the repo's Settings → Pages (branch: gh-pages). Then it will be live at the address below.";
     }
 
     await events.log({
       type: "publish.completed",
       userId: user.id,
       packageId,
-      detail: { kind: "site", siteUrl },
+      detail: { kind: "site", siteUrl, pagesPending },
       occurredAt: new Date().toISOString(),
     });
 
-    return { ok: true, siteUrl, ...(warning ? { warning } : {}) };
+    return { ok: true, siteUrl, pagesPending, ...(warning ? { warning } : {}) };
   } catch (e) {
     await events.log({
       type: "publish.failed",

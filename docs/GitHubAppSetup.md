@@ -45,6 +45,13 @@ GitHub → **Settings → Developer settings → GitHub Apps → New GitHub App*
 Create the app, then on its page note the **App ID**, and under
 **Private keys → Generate a private key** download the `.pem` file.
 
+> **Changing permissions later:** if you edit the App's permissions after it's
+> installed (e.g. adding **Pages: write**), GitHub holds the change as a
+> *pending request* — the existing installation keeps its old scopes until you
+> **accept the update**: Settings → Applications → Installed GitHub Apps → your
+> Alembic app → review and approve the new permissions. Until you do, calls
+> needing the new scope (like enabling Pages) will fail.
+
 ## 3. Install the App on your account
 
 From the App's page → **Install App** → install on your account, choosing
