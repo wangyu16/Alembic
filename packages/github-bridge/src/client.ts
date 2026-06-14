@@ -132,6 +132,86 @@ export class GitHubClient {
     }));
   }
 
+  /** Resolve a ref (e.g. "heads/gh-pages") to a commit sha, or null if absent. */
+  async getRefSha(coords: RepoCoords, ref: string): Promise<string | null> {
+    try {
+      const data = await this.request<{ object: { sha: string } }>(
+        "GET",
+        `/repos/${coords.owner}/${coords.repo}/git/ref/${ref}`,
+      );
+      return data.object.sha;
+    } catch (e) {
+      if (e instanceof GitHubError && e.status === 404) return null;
+      throw e;
+    }
+  }
+
+  /**
+   * Replace a branch's entire contents with `files` as a single root commit
+   * (no parent) — used for generated output like the Pages branch, so each
+   * build yields a clean tree. Creates the branch if it doesn't exist.
+   */
+  async publishToBranch(input: {
+    coords: RepoCoords;
+    branch: string;
+    message: string;
+    files: Array<{ path: string; content: string }>;
+  }): Promise<{ commitSha: string }> {
+    const { coords, branch } = input;
+    const tree = input.files.map((f) => ({
+      path: f.path,
+      mode: "100644",
+      type: "blob",
+      content: f.content,
+    }));
+    const newTree = await this.request<{ sha: string }>(
+      "POST",
+      `/repos/${coords.owner}/${coords.repo}/git/trees`,
+      { tree },
+    );
+    const commit = await this.request<{ sha: string }>(
+      "POST",
+      `/repos/${coords.owner}/${coords.repo}/git/commits`,
+      { message: input.message, tree: newTree.sha, parents: [] },
+    );
+    const existing = await this.getRefSha(coords, `heads/${branch}`);
+    if (existing === null) {
+      await this.request(
+        "POST",
+        `/repos/${coords.owner}/${coords.repo}/git/refs`,
+        { ref: `refs/heads/${branch}`, sha: commit.sha },
+      );
+    } else {
+      await this.request(
+        "PATCH",
+        `/repos/${coords.owner}/${coords.repo}/git/refs/heads/${branch}`,
+        { sha: commit.sha, force: true },
+      );
+    }
+    return { commitSha: commit.sha };
+  }
+
+  /**
+   * Ensure GitHub Pages is enabled to serve from `branch`. Returns the public
+   * site URL. Requires the App's "Pages: write" permission.
+   */
+  async enablePages(
+    coords: RepoCoords,
+    branch: string,
+  ): Promise<{ url: string }> {
+    const base = `/repos/${coords.owner}/${coords.repo}/pages`;
+    try {
+      const existing = await this.request<{ html_url: string }>("GET", base);
+      return { url: existing.html_url };
+    } catch (e) {
+      if (!(e instanceof GitHubError && e.status === 404)) throw e;
+    }
+    const created = await this.request<{ html_url: string }>("POST", base, {
+      source: { branch, path: "/" },
+    });
+    return { url: created.html_url };
+  }
+
   /** Read a UTF-8 file at a ref (commit/branch). Returns null if absent. */
   async getFileAtRef(
     coords: RepoCoords,

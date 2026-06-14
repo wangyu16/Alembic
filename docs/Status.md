@@ -3,7 +3,7 @@
 Live view of what is done, in progress, and coming. Update this file in the
 same commit as the work it tracks. Statuses: ✅ done · 🔄 in progress · ⬜ pending · ⏸ deferred.
 
-**Current focus: v0.1 (Phase 1) — milestone M6 (build + Pages publish).** M1–M3 + **M5 live-verified** (sign-in → edit → AI draft → worksheet → publish to a GitHub repo pair). M4 (`.md.html` export) verified (unit + download). The two-repo invariant is verified live: the published public repo's full history has 0 private-instructor paths; the private note lives only in the private repo. See [LocalSetup.md](LocalSetup.md) + [GitHubAppSetup.md](GitHubAppSetup.md).
+**Current focus: v0.1 (Phase 1) — milestone M7 (portal index & hardening).** M1–M5 live-verified (sign-in → edit → AI draft → worksheet → publish to a GitHub repo pair; two-repo invariant confirmed on real repos). M6 (app-side build → GitHub Pages) code complete + unit-tested; **live verify needs Pages:write added to the GitHub App.** See [LocalSetup.md](LocalSetup.md) + [GitHubAppSetup.md](GitHubAppSetup.md).
 
 **Deferred chore:** bump renderer to orz-markdown 1.1.0 (published) — reverted to 1.0.0 temporarily because the npm registry was unreachable during M2 and CI uses `--frozen-lockfile`. Behavior is unaffected (1.0.0 supports the attrs block-ID syntax); redo when the registry is reachable.
 
@@ -97,10 +97,10 @@ unless a dependency is noted.
 
 | # | Sub-module | Verify by | Status |
 | --- | --- | --- | --- |
-| 6.1 | Job queue (pg-boss on Supabase) + worker consumption | enqueued job runs in worker; status reported back | ⬜ |
-| 6.2 | Build job: ephemeral checkout → static build → Pages push | live GitHub Pages URL; renderer version stamped; build config committed | ⬜ |
-| 6.3 | Publish flow: Tier-3 approval screen + release gates | gates block bad packages with educator-facing reasons; approval required | ⬜ |
-| 6.4 | In-app student-page preview (same renderer path as build) | preview matches published output | ⬜ |
+| 6.1 | Job queue (pg-boss on Supabase) + worker consumption | enqueued job runs in worker; status reported back | ⏸ deferred — v0.1 builds in-process on publish (orz-markdown is fast, content small; build is a callable, ready to move to the worker tier later) |
+| 6.2 | Build job: static build → Pages push | live GitHub Pages URL; renderer version stamped; build config committed | 🔄 code done (`buildSite` → push to `gh-pages` + enable Pages; renderer version in build-info; build config in repo templates); live verify pending Pages:write |
+| 6.3 | Publish flow: Tier-3 approval screen + release gates | gates block bad packages with educator-facing reasons; approval required | ✅ release gates (license/content/IDs/separation) + Tier-3 confirm; failures shown in educator language (unit-tested) |
+| 6.4 | In-app student-page preview (same renderer path as build) | preview matches published output | ✅ `/site-preview` renders `buildSite` index in an isolated iframe — same build path |
 
 ### M7 — Portal index & hardening
 
@@ -131,6 +131,7 @@ hold before calling v0.1 shipped.
 - 2026-06-11 — **M2 code complete.** Block-source parser in package-contract (`{{attrs[#blk-…]}}`, code-fence aware, idempotent); `@alembic/package-ops` load/save study guide with ID minting + integrity validation on save; block editor UI (add/edit/reorder/delete) with debounced server-rendered live preview; research events for create/save. 59 unit tests green. Live verify of the editor pending credentials.
 - 2026-06-11 — **M1 + M2 live-verified.** Supabase project provisioned, migration applied (4 tables, RLS). Full loop run against real backend: GitHub sign-in → workspace → create package → editor (seeded blocks load) → live preview (chemistry + KaTeX) → save. Setup steps documented in [LocalSetup.md](LocalSetup.md).
 - 2026-06-11 — **M3 live-verified.** In-app AI confirmed against real Gemini + Supabase (migration 0002 applied): drafted a section, generated a worksheet from selected blocks, governance log writing (no errors). Worksheet viewer added (open generated worksheets).
+- 2026-06-11 — **M6 code complete.** App-side static-site build (`buildSite` in renderer: index + worksheet pages + build-info with renderer version + .nojekyll), pushed to a clean `gh-pages` branch via the bridge (`publishToBranch` orphan commit) with Pages auto-enabled (`enablePages`). Release gates (license/content/IDs/public-private separation) + Tier-3 confirm gate publishing; in-app student-page preview via `/site-preview` (same build path). Build runs in-process for v0.1 (queue/worker deferred). 99 unit tests green. Live verify needs Pages:write on the App.
 - 2026-06-11 — **M5 code complete.** GitHub bridge with native fetch + node:crypto (RS256 App JWT, installation token, Git Data API commits, generate-from-template) — no Octokit; commit transport enforces the two-repo invariant (adversarial-tested). Web: connect publishing, sandbox→GitHub graduation (paired repos + separate public/private commits), save→commit, version list, restore. Migrations 0003 + GitHubAppSetup.md. 88 unit tests green. Live verify pending the user's GitHub App.
 - 2026-06-11 — **M4 code complete.** `.md.html` dual-extension export: `buildMdHtml`/`extractMdHtml` in `@alembic/renderer` with a `data-orz-format` version marker (legacy = format 0), byte-identical source round-trip, embedded source hash; download routes + buttons for study guide and worksheets; `export.dual-extension` events. Candidate for extraction into the shared `orz-artifacts` package (consolidation Phase B) once the registry is reachable. 82 unit tests green.
 - 2026-06-11 — **M3 code complete.** Derived-artifact records + hash-based staleness (package-contract); ai-assist drafting + worksheet generation over the swappable provider with ID-preservation (strip/reattach); governed provider wrapper (per-user rate limit + `ai_invocations` governance log, migration 0002); editor AI draft flow + worksheet panel (generate/regenerate/keep-mine); ai.* research events. 76 unit tests green; Gemini `gemini-2.5-flash` live-verified. **To use in-app AI: apply `supabase/migrations/0002_ai_invocations.sql`.**

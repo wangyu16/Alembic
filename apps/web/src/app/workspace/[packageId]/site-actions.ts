@@ -1,0 +1,133 @@
+"use server";
+
+import { redirect } from "next/navigation";
+import { serializeStudyGuide } from "@alembic/package-contract";
+import {
+  listArtifacts,
+  loadArtifactContent,
+  loadStudyGuide,
+  releaseGates,
+} from "@alembic/package-ops";
+import { buildSite, type SiteWorksheet } from "@alembic/renderer";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { SupabaseSandboxStore } from "@/lib/sandbox-store";
+import { supabaseEventLogger } from "@/lib/events";
+import { clientForUser } from "@/lib/github";
+import { slugForFile } from "@/lib/export";
+
+const PAGES_BRANCH = "gh-pages";
+
+export interface PublishSiteResult {
+  ok: boolean;
+  siteUrl?: string;
+  /** Failed release-gate checks (Tier-3: publishing is blocked until fixed). */
+  gateFailures?: Array<{ name: string; message: string }>;
+  warning?: string;
+  error?: string;
+}
+
+/**
+ * Build the public static site and publish it to GitHub Pages. Gated by
+ * release-gate checks (Tier-3); the educator's click is the explicit approval.
+ * Builds in-process (small content) and pushes the output to the Pages branch.
+ */
+export async function publishSiteAction(
+  packageId: string,
+): Promise<PublishSiteResult> {
+  const supabase = await createSupabaseServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect("/signin");
+
+  const store = new SupabaseSandboxStore(supabase);
+  const record = await store.getPackage(packageId);
+  const repo = record?.storage === "github" ? record.manifest.publicRepo : null;
+  if (!repo) {
+    return { ok: false, error: "Publish to GitHub first, then publish the website." };
+  }
+
+  // Release gates (Tier-3 second line of defense).
+  const gates = await releaseGates(store, packageId);
+  if (!gates.ok) {
+    return {
+      ok: false,
+      gateFailures: gates.checks
+        .filter((c) => !c.ok)
+        .map((c) => ({ name: c.name, message: c.message })),
+    };
+  }
+
+  const gh = await clientForUser(supabase, user.id);
+  if (!gh) return { ok: false, error: "Connect publishing first." };
+
+  const events = supabaseEventLogger(supabase);
+  await events.log({
+    type: "publish.requested",
+    userId: user.id,
+    packageId,
+    detail: { kind: "site" },
+    occurredAt: new Date().toISOString(),
+  });
+
+  try {
+    const guide = await loadStudyGuide(store, packageId);
+    const studyGuideMarkdown = serializeStudyGuide(guide.preamble, guide.blocks);
+
+    const artifacts = await listArtifacts(store, packageId);
+    const worksheets: SiteWorksheet[] = [];
+    for (const a of artifacts) {
+      const loaded = await loadArtifactContent(store, packageId, a.record.artifactId);
+      if (!loaded) continue;
+      worksheets.push({
+        title: a.record.title,
+        slug: `${slugForFile(a.record.title)}-${a.record.artifactId.slice(4, 10)}`,
+        markdown: loaded.content,
+      });
+    }
+
+    const files = buildSite({
+      title: record!.title,
+      studyGuideMarkdown,
+      worksheets,
+      builtAt: new Date().toISOString(),
+    });
+
+    const coords = { owner: repo.owner, repo: repo.name };
+    await gh.client.publishToBranch({
+      coords,
+      branch: PAGES_BRANCH,
+      message: "Build site (Alembic)",
+      files,
+    });
+
+    let siteUrl = `https://${repo.owner}.github.io/${repo.name}/`;
+    let warning: string | undefined;
+    try {
+      const pages = await gh.client.enablePages(coords, PAGES_BRANCH);
+      siteUrl = pages.url;
+    } catch {
+      warning =
+        "Site built and pushed, but Alembic couldn't enable GitHub Pages automatically. Enable it once in the repo's Settings → Pages (branch: gh-pages).";
+    }
+
+    await events.log({
+      type: "publish.completed",
+      userId: user.id,
+      packageId,
+      detail: { kind: "site", siteUrl },
+      occurredAt: new Date().toISOString(),
+    });
+
+    return { ok: true, siteUrl, ...(warning ? { warning } : {}) };
+  } catch (e) {
+    await events.log({
+      type: "publish.failed",
+      userId: user.id,
+      packageId,
+      detail: { kind: "site", reason: e instanceof Error ? e.message : "unknown" },
+      occurredAt: new Date().toISOString(),
+    });
+    return { ok: false, error: "Publishing the website didn't complete. Please try again." };
+  }
+}

@@ -38,6 +38,7 @@ GitHub → **Settings → Developer settings → GitHub Apps → New GitHub App*
 - **Repository permissions:**
   - **Administration:** Read & write (create repositories from templates)
   - **Contents:** Read & write (commits, file reads, restore)
+  - **Pages:** Read & write (publish the student website to GitHub Pages)
   - **Metadata:** Read-only (default)
 - **Where can this app be installed?** "Any account" (or "Only on this account" for dev).
 

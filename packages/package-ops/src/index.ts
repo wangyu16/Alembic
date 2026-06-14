@@ -3,3 +3,4 @@ export * from "./memory-store";
 export * from "./create";
 export * from "./study-guide";
 export * from "./worksheets";
+export * from "./release-gates";

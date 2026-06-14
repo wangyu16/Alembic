@@ -18,6 +18,7 @@ import {
   publishToGitHubAction,
   restoreStudyGuideAction,
 } from "./github-actions";
+import { publishSiteAction } from "./site-actions";
 
 export interface PackageVersion {
   sha: string;
@@ -553,6 +554,7 @@ function PublishingPanel({
               </ul>
             </div>
           )}
+          <SitePanel packageId={packageId} />
         </>
       ) : !publishing.connected ? (
         <>
@@ -588,6 +590,92 @@ function PublishingPanel({
           )}
         </>
       )}
+      {error && <p className="mt-2 text-sm text-red-600 dark:text-red-400">{error}</p>}
+    </div>
+  );
+}
+
+function SitePanel({ packageId }: { packageId: string }) {
+  const [pending, start] = useTransition();
+  const [siteUrl, setSiteUrl] = useState<string | null>(null);
+  const [warning, setWarning] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [gateFailures, setGateFailures] = useState<
+    Array<{ name: string; message: string }>
+  >([]);
+
+  const onPublishSite = () => {
+    if (
+      !window.confirm(
+        "Publish the public website? Anyone with the link will be able to view it.",
+      )
+    ) {
+      return;
+    }
+    setError(null);
+    setWarning(null);
+    setGateFailures([]);
+    start(async () => {
+      const r = await publishSiteAction(packageId);
+      if (r.ok) {
+        setSiteUrl(r.siteUrl ?? null);
+        if (r.warning) setWarning(r.warning);
+      } else if (r.gateFailures?.length) {
+        setGateFailures(r.gateFailures);
+      } else {
+        setError(r.error ?? "Publishing the website failed.");
+      }
+    });
+  };
+
+  return (
+    <div className="mt-3 border-t border-zinc-200 pt-3 dark:border-zinc-800">
+      <div className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+        Student website
+      </div>
+      <div className="mt-2 flex items-center gap-3">
+        <a
+          href={`/workspace/${packageId}/site-preview`}
+          className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
+        >
+          Preview student page
+        </a>
+        <button
+          onClick={onPublishSite}
+          disabled={pending}
+          className="rounded-md bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-zinc-700 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
+        >
+          {pending ? "Publishing…" : "Publish website"}
+        </button>
+      </div>
+
+      {gateFailures.length > 0 && (
+        <div className="mt-2 rounded border border-amber-300 bg-amber-50 p-2 text-xs dark:border-amber-800 dark:bg-amber-950">
+          <div className="font-medium text-amber-700 dark:text-amber-300">
+            Fix these before publishing:
+          </div>
+          <ul className="mt-1 list-disc pl-4 text-amber-700 dark:text-amber-300">
+            {gateFailures.map((g) => (
+              <li key={g.name}>{g.message}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {siteUrl && (
+        <p className="mt-2 text-sm">
+          Live site:{" "}
+          <a
+            href={siteUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="text-blue-700 hover:underline dark:text-blue-400"
+          >
+            {siteUrl}
+          </a>{" "}
+          <span className="text-xs text-zinc-500">(may take a minute to go live)</span>
+        </p>
+      )}
+      {warning && <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">{warning}</p>}
       {error && <p className="mt-2 text-sm text-red-600 dark:text-red-400">{error}</p>}
     </div>
   );
