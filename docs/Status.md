@@ -3,7 +3,7 @@
 Live view of what is done, in progress, and coming. Update this file in the
 same commit as the work it tracks. Statuses: ✅ done · 🔄 in progress · ⬜ pending · ⏸ deferred.
 
-**Current focus: v0.1 (Phase 1) — milestone M3 (AI assist & derived artifact).** M1 + M2 code complete; live verification of M1/M2 pending the user's Supabase project + GitHub OAuth app.
+**Current focus: v0.1 (Phase 1) — milestone M3 (AI assist & derived artifact).** M1 + M2 **live-verified** end to end (GitHub sign-in → create package → edit study guide with live preview → save) against a real Supabase project. See [LocalSetup.md](LocalSetup.md).
 
 **Deferred chore:** bump renderer to orz-markdown 1.1.0 (published) — reverted to 1.0.0 temporarily because the npm registry was unreachable during M2 and CI uses `--frozen-lockfile`. Behavior is unaffected (1.0.0 supports the attrs block-ID syntax); redo when the registry is reachable.
 
@@ -50,10 +50,10 @@ unless a dependency is noted.
 
 | # | Sub-module | Verify by | Status |
 | --- | --- | --- | --- |
-| 1.1 | Supabase project + schema (users, packages, events tables) | migration applies; tables queryable | 🔄 code done; apply pending Supabase project |
-| 1.2 | GitHub OAuth sign-in (identity only) | sign in/out round-trip; user row created; no repo scopes on token | 🔄 code done; live verify pending credentials |
-| 1.3 | App shell (nav, workspace layout, route structure) | authed layout renders; unauthed redirect | 🔄 code done; live verify pending credentials |
-| 1.4 | Trial sandbox workspace (server-side storage, layer-aware) | create sandbox package; layers enforced in storage paths | 🔄 code done (layer enforcement unit-tested); live verify pending credentials |
+| 1.1 | Supabase project + schema (users, packages, events tables) | migration applies; tables queryable | ✅ migration applied; all 4 tables live, RLS active |
+| 1.2 | GitHub OAuth sign-in (identity only) | sign in/out round-trip; user row created; no repo scopes on token | ✅ live-verified: signin → callback → workspace; profile auto-created |
+| 1.3 | App shell (nav, workspace layout, route structure) | authed layout renders; unauthed redirect | ✅ live-verified (unauth /workspace → 307 /signin) |
+| 1.4 | Trial sandbox workspace (server-side storage, layer-aware) | create sandbox package; layers enforced in storage paths | ✅ live-verified: package created in sandbox via UI |
 
 ### M2 — Package builder & block editor
 
@@ -61,10 +61,10 @@ unless a dependency is noted.
 | --- | --- | --- | --- |
 | 2.1 | Package operations API (create/read/update/save; UI-independent) | unit tests against sandbox storage; no UI imports | ✅ `@alembic/package-ops`: create + load/save study guide, PackageStore, MemoryPackageStore; 10 tests |
 | 2.2 | Package creation flow (title, course context, license, concepts/objectives lists) | created package validates against contract | ✅ workspace create form (title + license); concepts/objectives lists deferred within M2 |
-| 2.3 | Block editor UI (add/edit/reorder/delete heading-bounded blocks) | manual: author 5-block module; delete honors new-ID rule | 🔄 code done; live verify pending credentials |
-| 2.4 | Live orz-markdown preview pane | chemistry sample renders while typing | 🔄 code done (server `/api/preview`, debounced); live verify pending |
+| 2.3 | Block editor UI (add/edit/reorder/delete heading-bounded blocks) | manual: author 5-block module; delete honors new-ID rule | ✅ live-verified: editor loads seeded blocks, edit + save round-trip |
+| 2.4 | Live orz-markdown preview pane | chemistry sample renders while typing | ✅ live-verified (`/api/preview` ~15ms; chemistry + KaTeX render) |
 | 2.5 | Block-ID integrity validation on every save | corrupted-ID save is rejected with educator-facing error | ✅ `saveStudyGuide` validates; duplicate-ID save rejected (unit-tested) |
-| 2.6 | Research event wiring for authoring steps | events rows appear for create/edit/save with timings | 🔄 `package.created` + `save.completed` with timings; per-block `block.edited` deferred |
+| 2.6 | Research event wiring for authoring steps | events rows appear for create/edit/save with timings | ✅ `package.created` + `save.completed` with timings (live); per-block `block.edited` deferred |
 
 ### M3 — AI assist & derived artifact
 
@@ -129,3 +129,4 @@ hold before calling v0.1 shipped.
 - 2026-06-11 — **M1 code complete.** Supabase migration (profiles/packages/sandbox_files/research_events with RLS), GitHub sign-in via Supabase Auth, app shell, sandbox package creation through new `@alembic/package-ops` (M2.1 started early). Contract refined: `publicRepo` now optional (sandbox packages have no repos until graduation). Live verification awaits the user's Supabase project + GitHub OAuth app. orz-markdown Phase A fixes in progress on branch `phase-a-alembic-fixes` (see orz-stack/docs/ConsolidationPlan.md).
 - 2026-06-11 — **orz-markdown 1.1.0 published.** Phase A merged + on npm (TOC fix, shipped Agent Skill + block-ID rules, trailing-space fix).
 - 2026-06-11 — **M2 code complete.** Block-source parser in package-contract (`{{attrs[#blk-…]}}`, code-fence aware, idempotent); `@alembic/package-ops` load/save study guide with ID minting + integrity validation on save; block editor UI (add/edit/reorder/delete) with debounced server-rendered live preview; research events for create/save. 59 unit tests green. Live verify of the editor pending credentials.
+- 2026-06-11 — **M1 + M2 live-verified.** Supabase project provisioned, migration applied (4 tables, RLS). Full loop run against real backend: GitHub sign-in → workspace → create package → editor (seeded blocks load) → live preview (chemistry + KaTeX) → save. Setup steps documented in [LocalSetup.md](LocalSetup.md).
