@@ -5,6 +5,25 @@ work doesn't rediscover them the hard way. Newest first.
 
 ---
 
+## AI governed-provider failure modes (2026-06-11)
+
+`apps/web/src/lib/ai.ts` wraps the AI provider with rate limiting + governance
+logging (`ai_invocations`, migration 0002). Two deliberate behaviors:
+
+- **Rate limit fails open.** If `recent_ai_invocation_count` errors (e.g. the
+  function/table is missing), the request is **allowed**, not blocked — better
+  to serve AI than to hard-fail everyone if the limiter breaks. The failure is
+  logged (`console.warn`).
+- **Governance logging is best-effort but not silent.** A failed
+  `ai_invocations` insert does **not** break the educator's request, but it IS
+  surfaced (`console.error`) — losing a prompt/output record is a
+  data-governance gap we want to notice.
+
+Consequence observed before migration 0002 was applied: AI drafting "worked"
+(the model call succeeded) while logging + rate limiting silently no-op'd.
+After 0002, both are active. If governance completeness ever becomes
+hard-required, escalate the insert failure (queue/retry) rather than only log.
+
 ## Auth-aware global nav makes all routes dynamic (2026-06-11)
 
 **What:** `SiteHeader` (rendered in the root `app/layout.tsx`) calls

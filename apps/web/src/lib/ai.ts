@@ -42,27 +42,41 @@ class GovernedProvider implements AIProvider {
   }
 
   async generateText(options: GenerateOptions): Promise<GenerateResult> {
-    const { data: count } = await this.supabase.rpc(
+    // Rate limit fails OPEN: if the limiter itself errors we allow the request
+    // rather than block all AI, but we surface the failure to server logs.
+    const { data: count, error: countError } = await this.supabase.rpc(
       "recent_ai_invocation_count",
       { window_seconds: WINDOW_SECONDS },
     );
-    if (typeof count === "number" && count >= RATE_LIMIT) {
+    if (countError) {
+      console.warn(
+        `[ai] rate-limit check failed, allowing request: ${countError.message}`,
+      );
+    } else if (typeof count === "number" && count >= RATE_LIMIT) {
       throw new RateLimitError();
     }
 
     const result = await this.inner.generateText(options);
 
-    await this.supabase.from("ai_invocations").insert({
-      user_id: this.ctx.userId,
-      package_id: this.ctx.packageId,
-      kind: this.ctx.kind,
-      provider: this.inner.name,
-      model: result.model,
-      prompt: options.prompt,
-      output: result.text,
-      input_tokens: result.usage?.inputTokens ?? null,
-      output_tokens: result.usage?.outputTokens ?? null,
-    });
+    // Governance logging is best-effort (it must not break the educator's
+    // request) but NOT silent: a failed write is a data-governance gap, so we
+    // surface it to server logs rather than swallowing it.
+    const { error: logError } = await this.supabase
+      .from("ai_invocations")
+      .insert({
+        user_id: this.ctx.userId,
+        package_id: this.ctx.packageId,
+        kind: this.ctx.kind,
+        provider: this.inner.name,
+        model: result.model,
+        prompt: options.prompt,
+        output: result.text,
+        input_tokens: result.usage?.inputTokens ?? null,
+        output_tokens: result.usage?.outputTokens ?? null,
+      });
+    if (logError) {
+      console.error(`[ai] governance log insert failed: ${logError.message}`);
+    }
 
     return result;
   }
