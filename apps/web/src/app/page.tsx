@@ -1,42 +1,44 @@
-import { renderMarkdown, rendererVersion } from "@alembic/renderer";
 import { PACKAGE_SCHEMA_VERSION } from "@alembic/package-contract";
-
-const SAMPLE = `## Why Alembic?
-
-Raw course materials in; refined, reusable OER out.
-
-- Chemistry notation: H~2~O, CO~3~^2-^
-- Math: $\\Delta G = \\Delta H - T\\Delta S$
-`;
+import { rendererVersion } from "@alembic/renderer";
 
 export default function Home() {
-  const html = renderMarkdown(SAMPLE);
   return (
-    <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col justify-center gap-8 px-6 py-16">
-      <header>
-        <h1 className="text-4xl font-semibold tracking-tight">Alembic</h1>
-        <p className="mt-2 text-lg text-zinc-600 dark:text-zinc-400">
-          An open educational resource ecosystem for STEM.
+    <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col justify-center gap-10 px-6 py-24">
+      <div className="flex flex-col gap-6">
+        <h1 className="font-serif text-5xl leading-[1.05] tracking-tight text-ink text-balance">
+          Turn your teaching into open, reusable resources.
+        </h1>
+        <p className="max-w-xl text-lg leading-relaxed text-muted text-pretty">
+          Alembic is an authoring studio for STEM educators. Organize the
+          knowledge and shape the pedagogy — it handles structure, versioning,
+          publishing, and provenance, all on infrastructure you own. No Git, no
+          Markdown tooling, no developer workflows.
         </p>
-      </header>
-      <section className="rounded-lg border border-zinc-200 p-6 dark:border-zinc-800">
-        <h2 className="mb-3 text-sm font-medium uppercase tracking-wide text-zinc-500">
-          Renderer smoke test
-        </h2>
-        <div
-          className="prose dark:prose-invert"
-          dangerouslySetInnerHTML={{ __html: html }}
-        />
-      </section>
-      <div>
-        <a
-          href="/workspace"
-          className="inline-block rounded-md bg-zinc-900 px-4 py-2 font-medium text-white hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
-        >
+      </div>
+
+      <div className="flex flex-wrap items-center gap-4">
+        <a href="/workspace" className="btn btn-primary">
           Open your workspace
         </a>
+        <a href="/portal" className="btn btn-ghost">
+          Browse the index
+        </a>
       </div>
-      <footer className="text-xs text-zinc-500">
+
+      <dl className="grid gap-x-8 gap-y-5 border-t border-edge-soft pt-8 sm:grid-cols-3">
+        {[
+          ["Study-guide centered", "Write in sections; slides and worksheets derive from them."],
+          ["Chemistry first", "Native notation, equations, and structures that just render."],
+          ["Yours to keep", "Published to your own GitHub, usable with or without Alembic."],
+        ].map(([term, def]) => (
+          <div key={term} className="flex flex-col gap-1">
+            <dt className="text-sm font-medium text-ink">{term}</dt>
+            <dd className="text-sm leading-relaxed text-muted">{def}</dd>
+          </div>
+        ))}
+      </dl>
+
+      <footer className="text-xs text-faint">
         package schema v{PACKAGE_SCHEMA_VERSION} · {rendererVersion()}
       </footer>
     </main>

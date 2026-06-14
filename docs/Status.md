@@ -124,6 +124,8 @@ hold before calling v0.1 shipped.
 
 ## Log
 
+- 2026-06-11 — **UI polish pass** (impeccable + taste-skill guidance). Dark-elegant app theme: OKLCH-ish token system + component classes (`.btn`, `.panel`, `.field`, `.chip`), serif/sans pairing (Source Serif 4 + Geist), dropped the uppercase "eyebrow" labels, removed ghost-card border+shadow and over-rounding, reduced-motion handling, focus rings. **All rendered output now uses orz-markdown's `dark-elegant-1` theme** (vendored into `@alembic/renderer` as `theme-css.ts`; shared `themedDocument`): in-app preview, worksheet viewer, student site, and `.md.html` exports render identically in iframes. Theme exposure is a candidate for the shared `orz-artifacts` package (consolidation Phase B).
+
 - 2026-06-11 — M0.1, M0.2 complete; repo live at github.com/wangyu16/Alembic; CI green. M0.3 spec + M0.4 spike started.
 - 2026-06-11 — **M0 complete.** Contract spec written (docs/specs/package-contract-v1.md); orz-markdown spike done: heading block IDs work natively via `{{attrs[#blk-…]}}`; 5 upstream gaps filed in the table above (none block M1–M2). CLAUDE.md + this tracker added.
 - 2026-06-11 — **M1 code complete.** Supabase migration (profiles/packages/sandbox_files/research_events with RLS), GitHub sign-in via Supabase Auth, app shell, sandbox package creation through new `@alembic/package-ops` (M2.1 started early). Contract refined: `publicRepo` now optional (sandbox packages have no repos until graduation). Live verification awaits the user's Supabase project + GitHub OAuth app. orz-markdown Phase A fixes in progress on branch `phase-a-alembic-fixes` (see orz-stack/docs/ConsolidationPlan.md).

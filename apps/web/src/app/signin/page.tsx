@@ -35,8 +35,8 @@ function SignInInner() {
   return (
     <main className="mx-auto flex w-full max-w-md flex-1 flex-col justify-center gap-6 px-6 py-16">
       <div>
-        <h1 className="text-3xl font-semibold tracking-tight">Sign in</h1>
-        <p className="mt-2 text-zinc-600 dark:text-zinc-400">
+        <h1 className="font-serif text-3xl tracking-tight text-ink">Sign in</h1>
+        <p className="mt-2 leading-relaxed text-muted">
           Connect the account that safely stores and publishes your open
           teaching materials.
         </p>
@@ -44,16 +44,16 @@ function SignInInner() {
       <button
         onClick={signInWithGitHub}
         disabled={busy}
-        className="rounded-lg bg-zinc-900 px-4 py-3 font-medium text-white hover:bg-zinc-700 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
+        className="btn btn-primary py-3"
       >
         {busy ? "Connecting…" : "Continue with GitHub"}
       </button>
       {(error ?? params.get("error")) && (
-        <p className="text-sm text-red-600 dark:text-red-400">
+        <p className="text-sm text-danger">
           {error ?? "Sign-in did not complete. Please try again."}
         </p>
       )}
-      <p className="text-sm text-zinc-500">
+      <p className="text-sm text-faint leading-relaxed">
         Signing in only confirms who you are. Alembic never gets access to your
         repositories until you explicitly connect publishing later.
       </p>

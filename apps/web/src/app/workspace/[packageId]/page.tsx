@@ -70,10 +70,10 @@ export default async function EditorPage({
     <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-4 px-6 py-8">
       <header className="flex items-center justify-between">
         <div>
-          <a href="/workspace" className="text-sm text-zinc-500 hover:underline">
+          <a href="/workspace" className="text-sm text-muted hover:text-ink">
             ← Workspace
           </a>
-          <h1 className="text-2xl font-semibold tracking-tight">{record.title}</h1>
+          <h1 className="font-serif text-2xl tracking-tight text-ink">{record.title}</h1>
         </div>
       </header>
       <StudyGuideEditor

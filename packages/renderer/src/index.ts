@@ -10,5 +10,6 @@ export function renderMarkdown(source: string): string {
   return md.render(source);
 }
 
+export * from "./document";
 export * from "./mdhtml";
 export * from "./site";

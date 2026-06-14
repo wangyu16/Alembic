@@ -53,17 +53,17 @@ export default async function SitePreviewPage({
   return (
     <main className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-3 px-6 py-6">
       <div className="flex items-center justify-between">
-        <a href={`/workspace/${packageId}`} className="text-sm text-zinc-500 hover:underline">
+        <a href={`/workspace/${packageId}`} className="text-sm text-muted hover:text-ink">
           ← Back to editor
         </a>
-        <span className="text-xs text-zinc-500">
+        <span className="text-xs text-faint">
           Preview of the student-facing page (same build as published)
         </span>
       </div>
       <iframe
         title="Student page preview"
         srcDoc={indexHtml}
-        className="h-[80vh] w-full rounded-lg border border-zinc-200 dark:border-zinc-800"
+        className="h-[80vh] w-full rounded-xl border border-[var(--edge)] bg-[var(--bg)]"
       />
     </main>
   );

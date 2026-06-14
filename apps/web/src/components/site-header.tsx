@@ -21,32 +21,32 @@ export async function SiteHeader() {
     (user?.user_metadata?.["full_name"] as string | undefined);
 
   return (
-    <header className="border-b border-zinc-200 dark:border-zinc-800">
-      <nav className="mx-auto flex w-full max-w-3xl items-center justify-between px-6 py-3">
-        <a href="/" className="font-semibold tracking-tight">
+    <header className="border-b border-edge/70 backdrop-blur supports-[backdrop-filter]:bg-canvas/70 sticky top-0 z-10">
+      <nav className="mx-auto flex w-full max-w-5xl items-center justify-between px-6 py-3.5">
+        <a
+          href="/"
+          className="font-serif text-xl tracking-tight text-ink"
+        >
           Alembic
         </a>
-        <div className="flex items-center gap-4 text-sm">
-          <a href="/portal" className="hover:underline">
+        <div className="flex items-center gap-5 text-sm text-muted">
+          <a href="/portal" className="transition-colors hover:text-ink">
             Discover
           </a>
           {user ? (
             <>
-              <a href="/workspace" className="hover:underline">
+              <a href="/workspace" className="transition-colors hover:text-ink">
                 Workspace
               </a>
-              {handle && <span className="text-zinc-500">{handle}</span>}
+              {handle && <span className="text-faint">{handle}</span>}
               <form action="/auth/signout" method="post">
-                <button
-                  type="submit"
-                  className="rounded-md border border-zinc-300 px-3 py-1 hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
-                >
+                <button type="submit" className="btn btn-ghost btn-sm">
                   Sign out
                 </button>
               </form>
             </>
           ) : (
-            <a href="/signin" className="hover:underline">
+            <a href="/signin" className="transition-colors hover:text-ink">
               Sign in
             </a>
           )}

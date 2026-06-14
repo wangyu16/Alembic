@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
-import { renderMarkdown } from "@alembic/renderer";
+import { renderDocument } from "@alembic/renderer";
 
 /**
- * Server-side markdown preview. Rendering runs here (not in the browser) so
- * there is a single render path shared with the eventual site build, and so
- * orz-markdown's filesystem/URL-touching plugins never reach the client.
+ * Server-side markdown preview. Returns a full themed (dark-elegant) document
+ * the client shows in an isolated iframe, so the preview matches published
+ * output exactly and orz-markdown's filesystem/URL plugins never reach the
+ * client. Single render path shared with the site build and `.md.html` export.
  */
 export async function POST(request: Request) {
   let source = "";
@@ -14,9 +15,8 @@ export async function POST(request: Request) {
   } catch {
     return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
   }
-  // Cap input to keep a single preview request cheap.
   if (source.length > 200_000) {
     return NextResponse.json({ error: "Content too large" }, { status: 413 });
   }
-  return NextResponse.json({ html: renderMarkdown(source) });
+  return NextResponse.json({ html: renderDocument("Preview", source) });
 }

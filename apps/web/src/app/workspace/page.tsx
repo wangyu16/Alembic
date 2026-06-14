@@ -33,15 +33,15 @@ export default async function WorkspacePage() {
   return (
     <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-10 px-6 py-12">
       <header>
-        <h1 className="text-3xl font-semibold tracking-tight">Workspace</h1>
-        <p className="mt-1 text-zinc-600 dark:text-zinc-400">
+        <h1 className="font-serif text-3xl tracking-tight text-ink">Workspace</h1>
+        <p className="mt-1 text-muted">
           Hi {name} — your course packages live here.
         </p>
       </header>
 
-      <section className="rounded-lg border border-zinc-200 p-6 dark:border-zinc-800">
-        <h2 className="text-lg font-medium">Create a package</h2>
-        <p className="mt-1 text-sm text-zinc-500">
+      <section className="panel p-6">
+        <h2 className="text-lg font-medium text-ink">Create a package</h2>
+        <p className="mt-1 text-sm text-muted">
           Starts in your trial workspace — no GitHub needed. You can connect
           publishing later and take everything with you.
         </p>
@@ -50,49 +50,39 @@ export default async function WorkspacePage() {
             name="title"
             required
             placeholder="e.g. Intro Acid–Base Chemistry"
-            className="flex-1 rounded-md border border-zinc-300 bg-transparent px-3 py-2 dark:border-zinc-700"
+            className="field flex-1"
           />
-          <select
-            name="license"
-            defaultValue="CC-BY-4.0"
-            className="rounded-md border border-zinc-300 bg-transparent px-3 py-2 dark:border-zinc-700"
-          >
+          <select name="license" defaultValue="CC-BY-4.0" className="field">
             {LICENSES.map((license) => (
               <option key={license} value={license}>
                 {license}
               </option>
             ))}
           </select>
-          <button
-            type="submit"
-            className="rounded-md bg-zinc-900 px-4 py-2 font-medium text-white hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
-          >
+          <button type="submit" className="btn btn-primary">
             Create
           </button>
         </form>
       </section>
 
       <section>
-        <h2 className="text-lg font-medium">Your packages</h2>
+        <h2 className="text-lg font-medium text-ink">Your packages</h2>
         {!packages?.length ? (
-          <p className="mt-3 text-zinc-500">
+          <p className="mt-3 text-muted">
             Nothing here yet — create your first package above.
           </p>
         ) : (
-          <ul className="mt-3 divide-y divide-zinc-200 rounded-lg border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">
+          <ul className="panel mt-3 divide-y divide-[var(--edge-soft)]">
             {packages.map((pkg) => (
               <li key={pkg.id} className="flex items-center justify-between px-4 py-3">
                 <div>
-                  <div className="font-medium">{pkg.title}</div>
-                  <div className="text-xs text-zinc-500">
+                  <div className="font-medium text-ink">{pkg.title}</div>
+                  <div className="text-xs text-faint">
                     {pkg.storage === "sandbox" ? "Trial workspace" : "Published via GitHub"} ·
                     created {new Date(pkg.created_at).toLocaleDateString()}
                   </div>
                 </div>
-                <a
-                  href={`/workspace/${pkg.id}`}
-                  className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
-                >
+                <a href={`/workspace/${pkg.id}`} className="btn btn-ghost btn-sm">
                   Open editor
                 </a>
               </li>

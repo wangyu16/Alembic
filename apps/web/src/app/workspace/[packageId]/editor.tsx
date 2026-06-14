@@ -182,7 +182,7 @@ export function StudyGuideEditor({
     <div className="grid flex-1 grid-cols-1 gap-6 lg:grid-cols-2">
       <div className="flex flex-col gap-4">
         <div className="flex items-center justify-between">
-          <h2 className="text-sm font-medium uppercase tracking-wide text-zinc-500">
+          <h2 className="text-sm text-muted">
             Study guide
           </h2>
           <div className="flex items-center gap-3">
@@ -190,14 +190,14 @@ export function StudyGuideEditor({
             <a
               href={`/workspace/${packageId}/export/study-guide`}
               title={dirty ? "Exports your last saved version" : "Download a self-contained .md.html"}
-              className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
+              className="btn btn-ghost btn-sm"
             >
               Download .md.html
             </a>
             <button
               onClick={onSave}
               disabled={save.kind === "saving"}
-              className="rounded-md bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-zinc-700 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
+              className="btn btn-primary btn-sm"
             >
               {save.kind === "saving" ? "Saving…" : "Save"}
             </button>
@@ -205,7 +205,7 @@ export function StudyGuideEditor({
         </div>
 
         {blocks.map((block, i) => (
-          <div key={block.key} className="rounded-lg border border-zinc-200 p-3 dark:border-zinc-800">
+          <div key={block.key} className="panel p-3">
             <div className="mb-2 flex items-center gap-2">
               {block.id && (
                 <input
@@ -226,26 +226,26 @@ export function StudyGuideEditor({
                 value={block.title}
                 onChange={(e) => update(block.key, "title", e.target.value)}
                 placeholder="Section heading"
-                className="flex-1 rounded border border-zinc-200 bg-transparent px-2 py-1 font-medium dark:border-zinc-700"
+                className="field flex-1 font-medium"
               />
-              <button onClick={() => move(block.key, -1)} disabled={i === 0} title="Move up" className="rounded px-2 py-1 text-zinc-500 hover:bg-zinc-100 disabled:opacity-30 dark:hover:bg-zinc-800">↑</button>
-              <button onClick={() => move(block.key, 1)} disabled={i === blocks.length - 1} title="Move down" className="rounded px-2 py-1 text-zinc-500 hover:bg-zinc-100 disabled:opacity-30 dark:hover:bg-zinc-800">↓</button>
-              <button onClick={() => deleteBlock(block.key)} title="Delete section" className="rounded px-2 py-1 text-red-600 hover:bg-red-50 dark:hover:bg-red-950">✕</button>
+              <button onClick={() => move(block.key, -1)} disabled={i === 0} title="Move up" className="rounded px-2 py-1 text-muted transition-colors hover:bg-elevated disabled:opacity-30">↑</button>
+              <button onClick={() => move(block.key, 1)} disabled={i === blocks.length - 1} title="Move down" className="rounded px-2 py-1 text-muted transition-colors hover:bg-elevated disabled:opacity-30">↓</button>
+              <button onClick={() => deleteBlock(block.key)} title="Delete section" className="rounded px-2 py-1 text-danger transition-colors hover:bg-[var(--elevated)]">✕</button>
             </div>
             <textarea
               value={block.body}
               onChange={(e) => update(block.key, "body", e.target.value)}
               placeholder="Write in Markdown — chemistry (H~2~O) and math ($E=mc^2$) supported."
               rows={Math.max(3, block.body.split("\n").length + 1)}
-              className="w-full resize-y rounded border border-zinc-200 bg-transparent px-2 py-1 font-mono text-sm dark:border-zinc-700"
+              className="field w-full resize-y font-mono text-sm"
             />
-            <p className="mt-1 text-xs text-zinc-400">
+            <p className="mt-1 text-xs text-faint">
               {block.id ? `id ${block.id}` : "new — id assigned on save"}
             </p>
           </div>
         ))}
 
-        <button onClick={() => addBlock()} className="rounded-md border border-dashed border-zinc-300 px-3 py-2 text-sm text-zinc-600 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-900">
+        <button onClick={() => addBlock()} className="w-full rounded-lg border border-dashed border-edge px-3 py-2 text-sm text-muted transition-colors hover:bg-elevated hover:text-ink">
           + Add section
         </button>
 
@@ -267,11 +267,12 @@ export function StudyGuideEditor({
         />
       </div>
 
-      <div className="flex flex-col gap-4">
-        <h2 className="text-sm font-medium uppercase tracking-wide text-zinc-500">Preview</h2>
-        <div
-          className="prose prose-zinc max-w-none rounded-lg border border-zinc-200 p-4 dark:prose-invert dark:border-zinc-800"
-          dangerouslySetInnerHTML={{ __html: html }}
+      <div className="flex flex-col gap-3">
+        <span className="text-sm text-[var(--muted)]">Preview</span>
+        <iframe
+          title="Student preview"
+          srcDoc={html}
+          className="h-[78vh] w-full rounded-xl border border-[var(--border)] bg-[var(--bg)]"
         />
       </div>
     </div>
@@ -303,33 +304,33 @@ function AIDraftPanel({
 
   if (!open) {
     return (
-      <button onClick={() => setOpen(true)} className="rounded-md border border-zinc-300 px-3 py-2 text-sm text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-900">
+      <button onClick={() => setOpen(true)} className="btn btn-ghost">
         ✨ Draft a section with AI
       </button>
     );
   }
 
   return (
-    <div className="rounded-lg border border-zinc-300 p-3 dark:border-zinc-700">
+    <div className="panel p-3">
       <div className="mb-2 flex items-center justify-between">
         <span className="text-sm font-medium">Draft a section with AI</span>
-        <button onClick={() => setOpen(false)} className="text-xs text-zinc-500 hover:underline">Close</button>
+        <button onClick={() => setOpen(false)} className="text-xs text-muted hover:text-ink">Close</button>
       </div>
       <textarea
         value={instruction}
         onChange={(e) => setInstruction(e.target.value)}
         placeholder="What should this section cover? e.g. 'Explain Le Chatelier's principle with an everyday example.'"
         rows={2}
-        className="w-full rounded border border-zinc-200 bg-transparent px-2 py-1 text-sm dark:border-zinc-700"
+        className="field w-full text-sm"
       />
-      <button onClick={run} disabled={busy || !instruction.trim()} className="mt-2 rounded-md bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-zinc-700 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300">
+      <button onClick={run} disabled={busy || !instruction.trim()} className="btn btn-primary btn-sm mt-2">
         {busy ? "Drafting…" : "Draft"}
       </button>
-      {error && <p className="mt-2 text-sm text-red-600 dark:text-red-400">{error}</p>}
+      {error && <p className="mt-2 text-sm text-danger">{error}</p>}
       {draft && (
-        <div className="mt-3 rounded border border-zinc-200 p-3 dark:border-zinc-800">
+        <div className="panel mt-3 p-3">
           <div className="font-medium">{draft.title}</div>
-          <p className="mt-1 whitespace-pre-wrap text-sm text-zinc-600 dark:text-zinc-400">{draft.body}</p>
+          <p className="mt-1 whitespace-pre-wrap text-sm text-muted">{draft.body}</p>
           <div className="mt-3 flex gap-2">
             <button
               onClick={() => {
@@ -339,7 +340,7 @@ function AIDraftPanel({
                 setInstruction("");
                 setOpen(false);
               }}
-              className="rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-500"
+              className="btn btn-sm bg-[var(--ok)] text-[var(--accent-ink)] hover:opacity-90"
             >
               Add to study guide
             </button>
@@ -348,7 +349,7 @@ function AIDraftPanel({
                 void logDraftDecisionAction(packageId, "rejected");
                 setDraft(null);
               }}
-              className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
+              className="btn btn-ghost btn-sm"
             >
               Discard
             </button>
@@ -385,9 +386,9 @@ function WorksheetPanel({
   };
 
   return (
-    <div className="rounded-lg border border-zinc-200 p-3 dark:border-zinc-800">
+    <div className="panel p-3">
       <h3 className="text-sm font-medium">Worksheets</h3>
-      <p className="mt-1 text-xs text-zinc-500">
+      <p className="mt-1 text-xs text-faint">
         Generated from your saved study guide. Tick sections above to target them,
         or generate from all saved sections.
       </p>
@@ -396,27 +397,27 @@ function WorksheetPanel({
         onClick={() => act(() => generateWorksheetAction(packageId, selectedBlockIds))}
         disabled={pending || dirty}
         title={dirty ? "Save your changes first" : undefined}
-        className="mt-2 rounded-md bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-zinc-700 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
+        className="btn btn-primary btn-sm mt-2"
       >
         {pending ? "Working…" : selectedBlockIds.length ? `Generate worksheet (${selectedBlockIds.length} selected)` : "Generate worksheet (all sections)"}
       </button>
-      {dirty && <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">Save your changes before generating.</p>}
-      {error && <p className="mt-2 text-sm text-red-600 dark:text-red-400">{error}</p>}
+      {dirty && <p className="mt-1 text-xs text-warn">Save your changes before generating.</p>}
+      {error && <p className="mt-2 text-sm text-danger">{error}</p>}
 
       {artifacts.length > 0 && (
-        <ul className="mt-3 divide-y divide-zinc-200 dark:divide-zinc-800">
+        <ul className="mt-3 divide-y divide-[var(--edge-soft)]">
           {artifacts.map((a) => (
             <li key={a.artifactId} className="flex items-center justify-between gap-2 py-2">
               <div className="min-w-0">
                 <a
                   href={`/workspace/${packageId}/artifact/${a.artifactId}`}
-                  className="truncate text-sm font-medium text-blue-700 hover:underline dark:text-blue-400"
+                  className="truncate text-sm font-medium link"
                 >
                   {a.title}
                 </a>
-                <div className="text-xs text-zinc-500">
+                <div className="text-xs text-faint">
                   {a.stale ? (
-                    <span className="text-amber-600 dark:text-amber-400">
+                    <span className="text-warn">
                       Out of date{a.missingBlocks.length ? " (a source section was removed)" : ""}
                     </span>
                   ) : a.status === "divergent" ? (
@@ -429,16 +430,16 @@ function WorksheetPanel({
               <div className="flex shrink-0 gap-2">
                 <a
                   href={`/workspace/${packageId}/artifact/${a.artifactId}`}
-                  className="rounded border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
+                  className="btn btn-ghost btn-sm"
                 >
                   View
                 </a>
                 {a.stale && (
                   <>
-                    <button onClick={() => act(() => regenerateWorksheetAction(packageId, a.artifactId))} disabled={pending} className="rounded border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-700 dark:hover:bg-zinc-900">
+                    <button onClick={() => act(() => regenerateWorksheetAction(packageId, a.artifactId))} disabled={pending} className="btn btn-ghost btn-sm">
                       Regenerate
                     </button>
-                    <button onClick={() => act(() => keepWorksheetMineAction(packageId, a.artifactId))} disabled={pending} className="rounded border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-700 dark:hover:bg-zinc-900">
+                    <button onClick={() => act(() => keepWorksheetMineAction(packageId, a.artifactId))} disabled={pending} className="btn btn-ghost btn-sm">
                       Keep mine
                     </button>
                   </>
@@ -511,11 +512,11 @@ function PublishingPanel({
   };
 
   return (
-    <div className="rounded-lg border border-zinc-200 p-3 dark:border-zinc-800">
+    <div className="panel p-3">
       <h3 className="text-sm font-medium">Publishing</h3>
 
       {!publishing.configured ? (
-        <p className="mt-1 text-xs text-zinc-500">
+        <p className="mt-1 text-xs text-faint">
           GitHub publishing isn’t set up on this deployment yet.
         </p>
       ) : publishing.published || publishedUrl ? (
@@ -526,22 +527,22 @@ function PublishingPanel({
               href={publishedUrl ?? "#"}
               target="_blank"
               rel="noreferrer"
-              className="text-blue-700 hover:underline dark:text-blue-400"
+              className="link"
             >
               view repository
             </a>
           </p>
           {publishing.versions.length > 0 && (
             <div className="mt-3">
-              <div className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+              <div className="text-xs font-medium text-muted">
                 Saved versions
               </div>
-              <ul className="mt-1 divide-y divide-zinc-200 dark:divide-zinc-800">
+              <ul className="mt-1 divide-y divide-[var(--edge-soft)]">
                 {publishing.versions.map((v, i) => (
                   <li key={v.sha} className="flex items-center justify-between gap-2 py-1.5">
                     <div className="min-w-0">
                       <div className="truncate text-sm">{v.message}</div>
-                      <div className="text-xs text-zinc-500">
+                      <div className="text-xs text-faint">
                         {new Date(v.date).toLocaleString()}
                       </div>
                     </div>
@@ -549,7 +550,7 @@ function PublishingPanel({
                       <button
                         onClick={() => onRestore(v.sha)}
                         disabled={pending}
-                        className="shrink-0 rounded border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-700 dark:hover:bg-zinc-900"
+                        className="btn btn-ghost btn-sm shrink-0"
                       >
                         Restore
                       </button>
@@ -568,20 +569,20 @@ function PublishingPanel({
         </>
       ) : !publishing.connected ? (
         <>
-          <p className="mt-1 text-xs text-zinc-500">
+          <p className="mt-1 text-xs text-faint">
             Connect your GitHub account to publish. Alembic only touches the
             repositories it creates for you.
           </p>
           <a
             href={publishing.installUrl ?? "#"}
-            className="mt-2 inline-block rounded-md bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
+            className="btn btn-primary btn-sm mt-2 inline-flex"
           >
             Connect publishing
           </a>
         </>
       ) : (
         <>
-          <p className="mt-1 text-xs text-zinc-500">
+          <p className="mt-1 text-xs text-faint">
             Creates a public + private repository pair and saves your materials
             there. Private notes never go to the public repository.
           </p>
@@ -589,18 +590,18 @@ function PublishingPanel({
             onClick={onPublish}
             disabled={pending || dirty}
             title={dirty ? "Save your changes first" : undefined}
-            className="mt-2 rounded-md bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-zinc-700 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
+            className="btn btn-primary btn-sm mt-2"
           >
             {pending ? "Publishing…" : "Publish to GitHub"}
           </button>
           {dirty && (
-            <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
+            <p className="mt-1 text-xs text-warn">
               Save your changes before publishing.
             </p>
           )}
         </>
       )}
-      {error && <p className="mt-2 text-sm text-red-600 dark:text-red-400">{error}</p>}
+      {error && <p className="mt-2 text-sm text-danger">{error}</p>}
     </div>
   );
 }
@@ -641,21 +642,21 @@ function SitePanel({ packageId }: { packageId: string }) {
   };
 
   return (
-    <div className="mt-3 border-t border-zinc-200 pt-3 dark:border-zinc-800">
-      <div className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+    <div className="mt-3 border-t border-[var(--edge-soft)] pt-3">
+      <div className="text-xs font-medium text-muted">
         Student website
       </div>
       <div className="mt-2 flex items-center gap-3">
         <a
           href={`/workspace/${packageId}/site-preview`}
-          className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
+          className="btn btn-ghost btn-sm"
         >
           Preview student page
         </a>
         <button
           onClick={onPublishSite}
           disabled={pending}
-          className="rounded-md bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-zinc-700 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
+          className="btn btn-primary btn-sm"
         >
           {pending ? "Publishing…" : "Publish website"}
         </button>
@@ -673,7 +674,7 @@ function SitePanel({ packageId }: { packageId: string }) {
           </ul>
         </div>
       )}
-      {warning && <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">{warning}</p>}
+      {warning && <p className="mt-2 text-xs text-warn">{warning}</p>}
       {siteUrl && (
         <p className="mt-2 text-sm">
           {pagesPending ? "Site address:" : "Live site:"}{" "}
@@ -681,18 +682,18 @@ function SitePanel({ packageId }: { packageId: string }) {
             href={siteUrl}
             target="_blank"
             rel="noreferrer"
-            className="text-blue-700 hover:underline dark:text-blue-400"
+            className="link"
           >
             {siteUrl}
           </a>{" "}
-          <span className="text-xs text-zinc-500">
+          <span className="text-xs text-faint">
             {pagesPending
               ? "(live once GitHub Pages is enabled)"
               : "(may take a minute to go live)"}
           </span>
         </p>
       )}
-      {error && <p className="mt-2 text-sm text-red-600 dark:text-red-400">{error}</p>}
+      {error && <p className="mt-2 text-sm text-danger">{error}</p>}
     </div>
   );
 }
@@ -725,13 +726,13 @@ function PortalPanel({
   };
 
   return (
-    <div className="mt-3 border-t border-zinc-200 pt-3 dark:border-zinc-800">
-      <div className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+    <div className="mt-3 border-t border-[var(--edge-soft)] pt-3">
+      <div className="text-xs font-medium text-muted">
         Discovery index
       </div>
       {registered ? (
         <div className="mt-2 flex items-center gap-3">
-          <span className="text-sm text-green-700 dark:text-green-400">
+          <span className="text-sm text-ok">
             Listed on the index
           </span>
           <button
@@ -742,14 +743,14 @@ function PortalPanel({
               )
             }
             disabled={pending}
-            className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-700 dark:hover:bg-zinc-900"
+            className="btn btn-ghost btn-sm"
           >
             Remove from index
           </button>
         </div>
       ) : (
         <>
-          <p className="mt-1 text-xs text-zinc-500">
+          <p className="mt-1 text-xs text-faint">
             List this package on the public discovery index so other educators
             can find it.
           </p>
@@ -761,7 +762,7 @@ function PortalPanel({
               )
             }
             disabled={pending}
-            className="mt-2 rounded-md bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-zinc-700 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
+            className="btn btn-primary btn-sm mt-2"
           >
             {pending ? "Listing…" : "List on index"}
           </button>
@@ -774,7 +775,7 @@ function PortalPanel({
           ))}
         </ul>
       )}
-      {error && <p className="mt-2 text-sm text-red-600 dark:text-red-400">{error}</p>}
+      {error && <p className="mt-2 text-sm text-danger">{error}</p>}
     </div>
   );
 }
@@ -789,11 +790,11 @@ function SaveBadge({ state }: { state: SaveState }) {
 
   const tone =
     state.kind === "error"
-      ? "text-red-600 dark:text-red-400"
+      ? "text-danger"
       : state.kind === "warning"
-        ? "text-amber-600 dark:text-amber-400"
+        ? "text-warn"
         : state.kind === "saved"
-          ? "text-green-600 dark:text-green-400"
-          : "text-zinc-500";
+          ? "text-ok"
+          : "text-muted";
   return <span className={`text-xs ${tone}`}>{label}</span>;
 }

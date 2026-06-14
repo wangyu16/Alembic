@@ -1,6 +1,7 @@
 /**
- * Dual-extension `.md.html` artifacts: a rendered HTML document that also
- * embeds its editable Markdown source, extractable indefinitely.
+ * Dual-extension `.md.html` artifacts: a rendered HTML document (dark-elegant
+ * theme) that also embeds its editable Markdown source, extractable
+ * indefinitely.
  *
  * v0.1 implements this inside the renderer; it is a candidate for extraction
  * into a shared, published `orz-artifacts` package (see the orz-stack
@@ -10,12 +11,9 @@
  */
 
 import { md } from "orz-markdown";
-import { rendererVersion } from "./index";
+import { themedDocument } from "./document";
 
 export const MD_HTML_FORMAT_VERSION = 1;
-
-const KATEX_CSS =
-  "https://cdn.jsdelivr.net/npm/katex@0.16.35/dist/katex.min.css";
 
 /** Escape a closing-script sequence so embedded source can't break out. */
 export function escapeForScript(source: string): string {
@@ -25,23 +23,6 @@ export function escapeForScript(source: string): string {
 export function unescapeFromScript(escaped: string): string {
   return escaped.replace(/<\\\/script>/gi, "</script>");
 }
-
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
-const BASE_CSS = `
-:root { color-scheme: light dark; }
-body { font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; line-height: 1.6; max-width: 46rem; margin: 2rem auto; padding: 0 1rem; }
-pre { overflow-x: auto; padding: .75rem; background: rgba(127,127,127,.12); border-radius: .375rem; }
-code { font-family: ui-monospace, monospace; }
-table { border-collapse: collapse; } th, td { border: 1px solid rgba(127,127,127,.4); padding: .3rem .6rem; }
-img { max-width: 100%; }
-`.trim();
 
 export interface BuildMdHtmlInput {
   title: string;
@@ -53,30 +34,17 @@ export interface BuildMdHtmlInput {
 
 /** Build a self-contained `.md.html` document with embedded, extractable source. */
 export function buildMdHtml(input: BuildMdHtmlInput): string {
-  const body = md.render(input.markdown);
   const hashAttr = input.sourceHash
-    ? ` data-orz-source-hash="${escapeHtml(input.sourceHash)}"`
+    ? ` data-orz-source-hash="${input.sourceHash.replace(/"/g, "&quot;")}"`
     : "";
-  return `<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${escapeHtml(input.title)}</title>
-<meta name="generator" content="Alembic (${escapeHtml(rendererVersion())})">
-<link rel="stylesheet" href="${KATEX_CSS}">
-<style>${BASE_CSS}</style>
-</head>
-<body>
-<main class="orz-content">
-${body}
-</main>
-<script type="text/markdown" id="md-source" data-orz-format="${MD_HTML_FORMAT_VERSION}"${hashAttr}>
+  const trailing = `<script type="text/markdown" id="md-source" data-orz-format="${MD_HTML_FORMAT_VERSION}"${hashAttr}>
 ${escapeForScript(input.markdown)}
-</script>
-</body>
-</html>
-`;
+</script>`;
+  return themedDocument({
+    title: input.title,
+    bodyHtml: md.render(input.markdown),
+    trailingHtml: trailing,
+  });
 }
 
 export interface ExtractedMdHtml {
