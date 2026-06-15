@@ -13,3 +13,4 @@ export function renderMarkdown(source: string): string {
 export * from "./document";
 export * from "./mdhtml";
 export * from "./site";
+export * from "./course-site";

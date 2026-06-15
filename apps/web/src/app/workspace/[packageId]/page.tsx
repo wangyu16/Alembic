@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { listArtifacts, loadStudyGuide } from "@alembic/package-ops";
+import { listArtifacts, listChapters, loadStudyGuide } from "@alembic/package-ops";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
 import { clientForUser, githubConfig, installUrl } from "@/lib/github";
@@ -10,10 +10,13 @@ export const dynamic = "force-dynamic";
 
 export default async function EditorPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ packageId: string }>;
+  searchParams: Promise<{ chapter?: string }>;
 }) {
   const { packageId } = await params;
+  const { chapter: chapterParam } = await searchParams;
   const supabase = await createSupabaseServerClient();
   const {
     data: { user },
@@ -24,7 +27,12 @@ export default async function EditorPage({
   const record = await store.getPackage(packageId);
   if (!record) notFound();
 
-  const doc = await loadStudyGuide(store, packageId);
+  // Chapters: the active one is the ?chapter= slug, else the first.
+  const chapters = await listChapters(store, packageId);
+  const active =
+    chapters.find((c) => c.slug === chapterParam) ?? chapters[0] ?? null;
+
+  const doc = await loadStudyGuide(store, packageId, active?.path);
   const artifacts = await listArtifacts(store, packageId);
 
   const { data: profile } = await supabase
@@ -78,10 +86,13 @@ export default async function EditorPage({
         </div>
       </header>
       <StudyGuideEditor
+        key={active?.slug ?? "none"}
         packageId={packageId}
         initialPath={doc.path}
         initialPreamble={doc.preamble}
         initialBlocks={doc.blocks}
+        chapters={chapters.map((c) => ({ slug: c.slug, title: c.title }))}
+        activeSlug={active?.slug ?? null}
         artifacts={artifacts.map((a) => ({
           artifactId: a.record.artifactId,
           title: a.record.title,

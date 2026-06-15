@@ -31,4 +31,12 @@ export interface PackageStore {
   listFiles(packageId: string): Promise<PackageFile[]>;
   /** Upsert files by (repo, path). Callers validate paths first. */
   putFiles(packageId: string, files: PackageFile[]): Promise<void>;
+  /**
+   * Delete files by (repo, path). Missing files are ignored (idempotent).
+   * Callers validate paths first.
+   */
+  deleteFiles(
+    packageId: string,
+    files: { repo: RepoKind; path: string }[],
+  ): Promise<void>;
 }

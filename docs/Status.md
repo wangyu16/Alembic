@@ -180,10 +180,10 @@ single chapter is the degenerate case). See [course-structure.md](specs/course-s
 | # | Sub-module | Verify by | Status |
 | --- | --- | --- | --- |
 | 9.1 | Manifest `chapters` index + contract types (ordered chapters) | old packages (no index) read as one chapter; schema versioned, migration explicit | ✅ `ChapterRef` + optional `chapters[]` (additive; absent = single chapter); slug rule; 48 contract tests |
-| 9.2 | package-ops chapter CRUD + ordering (over `chapterStudyGuidePath`) | unit tests: create / list / reorder / rename / delete chapters | ⬜ |
-| 9.3 | renderer multi-page `buildSite` (index/TOC + per-chapter pages + inter-chapter nav) | site builds N chapter pages + index; single-chapter output unchanged | ⬜ |
-| 9.4 | Editor chapter switcher wrapping the single-doc editor | author a 2-chapter course; switch/reorder; per-chapter save | ⬜ |
-| 9.5 | Course index = student-facing chapter TOC | published landing lists chapters with working links | ⬜ |
+| 9.2 | package-ops chapter CRUD + ordering (over `chapterStudyGuidePath`) | unit tests: create / list / reorder / rename / delete chapters | ✅ `chapters.ts` (list/create/rename/reorder/delete; implicit→materialized); `deleteFiles` added to store; 16 tests |
+| 9.3 | renderer multi-page site (index/TOC + per-chapter pages + inter-chapter nav) | site builds N chapter pages + index; single-chapter output unchanged | ✅ `buildCourseSite` (TOC + per-chapter pages + prev/next; single = inline); `buildSite` kept; 23 tests |
+| 9.4 | Editor chapter switcher wrapping the single-doc editor | author a 2-chapter course; switch/reorder; per-chapter save | ✅ ChapterBar (add/select/rename/reorder/delete); per-chapter edit+save; GitHub-backed packages sync chapter files + manifest |
+| 9.5 | Course index = student-facing chapter TOC | published landing lists chapters with working links | ✅ site build + in-app preview use `buildCourseSite` (index TOC) |
 | 9.6 | Concepts + objectives at course and chapter level (data layer) | structured records per chapter validate against contract | 🔄 contract schemas done (`ConceptMap`/`Objectives` + record paths); ops/editor later |
 
 *Exit:* author and publish a 3-chapter course as one site.
@@ -308,3 +308,4 @@ Cost/scale via a gateway + per-task model selection. See [specs/ai-architecture.
 - **Production live at https://alembic.orz.how (M8.2).** Vercel (project `alembic`, root `apps/web`, Node 22, pnpm monorepo; env vars set; Supabase Auth + GitHub App callbacks → production; Cloudflare CNAME; Git auto-deploy on push to `main`).
 - No-lock-in build config committed to the public template (criterion #3); portal migration 0004 applied. Design notes added: [package-lifecycle.md](specs/package-lifecycle.md) (rename/delete) and [ai-architecture.md](specs/ai-architecture.md) (execution + model access).
 - **Phase 2 planned.** Modularized plan + tracker added above (M9–M16: multi-chapter, risk-tiered approvals, chemistry/structures, import, slides/PDF, accessibility, snapshots/citation, model gateway).
+- **M9 multi-chapter courses — done.** Built via two concurrent subagents (package-ops chapter CRUD; renderer `buildCourseSite`) on the committed contract foundation (chapters index), integrated by hand: editor ChapterBar (add/select/rename/reorder/delete), per-chapter edit+save, GitHub-backed packages sync chapter files + manifest, and site build + in-app preview render the multi-chapter course (index TOC + per-chapter pages + prev/next). Fully additive — single-chapter packages unchanged. 134 package tests green; web typecheck + build pass. Follow-ups: `.md.html` export currently covers the active chapter only; the standalone no-lock-in build concatenates chapters rather than per-chapter pages.

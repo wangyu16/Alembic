@@ -21,6 +21,12 @@ import {
 } from "./github-actions";
 import { publishSiteAction } from "./site-actions";
 import {
+  createChapterAction,
+  deleteChapterAction,
+  renameChapterAction,
+  reorderChaptersAction,
+} from "./chapter-actions";
+import {
   registerPackageAction,
   unregisterPackageAction,
 } from "./portal-actions";
@@ -65,11 +71,18 @@ type SaveState =
 
 const newKey = () => crypto.randomUUID();
 
+export interface ChapterTab {
+  slug: string;
+  title: string;
+}
+
 export function StudyGuideEditor({
   packageId,
   initialPath,
   initialPreamble,
   initialBlocks,
+  chapters,
+  activeSlug,
   artifacts,
   publishing,
 }: {
@@ -77,6 +90,8 @@ export function StudyGuideEditor({
   initialPath: string;
   initialPreamble: string;
   initialBlocks: StudyGuideBlock[];
+  chapters: ChapterTab[];
+  activeSlug: string | null;
   artifacts: ArtifactSummary[];
   publishing: PublishingState;
 }) {
@@ -191,7 +206,15 @@ export function StudyGuideEditor({
   }, [packageId, initialPath, preamble, blocks]);
 
   return (
-    <div className="grid flex-1 grid-cols-1 gap-6 lg:grid-cols-2">
+    <div className="flex flex-1 flex-col gap-4">
+      <ChapterBar
+        packageId={packageId}
+        chapters={chapters}
+        activeSlug={activeSlug}
+        dirty={dirty}
+        onChanged={() => router.refresh()}
+      />
+      <div className="grid flex-1 grid-cols-1 gap-6 lg:grid-cols-2">
       <div className="flex flex-col gap-4">
         <div className="flex items-center justify-between">
           <h2 className="text-sm text-muted">
@@ -318,6 +341,7 @@ export function StudyGuideEditor({
           srcDoc={html}
           className="h-[78vh] w-full rounded-xl border border-[var(--border)] bg-[var(--bg)]"
         />
+      </div>
       </div>
     </div>
   );
@@ -811,6 +835,113 @@ function PortalPanel({
         </ul>
       )}
       {error && <p className="mt-2 text-sm text-danger">{error}</p>}
+    </div>
+  );
+}
+
+function ChapterBar({
+  packageId,
+  chapters,
+  activeSlug,
+  dirty,
+  onChanged,
+}: {
+  packageId: string;
+  chapters: ChapterTab[];
+  activeSlug: string | null;
+  dirty: boolean;
+  onChanged: () => void;
+}) {
+  const router = useRouter();
+  const [pending, start] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+
+  const active = chapters.find((c) => c.slug === activeSlug);
+
+  const run = (
+    fn: () => Promise<{ ok: boolean; error?: string; slug?: string }>,
+    after?: (slug?: string) => void,
+  ) => {
+    setError(null);
+    start(async () => {
+      const r = await fn();
+      if (!r.ok) setError(r.error ?? "Action failed.");
+      else {
+        after?.(r.slug);
+        onChanged();
+      }
+    });
+  };
+
+  const onAdd = () => {
+    const title = window.prompt("New chapter title");
+    if (!title?.trim()) return;
+    run(
+      () => createChapterAction(packageId, title.trim()),
+      (slug) => slug && router.push(`/workspace/${packageId}?chapter=${slug}`),
+    );
+  };
+  const onRename = () => {
+    if (!active) return;
+    const title = window.prompt("Rename chapter", active.title);
+    if (!title?.trim()) return;
+    run(() => renameChapterAction(packageId, active.slug, title.trim()));
+  };
+  const onDelete = () => {
+    if (!active) return;
+    if (!window.confirm(`Delete chapter "${active.title}"? Its page is removed.`)) return;
+    run(
+      () => deleteChapterAction(packageId, active.slug, `study-guide/${active.slug}.md`),
+      () => router.push(`/workspace/${packageId}`),
+    );
+  };
+  const move = (dir: -1 | 1) => {
+    if (!active) return;
+    const i = chapters.findIndex((c) => c.slug === active.slug);
+    const j = i + dir;
+    if (i < 0 || j < 0 || j >= chapters.length) return;
+    const order = chapters.map((c) => c.slug);
+    [order[i], order[j]] = [order[j]!, order[i]!];
+    run(() => reorderChaptersAction(packageId, order));
+  };
+
+  return (
+    <div className="panel flex flex-wrap items-center gap-2 p-2">
+      <span className="px-1 text-xs text-faint">Chapters</span>
+      {chapters.map((c) => (
+        <Link
+          key={c.slug}
+          href={`/workspace/${packageId}?chapter=${c.slug}`}
+          aria-disabled={dirty}
+          onClick={(e) => {
+            if (dirty && !window.confirm("Switch chapter? Unsaved changes will be lost.")) {
+              e.preventDefault();
+            }
+          }}
+          className={`rounded-md px-2.5 py-1 text-sm transition-colors ${
+            c.slug === activeSlug
+              ? "bg-accent text-[var(--accent-ink)]"
+              : "text-muted hover:bg-elevated hover:text-ink"
+          }`}
+        >
+          {c.title}
+        </Link>
+      ))}
+      <span className="mx-1 h-4 w-px bg-[var(--edge)]" />
+      <button onClick={onAdd} disabled={pending} className="btn btn-ghost btn-sm">
+        + Chapter
+      </button>
+      {active && chapters.length > 0 && (
+        <>
+          <button onClick={() => move(-1)} disabled={pending} title="Move chapter left" className="rounded px-1.5 py-1 text-muted hover:bg-elevated">←</button>
+          <button onClick={() => move(1)} disabled={pending} title="Move chapter right" className="rounded px-1.5 py-1 text-muted hover:bg-elevated">→</button>
+          <button onClick={onRename} disabled={pending} className="rounded px-2 py-1 text-xs text-muted hover:bg-elevated hover:text-ink">Rename</button>
+          {chapters.length > 1 && (
+            <button onClick={onDelete} disabled={pending} className="rounded px-2 py-1 text-xs text-danger hover:bg-[var(--elevated)]">Delete</button>
+          )}
+        </>
+      )}
+      {error && <span className="text-xs text-danger">{error}</span>}
     </div>
   );
 }

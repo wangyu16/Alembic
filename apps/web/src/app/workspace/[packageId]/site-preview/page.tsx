@@ -3,10 +3,15 @@ import { notFound, redirect } from "next/navigation";
 import { serializeStudyGuide } from "@alembic/package-contract";
 import {
   listArtifacts,
+  listChapters,
   loadArtifactContent,
   loadStudyGuide,
 } from "@alembic/package-ops";
-import { buildSite, type SiteWorksheet } from "@alembic/renderer";
+import {
+  buildCourseSite,
+  type CourseChapter,
+  type SiteWorksheet,
+} from "@alembic/renderer";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
 import { slugForFile } from "@/lib/export";
@@ -29,7 +34,17 @@ export default async function SitePreviewPage({
   const record = await store.getPackage(packageId);
   if (!record) notFound();
 
-  const guide = await loadStudyGuide(store, packageId);
+  const chapterList = await listChapters(store, packageId);
+  const chapters: CourseChapter[] = [];
+  for (const ch of chapterList) {
+    const guide = await loadStudyGuide(store, packageId, ch.path);
+    chapters.push({
+      slug: ch.slug,
+      title: ch.title,
+      markdown: serializeStudyGuide(guide.preamble, guide.blocks),
+    });
+  }
+
   const artifacts = await listArtifacts(store, packageId);
   const worksheets: SiteWorksheet[] = [];
   for (const a of artifacts) {
@@ -43,9 +58,9 @@ export default async function SitePreviewPage({
     }
   }
 
-  const files = buildSite({
+  const files = buildCourseSite({
     title: record.title,
-    studyGuideMarkdown: serializeStudyGuide(guide.preamble, guide.blocks),
+    chapters,
     worksheets,
     builtAt: new Date().toISOString(),
   });

@@ -78,4 +78,19 @@ export class SupabaseSandboxStore implements PackageStore {
     );
     if (error) throw new Error(`Could not save files: ${error.message}`);
   }
+
+  async deleteFiles(
+    packageId: string,
+    files: { repo: "public" | "private"; path: string }[],
+  ): Promise<void> {
+    for (const f of files) {
+      const { error } = await this.supabase
+        .from("sandbox_files")
+        .delete()
+        .eq("package_id", packageId)
+        .eq("repo", f.repo)
+        .eq("path", f.path);
+      if (error) throw new Error(`Could not delete file: ${error.message}`);
+    }
+  }
 }
