@@ -16,8 +16,10 @@ two template repositories first.
 Create two repositories on your GitHub account and mark each as a **template**:
 
 1. **`alembic-public-template`** — copy in the files from
-   [`templates/public-repo/`](../templates/public-repo/) (`README.md`,
-   `.gitignore`).
+   [`templates/public-repo/`](../templates/public-repo/): `README.md`,
+   `.gitignore`, and the self-contained build config (`.alembic/build/` +
+   `.github/workflows/build-site.yml`) that lets the repo rebuild its site
+   independently of Alembic.
 2. **`alembic-private-template`** — copy in the files from
    [`templates/private-repo/`](../templates/private-repo/).
 

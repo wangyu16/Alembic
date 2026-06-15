@@ -1,0 +1,45 @@
+name: Build site
+
+# Independent build of this OER package's public website using only
+# orz-markdown — no Alembic required. Manual by default so it doesn't conflict
+# with Alembic's own publishing. To make a fork self-publishing on every push,
+# add:  push: { branches: [main] }
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Requires repo Settings → Pages → Source = "GitHub Actions".
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install build deps
+        run: npm install --prefix .alembic/build
+      - name: Build static site
+        run: node .alembic/build/build-site.mjs
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

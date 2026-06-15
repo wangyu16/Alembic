@@ -100,7 +100,7 @@ unless a dependency is noted.
 | # | Sub-module | Verify by | Status |
 | --- | --- | --- | --- |
 | 6.1 | Job queue (pg-boss on Supabase) + worker consumption | enqueued job runs in worker; status reported back | ⏸ deferred — v0.1 builds in-process on publish (orz-markdown is fast, content small; build is a callable, ready to move to the worker tier later) |
-| 6.2 | Build job: static build → Pages push | live GitHub Pages URL; renderer version stamped; build config committed | ✅ live-verified: site live on GitHub Pages; renderer version in build-info. ⚠ *Standalone build config not yet committed to the repo* (no-lock-in build — see open items) |
+| 6.2 | Build job: static build → Pages push | live GitHub Pages URL; renderer version stamped; build config committed | ✅ live-verified: site live on GitHub Pages; renderer version in build-info; self-contained build config (orz-markdown-only script + Actions workflow) committed to the public template → present in new repos |
 | 6.3 | Publish flow: Tier-3 approval screen + release gates | gates block bad packages with educator-facing reasons; approval required | ✅ release gates (license/content/IDs/separation) + Tier-3 confirm; failures shown in educator language (unit-tested) |
 | 6.4 | In-app student-page preview (same renderer path as build) | preview matches published output | ✅ `/site-preview` renders `buildSite` index in an isolated iframe — same build path |
 
@@ -108,7 +108,7 @@ unless a dependency is noted.
 
 | # | Sub-module | Verify by | Status |
 | --- | --- | --- | --- |
-| 7.1 | Package registration + generated public index page | published package appears on index after gates | 🔄 code done (gated register/unregister, public `/portal` index, nav link); live verify pending migration 0004 |
+| 7.1 | Package registration + generated public index page | published package appears on index after gates | ✅ migration 0004 applied; gated register/unregister + public `/portal` index + nav link live |
 | 7.2 | Failure recovery UX (build, GitHub API, AI provider failures) | each failure mode shows actionable educator-facing message | ✅ retryable educator-facing errors across publish/site/AI/save/restore + app error.tsx / not-found.tsx |
 
 ### M8 — Pilot & ship
@@ -128,24 +128,20 @@ hold before calling v0.1 shipped. Current standing:
 | --- | --- | --- |
 | 1 | Non-developer completes the full loop without Git terms | ⬜ pending the pilot (M8.3) |
 | 2 | Private content absent from the public repo's entire history | ✅ verified on real repos |
-| 3 | Published repo builds independently with committed build config (no-lock-in) | ⚠ **gap** — see below |
+| 3 | Published repo builds independently with committed build config (no-lock-in) | ✅ self-contained orz-markdown build script + Pages workflow committed to the public template (new repos carry it; existing repos predate it) |
 | 4 | Block IDs survive editor saves, AI rewrites, `.md.html` round-trip | ✅ |
 | 5 | Research events captured for every loop step; CSV-exportable | ✅ events logged; CSV via a Supabase query/export (no dedicated UI) |
 | 6 | Pilot chemist's verdict positive | ⬜ pending the pilot |
 
 ### Open items before declaring v0.1 shipped
 
-- **No-lock-in build config (criterion #3) — gap.** The published public repo
-  contains the Markdown source and self-contained `.md.html` exports, but
-  **not** a committed build workflow to regenerate the site outside Alembic
-  (M6 builds app-side and pushes only the built `gh-pages` output). To close:
-  commit a standard build config (e.g. a GitHub Actions workflow that runs the
-  orz-markdown build) to the public template / on publish.
-- **M7 portal live-verify** — apply `supabase/migrations/0004_portal.sql` to
-  the Supabase project, then confirm register → `/portal`.
-- **M8.3 pilot** — run with 1–3 chemistry educators against criteria 1 & 6.
+- **M8.3 pilot** — run with 1–3 chemistry educators against criteria 1 & 6
+  (the last substantive gate).
 - **Deferred chore** — bump renderer to orz-markdown 1.1.0 once the npm
   registry is reachable from the dev machine (CI/Vercel builds already reach it).
+
+Closed recently: no-lock-in build config (criterion #3 — committed to the
+public template); M7 portal (migration 0004 applied).
 
 ## Log
 
