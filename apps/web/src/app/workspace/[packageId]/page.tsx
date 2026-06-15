@@ -4,6 +4,11 @@ import { listArtifacts, listChapters, loadStudyGuide } from "@alembic/package-op
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
 import { clientForUser, githubConfig, installUrl } from "@/lib/github";
+import {
+  getReviewAll,
+  listAppliedTier1,
+  listPendingReviews,
+} from "@/lib/changes";
 import { StudyGuideEditor } from "./editor";
 
 export const dynamic = "force-dynamic";
@@ -34,6 +39,13 @@ export default async function EditorPage({
 
   const doc = await loadStudyGuide(store, packageId, active?.path);
   const artifacts = await listArtifacts(store, packageId);
+
+  // Risk-tier state: recent auto-applied (undoable) changes + the review queue.
+  const [recentChanges, pendingReviews, reviewAll] = await Promise.all([
+    listAppliedTier1(supabase, packageId),
+    listPendingReviews(supabase, packageId),
+    getReviewAll(supabase, packageId),
+  ]);
 
   const { data: profile } = await supabase
     .from("profiles")
@@ -93,6 +105,14 @@ export default async function EditorPage({
         initialBlocks={doc.blocks}
         chapters={chapters.map((c) => ({ slug: c.slug, title: c.title }))}
         activeSlug={active?.slug ?? null}
+        reviewAll={reviewAll}
+        recentChanges={recentChanges.map((c) => ({ id: c.id, summary: c.summary, kind: c.kind }))}
+        reviewQueue={pendingReviews.map((c) => ({
+          id: c.id,
+          kind: c.kind,
+          summary: c.summary,
+          detail: c.detail as { title?: string; body?: string },
+        }))}
         artifacts={artifacts.map((a) => ({
           artifactId: a.record.artifactId,
           title: a.record.title,

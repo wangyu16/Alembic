@@ -13,6 +13,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
 import { supabaseEventLogger } from "@/lib/events";
 import { governedProvider, RateLimitError } from "@/lib/ai";
+import { recordChange } from "@/lib/changes";
 
 async function requireUser() {
   const supabase = await createSupabaseServerClient();
@@ -32,13 +33,18 @@ function friendly(e: unknown): string {
 
 export interface DraftResult {
   ok: boolean;
-  draft?: { title: string; body: string };
   error?: string;
 }
 
+/**
+ * Draft a section with AI, then route it into the Tier-2 review queue rather
+ * than applying it directly — the educator accepts/edits/rejects it there
+ * (goal.md Tier-2 batch review). `path` is the chapter the draft targets.
+ */
 export async function draftSectionAction(
   packageId: string,
   instruction: string,
+  path: string,
 ): Promise<DraftResult> {
   const { supabase, user } = await requireUser();
   if (!instruction.trim()) return { ok: false, error: "Describe the section first." };
@@ -47,7 +53,7 @@ export async function draftSectionAction(
   const events = supabaseEventLogger(supabase);
   const started = Date.now();
   try {
-    const guide = await loadStudyGuide(store, packageId);
+    const guide = await loadStudyGuide(store, packageId, path);
     const context = guide.blocks.length
       ? `Existing sections: ${guide.blocks.map((b) => b.title).join("; ")}`
       : undefined;
@@ -57,6 +63,15 @@ export async function draftSectionAction(
       kind: "draft-section",
     });
     const draft = await draftSection(provider, { instruction, context });
+    await recordChange(supabase, {
+      packageId,
+      userId: user.id,
+      tier: 2,
+      kind: "draft-section",
+      summary: `Draft: ${draft.title}`,
+      detail: { path, title: draft.title, body: draft.body },
+      status: "pending",
+    });
     await events.log({
       type: "ai.draft.requested",
       userId: user.id,
@@ -65,30 +80,17 @@ export async function draftSectionAction(
       detail: { instructionChars: instruction.length },
       occurredAt: new Date().toISOString(),
     });
-    return { ok: true, draft };
+    await events.log({
+      type: "review.queued",
+      userId: user.id,
+      packageId,
+      detail: { kind: "draft-section" },
+      occurredAt: new Date().toISOString(),
+    });
+    return { ok: true };
   } catch (e) {
     return { ok: false, error: friendly(e) };
   }
-}
-
-/** Record the educator's decision on an AI draft (human-decision metric). */
-export async function logDraftDecisionAction(
-  packageId: string,
-  decision: "accepted" | "edited" | "rejected",
-): Promise<void> {
-  const { supabase, user } = await requireUser();
-  await supabaseEventLogger(supabase).log({
-    type:
-      decision === "accepted"
-        ? "ai.suggestion.accepted"
-        : decision === "edited"
-          ? "ai.suggestion.edited"
-          : "ai.suggestion.rejected",
-    userId: user.id,
-    packageId,
-    detail: { surface: "draft-section" },
-    occurredAt: new Date().toISOString(),
-  });
 }
 
 export interface ActionResult {

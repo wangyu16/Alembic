@@ -12,9 +12,16 @@ import {
   draftSectionAction,
   generateWorksheetAction,
   keepWorksheetMineAction,
-  logDraftDecisionAction,
   regenerateWorksheetAction,
 } from "./ai-actions";
+import {
+  acceptReviewAction,
+  batchAcceptReviewAction,
+  rejectReviewAction,
+  setReviewAllAction,
+  tidyChapterAction,
+  undoChangeAction,
+} from "./change-actions";
 import {
   publishToGitHubAction,
   restoreStudyGuideAction,
@@ -76,6 +83,19 @@ export interface ChapterTab {
   title: string;
 }
 
+export interface RecentChange {
+  id: number;
+  summary: string;
+  kind: string;
+}
+
+export interface ReviewItem {
+  id: number;
+  kind: string;
+  summary: string;
+  detail: { title?: string; body?: string };
+}
+
 export function StudyGuideEditor({
   packageId,
   initialPath,
@@ -83,6 +103,9 @@ export function StudyGuideEditor({
   initialBlocks,
   chapters,
   activeSlug,
+  reviewAll,
+  recentChanges,
+  reviewQueue,
   artifacts,
   publishing,
 }: {
@@ -92,6 +115,9 @@ export function StudyGuideEditor({
   initialBlocks: StudyGuideBlock[];
   chapters: ChapterTab[];
   activeSlug: string | null;
+  reviewAll: boolean;
+  recentChanges: RecentChange[];
+  reviewQueue: ReviewItem[];
   artifacts: ArtifactSummary[];
   publishing: PublishingState;
 }) {
@@ -316,7 +342,16 @@ export function StudyGuideEditor({
           + Add section
         </button>
 
-        <AIDraftPanel packageId={packageId} onAccept={(d) => addBlock(d)} />
+        <AIDraftPanel packageId={packageId} activePath={initialPath} onQueued={() => router.refresh()} />
+
+        <TierPanel
+          packageId={packageId}
+          activePath={initialPath}
+          dirty={dirty}
+          reviewAll={reviewAll}
+          recentChanges={recentChanges}
+          reviewQueue={reviewQueue}
+        />
 
         <WorksheetPanel
           packageId={packageId}
@@ -349,24 +384,31 @@ export function StudyGuideEditor({
 
 function AIDraftPanel({
   packageId,
-  onAccept,
+  activePath,
+  onQueued,
 }: {
   packageId: string;
-  onAccept: (draft: { title: string; body: string }) => void;
+  activePath: string;
+  onQueued: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [instruction, setInstruction] = useState("");
   const [busy, setBusy] = useState(false);
-  const [draft, setDraft] = useState<{ title: string; body: string } | null>(null);
+  const [note, setNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   async function run() {
     setBusy(true);
     setError(null);
-    setDraft(null);
-    const result = await draftSectionAction(packageId, instruction);
-    if (result.ok && result.draft) setDraft(result.draft);
-    else setError(result.error ?? "Couldn't draft a section.");
+    setNote(null);
+    const result = await draftSectionAction(packageId, instruction, activePath);
+    if (result.ok) {
+      setNote("Drafted and added to the review queue below.");
+      setInstruction("");
+      onQueued();
+    } else {
+      setError(result.error ?? "Couldn't draft a section.");
+    }
     setBusy(false);
   }
 
@@ -392,38 +434,142 @@ function AIDraftPanel({
         className="field w-full text-sm"
       />
       <button onClick={run} disabled={busy || !instruction.trim()} className="btn btn-primary btn-sm mt-2">
-        {busy ? "Drafting…" : "Draft"}
+        {busy ? "Drafting…" : "Draft → review queue"}
       </button>
+      {note && <p className="mt-2 text-xs text-ok">{note}</p>}
       {error && <p className="mt-2 text-sm text-danger">{error}</p>}
-      {draft && (
-        <div className="panel mt-3 p-3">
-          <div className="font-medium">{draft.title}</div>
-          <p className="mt-1 whitespace-pre-wrap text-sm text-muted">{draft.body}</p>
-          <div className="mt-3 flex gap-2">
-            <button
-              onClick={() => {
-                onAccept(draft);
-                void logDraftDecisionAction(packageId, "accepted");
-                setDraft(null);
-                setInstruction("");
-                setOpen(false);
-              }}
-              className="btn btn-sm bg-[var(--ok)] text-[var(--accent-ink)] hover:opacity-90"
-            >
-              Add to study guide
-            </button>
-            <button
-              onClick={() => {
-                void logDraftDecisionAction(packageId, "rejected");
-                setDraft(null);
-              }}
-              className="btn btn-ghost btn-sm"
-            >
-              Discard
-            </button>
+    </div>
+  );
+}
+
+function TierPanel({
+  packageId,
+  activePath,
+  dirty,
+  reviewAll,
+  recentChanges,
+  reviewQueue,
+}: {
+  packageId: string;
+  activePath: string;
+  dirty: boolean;
+  reviewAll: boolean;
+  recentChanges: RecentChange[];
+  reviewQueue: ReviewItem[];
+}) {
+  const router = useRouter();
+  const [pending, start] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+
+  const reload = () => {
+    if (typeof window !== "undefined") window.location.reload();
+  };
+  const act = (
+    fn: () => Promise<{ ok: boolean; error?: string }>,
+    onOk: () => void,
+  ) => {
+    setError(null);
+    start(async () => {
+      const r = await fn();
+      if (!r.ok) setError(r.error ?? "Action failed.");
+      else onOk();
+    });
+  };
+
+  return (
+    <div className="panel p-3">
+      <h3 className="text-sm font-medium">Changes & review</h3>
+
+      <div className="mt-2 flex flex-wrap items-center gap-3">
+        <button
+          onClick={() => act(() => tidyChapterAction(packageId, activePath), reload)}
+          disabled={pending || dirty}
+          title={dirty ? "Save your changes first" : "Auto-tidy whitespace (undoable)"}
+          className="btn btn-ghost btn-sm"
+        >
+          Tidy formatting
+        </button>
+        <label className="flex items-center gap-1.5 text-xs text-muted">
+          <input
+            type="checkbox"
+            checked={reviewAll}
+            onChange={(e) =>
+              act(() => setReviewAllAction(packageId, e.target.checked), () => router.refresh())
+            }
+            disabled={pending}
+          />
+          Review all AI changes (nothing auto-applies)
+        </label>
+      </div>
+      {dirty && <p className="mt-1 text-xs text-warn">Save your changes before tidying.</p>}
+
+      {reviewQueue.length > 0 && (
+        <div className="mt-3">
+          <div className="flex items-center justify-between">
+            <div className="text-xs font-medium uppercase tracking-wide text-faint">
+              Review queue (Tier 2)
+            </div>
+            {reviewQueue.length > 1 && (
+              <button
+                onClick={() => act(() => batchAcceptReviewAction(packageId), reload)}
+                disabled={pending || dirty}
+                title={dirty ? "Save your changes first" : "Accept every queued item"}
+                className="text-xs text-muted hover:text-ink disabled:opacity-50"
+              >
+                Accept all ({reviewQueue.length})
+              </button>
+            )}
           </div>
+          <ul className="mt-1 divide-y divide-[var(--edge-soft)]">
+            {reviewQueue.map((item) => (
+              <li key={item.id} className="flex items-center justify-between gap-2 py-2">
+                <span className="min-w-0 truncate text-sm">{item.summary}</span>
+                <div className="flex shrink-0 gap-2">
+                  <button
+                    onClick={() => act(() => acceptReviewAction(packageId, item.id), reload)}
+                    disabled={pending || dirty}
+                    title={dirty ? "Save your changes first" : undefined}
+                    className="rounded border border-zinc-300 px-2 py-1 text-xs hover:bg-elevated disabled:opacity-50 dark:border-zinc-700"
+                  >
+                    Accept
+                  </button>
+                  <button
+                    onClick={() => act(() => rejectReviewAction(packageId, item.id), () => router.refresh())}
+                    disabled={pending}
+                    className="rounded border border-zinc-300 px-2 py-1 text-xs text-danger hover:bg-elevated disabled:opacity-50 dark:border-zinc-700"
+                  >
+                    Reject
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
         </div>
       )}
+
+      {recentChanges.length > 0 && (
+        <div className="mt-3">
+          <div className="text-xs font-medium uppercase tracking-wide text-faint">
+            Auto-applied (Tier 1) — undoable
+          </div>
+          <ul className="mt-1 divide-y divide-[var(--edge-soft)]">
+            {recentChanges.map((c) => (
+              <li key={c.id} className="flex items-center justify-between gap-2 py-1.5">
+                <span className="min-w-0 truncate text-xs text-muted">{c.summary}</span>
+                <button
+                  onClick={() => act(() => undoChangeAction(packageId, c.id), reload)}
+                  disabled={pending}
+                  className="shrink-0 rounded border border-zinc-300 px-2 py-1 text-xs hover:bg-elevated disabled:opacity-50 dark:border-zinc-700"
+                >
+                  Undo
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {error && <p className="mt-2 text-sm text-danger">{error}</p>}
     </div>
   );
 }
