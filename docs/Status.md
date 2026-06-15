@@ -3,9 +3,9 @@
 Live view of what is done, in progress, and coming. Update this file in the
 same commit as the work it tracks. Statuses: ✅ done · 🔄 in progress · ⬜ pending · ⏸ deferred.
 
-**Production:** live at https://alembic.orz.how (Vercel + Cloudflare DNS). Remaining v0.1 work is the pilot (M8.3).
+**Production:** live at https://alembic.orz.how (Vercel project `alembic`, root `apps/web`, Node 22; Cloudflare DNS; Git auto-deploy on push to `main`).
 
-**Current focus: v0.1 (Phase 1) — milestone M8 (pilot & ship).** M1–M6 live-verified — the full loop runs end to end including a live GitHub Pages student site (https://wangyu16.github.io/test-chemistry-gegpm8vz-oer/). M7 (portal index + error boundaries) code complete; **live verify needs migration 0004 applied.** See [LocalSetup.md](LocalSetup.md) + [GitHubAppSetup.md](GitHubAppSetup.md).
+**Current focus: v0.1 (Phase 1) — milestone M8 (pilot & ship).** M1–M6 live-verified end to end, including a live GitHub Pages student site (https://wangyu16.github.io/test-chemistry-gegpm8vz-oer/) and production deploy (M8.2). Remaining before declaring v0.1 shipped: the pilot (M8.3) and the open items in "Release criteria" below (notably the no-lock-in build config). M7 portal live-verify needs migration 0004 applied to the Supabase project. See [LocalSetup.md](LocalSetup.md) + [GitHubAppSetup.md](GitHubAppSetup.md).
 
 **Deferred chore:** bump renderer to orz-markdown 1.1.0 (published) — reverted to 1.0.0 temporarily because the npm registry was unreachable during M2 and CI uses `--frozen-lockfile`. Behavior is unaffected (1.0.0 supports the attrs block-ID syntax); redo when the registry is reachable.
 
@@ -92,7 +92,7 @@ unless a dependency is noted.
 | 5.1 | GitHub App registration + installation flow ("Connect publishing") | App installs scoped to created repos only | ✅ live-verified: connect → install → publish |
 | 5.2 | Paired repo creation from templates (public + private) | both repos created with correct layout, manifest links them | ✅ live-verified: `-oer` (public) + `-private` (private) created, manifest links them |
 | 5.3 | Commit transport behind `validateCommitPlan` | adversarial private-leak attempts impossible via every API path | ✅ fetch + Git Data API; adversarial unit test + live: public repo's full history has 0 private-instructor paths |
-| 5.4 | Save → readable commits; version list; restore | restore round-trip works; history readable in educator language | ✅ code done; live-verified publish commits; restore round-trip pending a manual restore test |
+| 5.4 | Save → readable commits; version list; restore | restore round-trip works; history readable in educator language | ✅ live-verified: publish/save commits, version list, restore round-trip (each restore = a new commit; editor reloads after restore) |
 | 5.5 | Sandbox → GitHub graduation | sandbox content becomes initial commits with provenance preserved | ✅ live-verified: sandbox content published to the repo pair |
 
 ### M6 — Build, publish, preview
@@ -100,7 +100,7 @@ unless a dependency is noted.
 | # | Sub-module | Verify by | Status |
 | --- | --- | --- | --- |
 | 6.1 | Job queue (pg-boss on Supabase) + worker consumption | enqueued job runs in worker; status reported back | ⏸ deferred — v0.1 builds in-process on publish (orz-markdown is fast, content small; build is a callable, ready to move to the worker tier later) |
-| 6.2 | Build job: static build → Pages push | live GitHub Pages URL; renderer version stamped; build config committed | 🔄 code done (`buildSite` → push to `gh-pages` + enable Pages; renderer version in build-info; build config in repo templates); live verify pending Pages:write |
+| 6.2 | Build job: static build → Pages push | live GitHub Pages URL; renderer version stamped; build config committed | ✅ live-verified: site live on GitHub Pages; renderer version in build-info. ⚠ *Standalone build config not yet committed to the repo* (no-lock-in build — see open items) |
 | 6.3 | Publish flow: Tier-3 approval screen + release gates | gates block bad packages with educator-facing reasons; approval required | ✅ release gates (license/content/IDs/separation) + Tier-3 confirm; failures shown in educator language (unit-tested) |
 | 6.4 | In-app student-page preview (same renderer path as build) | preview matches published output | ✅ `/site-preview` renders `buildSite` index in an isolated iframe — same build path |
 
@@ -122,22 +122,51 @@ unless a dependency is noted.
 ## Release criteria (v0.1)
 
 Tracked in [InitialReleasePlan.md](InitialReleasePlan.md) §4 — all six must
-hold before calling v0.1 shipped.
+hold before calling v0.1 shipped. Current standing:
+
+| # | Criterion | Status |
+| --- | --- | --- |
+| 1 | Non-developer completes the full loop without Git terms | ⬜ pending the pilot (M8.3) |
+| 2 | Private content absent from the public repo's entire history | ✅ verified on real repos |
+| 3 | Published repo builds independently with committed build config (no-lock-in) | ⚠ **gap** — see below |
+| 4 | Block IDs survive editor saves, AI rewrites, `.md.html` round-trip | ✅ |
+| 5 | Research events captured for every loop step; CSV-exportable | ✅ events logged; CSV via a Supabase query/export (no dedicated UI) |
+| 6 | Pilot chemist's verdict positive | ⬜ pending the pilot |
+
+### Open items before declaring v0.1 shipped
+
+- **No-lock-in build config (criterion #3) — gap.** The published public repo
+  contains the Markdown source and self-contained `.md.html` exports, but
+  **not** a committed build workflow to regenerate the site outside Alembic
+  (M6 builds app-side and pushes only the built `gh-pages` output). To close:
+  commit a standard build config (e.g. a GitHub Actions workflow that runs the
+  orz-markdown build) to the public template / on publish.
+- **M7 portal live-verify** — apply `supabase/migrations/0004_portal.sql` to
+  the Supabase project, then confirm register → `/portal`.
+- **M8.3 pilot** — run with 1–3 chemistry educators against criteria 1 & 6.
+- **Deferred chore** — bump renderer to orz-markdown 1.1.0 once the npm
+  registry is reachable from the dev machine (CI/Vercel builds already reach it).
 
 ## Log
 
-- 2026-06-11 — **UI polish pass** (impeccable + taste-skill guidance). Dark-elegant app theme: OKLCH-ish token system + component classes (`.btn`, `.panel`, `.field`, `.chip`), serif/sans pairing (Source Serif 4 + Geist), dropped the uppercase "eyebrow" labels, removed ghost-card border+shadow and over-rounding, reduced-motion handling, focus rings. **All rendered output now uses orz-markdown's `dark-elegant-1` theme** (vendored into `@alembic/renderer` as `theme-css.ts`; shared `themedDocument`): in-app preview, worksheet viewer, student site, and `.md.html` exports render identically in iframes. Theme exposure is a candidate for the shared `orz-artifacts` package (consolidation Phase B).
+### 2026-06-11
+- Planning docs: product vision, [Roadmap](Roadmap.md), [InitialReleasePlan](InitialReleasePlan.md) (Gemini as dev-phase AI provider). Repo live at github.com/wangyu16/Alembic; CI green.
+- **M0 complete.** Monorepo scaffold (7 projects) + CI; `package-contract` (layers, blocks, manifest, two-repo invariant, adversarial tests); contract v1 spec; orz-markdown spike (heading block IDs work natively via `{{attrs[#blk-…]}}`; 5 upstream gaps filed, none blocking M1–M2); CLAUDE.md + this tracker.
+- **M1 code complete.** Supabase schema (profiles/packages/sandbox_files/research_events, RLS), GitHub sign-in (Supabase Auth), app shell, sandbox creation via new `@alembic/package-ops` (M2.1 started early). Contract refined: repo refs optional (sandbox packages have none until graduation). orz-markdown Phase A fixes on branch `phase-a-alembic-fixes` (see [orz-stack ConsolidationPlan](../../orz-stack/docs/ConsolidationPlan.md)).
 
-- 2026-06-11 — M0.1, M0.2 complete; repo live at github.com/wangyu16/Alembic; CI green. M0.3 spec + M0.4 spike started.
-- 2026-06-11 — **M0 complete.** Contract spec written (docs/specs/package-contract-v1.md); orz-markdown spike done: heading block IDs work natively via `{{attrs[#blk-…]}}`; 5 upstream gaps filed in the table above (none block M1–M2). CLAUDE.md + this tracker added.
-- 2026-06-11 — **M1 code complete.** Supabase migration (profiles/packages/sandbox_files/research_events with RLS), GitHub sign-in via Supabase Auth, app shell, sandbox package creation through new `@alembic/package-ops` (M2.1 started early). Contract refined: `publicRepo` now optional (sandbox packages have no repos until graduation). Live verification awaits the user's Supabase project + GitHub OAuth app. orz-markdown Phase A fixes in progress on branch `phase-a-alembic-fixes` (see orz-stack/docs/ConsolidationPlan.md).
-- 2026-06-11 — **orz-markdown 1.1.0 published.** Phase A merged + on npm (TOC fix, shipped Agent Skill + block-ID rules, trailing-space fix).
-- 2026-06-11 — **M2 code complete.** Block-source parser in package-contract (`{{attrs[#blk-…]}}`, code-fence aware, idempotent); `@alembic/package-ops` load/save study guide with ID minting + integrity validation on save; block editor UI (add/edit/reorder/delete) with debounced server-rendered live preview; research events for create/save. 59 unit tests green. Live verify of the editor pending credentials.
-- 2026-06-11 — **M1 + M2 live-verified.** Supabase project provisioned, migration applied (4 tables, RLS). Full loop run against real backend: GitHub sign-in → workspace → create package → editor (seeded blocks load) → live preview (chemistry + KaTeX) → save. Setup steps documented in [LocalSetup.md](LocalSetup.md).
-- 2026-06-11 — **M3 live-verified.** In-app AI confirmed against real Gemini + Supabase (migration 0002 applied): drafted a section, generated a worksheet from selected blocks, governance log writing (no errors). Worksheet viewer added (open generated worksheets).
-- 2026-06-11 — **M6 live-verified.** Published study guide live on GitHub Pages. Root cause of the missing URL: App's new Pages permission was pending acceptance on the installation (fixed: accept the update; site-publish messaging clarified). Full v0.1 loop now works end to end with a live student site.
-- 2026-06-11 — **M7 code complete.** Public discovery index (`/portal`, public read via RLS) + gated register/unregister (Tier-3) with `portal_registrations` (migration 0004); nav "Discover" link; app-level error.tsx + not-found.tsx and retryable educator-facing errors throughout. Live verify needs migration 0004.
-- 2026-06-11 — **M6 code complete.** App-side static-site build (`buildSite` in renderer: index + worksheet pages + build-info with renderer version + .nojekyll), pushed to a clean `gh-pages` branch via the bridge (`publishToBranch` orphan commit) with Pages auto-enabled (`enablePages`). Release gates (license/content/IDs/public-private separation) + Tier-3 confirm gate publishing; in-app student-page preview via `/site-preview` (same build path). Build runs in-process for v0.1 (queue/worker deferred). 99 unit tests green. Live verify needs Pages:write on the App.
-- 2026-06-11 — **M5 code complete.** GitHub bridge with native fetch + node:crypto (RS256 App JWT, installation token, Git Data API commits, generate-from-template) — no Octokit; commit transport enforces the two-repo invariant (adversarial-tested). Web: connect publishing, sandbox→GitHub graduation (paired repos + separate public/private commits), save→commit, version list, restore. Migrations 0003 + GitHubAppSetup.md. 88 unit tests green. Live verify pending the user's GitHub App.
-- 2026-06-11 — **M4 code complete.** `.md.html` dual-extension export: `buildMdHtml`/`extractMdHtml` in `@alembic/renderer` with a `data-orz-format` version marker (legacy = format 0), byte-identical source round-trip, embedded source hash; download routes + buttons for study guide and worksheets; `export.dual-extension` events. Candidate for extraction into the shared `orz-artifacts` package (consolidation Phase B) once the registry is reachable. 82 unit tests green.
-- 2026-06-11 — **M3 code complete.** Derived-artifact records + hash-based staleness (package-contract); ai-assist drafting + worksheet generation over the swappable provider with ID-preservation (strip/reattach); governed provider wrapper (per-user rate limit + `ai_invocations` governance log, migration 0002); editor AI draft flow + worksheet panel (generate/regenerate/keep-mine); ai.* research events. 76 unit tests green; Gemini `gemini-2.5-flash` live-verified. **To use in-app AI: apply `supabase/migrations/0002_ai_invocations.sql`.**
+### 2026-06-14
+- **orz-markdown 1.1.0 published** (Phase A merged: TOC ordering fix, Agent Skill shipped + block-ID rules, trailing-space fix).
+- **M2.** Block-source parser (`{{attrs[#blk-…]}}`, code-fence aware, idempotent); load/save study guide with ID minting + integrity validation; block editor (add/edit/reorder/delete) + debounced live preview; authoring research events. **M1 + M2 live-verified** end to end against a real Supabase project. [LocalSetup.md](LocalSetup.md) added. Nav auth-state fix; [TechNotes](TechNotes.md) (auth-nav dynamic rendering).
+- **M3.** Derived-artifact records + hash-based staleness; ai-assist drafting + worksheet generation (ID strip/reattach); governed provider (per-user rate limit + `ai_invocations` governance log, migration 0002); editor AI draft + worksheet panel; `ai.*` events. **Live-verified** against real Gemini (`gemini-2.5-flash`) + Supabase. Governed-provider failures surfaced (not swallowed); worksheet viewer added.
+- **M4.** `.md.html` dual-extension export (`buildMdHtml`/`extractMdHtml`, `data-orz-format` marker, byte-identical round-trip, embedded source hash); download routes; unique-filename fix so re-downloads stay valid `.md.html`.
+- **M5.** github-bridge with native fetch + node:crypto (RS256 App JWT, Git Data API commits, generate-from-template) — no Octokit; commit transport enforces the two-repo invariant (adversarial-tested). Connect publishing, sandbox→GitHub graduation, save→commit, version list, restore (migration 0003; [GitHubAppSetup.md](GitHubAppSetup.md)). **Live-verified:** published a real repo pair; public repo's full history has 0 `private-instructor` paths; restore round-trip tested.
+- **M6.** App-side `buildSite` → clean `gh-pages` (orphan commit) + auto-enable Pages; release gates (license/content/IDs/separation) + Tier-3 confirm; in-app `/site-preview`. **Live-verified:** study guide live on GitHub Pages (after accepting the App's Pages permission; site-publish messaging clarified). Build runs in-process for v0.1.
+- **M7.** Public `/portal` index + gated register/unregister (Tier-3, migration 0004); app `error.tsx`/`not-found.tsx` + retryable educator-facing errors.
+- **M8 docs.** Educator [Quickstart](Quickstart.md) + production [Deployment](Deployment.md) guide.
+- **UI polish** (impeccable + taste-skill): dark-elegant token system + component classes (`.btn`/`.panel`/`.field`/`.chip`), serif/sans pairing (Source Serif 4 + Geist), dropped uppercase eyebrows + ghost-cards + over-rounding, reduced-motion, focus rings. **All rendered output uses orz-markdown `dark-elegant-1`** (vendored `theme-css.ts`, shared `themedDocument`, shown in iframes) — preview, worksheet viewer, student site, `.md.html`. Collapsible study-guide sections.
+
+### 2026-06-15
+- Course→chapter structure documented ([specs/course-structure.md](specs/course-structure.md)); `chapterStudyGuidePath` centralizes the convention; multi-chapter path kept open (additive — v0.1 single chapter is the degenerate case).
+- orz family logo in the header; `A` favicon.
+- Internal navigation switched to `next/link` (0 lint errors).
+- **Production live at https://alembic.orz.how (M8.2).** Vercel (project `alembic`, root `apps/web`, Node 22, pnpm monorepo; env vars set; Supabase Auth + GitHub App callbacks → production; Cloudflare CNAME; Git auto-deploy on push to `main`).
