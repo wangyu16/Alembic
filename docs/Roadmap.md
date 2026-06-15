@@ -65,6 +65,8 @@ Deliberately deferred: agent harness, Ketcher, question templates, adaptation, s
 
 **Goal: move multi-file, repository-aware work from hand-rolled code to sandboxed agent workers.**
 
+> **Execution & model-access design:** the mixed approach — direct single-call AI for the common local edits vs. a bounded, app-orchestrated agent for whole-course coherence (Alembic's differentiator) — plus a model gateway (Portkey/OpenRouter) with task→model routing, is analyzed in [specs/ai-architecture.md](specs/ai-architecture.md). Teaching docs need coherence + educator review, not software-style verification gates.
+
 - Container worker tier matured: job queue, isolated sandboxes, ephemeral repo checkouts, patch + explanation output, platform validation gates before any commit.
 - Claude Code SDK (or equivalent; harness-swappable boundary) driving: package reorganization, study-guide + derived-artifact co-editing, metadata/provenance updates, link/schema checks, readable commits, diff explanations.
 - External-edit reconciliation completed: detect foreign commits, rebuild projections, re-validate invariants, quarantine on violation, concurrent-edit safety (no force-push, reconcile-first saves).
