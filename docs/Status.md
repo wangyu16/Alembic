@@ -5,7 +5,7 @@ same commit as the work it tracks. Statuses: ✅ done · 🔄 in progress · ⬜
 
 **Production:** live at https://alembic.orz.how (Vercel project `alembic`, root `apps/web`, Node 22; Cloudflare DNS; Git auto-deploy on push to `main`).
 
-**Current focus: v0.1 (Phase 1) — milestone M8 (pilot & ship).** M1–M6 live-verified end to end, including a live GitHub Pages student site (https://wangyu16.github.io/test-chemistry-gegpm8vz-oer/) and production deploy (M8.2). Remaining before declaring v0.1 shipped: the pilot (M8.3) and the open items in "Release criteria" below (notably the no-lock-in build config). M7 portal live-verify needs migration 0004 applied to the Supabase project. See [LocalSetup.md](LocalSetup.md) + [GitHubAppSetup.md](GitHubAppSetup.md).
+**Current focus: Phase 2 (v0.2–v0.3) — authoring depth & chemistry-first.** v0.1 is built, deployed, and live-verified end to end (the M8.3 pilot is the only remaining v0.1 activity, ongoing). The Phase 2 modularized plan + tracker is below ("Phase 2 sub-modules"). See [LocalSetup.md](LocalSetup.md) + [GitHubAppSetup.md](GitHubAppSetup.md).
 
 **Deferred chore:** bump renderer to orz-markdown 1.1.0 (published) — reverted to 1.0.0 temporarily because the npm registry was unreachable during M2 and CI uses `--frozen-lockfile`. Behavior is unaffected (1.0.0 supports the attrs block-ID syntax); redo when the registry is reachable.
 
@@ -14,8 +14,8 @@ same commit as the work it tracks. Statuses: ✅ done · 🔄 in progress · ⬜
 | Phase | Scope | Status |
 | --- | --- | --- |
 | 0 | Foundations & contracts | ✅ |
-| 1 | Initial release: end-to-end loop (v0.1) | 🔄 |
-| 2 | Authoring depth & chemistry-first (Ketcher, import, tiers, snapshots) | ⬜ |
+| 1 | Initial release: end-to-end loop (v0.1) | ✅ built + deployed (pilot M8.3 ongoing) |
+| 2 | Authoring depth & chemistry-first (Ketcher, import, tiers, snapshots) | 🔄 planned (M9–M16 below) |
 | 3 | Agent harness & reconciliation | ⬜ |
 | 4 | Assessment & question templates | ⬜ |
 | 5 | Adaptation ecosystem | ⬜ |
@@ -143,6 +143,146 @@ hold before calling v0.1 shipped. Current standing:
 Closed recently: no-lock-in build config (criterion #3 — committed to the
 public template); M7 portal (migration 0004 applied).
 
+## Phase 2 sub-modules (v0.2–v0.3 — authoring depth & chemistry-first)
+
+**Goal:** make the workspace genuinely good for a chemist and scale a package
+from one page to a full multi-module course, while maturing the
+artifact/approval/versioning machinery. The v0.1 thesis loop works; Phase 2
+deepens it. Same conventions as v0.1: each sub-module has a "Verify by"
+acceptance check and is independently implementable.
+
+**Suggested sequencing & grouping** (→ = depends on):
+
+- **v0.2 (authoring core):** M9 multi-chapter → M10 risk-tiered approvals →
+  M11 chemistry/structures → M14 accessibility.
+- **v0.3 (production depth):** M12 import (→ M9, M10) → M13 slides/PDF +
+  artifact lifecycle (→ orz-artifacts) → M15 snapshots & citation →
+  M16 model gateway.
+
+**Cross-cutting dependencies:**
+- **orz-stack Phase B** (`orz-artifacts`: versioned embed/extract) gates M13;
+  **orz-markdown gap #5** (attrs on plugin blocks) gates M11 structure anchors
+  (see [orz-stack/docs/ConsolidationPlan.md](../../orz-stack/docs/ConsolidationPlan.md)).
+- All AI features route through the **risk tiers (M10)**; the **execution &
+  model-access design** is in [specs/ai-architecture.md](specs/ai-architecture.md);
+  the **course/chapter model** in [specs/course-structure.md](specs/course-structure.md).
+
+**Phase 2 exit criteria:** an educator builds a multi-module chemistry course
+(drawn structures, imported source materials), generates slides + printable
+PDFs, snapshots and cites an offering, and works with risk-tiered AI assistance
+under bounded, attributable cost.
+
+### M9 — Multi-chapter courses
+
+Course = one package = one static site with an index + many chapters (v0.1's
+single chapter is the degenerate case). See [course-structure.md](specs/course-structure.md).
+
+| # | Sub-module | Verify by | Status |
+| --- | --- | --- | --- |
+| 9.1 | Manifest `chapters` index + contract types (ordered chapters) | old packages (no index) read as one chapter; schema versioned, migration explicit | ⬜ |
+| 9.2 | package-ops chapter CRUD + ordering (over `chapterStudyGuidePath`) | unit tests: create / list / reorder / rename / delete chapters | ⬜ |
+| 9.3 | renderer multi-page `buildSite` (index/TOC + per-chapter pages + inter-chapter nav) | site builds N chapter pages + index; single-chapter output unchanged | ⬜ |
+| 9.4 | Editor chapter switcher wrapping the single-doc editor | author a 2-chapter course; switch/reorder; per-chapter save | ⬜ |
+| 9.5 | Course index = student-facing chapter TOC | published landing lists chapters with working links | ⬜ |
+| 9.6 | Concepts + objectives at course and chapter level (data layer) | structured records per chapter validate against contract | ⬜ |
+
+*Exit:* author and publish a 3-chapter course as one site.
+
+### M10 — Risk-tiered approvals
+
+Generalize the single Tier-3 publish gate into Tiers 1/2/3 (goal.md §2).
+
+| # | Sub-module | Verify by | Status |
+| --- | --- | --- | --- |
+| 10.1 | Tier-1 auto-apply + visible changelog + one-click undo (formatting, link repair, ID/schema housekeeping) | a tier-1 fix applies silently, shows in changelog, undoes cleanly; never changes meaning/public-private | ⬜ |
+| 10.2 | Tier-2 batch review queue (accept / edit / reject, batchable) | drafted/restructured items queue; batch accept/reject works | ⬜ |
+| 10.3 | Tier-3 itemized review extended (assessments, license/attribution, suggest-back) | each tier-3 item reviewed individually with an explanation | ⬜ |
+| 10.4 | Tier policy config (tighten to "review everything"; loosening below Tier-3 impossible) | policy enforced; publish always requires explicit approval | ⬜ |
+| 10.5 | Events: Tier-1 auto-applies logged as a separate category | acceptance-rate metrics reflect human decisions only | ⬜ |
+
+*Exit:* AI changes flow through the correct tier; publish stays gated.
+
+### M11 — Chemistry-first: structures
+
+Native chemical-structure editing as addressable blocks.
+
+| # | Sub-module | Verify by | Status |
+| --- | --- | --- | --- |
+| 11.1 | Ketcher integration in the editor (draw/edit structures) | draw a structure; SMILES/molfile captured | ⬜ |
+| 11.2 | Structure block (`kind: structure`) with SMILES/molfile as source + block-ID anchor | structure block round-trips with a stable ID | ⬜ (needs orz gap #5) |
+| 11.3 | Structure rendering in preview / site / exports | structure renders in preview and the published site | ⬜ |
+| 11.4 | AI alt-text for structures from SMILES/molfile (chemistry-first a11y) | alt text generated then reviewed (Tier-2) | ⬜ |
+| 11.5 | orz-markdown gap #5 upstream (attrs on plugin blocks) | equation/structure blocks accept `{{…[#blk-…]}}` | ⬜ (orz-stack) |
+
+*Exit:* a chemistry section with a drawn structure publishes with alt text.
+
+### M12 — Import pipeline
+
+Raw materials → study-guide blocks (Tier-2 reviewed).
+
+| # | Sub-module | Verify by | Status |
+| --- | --- | --- | --- |
+| 12.1 | Upload/ingest: Word (.docx), PDF, PPTX, images, text | files accepted and stored for processing | ⬜ |
+| 12.2 | Worker-side extraction → normalized text/structure | each format yields normalized content | ⬜ |
+| 12.3 | AI-assisted restructuring into blocks (Tier-2 queue) | imported doc becomes reviewable study-guide blocks | ⬜ |
+| 12.4 | Provenance: source records + attribution for imports | imported blocks carry source + attribution | ⬜ |
+| 12.5 | Imported-markdown ID fallback (sidecar/content-hash until native IDs) | un-ID'd import matched until IDs are assigned (contract §6 r9) | ⬜ |
+
+*Exit:* a Word/PDF dump becomes a reviewed study-guide chapter.
+
+### M13 — Artifacts & dual-extension formats
+
+Slides + PDF artifacts; complete the derived-artifact lifecycle.
+
+| # | Sub-module | Verify by | Status |
+| --- | --- | --- | --- |
+| 13.1 | `orz-artifacts` shared package (versioned embed/extract; orz-stack Phase B) | embed/extract for `.md.html`/`.slides.html`/`.md.pdf` with format markers; legacy = format 0 | ⬜ (orz-stack) |
+| 13.2 | `.slides.html` generation from blocks + dual-extension | slide deck generated; source embedded + extractable | ⬜ |
+| 13.3 | `.md.pdf` generation (worker-side, paged.js/Chromium) + dual-extension | PDF generated with embedded source | ⬜ |
+| 13.4 | Slides/PDF as derived artifacts (source blocks + staleness) | edit a source block → slide flagged stale | ⬜ |
+| 13.5 | AI-assisted merge for stale artifacts (regenerate / merge / keep-mine complete) | merge applies block changes while preserving local edits, with review | ⬜ |
+
+*Exit:* generate slides + a PDF handout from a chapter; both editable and drift-tracked.
+
+### M14 — Accessibility
+
+WCAG 2.1 AA checks + status (goal.md §2).
+
+| # | Sub-module | Verify by | Status |
+| --- | --- | --- | --- |
+| 14.1 | Automated a11y checks (heading order, alt text, contrast, link text) on study guide + site | failing items flagged with locations | ⬜ |
+| 14.2 | Accessibility status in metadata + portal indicator | status recorded and shown on the index | ⬜ |
+| 14.3 | AI remediation suggestions (Tier-2) | suggested fixes are reviewable | ⬜ |
+
+*Exit:* a package reports and improves its accessibility status.
+
+### M15 — Snapshots & citation
+
+Named immutable versions + citable scholarly output (goal.md §5).
+
+| # | Sub-module | Verify by | Status |
+| --- | --- | --- | --- |
+| 15.1 | Snapshot = Git tag via the bridge; create / list | a named snapshot is created and listed | ⬜ |
+| 15.2 | Restore-from / compare snapshots | "what changed between offerings" shown in educator language | ⬜ |
+| 15.3 | Citation: stable snapshot URL + version; `CITATION.cff` generation | citation metadata generated per snapshot | ⬜ |
+| 15.4 | Opt-in DOI minting (Zenodo or equivalent) | snapshot → DOI on opt-in | ⬜ |
+| 15.5 | Adaptation/citation target snapshots (`adaptedFrom.snapshot`) | an adaptation references a snapshot, not a moving head | ⬜ |
+
+*Exit:* snapshot a course offering, cite it, compare two offerings.
+
+### M16 — Model gateway & task routing
+
+Cost/scale via a gateway + per-task model selection. See [specs/ai-architecture.md](specs/ai-architecture.md).
+
+| # | Sub-module | Verify by | Status |
+| --- | --- | --- | --- |
+| 16.1 | Gateway provider (Portkey/OpenRouter) behind `AIProvider` | provider swap with no workflow-code change | ⬜ |
+| 16.2 | task→model routing map (cheap/fast vs strong) | each task uses its configured model | ⬜ |
+| 16.3 | Budgets / quotas per user + per institution; usage attribution | quota enforced; usage attributable | ⬜ |
+| 16.4 | Governed logging via the gateway; data-handling review (FERPA/IRB) | prompts/outputs logged under governance; third-party data handling reviewed | ⬜ |
+
+*Exit:* per-task model selection + per-user budgets live; still provider-swappable.
+
 ## Log
 
 ### 2026-06-11
@@ -166,3 +306,5 @@ public template); M7 portal (migration 0004 applied).
 - orz family logo in the header; `A` favicon.
 - Internal navigation switched to `next/link` (0 lint errors).
 - **Production live at https://alembic.orz.how (M8.2).** Vercel (project `alembic`, root `apps/web`, Node 22, pnpm monorepo; env vars set; Supabase Auth + GitHub App callbacks → production; Cloudflare CNAME; Git auto-deploy on push to `main`).
+- No-lock-in build config committed to the public template (criterion #3); portal migration 0004 applied. Design notes added: [package-lifecycle.md](specs/package-lifecycle.md) (rename/delete) and [ai-architecture.md](specs/ai-architecture.md) (execution + model access).
+- **Phase 2 planned.** Modularized plan + tracker added above (M9–M16: multi-chapter, risk-tiered approvals, chemistry/structures, import, slides/PDF, accessibility, snapshots/citation, model gateway).
