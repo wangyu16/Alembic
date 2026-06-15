@@ -11,7 +11,18 @@ interface Registration {
   public_repo_url: string;
   site_url: string;
   registered_at: string;
+  accessibility_status: "pass" | "warn" | "fail" | "unknown";
 }
+
+const A11Y_BADGE: Record<
+  Registration["accessibility_status"],
+  { label: string; className: string } | null
+> = {
+  pass: { label: "Accessible", className: "text-ok" },
+  warn: { label: "Accessibility: minor issues", className: "text-warn" },
+  fail: { label: "Accessibility: needs work", className: "text-danger" },
+  unknown: null,
+};
 
 export default async function PortalPage() {
   const supabase = await createSupabaseServerClient();
@@ -21,7 +32,7 @@ export default async function PortalPage() {
     const { data } = await supabase
       .from("portal_registrations")
       .select(
-        "package_id, title, description, discipline, license, public_repo_url, site_url, registered_at",
+        "package_id, title, description, discipline, license, public_repo_url, site_url, registered_at, accessibility_status",
       )
       .order("registered_at", { ascending: false });
     registrations = (data as Registration[] | null) ?? [];
@@ -55,6 +66,11 @@ export default async function PortalPage() {
               )}
               <div className="mt-2 flex items-center gap-4 text-sm">
                 <span className="text-xs text-faint">{r.discipline}</span>
+                {A11Y_BADGE[r.accessibility_status] && (
+                  <span className={`text-xs ${A11Y_BADGE[r.accessibility_status]!.className}`}>
+                    {A11Y_BADGE[r.accessibility_status]!.label}
+                  </span>
+                )}
                 <a href={r.site_url} target="_blank" rel="noreferrer" className="link">
                   Visit site
                 </a>

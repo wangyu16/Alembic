@@ -9,6 +9,7 @@ import {
   listAppliedTier1,
   listPendingReviews,
 } from "@/lib/changes";
+import { auditDoc, listFixables } from "@/lib/a11y";
 import { StudyGuideEditor } from "./editor";
 
 export const dynamic = "force-dynamic";
@@ -39,6 +40,10 @@ export default async function EditorPage({
 
   const doc = await loadStudyGuide(store, packageId, active?.path);
   const artifacts = await listArtifacts(store, packageId);
+
+  // Accessibility (M14): audit the active chapter for the editor panel.
+  const a11yReport = auditDoc(doc);
+  const a11yFixables = listFixables(doc.blocks);
 
   // Risk-tier state: recent auto-applied (undoable) changes + the review queue.
   const [recentChanges, pendingReviews, reviewAll] = await Promise.all([
@@ -106,6 +111,8 @@ export default async function EditorPage({
         chapters={chapters.map((c) => ({ slug: c.slug, title: c.title }))}
         activeSlug={active?.slug ?? null}
         reviewAll={reviewAll}
+        a11yReport={a11yReport}
+        a11yFixables={a11yFixables}
         recentChanges={recentChanges.map((c) => ({ id: c.id, summary: c.summary, kind: c.kind }))}
         reviewQueue={pendingReviews.map((c) => ({
           id: c.id,

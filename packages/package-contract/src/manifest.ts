@@ -42,6 +42,20 @@ export const ChapterRefSchema = z.object({
 
 export type ChapterRef = z.infer<typeof ChapterRefSchema>;
 
+/**
+ * Accessibility status, recorded in the manifest so it travels with the package
+ * (repos are the source of truth) and can be projected to the public portal.
+ * Additive and optional: absent means "never checked" (treated as unknown).
+ */
+export const AccessibilityStatusSchema = z.object({
+  status: z.enum(["pass", "warn", "fail", "unknown"]),
+  errorCount: z.number().int().nonnegative(),
+  warningCount: z.number().int().nonnegative(),
+  checkedAt: z.iso.datetime(),
+});
+
+export type AccessibilityStatus = z.infer<typeof AccessibilityStatusSchema>;
+
 export const PackageManifestSchema = z.object({
   schemaVersion: z.number().int().positive(),
   /** Stable platform-wide package ID (not the repo name). */
@@ -67,6 +81,8 @@ export const PackageManifestSchema = z.object({
    * valid with no migration.
    */
   chapters: z.array(ChapterRefSchema).optional(),
+  /** Last accessibility audit result. Optional and additive (absent = unknown). */
+  accessibility: AccessibilityStatusSchema.optional(),
   createdAt: z.iso.datetime(),
 });
 

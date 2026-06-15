@@ -23,6 +23,11 @@ import {
   undoChangeAction,
 } from "./change-actions";
 import {
+  recheckA11yAction,
+  suggestA11yFixAction,
+} from "./a11y-actions";
+import type { A11yReport, Fixable } from "@/lib/a11y";
+import {
   publishToGitHubAction,
   restoreStudyGuideAction,
 } from "./github-actions";
@@ -104,6 +109,8 @@ export function StudyGuideEditor({
   chapters,
   activeSlug,
   reviewAll,
+  a11yReport,
+  a11yFixables,
   recentChanges,
   reviewQueue,
   artifacts,
@@ -116,6 +123,8 @@ export function StudyGuideEditor({
   chapters: ChapterTab[];
   activeSlug: string | null;
   reviewAll: boolean;
+  a11yReport: A11yReport;
+  a11yFixables: Fixable[];
   recentChanges: RecentChange[];
   reviewQueue: ReviewItem[];
   artifacts: ArtifactSummary[];
@@ -353,6 +362,15 @@ export function StudyGuideEditor({
           reviewQueue={reviewQueue}
         />
 
+        <A11yPanel
+          packageId={packageId}
+          activePath={initialPath}
+          dirty={dirty}
+          report={a11yReport}
+          fixables={a11yFixables}
+          onChanged={() => router.refresh()}
+        />
+
         <WorksheetPanel
           packageId={packageId}
           artifacts={artifacts}
@@ -570,6 +588,135 @@ function TierPanel({
       )}
 
       {error && <p className="mt-2 text-sm text-danger">{error}</p>}
+    </div>
+  );
+}
+
+const A11Y_STATUS_LABEL: Record<A11yReport["status"], { text: string; className: string }> = {
+  pass: { text: "No issues found", className: "text-ok" },
+  warn: { text: "Minor issues", className: "text-warn" },
+  fail: { text: "Needs attention", className: "text-danger" },
+};
+
+function A11yPanel({
+  packageId,
+  activePath,
+  dirty,
+  report,
+  fixables,
+  onChanged,
+}: {
+  packageId: string;
+  activePath: string;
+  dirty: boolean;
+  report: A11yReport;
+  fixables: Fixable[];
+  onChanged: () => void;
+}) {
+  const [pending, start] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+  const [note, setNote] = useState<string | null>(null);
+  const [open, setOpen] = useState(false);
+
+  const status = A11Y_STATUS_LABEL[report.status];
+
+  const recheck = () => {
+    setError(null);
+    setNote(null);
+    start(async () => {
+      const r = await recheckA11yAction(packageId);
+      if (!r.ok) setError(r.error ?? "Check failed.");
+      else onChanged();
+    });
+  };
+
+  const suggest = (f: Fixable) => {
+    setError(null);
+    setNote(null);
+    start(async () => {
+      const r = await suggestA11yFixAction(packageId, {
+        path: activePath,
+        rule: f.rule,
+        url: f.url,
+        oldText: f.oldText,
+        context: f.context,
+      });
+      if (!r.ok) setError(r.error ?? "Couldn't draft a fix.");
+      else {
+        setNote("Suggested fix added to the review queue above.");
+        onChanged();
+      }
+    });
+  };
+
+  return (
+    <div className="panel p-3">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="flex w-full items-center justify-between"
+      >
+        <span className="text-sm font-medium">Accessibility</span>
+        <span className={`text-xs ${status.className}`}>
+          {status.text}
+          {(report.errorCount > 0 || report.warningCount > 0) &&
+            ` · ${report.errorCount} error${report.errorCount === 1 ? "" : "s"}, ${report.warningCount} warning${report.warningCount === 1 ? "" : "s"}`}
+        </span>
+      </button>
+
+      {open && (
+        <div className="mt-3">
+          <div className="flex items-center gap-3">
+            <button onClick={recheck} disabled={pending} className="btn btn-ghost btn-sm">
+              {pending ? "Checking…" : "Re-check & record"}
+            </button>
+            <span className="text-xs text-faint">
+              Reflects the last save{dirty ? " — save to refresh" : ""}.
+            </span>
+          </div>
+
+          {report.findings.length > 0 && (
+            <ul className="mt-3 space-y-1.5">
+              {report.findings.map((f, i) => (
+                <li key={i} className="text-xs">
+                  <span className={f.severity === "error" ? "text-danger" : "text-warn"}>
+                    ●
+                  </span>{" "}
+                  <span className="text-muted">{f.message}</span>
+                  {f.context && <span className="text-faint"> — {f.context}</span>}
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {fixables.length > 0 && (
+            <div className="mt-3">
+              <div className="text-xs font-medium uppercase tracking-wide text-faint">
+                Fix with AI (review before applying)
+              </div>
+              <ul className="mt-1 divide-y divide-[var(--edge-soft)]">
+                {fixables.map((f) => (
+                  <li key={f.id} className="flex items-center justify-between gap-2 py-2">
+                    <span className="min-w-0 truncate text-xs text-muted">
+                      {f.rule === "img-alt" ? "Image needs a description" : `Vague link text: “${f.oldText}”`}
+                      <span className="text-faint"> · in {f.blockTitle}</span>
+                    </span>
+                    <button
+                      onClick={() => suggest(f)}
+                      disabled={pending}
+                      className="shrink-0 rounded border border-zinc-300 px-2 py-1 text-xs hover:bg-elevated disabled:opacity-50 dark:border-zinc-700"
+                    >
+                      Suggest a fix
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {note && <p className="mt-2 text-xs text-ok">{note}</p>}
+          {error && <p className="mt-2 text-sm text-danger">{error}</p>}
+        </div>
+      )}
     </div>
   );
 }

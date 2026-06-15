@@ -33,6 +33,7 @@ export const EVENT_TYPES = [
   "tier1.auto-applied",
   "change.undone",
   "review.queued",
+  "a11y.checked",
   "error.surfaced",
 ] as const;
 

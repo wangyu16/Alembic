@@ -20,6 +20,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@alembic/a11y':
+        specifier: workspace:*
+        version: link:../../packages/a11y
       '@alembic/ai-assist':
         specifier: workspace:*
         version: link:../../packages/ai-assist
@@ -91,6 +94,8 @@ importers:
       tsx:
         specifier: ^4.22.4
         version: 4.22.4
+
+  packages/a11y: {}
 
   packages/ai-assist:
     dependencies:

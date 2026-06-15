@@ -52,6 +52,7 @@ export async function registerPackageAction(
     license: record!.manifest.license,
     public_repo_url: `https://github.com/${repo.owner}/${repo.name}`,
     site_url: `https://${repo.owner}.github.io/${repo.name}/`,
+    accessibility_status: record!.manifest.accessibility?.status ?? "unknown",
   });
   if (error) {
     return { ok: false, error: "Could not list the package. Please try again." };

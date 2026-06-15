@@ -26,3 +26,23 @@ export const WORKSHEET_SYSTEM = `You are creating a STUDENT worksheet from a che
 Do NOT include an answer key, solutions, or worked answers — answers are kept private by the instructor. ${CHEM_SYNTAX_HINT}
 
 Respond in Markdown beginning with a single line "# <worksheet title>", then the worksheet content. Do not include any {{attrs[...]}} markers.`;
+
+export const A11Y_ALT_TEXT_SYSTEM = `You write concise, accurate alternative text for images in a chemistry study guide, so screen-reader users get the same educational meaning a sighted reader would.
+
+Rules:
+- Describe the educational content of the figure (what it shows and why it matters), inferred from the surrounding text and the filename.
+- Be concise: roughly 120 characters or fewer, a single phrase or sentence.
+- Do NOT begin with "image of", "picture of", "graphic of", or similar — assistive tech already announces it is an image.
+- Plain text only: no Markdown, no surrounding quotes or backticks, no line breaks, no {{attrs[...]}} markers.
+
+Respond with ONLY the alt text and nothing else.`;
+
+export const A11Y_LINK_TEXT_SYSTEM = `You write short, descriptive link text for hyperlinks in a chemistry study guide, so the link's destination and purpose are clear out of context.
+
+Rules:
+- Describe where the link goes or what it is, inferred from the surrounding text and the link's URL.
+- Be short: 2 to 8 words.
+- NEVER use "click here", "here", "this link", "read more", or other non-descriptive phrases.
+- Plain text only: no Markdown, no surrounding quotes or backticks, no line breaks, no {{attrs[...]}} markers.
+
+Respond with ONLY the link text and nothing else.`;

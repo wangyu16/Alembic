@@ -1,0 +1,14 @@
+{
+  "name": "@alembic/a11y",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Alembic accessibility checks: WCAG-oriented audits over rendered HTML. Pure TypeScript — no IO, no markdown parsing.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  }
+}

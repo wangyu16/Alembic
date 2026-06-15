@@ -8,6 +8,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
 import { supabaseEventLogger } from "@/lib/events";
 import { syncFilesToGitHub } from "@/lib/github";
+import { applyA11yFix } from "@/lib/a11y";
 import {
   getChange,
   getReviewAll,
@@ -164,10 +165,39 @@ async function applyAccepted(
     title?: string;
     body?: string;
     content?: string;
+    rule?: "img-alt" | "link-text";
+    url?: string;
+    oldText?: string;
+    suggestion?: string;
   };
   let committed: { path: string; content: string } | null = null;
 
-  if (change.kind === "draft-section") {
+  if (change.kind === "a11y-fix" && detail.rule && detail.url != null && detail.suggestion != null) {
+    // Apply the accepted fix to whichever block still contains the target.
+    const doc = await loadStudyGuide(store, packageId, detail.path);
+    let applied = false;
+    const nextBlocks = doc.blocks.map((b) => {
+      if (applied) return b;
+      const body = applyA11yFix(b.body, {
+        rule: detail.rule!,
+        url: detail.url!,
+        oldText: detail.oldText ?? "",
+        suggestion: detail.suggestion!,
+      });
+      if (body == null) return b;
+      applied = true;
+      return { ...b, body };
+    });
+    if (applied) {
+      const { blocks } = await saveStudyGuide(store, packageId, {
+        path: detail.path,
+        preamble: doc.preamble,
+        blocks: nextBlocks,
+      });
+      committed = { path: detail.path, content: serializeStudyGuide(doc.preamble, blocks) };
+    }
+    // If the target vanished (educator already edited it), accept silently with no commit.
+  } else if (change.kind === "draft-section") {
     const doc = await loadStudyGuide(store, packageId, detail.path);
     const { blocks } = await saveStudyGuide(store, packageId, {
       path: detail.path,
