@@ -3,6 +3,8 @@
 Live view of what is done, in progress, and coming. Update this file in the
 same commit as the work it tracks. Statuses: ✅ done · 🔄 in progress · ⬜ pending · ⏸ deferred.
 
+**Production:** live at https://alembic.orz.how (Vercel + Cloudflare DNS). Remaining v0.1 work is the pilot (M8.3).
+
 **Current focus: v0.1 (Phase 1) — milestone M8 (pilot & ship).** M1–M6 live-verified — the full loop runs end to end including a live GitHub Pages student site (https://wangyu16.github.io/test-chemistry-gegpm8vz-oer/). M7 (portal index + error boundaries) code complete; **live verify needs migration 0004 applied.** See [LocalSetup.md](LocalSetup.md) + [GitHubAppSetup.md](GitHubAppSetup.md).
 
 **Deferred chore:** bump renderer to orz-markdown 1.1.0 (published) — reverted to 1.0.0 temporarily because the npm registry was unreachable during M2 and CI uses `--frozen-lockfile`. Behavior is unaffected (1.0.0 supports the attrs block-ID syntax); redo when the registry is reachable.
@@ -114,7 +116,7 @@ unless a dependency is noted.
 | # | Sub-module | Verify by | Status |
 | --- | --- | --- | --- |
 | 8.1 | Demo content + educator quickstart (1 page) | a new user can follow it unaided | 🔄 [Quickstart.md](Quickstart.md) written; demo content via quickstart sample |
-| 8.2 | Deploy at alembic.orz.how (Cloudflare DNS → Vercel) | production URL serves the app | 🔄 [Deployment.md](Deployment.md) guide written; deploy pending user (Vercel/Cloudflare) |
+| 8.2 | Deploy at alembic.orz.how (Cloudflare DNS → Vercel) | production URL serves the app | ✅ live on Vercel (project `alembic`, root `apps/web`); https://alembic.orz.how serves (200, valid TLS); Supabase Auth + GitHub App callbacks set to production |
 | 8.3 | Pilot with 1–3 chemistry educators; fix top frictions | full loop completed by a non-developer; release criteria met | ⬜ after deploy |
 
 ## Release criteria (v0.1)
