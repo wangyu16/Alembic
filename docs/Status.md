@@ -179,12 +179,12 @@ single chapter is the degenerate case). See [course-structure.md](specs/course-s
 
 | # | Sub-module | Verify by | Status |
 | --- | --- | --- | --- |
-| 9.1 | Manifest `chapters` index + contract types (ordered chapters) | old packages (no index) read as one chapter; schema versioned, migration explicit | ⬜ |
+| 9.1 | Manifest `chapters` index + contract types (ordered chapters) | old packages (no index) read as one chapter; schema versioned, migration explicit | ✅ `ChapterRef` + optional `chapters[]` (additive; absent = single chapter); slug rule; 48 contract tests |
 | 9.2 | package-ops chapter CRUD + ordering (over `chapterStudyGuidePath`) | unit tests: create / list / reorder / rename / delete chapters | ⬜ |
 | 9.3 | renderer multi-page `buildSite` (index/TOC + per-chapter pages + inter-chapter nav) | site builds N chapter pages + index; single-chapter output unchanged | ⬜ |
 | 9.4 | Editor chapter switcher wrapping the single-doc editor | author a 2-chapter course; switch/reorder; per-chapter save | ⬜ |
 | 9.5 | Course index = student-facing chapter TOC | published landing lists chapters with working links | ⬜ |
-| 9.6 | Concepts + objectives at course and chapter level (data layer) | structured records per chapter validate against contract | ⬜ |
+| 9.6 | Concepts + objectives at course and chapter level (data layer) | structured records per chapter validate against contract | 🔄 contract schemas done (`ConceptMap`/`Objectives` + record paths); ops/editor later |
 
 *Exit:* author and publish a 3-chapter course as one site.
 

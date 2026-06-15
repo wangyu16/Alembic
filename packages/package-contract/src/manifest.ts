@@ -26,6 +26,22 @@ export const RepoRefSchema = z.object({
 
 export type RepoRef = z.infer<typeof RepoRefSchema>;
 
+/** A chapter slug: filename-safe, becomes `study-guide/<slug>.md`. */
+export const CHAPTER_SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+/**
+ * One chapter (module) of a course, in display order. A chapter is the working
+ * unit: one study-guide page plus its concept map, objectives, slides, and
+ * question templates (later phases). v0.1/single-chapter packages omit
+ * `chapters` entirely and are read as one implicit chapter.
+ */
+export const ChapterRefSchema = z.object({
+  slug: z.string().regex(CHAPTER_SLUG_PATTERN),
+  title: z.string().min(1),
+});
+
+export type ChapterRef = z.infer<typeof ChapterRefSchema>;
+
 export const PackageManifestSchema = z.object({
   schemaVersion: z.number().int().positive(),
   /** Stable platform-wide package ID (not the repo name). */
@@ -45,6 +61,12 @@ export const PackageManifestSchema = z.object({
   publicRepo: RepoRefSchema.optional(),
   /** Absent only in sandbox (pre-GitHub) packages; set by graduation. */
   privateRepo: RepoRefSchema.optional(),
+  /**
+   * Ordered chapters. Optional and additive: when absent, the package is a
+   * single implicit chapter (the default study-guide file) — old packages stay
+   * valid with no migration.
+   */
+  chapters: z.array(ChapterRefSchema).optional(),
   createdAt: z.iso.datetime(),
 });
 

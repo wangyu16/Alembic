@@ -34,6 +34,30 @@ describe("parseManifest", () => {
     expect(() => parseManifest({ ...valid, license: "all-rights-reserved" })).toThrow();
   });
 
+  it("omits chapters by default (single implicit chapter)", () => {
+    expect(parseManifest(valid).chapters).toBeUndefined();
+  });
+
+  it("parses an ordered chapters index", () => {
+    const m = parseManifest({
+      ...valid,
+      chapters: [
+        { slug: "01-stoichiometry", title: "Stoichiometry" },
+        { slug: "02-thermochemistry", title: "Thermochemistry" },
+      ],
+    });
+    expect(m.chapters?.map((c) => c.slug)).toEqual([
+      "01-stoichiometry",
+      "02-thermochemistry",
+    ]);
+  });
+
+  it("rejects a non-filename-safe chapter slug", () => {
+    expect(() =>
+      parseManifest({ ...valid, chapters: [{ slug: "Ch 1!", title: "x" }] }),
+    ).toThrow();
+  });
+
   it("rejects a manifest missing the schema version", () => {
     const { schemaVersion: _omitted, ...rest } = valid;
     expect(() => parseManifest(rest)).toThrow();
