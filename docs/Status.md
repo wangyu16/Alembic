@@ -197,8 +197,8 @@ Generalize the single Tier-3 publish gate into Tiers 1/2/3 (goal.md §2).
 | 10.1 | Tier-1 auto-apply + visible changelog + one-click undo (formatting, link repair, ID/schema housekeeping) | a tier-1 fix applies silently, shows in changelog, undoes cleanly; never changes meaning/public-private | ⬜ |
 | 10.2 | Tier-2 batch review queue (accept / edit / reject, batchable) | drafted/restructured items queue; batch accept/reject works | ⬜ |
 | 10.3 | Tier-3 itemized review extended (assessments, license/attribution, suggest-back) | each tier-3 item reviewed individually with an explanation | ⬜ |
-| 10.4 | Tier policy config (tighten to "review everything"; loosening below Tier-3 impossible) | policy enforced; publish always requires explicit approval | ⬜ |
-| 10.5 | Events: Tier-1 auto-applies logged as a separate category | acceptance-rate metrics reflect human decisions only | ⬜ |
+| 10.4 | Tier policy config (tighten to "review everything"; loosening below Tier-3 impossible) | policy enforced; publish always requires explicit approval | 🔄 contract: `effectiveTier`=max(base,minTier), Tier-3 pinned, never lowered (6 tests); `packages.review_all` (migration 0005); UI toggle in web |
+| 10.5 | Events: Tier-1 auto-applies logged as a separate category | acceptance-rate metrics reflect human decisions only | 🔄 taxonomy added (`tier1.auto-applied`, `change.undone`, `review.queued`); logging in web |
 
 *Exit:* AI changes flow through the correct tier; publish stays gated.
 

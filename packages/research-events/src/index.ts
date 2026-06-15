@@ -28,6 +28,11 @@ export const EVENT_TYPES = [
   "publish.failed",
   "restore.completed",
   "portal.registered",
+  // Tier-1 auto-applies are a SEPARATE category from human decisions, so
+  // ai.suggestion.* acceptance-rate metrics reflect human choices only.
+  "tier1.auto-applied",
+  "change.undone",
+  "review.queued",
   "error.surfaced",
 ] as const;
 
