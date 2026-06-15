@@ -288,6 +288,7 @@ Named here so future versions slot in without disturbing v1 packages:
 - **`research-schema` layer contents.** The layer, its directory, and its public-repo assignment exist in v1; the actual event-log and rubric schema formats are unspecified until the research instrumentation design lands. Tools MUST preserve unknown files there.
 - **Question-template system.** The `question-template-item` block kind and the `assessment-support` layer are reserved; template-rule formats are post-v0.1.
 - **Multi-chapter courses.** A course = one package = one static site with an index and many chapters (each a study-guide page plus its concept map, objectives, slides, and question templates). v0.1 ships the degenerate single-chapter case; the general model and its additive evolution path are specified in [course-structure.md](course-structure.md). Reserved hooks: an optional `chapters` index in the manifest and per-chapter files within existing layers.
+- **Package rename & delete.** Not in v0.1. Title rename (metadata only; `packageId` stays immutable) and delete semantics — sandbox delete vs GitHub "remove from Alembic" vs guarded repo deletion — are designed in [package-lifecycle.md](package-lifecycle.md).
 - **AI-assisted merge** for stale artifacts (§8) and the **import pipeline** ID-fallback (§6, rule 9).
 - **Embargo metadata** (auto-release dates, owner-only early lift, [goal.md §7](../goal.md)) — no v1 record format is defined; embargoed material simply lives in `private-instructor`.
 
