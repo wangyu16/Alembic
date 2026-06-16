@@ -6,19 +6,26 @@ import {
   canAutoApply,
   serializeStudyGuide,
   PROPOSED_CHANGE_SET_VERSION,
+  newQuestionItemId,
+  questionItemPath,
+  answerKeyPath,
   type ProposalOp,
   type ProposedChangeSet,
+  type QuestionItem,
+  type AnswerKey,
 } from "@alembic/package-contract";
 import {
   applyProposedChangeSet,
   loadStudyGuide,
   saveStudyGuide,
+  saveQuestionItem,
+  saveAnswerKey,
   tidyStudyGuide,
 } from "@alembic/package-ops";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
 import { supabaseEventLogger } from "@/lib/events";
-import { syncFilesToGitHub } from "@/lib/github";
+import { syncFilesToGitHub, syncPrivateFilesToGitHub } from "@/lib/github";
 import { applyA11yFix } from "@/lib/a11y";
 import {
   getChange,
@@ -184,6 +191,11 @@ async function applyAccepted(
     op?: ProposalOp;
     chapterSlug?: string;
     rationale?: string;
+    templateId?: string;
+    stem?: string;
+    choices?: string[];
+    objectiveIds?: string[];
+    answer?: string;
   };
   let committed: { path: string; content: string } | null = null;
 
@@ -255,6 +267,33 @@ async function applyAccepted(
     } catch {
       // Stale proposal — the educator already moved on. Accept with no commit.
     }
+  } else if (change.kind === "assessment-edit" && detail.stem && detail.answer && detail.templateId) {
+    // A reviewed (Tier-3) generated question: write the public-safe item to the
+    // public repo and the answer key to the PRIVATE repo. The two syncs are
+    // handled here (not via the public-only `committed` path) so the key never
+    // routes through the public commit.
+    const itemId = newQuestionItemId();
+    const item: QuestionItem = {
+      id: itemId,
+      templateId: detail.templateId,
+      objectiveIds: detail.objectiveIds ?? [],
+      stem: detail.stem,
+      choices: detail.choices ?? [],
+    };
+    const key: AnswerKey = { itemId, answer: detail.answer, rationale: detail.rationale ?? "" };
+    await saveQuestionItem(store, packageId, item); // public partition
+    await saveAnswerKey(store, packageId, key); // private partition (assertAnswerKeyPrivate)
+    await syncFilesToGitHub(
+      supabase, store, userId, packageId,
+      [{ path: questionItemPath(itemId), content: JSON.stringify(item, null, 2) }],
+      "Accept question item (Alembic)",
+    );
+    await syncPrivateFilesToGitHub(
+      supabase, store, userId, packageId,
+      [{ path: answerKeyPath(itemId), content: JSON.stringify(key, null, 2) }],
+      "Add answer key (Alembic)",
+    );
+    // committed stays null — both repos already synced above.
   } else if (change.kind === "formatting-tidy" && detail.content) {
     await store.putFiles(packageId, [{ repo: "public", path: detail.path, content: detail.content }]);
     committed = { path: detail.path, content: detail.content };
@@ -309,6 +348,9 @@ export async function batchAcceptReviewAction(
     const pending = await listPendingReviews(supabase, packageId);
     const committed: { path: string; content: string }[] = [];
     for (const change of pending) {
+      // Tier-3 items (assessments, answer keys, …) are itemized review only —
+      // never batch-accepted. The educator accepts each individually.
+      if (change.tier >= 3) continue;
       const c = await applyAccepted(supabase, store, packageId, user.id, change);
       if (c) committed.push(c);
     }

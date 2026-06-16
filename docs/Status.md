@@ -27,7 +27,7 @@ These are the only things blocking full production parity with the code:
 | 1 | Initial release: end-to-end loop (v0.1) | ✅ built + deployed (not yet *shipped* — 2 of 6 release criteria pending the M8.3 pilot) |
 | 2 | Authoring depth & chemistry-first (tiers, a11y, carriers & assets: Ketcher/plots/slides/PDF, import, snapshots, gateway, local mode) | ✅ core built (M9–M17); documented deferrals → worker tier (PDF, foreign import), studio editing/projects, DOI/compare, per-institution quotas |
 | 3 | Agent harness & reconciliation | ✅ core built (M18 coherence agent, M19 job seam, M20 reconciliation, M21 leakage audit + runbook); deferred: worker-tier agent execution, one-click remediation, private-repo reconcile |
-| 4 | Assessment & question templates | ⬜ planned (M22–M25 decomposed; does **not** force the worker tier — LMS export is a pure XML+zip transformer) |
+| 4 | Assessment & question templates | 🔄 in progress (M22 contract + M23 generation + M24 answer-key/embargo built; M25 LMS export next) |
 | 5 | Adaptation ecosystem | ⬜ |
 | 6 | Portal & discovery | ⬜ |
 | 7 | Research operations & study readiness | ⬜ |
@@ -456,24 +456,24 @@ worker-side agent — the separate Phase 3.5 infra block.)
 
 | # | Sub-module | Verify by | Status |
 | --- | --- | --- | --- |
-| 22.1 | Question-template schema (concept/objective alignment, context, difficulty, representations, parameters, misconception targets) | a template validates; references concept/objective ids | ⬜ |
-| 22.2 | Assessment blueprint schema (selection of templates/objectives, weighting, embargo metadata) | a blueprint validates against the contract | ⬜ |
-| 22.3 | Question-item + answer-key records (item in `assessment-support`; key in `private-instructor`; alignment back to template/objective) | placement enforced by `assertPathAllowedInRepo`; key path is private-only | ⬜ |
+| 22.1 | Question-template schema (concept/objective alignment, context, difficulty, representations, parameters, misconception targets) | a template validates; references concept/objective ids | ✅ contract `assessments.ts` `QuestionTemplateSchema` + `Difficulty`/`Representation`/`TemplateParameter` |
+| 22.2 | Assessment blueprint schema (selection of templates/objectives, weighting, embargo metadata) | a blueprint validates against the contract | ✅ `AssessmentBlueprintSchema` (entries: templateId/count/weight; objectiveIds; `Embargo.releaseAt`) |
+| 22.3 | Question-item + answer-key records (item in `assessment-support`; key in `private-instructor`; alignment back to template/objective) | placement enforced by `assertPathAllowedInRepo`; key path is private-only | ✅ `QuestionItemSchema` (public, no answer) + `AnswerKeySchema` (private); path helpers + `assertAnswerKeyPrivate`; 8 tests (96 contract) |
 
 ### M23 — AI question generation *(Tier A — single-call, no worker tier)*
 
 | # | Sub-module | Verify by | Status |
 | --- | --- | --- | --- |
-| 23.1 | Generate items from a template (ai-assist), respecting instructor design + alignment + misconception targets | generated item matches the template's constraints | ⬜ |
-| 23.2 | Items routed through review (Tier-2 draft / Tier-3 for answer keys) + provenance to the template | each item reviewed; key generation is Tier-3 itemized | ⬜ |
+| 23.1 | Generate items from a template (ai-assist), respecting instructor design + alignment + misconception targets | generated item matches the template's constraints | ✅ ai-assist `generateQuestions(provider,{template,count})` — pairs public stem/choices with the PRIVATE answer/rationale; prompt forbids leaking the answer; `stubGenerateQuestions` for offline; `assessment-item` routed to the strong model. 6 tests (55 total) |
+| 23.2 | Items routed through review (Tier-2 draft / Tier-3 for answer keys) + provenance to the template | each item reviewed; key generation is Tier-3 itemized | ✅ web `generateItemsAction` enqueues each item as a **Tier-3** `assessment-edit` review (with templateId provenance); surfaced in "Changes & review"; Tier-3 excluded from batch-accept (itemized only). **Needs a live pass** (Portkey on Vercel) |
 
 ### M24 — Private-repo answer keys & embargo *(security-critical; in-process)*
 
 | # | Sub-module | Verify by | Status |
 | --- | --- | --- | --- |
-| 24.1 | Answer keys written only to the private repo; never staged public (reuse the two-repo invariant) | adversarial test: a key can't reach the public repo via any path | ⬜ |
-| 24.2 | Embargoed assessments: auto-release date + owner-only early lift | embargo metadata gates publication; lift is Tier-3 | ⬜ |
-| 24.3 | Answer-key leakage checks in release gates (extend M6.3 + the M21 audit) | a publish carrying a key/embargoed item is blocked with an educator-facing reason | ⬜ |
+| 24.1 | Answer keys written only to the private repo; never staged public (reuse the two-repo invariant) | adversarial test: a key can't reach the public repo via any path | ✅ package-ops `saveAnswerKey` (repo:"private", `assertAnswerKeyPrivate`); web accept writes item→public + key→private via `syncPrivateFilesToGitHub` (commit plan `repo:"private"`, `validateCommitPlan` fails closed). Adversarial test: a sentinel answer lands only in the private partition, zero public files |
+| 24.2 | Embargoed assessments: auto-release date + owner-only early lift | embargo metadata gates publication; lift is Tier-3 | 🔄 contract `Embargo` + ops `isReleased()` done; the blueprint/embargo editor UI + early-lift action are a follow-up |
+| 24.3 | Answer-key leakage checks in release gates (extend M6.3 + the M21 audit) | a publish carrying a key/embargoed item is blocked with an educator-facing reason | ✅ release-gates "Answer keys & embargo" check (fails if any private/answer-key path is staged public); active in the existing publish flow |
 
 ### M25 — One-way LMS export (QTI / Common Cartridge) *(pure transformer + zip)*
 
@@ -514,6 +514,25 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
 ## Log
 
 ### 2026-06-16
+- **M22–M24 — assessment & question templates (Phase 4 core).** Built durable-first
+  (two concurrent subagents on disjoint packages + hand-integrated web). Contract
+  `assessments.ts` (M22): QuestionTemplate/AssessmentBlueprint/QuestionItem (public,
+  assessment-support) + AnswerKey (private, private-instructor), with a HARD
+  boundary — `assertAnswerKeyPrivate` + path helpers; 8 tests. ai-assist
+  `generateQuestions` (M23): pairs public stem/choices with the private
+  answer/rationale, prompt forbids leaking the answer; 6 tests. package-ops
+  `assessments.ts` (M24): load/save templates/blueprints/items (public) +
+  `saveAnswerKey` (private only) + `isReleased()` embargo check + a release-gate
+  "Answer keys & embargo" check; adversarial test proves a sentinel answer lands
+  only in the private partition. Web: `saveTemplateAction`/`generateItemsAction`
+  (Tier-3 review queue) + accept branch writing item→public + key→**private** via
+  the new `syncPrivateFilesToGitHub` (commit plan repo:"private", validateCommitPlan
+  fail-closed) + Tier-3 excluded from batch-accept + `AssessmentsPanel` (Generate
+  group). The full loop — template → AI generate → Tier-3 itemized review → public
+  item + private answer key — works; release gate guards leakage. typecheck + all
+  tests + web build green. **Needs a live pass** (Portkey on Vercel). Confirmed at
+  planning: Phase 4 needs no worker tier. Next: M25 LMS export (QTI + Common
+  Cartridge, pure transformer + zip). Follow-up: blueprint/embargo editor UI + early-lift.
 - **Light theme.** Added a light/dark toggle (header ☀/☾) alongside the existing
   dark-elegant default. Cookie-based (`alembic-theme`, single source of truth):
   the root layout reads it server-side into `<html data-theme>` (no flash), the

@@ -46,5 +46,7 @@ export const DEFAULT_ROUTING: ModelRouting = {
     "import-blocks": "gemini-2.5-pro",
     // Tier-B whole-course coherence reasoning → the strongest model.
     "coherence-agent": "gemini-2.5-pro",
+    // Assessment item generation → strong model (design fidelity matters).
+    "assessment-item": "gemini-2.5-pro",
   },
 };

@@ -33,6 +33,12 @@ import { runCoherenceAgentAction } from "./agent-actions";
 import { reconcilePackageAction, scanForLeaksAction } from "./reconcile-actions";
 import { loadPlanningAction, savePlanningAction, outlineFromPlanAction, type PlanningData } from "./planning-actions";
 import {
+  listAssessmentsAction,
+  saveTemplateAction,
+  generateItemsAction,
+  type AssessmentSummary,
+} from "./assessment-actions";
+import {
   addCitationAction,
   createSnapshotAction,
   listSnapshotsAction,
@@ -475,6 +481,9 @@ export function StudyGuideEditor({
             dirty={dirty}
             onChanged={() => router.refresh()}
           />
+        </ToolSection>
+        <ToolSection title="Assessments & question templates">
+          <AssessmentsPanel packageId={packageId} onQueued={() => router.refresh()} />
         </ToolSection>
 
         <CategoryLabel>Publish &amp; share</CategoryLabel>
@@ -1086,6 +1095,135 @@ function ReconcilePanel({ packageId }: { packageId: string }) {
           ))}
         </ul>
       )}
+    </div>
+  );
+}
+
+/**
+ * M22–M24 — the thin client for assessments. Create question templates
+ * (instructor design), generate items with AI → each lands in "Changes &
+ * review" as a Tier-3 itemized item; on accept the question goes public and the
+ * answer key goes to the PRIVATE repo (never published). Blueprints + embargo
+ * UI are a follow-up; the contract + ops support them.
+ */
+function AssessmentsPanel({
+  packageId,
+  onQueued,
+}: {
+  packageId: string;
+  onQueued: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [summary, setSummary] = useState<AssessmentSummary>({ templates: [], itemCount: 0 });
+  const [prompt, setPrompt] = useState("");
+  const [difficulty, setDifficulty] = useState<"intro" | "core" | "challenge">("core");
+  const [count, setCount] = useState(3);
+  const [note, setNote] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function load() {
+    setSummary(await listAssessmentsAction(packageId));
+    setLoaded(true);
+  }
+  async function openPanel() {
+    setOpen(true);
+    if (!loaded) await load();
+  }
+
+  async function createTemplate() {
+    setBusy(true); setError(null); setNote(null);
+    const r = await saveTemplateAction(packageId, { prompt, difficulty });
+    if (r.ok) { setPrompt(""); setNote("Template saved."); await load(); }
+    else setError(r.error ?? "Couldn't save the template.");
+    setBusy(false);
+  }
+
+  async function generate(templateId: string) {
+    setBusy(true); setError(null); setNote(null);
+    const r = await generateItemsAction(packageId, templateId, count);
+    if (r.ok) { setNote(`Generated ${r.queued} item(s) — review each in “Changes & review” (answers go to the private repo on accept).`); onQueued(); }
+    else setError(r.error ?? "Couldn't generate items.");
+    setBusy(false);
+  }
+
+  if (!open) {
+    return (
+      <button onClick={openPanel} className="btn btn-ghost">
+        📝 Assessments &amp; question templates
+      </button>
+    );
+  }
+
+  return (
+    <div className="panel p-3">
+      <div className="mb-2 flex items-center justify-between">
+        <span className="text-sm font-medium">Assessments &amp; question templates</span>
+        <button onClick={() => setOpen(false)} className="text-xs text-muted hover:text-ink">Close</button>
+      </div>
+      <p className="mb-2 text-xs text-muted">
+        Define a template, then generate questions from it. Answer keys are kept
+        in the private repository, never published. {summary.itemCount} accepted item
+        {summary.itemCount === 1 ? "" : "s"}.
+      </p>
+
+      <div className="text-xs font-medium uppercase tracking-wide text-faint">New template</div>
+      <textarea
+        value={prompt}
+        onChange={(e) => setPrompt(e.target.value)}
+        placeholder="What should this template ask? e.g. 'Balance a redox half-reaction for a given species pair.'"
+        rows={2}
+        className="field mt-1 w-full text-sm"
+      />
+      <div className="mt-1 flex items-center gap-2">
+        <select
+          value={difficulty}
+          onChange={(e) => setDifficulty(e.target.value as "intro" | "core" | "challenge")}
+          className="field text-xs"
+        >
+          <option value="intro">intro</option>
+          <option value="core">core</option>
+          <option value="challenge">challenge</option>
+        </select>
+        <button onClick={createTemplate} disabled={busy || !prompt.trim()} className="btn btn-primary btn-sm">
+          {busy ? "Working…" : "Save template"}
+        </button>
+      </div>
+
+      {summary.templates.length > 0 && (
+        <div className="mt-3">
+          <div className="flex items-center justify-between">
+            <div className="text-xs font-medium uppercase tracking-wide text-faint">Templates</div>
+            <label className="flex items-center gap-1 text-xs text-muted">
+              items
+              <input
+                type="number" min={1} max={10} value={count}
+                onChange={(e) => setCount(Number(e.target.value) || 1)}
+                className="field w-14 text-xs"
+              />
+            </label>
+          </div>
+          <ul className="mt-1 divide-y divide-[var(--edge-soft)]">
+            {summary.templates.map((t) => (
+              <li key={t.id} className="flex items-center justify-between gap-2 py-2">
+                <span className="min-w-0 truncate text-sm" title={t.prompt}>
+                  <span className="chip mr-1">{t.difficulty}</span>{t.prompt}
+                </span>
+                <button
+                  onClick={() => generate(t.id)}
+                  disabled={busy}
+                  className="shrink-0 rounded border border-zinc-300 px-2 py-1 text-xs hover:bg-elevated disabled:opacity-50 dark:border-zinc-700"
+                >
+                  ✨ Generate
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {note && <p className="mt-2 text-xs text-ok">{note}</p>}
+      {error && <p className="mt-2 text-sm text-danger">{error}</p>}
     </div>
   );
 }

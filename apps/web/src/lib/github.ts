@@ -88,6 +88,33 @@ export async function clientForUser(
 }
 
 /**
+ * Commit files to the package's PRIVATE repo (e.g. answer keys), only if it's
+ * GitHub-backed and connected. No-op for sandbox packages. The commit plan is
+ * `repo:"private"`, so `validateCommitPlan` fails closed if any path isn't a
+ * private-layer path — answer keys can never be mis-routed to the public repo.
+ */
+export async function syncPrivateFilesToGitHub(
+  supabase: SupabaseClient,
+  store: PackageStore,
+  userId: string,
+  packageId: string,
+  changes: FileChange[],
+  summary: string,
+): Promise<void> {
+  if (changes.length === 0) return;
+  const record = await store.getPackage(packageId);
+  const repo = record?.storage === "github" ? record.manifest.privateRepo : null;
+  if (!repo) return;
+  const gh = await clientForUser(supabase, userId);
+  if (!gh) return;
+  await commitFiles(
+    gh.client,
+    { owner: repo.owner, repo: repo.name },
+    { repo: "private", summary, changes },
+  );
+}
+
+/**
  * Commit files to the package's public repo, but only if it's GitHub-backed
  * and publishing is connected. No-op for sandbox packages. Shared by the
  * study-guide save, chapter, and change (tidy/review) actions.
