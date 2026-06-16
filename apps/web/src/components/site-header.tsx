@@ -57,9 +57,14 @@ export async function SiteHeader() {
               </form>
             </>
           ) : (
-            <Link href="/signin" className="transition-colors hover:text-ink">
-              Sign in
-            </Link>
+            <>
+              <Link href="/studio" className="transition-colors hover:text-ink">
+                Studio
+              </Link>
+              <Link href="/signin" className="transition-colors hover:text-ink">
+                Sign in
+              </Link>
+            </>
           )}
         </div>
       </nav>
