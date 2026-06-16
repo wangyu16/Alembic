@@ -97,9 +97,12 @@ What a gateway buys: **task→model routing** (cheap/fast model for drafts &
 checks; strong model for restructuring & Tier-B reasoning — one model for
 everything is the expensive mistake), **budgets & per-user/per-institution
 quotas** (serves goal.md §11), **fallback**, and **usage observability**.
-They compose — OpenRouter can run *through* Portkey. Lean **Portkey** as the
-control plane for a research platform that needs quotas + governed logging;
-OpenRouter if breadth/simplicity dominate.
+They compose — OpenRouter can run *through* Portkey. **Decided (2026-06-16):
+Portkey** as the control plane (governance, per-user/per-institution budgets,
+self-host/data controls for FERPA/IRB, virtual keys → institution billing) — the
+research-platform fit. OpenRouter may sit *behind* Portkey when model breadth is
+wanted. Gemini-direct remains the testing default until the gateway is switched
+on; the swap is config-only (the `GatewayProvider` is OpenAI-compatible).
 
 ## Cost & scale rationale
 
@@ -153,6 +156,14 @@ OpenAI-compatible) selectable by env, **per-task model routing**
 (`modelForTask`/`DEFAULT_ROUTING`), and an optional **per-user token budget**
 (`recent_ai_token_usage` RPC + `AI_TOKEN_BUDGET`) atop the existing rate limit.
 Usage is attributable via the `ai_invocations` governance log.
+
+**Gateway wiring (how to switch from Gemini-direct):** set `AI_GATEWAY_URL` +
+`AI_GATEWAY_API_KEY` (the app then prefers the gateway over Gemini). For
+**Portkey** (the chosen control plane): `AI_GATEWAY_URL=https://api.portkey.ai/v1`,
+`AI_GATEWAY_API_KEY=<portkey-key>`, and `AI_GATEWAY_HEADERS={"x-portkey-virtual-key":"<vk>"}`
+to route to a provider credential. Model ids come from `AI_MODEL_DEFAULT` and the
+optional `AI_MODEL_FAST`/`AI_MODEL_STRONG` cheap-vs-strong overrides (set equal to
+collapse to one model for light testing). Full recipe in `.env.example`.
 
 **Open (ops/compliance, not code):** before enabling a hosted gateway for real
 student/educator data, complete a **data-handling review** — what the gateway

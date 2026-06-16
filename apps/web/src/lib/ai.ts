@@ -44,10 +44,7 @@ export class AINotConfiguredError extends Error {
 function selectProvider(): { provider: AIProvider; routing: ModelRouting } | null {
   const gwUrl = process.env["AI_GATEWAY_URL"];
   const gwKey = process.env["AI_GATEWAY_API_KEY"];
-  const routing: ModelRouting = {
-    default: process.env["AI_MODEL_DEFAULT"] ?? DEFAULT_ROUTING.default,
-    byTask: DEFAULT_ROUTING.byTask,
-  };
+  const routing = buildRouting();
   if (gwUrl && gwKey) {
     return {
       provider: new GatewayProvider({
@@ -55,6 +52,9 @@ function selectProvider(): { provider: AIProvider; routing: ModelRouting } | nul
         apiKey: gwKey,
         model: routing.default,
         name: "gateway",
+        // Portkey routes to the underlying provider via a virtual-key header;
+        // OpenRouter accepts HTTP-Referer/X-Title. Both arrive via this JSON env.
+        headers: gatewayHeaders(),
       }),
       routing,
     };
@@ -63,6 +63,51 @@ function selectProvider(): { provider: AIProvider; routing: ModelRouting } | nul
     return { provider: new GeminiProvider(), routing };
   }
   return null;
+}
+
+/**
+ * Build the task→model routing from env, falling back to DEFAULT_ROUTING's
+ * placeholders. The cheap/strong split (the point of routing) is overridable
+ * without code: AI_MODEL_FAST covers high-frequency low-stakes tasks, while
+ * AI_MODEL_STRONG covers content generation + the Tier-B coherence agent. This
+ * also lets a deployment collapse to a single model (set all three the same) —
+ * useful for light gateway testing where only one provider model is wired.
+ */
+function buildRouting(): ModelRouting {
+  const def = process.env["AI_MODEL_DEFAULT"] ?? DEFAULT_ROUTING.default;
+  const fast = process.env["AI_MODEL_FAST"];
+  const strong = process.env["AI_MODEL_STRONG"];
+  const byTask: Record<string, string> = { ...DEFAULT_ROUTING.byTask };
+  if (fast) {
+    byTask["a11y-fix"] = fast;
+    byTask["formatting-tidy"] = fast;
+  }
+  if (strong) {
+    byTask["draft-section"] = strong;
+    byTask["worksheet"] = strong;
+    byTask["import-blocks"] = strong;
+    byTask["coherence-agent"] = strong;
+  }
+  return { default: def, byTask };
+}
+
+/** Optional extra gateway headers (JSON object in AI_GATEWAY_HEADERS). */
+function gatewayHeaders(): Record<string, string> | undefined {
+  const raw = process.env["AI_GATEWAY_HEADERS"];
+  if (!raw) return undefined;
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (parsed && typeof parsed === "object") {
+      const out: Record<string, string> = {};
+      for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
+        if (typeof v === "string") out[k] = v;
+      }
+      return Object.keys(out).length ? out : undefined;
+    }
+  } catch {
+    console.warn("[ai] AI_GATEWAY_HEADERS is not valid JSON; ignoring it.");
+  }
+  return undefined;
 }
 
 /** Per-user token budget (M16). Enforced only when AI_TOKEN_BUDGET is set. */
