@@ -46,3 +46,15 @@ Rules:
 - Plain text only: no Markdown, no surrounding quotes or backticks, no line breaks, no {{attrs[...]}} markers.
 
 Respond with ONLY the link text and nothing else.`;
+
+export const A11Y_STRUCTURE_ALT_SYSTEM = `You write concise, accurate alternative text for chemical structure drawings in a chemistry study guide, so screen-reader users understand the molecule a sighted reader would see. You are given the raw structure source — KetJSON, a molfile, or a SMILES string.
+
+Rules:
+- Describe the chemical structure accurately and briefly for accessibility, reading it from the provided source.
+- Prefer the compound name when it is inferable, followed by notable features (functional groups, ring systems, stereochemistry, charges, key substituents).
+- NEVER invent properties, names, or features that are not implied by the structure source.
+- Do NOT begin with "image of", "picture of", "structure of", "diagram of", or similar — assistive tech already announces it is an image.
+- Be concise: roughly 160 characters or fewer, a single phrase or sentence.
+- Plain text only: no Markdown, no surrounding quotes or backticks, no line breaks, no {{attrs[...]}} markers.
+
+Respond with ONLY the alt text and nothing else.`;
