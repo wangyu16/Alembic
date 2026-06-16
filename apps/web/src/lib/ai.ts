@@ -2,9 +2,13 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   GeminiProvider,
+  GatewayProvider,
+  DEFAULT_ROUTING,
+  modelForTask,
   type AIProvider,
   type GenerateOptions,
   type GenerateResult,
+  type ModelRouting,
 } from "@alembic/ai-assist";
 
 /** Per-user cap on model calls within the window (dev-generous). */
@@ -18,18 +22,63 @@ export class RateLimitError extends Error {
   }
 }
 
+export class BudgetExceededError extends Error {
+  constructor() {
+    super("This account has reached its AI usage budget for now. Please try again later.");
+    this.name = "BudgetExceededError";
+  }
+}
+
 export class AINotConfiguredError extends Error {
   constructor() {
-    super("AI is not configured on this deployment (missing GEMINI_API_KEY).");
+    super("AI is not configured on this deployment (set a gateway or GEMINI_API_KEY).");
     this.name = "AINotConfiguredError";
   }
 }
 
 /**
- * Wraps a provider with per-user rate limiting and governance logging. Every
- * underlying model call is rate-checked beforehand and recorded afterward in
- * `ai_invocations` (platform-side, governance-controlled — never in a repo).
- * The API key lives only here on the server and never reaches the client.
+ * Choose the AI provider from env — provider-swappable (CLAUDE.md rule 6).
+ * Prefer an OpenAI-compatible gateway (Portkey/OpenRouter/…) when configured;
+ * otherwise the dev-phase Gemini provider. Returns null if neither is set.
+ */
+function selectProvider(): { provider: AIProvider; routing: ModelRouting } | null {
+  const gwUrl = process.env["AI_GATEWAY_URL"];
+  const gwKey = process.env["AI_GATEWAY_API_KEY"];
+  const routing: ModelRouting = {
+    default: process.env["AI_MODEL_DEFAULT"] ?? DEFAULT_ROUTING.default,
+    byTask: DEFAULT_ROUTING.byTask,
+  };
+  if (gwUrl && gwKey) {
+    return {
+      provider: new GatewayProvider({
+        baseUrl: gwUrl,
+        apiKey: gwKey,
+        model: routing.default,
+        name: "gateway",
+      }),
+      routing,
+    };
+  }
+  if (process.env["GEMINI_API_KEY"]) {
+    return { provider: new GeminiProvider(), routing };
+  }
+  return null;
+}
+
+/** Per-user token budget (M16). Enforced only when AI_TOKEN_BUDGET is set. */
+function budgetConfig(): { cap: number; windowSeconds: number } | null {
+  const cap = Number(process.env["AI_TOKEN_BUDGET"]);
+  if (!Number.isFinite(cap) || cap <= 0) return null;
+  const windowSeconds = Number(process.env["AI_BUDGET_WINDOW_SECONDS"]) || 2_592_000; // 30d
+  return { cap, windowSeconds };
+}
+
+/**
+ * Wraps a provider with per-user rate limiting, an optional token budget,
+ * per-task model routing, and governance logging. The underlying call is
+ * rate-/budget-checked beforehand and recorded afterward in `ai_invocations`
+ * (platform-side, governance-controlled — never in a repo). API keys live only
+ * here on the server and never reach the client.
  */
 class GovernedProvider implements AIProvider {
   readonly name: string;
@@ -37,43 +86,59 @@ class GovernedProvider implements AIProvider {
     private readonly inner: AIProvider,
     private readonly supabase: SupabaseClient,
     private readonly ctx: { userId: string; packageId: string; kind: string },
+    private readonly routing: ModelRouting,
   ) {
     this.name = inner.name;
   }
 
   async generateText(options: GenerateOptions): Promise<GenerateResult> {
-    // Rate limit fails OPEN: if the limiter itself errors we allow the request
-    // rather than block all AI, but we surface the failure to server logs.
+    // Rate limit and budget both fail OPEN: if the check itself errors we allow
+    // the request rather than block all AI, but surface the failure to logs.
     const { data: count, error: countError } = await this.supabase.rpc(
       "recent_ai_invocation_count",
       { window_seconds: WINDOW_SECONDS },
     );
     if (countError) {
-      console.warn(
-        `[ai] rate-limit check failed, allowing request: ${countError.message}`,
-      );
+      console.warn(`[ai] rate-limit check failed, allowing request: ${countError.message}`);
     } else if (typeof count === "number" && count >= RATE_LIMIT) {
       throw new RateLimitError();
     }
 
-    const result = await this.inner.generateText(options);
+    const budget = budgetConfig();
+    if (budget) {
+      const { data: used, error: budgetError } = await this.supabase.rpc(
+        "recent_ai_token_usage",
+        { window_seconds: budget.windowSeconds },
+      );
+      if (budgetError) {
+        console.warn(`[ai] budget check failed, allowing request: ${budgetError.message}`);
+      } else if (typeof used === "number" && used >= budget.cap) {
+        throw new BudgetExceededError();
+      }
+    }
 
-    // Governance logging is best-effort (it must not break the educator's
-    // request) but NOT silent: a failed write is a data-governance gap, so we
-    // surface it to server logs rather than swallowing it.
-    const { error: logError } = await this.supabase
-      .from("ai_invocations")
-      .insert({
-        user_id: this.ctx.userId,
-        package_id: this.ctx.packageId,
-        kind: this.ctx.kind,
-        provider: this.inner.name,
-        model: result.model,
-        prompt: options.prompt,
-        output: result.text,
-        input_tokens: result.usage?.inputTokens ?? null,
-        output_tokens: result.usage?.outputTokens ?? null,
-      });
+    // Per-task model routing: pick the configured model for this task kind
+    // unless the caller pinned one explicitly.
+    const routed: GenerateOptions = {
+      ...options,
+      model: options.model ?? modelForTask(this.ctx.kind, this.routing),
+    };
+
+    const result = await this.inner.generateText(routed);
+
+    // Governance logging is best-effort (must not break the educator's request)
+    // but NOT silent: a failed write is a data-governance gap.
+    const { error: logError } = await this.supabase.from("ai_invocations").insert({
+      user_id: this.ctx.userId,
+      package_id: this.ctx.packageId,
+      kind: this.ctx.kind,
+      provider: this.inner.name,
+      model: result.model,
+      prompt: routed.prompt,
+      output: result.text,
+      input_tokens: result.usage?.inputTokens ?? null,
+      output_tokens: result.usage?.outputTokens ?? null,
+    });
     if (logError) {
       console.error(`[ai] governance log insert failed: ${logError.message}`);
     }
@@ -87,6 +152,7 @@ export function governedProvider(
   supabase: SupabaseClient,
   ctx: { userId: string; packageId: string; kind: string },
 ): AIProvider {
-  if (!process.env["GEMINI_API_KEY"]) throw new AINotConfiguredError();
-  return new GovernedProvider(new GeminiProvider(), supabase, ctx);
+  const selected = selectProvider();
+  if (!selected) throw new AINotConfiguredError();
+  return new GovernedProvider(selected.provider, supabase, ctx, selected.routing);
 }

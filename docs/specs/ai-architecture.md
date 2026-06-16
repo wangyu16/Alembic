@@ -145,3 +145,18 @@ Nothing here requires reworking what exists:
   educator-reviewed.
 - **Deferred / power-user:** open-ended coding-agent CLI for the heaviest
   multi-file operations, gated and metered.
+
+## M16 status & open compliance task
+
+Implemented (M16): a provider-swappable **gateway** (`GatewayProvider`,
+OpenAI-compatible) selectable by env, **per-task model routing**
+(`modelForTask`/`DEFAULT_ROUTING`), and an optional **per-user token budget**
+(`recent_ai_token_usage` RPC + `AI_TOKEN_BUDGET`) atop the existing rate limit.
+Usage is attributable via the `ai_invocations` governance log.
+
+**Open (ops/compliance, not code):** before enabling a hosted gateway for real
+student/educator data, complete a **data-handling review** — what the gateway
+and each routed provider may log/retain, region/residency, and FERPA/IRB
+obligations. Prefer a gateway mode that disables provider-side retention; record
+the decision per deployment. Per-institution quotas and usage dashboards are
+future work on top of the per-user budget.

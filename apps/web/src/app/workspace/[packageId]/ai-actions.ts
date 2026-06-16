@@ -12,7 +12,7 @@ import {
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
 import { supabaseEventLogger } from "@/lib/events";
-import { governedProvider, RateLimitError } from "@/lib/ai";
+import { governedProvider, RateLimitError, BudgetExceededError } from "@/lib/ai";
 import { recordChange } from "@/lib/changes";
 
 async function requireUser() {
@@ -25,9 +25,9 @@ async function requireUser() {
 }
 
 function friendly(e: unknown): string {
-  if (e instanceof RateLimitError) return e.message;
+  if (e instanceof RateLimitError || e instanceof BudgetExceededError) return e.message;
   return e instanceof Error && e.message.includes("not configured")
-    ? "AI isn't configured yet — add a GEMINI_API_KEY to run this."
+    ? "AI isn't configured yet on this deployment."
     : "The AI request didn't complete. Please try again.";
 }
 

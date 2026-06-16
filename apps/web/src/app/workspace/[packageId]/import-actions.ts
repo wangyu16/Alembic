@@ -15,7 +15,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
 import { supabaseEventLogger } from "@/lib/events";
 import { syncFilesToGitHub } from "@/lib/github";
-import { governedProvider, RateLimitError } from "@/lib/ai";
+import { governedProvider, RateLimitError, BudgetExceededError } from "@/lib/ai";
 import { recordChange } from "@/lib/changes";
 
 async function requireUser() {
@@ -131,7 +131,7 @@ export async function restructureImportAction(
     revalidatePath(`/workspace/${packageId}`);
     return { ok: true };
   } catch (e) {
-    if (e instanceof RateLimitError) return { ok: false, error: e.message };
+    if (e instanceof RateLimitError || e instanceof BudgetExceededError) return { ok: false, error: e.message };
     return { ok: false, error: "Couldn't restructure the text. Please try again." };
   }
 }

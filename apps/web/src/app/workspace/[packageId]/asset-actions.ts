@@ -9,7 +9,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
 import { supabaseEventLogger } from "@/lib/events";
 import { syncFilesToGitHub } from "@/lib/github";
-import { governedProvider, RateLimitError } from "@/lib/ai";
+import { governedProvider, RateLimitError, BudgetExceededError } from "@/lib/ai";
 
 async function requireUser() {
   const supabase = await createSupabaseServerClient();
@@ -156,7 +156,7 @@ export async function suggestStructureAltTextAction(
     const { altText } = await suggestStructureAltText(provider, { source, context });
     return { ok: true, altText };
   } catch (e) {
-    if (e instanceof RateLimitError) return { ok: false, error: e.message };
+    if (e instanceof RateLimitError || e instanceof BudgetExceededError) return { ok: false, error: e.message };
     return { ok: false, error: "Couldn't generate a description. Please try again." };
   }
 }

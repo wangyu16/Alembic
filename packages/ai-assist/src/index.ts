@@ -1,5 +1,7 @@
 export * from "./provider";
 export * from "./gemini";
+export * from "./gateway";
+export * from "./routing";
 export * from "./prompts";
 export * from "./drafting";
 export * from "./restructure";

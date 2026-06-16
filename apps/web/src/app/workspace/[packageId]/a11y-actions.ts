@@ -8,7 +8,7 @@ import type { AccessibilityStatus } from "@alembic/package-contract";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
 import { supabaseEventLogger } from "@/lib/events";
-import { governedProvider, RateLimitError } from "@/lib/ai";
+import { governedProvider, RateLimitError, BudgetExceededError } from "@/lib/ai";
 import { recordChange } from "@/lib/changes";
 import { auditDoc, type FixableRule } from "@/lib/a11y";
 
@@ -133,7 +133,7 @@ export async function suggestA11yFixAction(
     revalidatePath(`/workspace/${packageId}`);
     return { ok: true };
   } catch (e) {
-    if (e instanceof RateLimitError) return { ok: false, error: e.message };
+    if (e instanceof RateLimitError || e instanceof BudgetExceededError) return { ok: false, error: e.message };
     return { ok: false, error: "Couldn't draft a fix. Please try again." };
   }
 }
