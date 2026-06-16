@@ -49,15 +49,15 @@ Deliberately deferred: agent harness, Ketcher, question templates, adaptation, s
 **Goal: make the workspace genuinely good for a chemist, not just functional.**
 
 - **Multi-chapter courses** — a course as one site with an index and many chapters (each: study-guide page + concept map + objectives + slides + question templates). The target model and additive evolution path from v0.1's single-chapter case are specified in [specs/course-structure.md](specs/course-structure.md).
-- Ketcher integration for chemical structure editing; structures as addressable blocks with SMILES/molfile stored as source.
-- Import pipeline: Word, PDF, PowerPoint, images → AI-assisted restructuring into study-guide blocks (Tier-2 review queue).
+- **Carriers & assets** — one primitive: a self-contained dual-extension file (renderable payload + embedded editable source + `kind`/`format` markers) with a **kind registry** + per-kind editors as the single extension point. Unifies chemical structures (`.ketcher.svg`), plots/charts (`.plot.svg`), and the document formats (`.md.html`/`.slides.html`/`.md.pdf`). Reusable media are standalone files in the public `materials` layer, inserted by permalink (intra-package = searchable click-insert; inter-package = paste the universal link). Specified in [specs/carriers-and-assets.md](specs/carriers-and-assets.md); codecs live in `orz-artifacts` (orz-stack Phase B). **This foundation gates structures/plots/slides/PDF/import.**
+- Ketcher integration for chemical-structure editing → `.ketcher.svg` assets; plots/charts → `.plot.svg` assets (a second kind by registration alone).
+- Remaining document carriers: `.slides.html`, `.md.pdf` (worker-side PDF generation), generated from blocks; derived-artifact lifecycle completed (regenerate / AI-assisted merge / keep-mine on stale flags).
+- Import & local-first authoring: lossless re-import of any carrier; lossy foreign import (Word/PDF/PowerPoint/images → AI restructuring, Tier-2 queue); **bulk upload of a complete locally-authored project** validated by one shared contract (validator == Agent Skill).
 - Risk-tiered approval system implemented as policy (Tier 1 auto-apply + changelog/undo, Tier 2 batch queue, Tier 3 itemized — Tier 3 gates existed in v0.1 for publish; this phase generalizes the machinery).
-- Remaining dual-extension formats: `.slides.html`, `.md.pdf` (worker-side PDF generation).
-- Derived-artifact lifecycle completed: regenerate / AI-assisted merge / keep-mine on stale flags.
-- AI accessibility checks (WCAG 2.1 AA), alt text for structures from SMILES/molfile.
-- Snapshots (named immutable versions via tags): list, restore, compare.
+- AI accessibility checks (WCAG 2.1 AA), alt text for structures/plots from their carrier source.
+- Snapshots (named immutable versions via tags): list, restore, compare; snapshots pin asset permalinks to fixed commits.
 
-**Exit criteria:** an educator can go from a messy Word/PDF dump to a polished published chemistry package without leaving the app.
+**Exit criteria:** an educator can go from a messy Word/PDF dump — or a complete local project — to a polished published chemistry package (with reusable structures and plots) without leaving the app.
 
 ---
 

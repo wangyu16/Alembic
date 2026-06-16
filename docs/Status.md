@@ -15,7 +15,7 @@ same commit as the work it tracks. Statuses: ✅ done · 🔄 in progress · ⬜
 | --- | --- | --- |
 | 0 | Foundations & contracts | ✅ |
 | 1 | Initial release: end-to-end loop (v0.1) | ✅ built + deployed (pilot M8.3 ongoing) |
-| 2 | Authoring depth & chemistry-first (Ketcher, import, tiers, snapshots) | 🔄 planned (M9–M16 below) |
+| 2 | Authoring depth & chemistry-first (tiers, a11y, carriers & assets: Ketcher/plots/slides/PDF, import, snapshots) | 🔄 v0.2 done (M9/M10/M14); v0.3 in progress (M11–M16 below) |
 | 3 | Agent harness & reconciliation | ⬜ |
 | 4 | Assessment & question templates | ⬜ |
 | 5 | Adaptation ecosystem | ⬜ |
@@ -156,7 +156,8 @@ acceptance check and is independently implementable.
 - **v0.2 (authoring core): ✅ done** — M9 multi-chapter → M10 risk-tiered
   approvals → M14 accessibility.
 - **v0.3 (carriers & assets):** **M11.0 carrier foundation** (`orz-artifacts`
-  codec + kind registry; `assets` layer; reference resolver; `validate()`) →
+  codec + kind registry; reference resolver over the public `materials` layer —
+  no new layer; `validate()`) →
   M11 Ketcher `.ketcher.svg` → plot `.plot.svg` → M13 document carriers
   (`.slides.html`, `.md.pdf`) → M12 import (lossless carrier re-import + lossy
   foreign import + bulk local upload) → M15 snapshots & citation (pins asset
@@ -177,9 +178,10 @@ acceptance check and is independently implementable.
   the **course/chapter model** in [specs/course-structure.md](specs/course-structure.md).
 
 **Phase 2 exit criteria:** an educator builds a multi-module chemistry course
-(drawn structures, imported source materials), generates slides + printable
-PDFs, snapshots and cites an offering, and works with risk-tiered AI assistance
-under bounded, attributable cost.
+with drawn structures and plots (reused across chapters via permalinks),
+generates slides + printable PDFs, imports source materials *or* uploads a
+complete locally-authored project, snapshots and cites an offering, and works
+with accessible, risk-tiered AI assistance under bounded, attributable cost.
 
 ### M9 — Multi-chapter courses
 
@@ -211,6 +213,18 @@ Generalize the single Tier-3 publish gate into Tiers 1/2/3 (goal.md §2).
 
 *Exit:* AI changes flow through the correct tier; publish stays gated.
 
+### M14 — Accessibility
+
+WCAG 2.1 AA checks + status (goal.md §2). *(Completes v0.2; listed here in build order — M9 → M10 → M14.)*
+
+| # | Sub-module | Verify by | Status |
+| --- | --- | --- | --- |
+| 14.1 | Automated a11y checks (heading order, alt text, contrast, link text) on study guide + site | failing items flagged with locations | ✅ pure `@alembic/a11y` (`auditHtml`/`auditFragments`, 33 tests) over **rendered HTML** (no 2nd markdown parser): img-alt, heading-order, empty-heading, link-text, table-header; editor "Accessibility" panel lists findings with per-block locations |
+| 14.2 | Accessibility status in metadata + portal indicator | status recorded and shown on the index | ✅ `accessibility` manifest field (additive); "Re-check & record" rolls up all chapters → manifest (rebuildable projection); portal badge via `portal_registrations.accessibility_status` (migration 0006), set at register |
+| 14.3 | AI remediation suggestions (Tier-2) | suggested fixes are reviewable | ✅ `suggestA11yFix` (ai-assist) drafts alt/link text → enqueued as Tier-2 `a11y-fix` in the M10 review queue; accept applies a located source rewrite (`applyA11yFix`); never auto-applied |
+
+*Exit:* a package reports and improves its accessibility status. **Contrast** is theme-guaranteed (dark-elegant meets AA; authors don't set colors), so it isn't a per-content check.
+
 ### M11.0 — Carrier foundation (gates M11/M12/M13)
 
 The single primitive: a self-contained dual-extension file (rendered payload +
@@ -222,7 +236,7 @@ adding the next type a registration, not a rewrite. See
 | --- | --- | --- | --- |
 | 11.0a | `orz-artifacts` carrier codec — `embed`/`extract`/`detectVersion` per payload (SVG/HTML/PDF); format-version markers; legacy = format 0; append-only fixtures | round-trip + legacy fixtures pass; pure, Node + browser | ⬜ (orz-stack) |
 | 11.0b | Kind registry (`CarrierKind`: id, role, extension, codec, editor, altText) | a new kind registers without touching consumers | ⬜ |
-| 11.0c | Contract `assets` layer + reference resolver (public-only refs, fail-closed) | public docs cannot reference private assets; path rules hold | ⬜ |
+| 11.0c | Carrier reference resolver over the public `materials` layer (public-only refs, fail-closed) — **no new layer** (contract v1 layer set is closed; `materials` already covers diagrams/images/charts) | public docs cannot reference private files; path rules hold | ⬜ |
 | 11.0d | Asset records (stable id + content hash, reusing M3 hashing) + required alt text | asset round-trips with stable id; alt text travels | ⬜ |
 | 11.0e | `validate(project)` (pure) — one contract, two surfaces (validator == Agent Skill) | a conforming local project passes the same check the importer runs | ⬜ |
 
@@ -284,18 +298,6 @@ Lossless carrier re-import + lossy foreign import + bulk local-project upload.
 
 *Exit:* generate slides + a PDF handout from a chapter; both editable and drift-tracked.
 
-### M14 — Accessibility
-
-WCAG 2.1 AA checks + status (goal.md §2).
-
-| # | Sub-module | Verify by | Status |
-| --- | --- | --- | --- |
-| 14.1 | Automated a11y checks (heading order, alt text, contrast, link text) on study guide + site | failing items flagged with locations | ✅ pure `@alembic/a11y` (`auditHtml`/`auditFragments`, 33 tests) over **rendered HTML** (no 2nd markdown parser): img-alt, heading-order, empty-heading, link-text, table-header; editor "Accessibility" panel lists findings with per-block locations |
-| 14.2 | Accessibility status in metadata + portal indicator | status recorded and shown on the index | ✅ `accessibility` manifest field (additive); "Re-check & record" rolls up all chapters → manifest (rebuildable projection); portal badge via `portal_registrations.accessibility_status` (migration 0006), set at register |
-| 14.3 | AI remediation suggestions (Tier-2) | suggested fixes are reviewable | ✅ `suggestA11yFix` (ai-assist) drafts alt/link text → enqueued as Tier-2 `a11y-fix` in the M10 review queue; accept applies a located source rewrite (`applyA11yFix`); never auto-applied |
-
-*Exit:* a package reports and improves its accessibility status. **Contrast** is theme-guaranteed (dark-elegant meets AA; authors don't set colors), so it isn't a per-content check.
-
 ### M15 — Snapshots & citation
 
 Named immutable versions + citable scholarly output (goal.md §5).
@@ -307,6 +309,7 @@ Named immutable versions + citable scholarly output (goal.md §5).
 | 15.3 | Citation: stable snapshot URL + version; `CITATION.cff` generation | citation metadata generated per snapshot | ⬜ |
 | 15.4 | Opt-in DOI minting (Zenodo or equivalent) | snapshot → DOI on opt-in | ⬜ |
 | 15.5 | Adaptation/citation target snapshots (`adaptedFrom.snapshot`) | an adaptation references a snapshot, not a moving head | ⬜ |
+| 15.6 | Pin carrier-asset references to SHA permalinks on snapshot/publish (live → frozen) | a snapshot's pages reference assets at a fixed commit, not a moving branch | ⬜ (needs M11.0) |
 
 *Exit:* snapshot a course offering, cite it, compare two offerings.
 
@@ -327,7 +330,7 @@ Cost/scale via a gateway + per-task model selection. See [specs/ai-architecture.
 
 ### 2026-06-16
 - **Migrations 0005 + 0006 applied to production** — M10 tier queue and M14 accessibility features now live.
-- **Carriers & assets design** ([specs/carriers-and-assets.md](specs/carriers-and-assets.md)). Unifies `.ketcher.svg` / `.plot.svg` / `.md.html` / `.slides.html` / `.md.pdf` under one **carrier** primitive (renderable payload + embedded source + `kind`/`format` markers) with two roles (authored **assets** vs derived **documents**) and a **kind registry** as the single extension point. Assets are standalone, public, addressable, referenced by permalink (intra-package = searchable click-insert; inter-package = paste the universal permalink). Decisions locked: foundation-first; live path + pin-at-publish; reuse via permalink universality. Borrows ideas from the orz VS Code extensions but the Alembic contract is authoritative. **Re-sequenced v0.3** around a new **M11.0 carrier foundation** (gates M11/M12/M13; supersedes the orz gap #5 blocker): `orz-artifacts` codec + registry, `assets` layer + resolver, asset records, `validate()` → M11 Ketcher → M11b plot → M13 document carriers → M12 import/local-upload.
+- **Carriers & assets design** ([specs/carriers-and-assets.md](specs/carriers-and-assets.md)). Unifies `.ketcher.svg` / `.plot.svg` / `.md.html` / `.slides.html` / `.md.pdf` under one **carrier** primitive (renderable payload + embedded source + `kind`/`format` markers) with two roles (authored **assets** vs derived **documents**) and a **kind registry** as the single extension point. Assets are standalone, public, addressable, referenced by permalink (intra-package = searchable click-insert; inter-package = paste the universal permalink). Decisions locked: foundation-first; live path + pin-at-publish; reuse via permalink universality. Borrows ideas from the orz VS Code extensions but the Alembic contract is authoritative. **Re-sequenced v0.3** around a new **M11.0 carrier foundation** (gates M11/M12/M13; supersedes the orz gap #5 blocker): `orz-artifacts` codec + registry, carrier resolver over the public `materials` layer (no new layer — contract v1 layer set stays closed), asset records, `validate()` → M11 Ketcher → M11b plot → M13 document carriers → M12 import/local-upload.
 
 ### 2026-06-11
 - Planning docs: product vision, [Roadmap](Roadmap.md), [InitialReleasePlan](InitialReleasePlan.md) (Gemini as dev-phase AI provider). Repo live at github.com/wangyu16/Alembic; CI green.

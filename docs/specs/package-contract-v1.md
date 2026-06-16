@@ -31,7 +31,7 @@ A package is organized into nine layers (`PACKAGE_LAYERS` in [`layers.ts`](../..
 | `study-guide` | The human-readable learning sequence; the conceptual source of truth from which derived artifacts are generated. | Active |
 | `concepts` | Concept map data, prerequisites, correlations, learning flow. Stored as structured lists in v0.1 (the visual editor is deferred, the data layer is not). | Active (structured lists) |
 | `objectives` | Learning objectives and alignment records. | Active (structured lists) |
-| `materials` | Derived and authored teaching materials: slides, worksheets, assignments, discussions, interactives, diagrams, images, charts. | Active (worksheet only) |
+| `materials` | Derived and authored teaching materials: slides, worksheets, assignments, discussions, interactives, diagrams, images, charts. **Reusable carrier assets (`.ketcher.svg`, `.plot.svg`, …) live here** — see [carriers-and-assets.md](carriers-and-assets.md); no new layer is added (the layer set stays closed). | Active (worksheet only) |
 | `assessment-support` | Assessment blueprints, public-safe question-template rules, rubrics, evaluation designs. | Reserved (directory exists; question-template system is post-v0.1) |
 | `private-instructor` | Instructor notes, answer keys, embargoed assessments, private generated items. **The only private layer.** | Active |
 | `provenance` | Source records, attribution, adaptation notes, incident notes, embedded-source hashes (§9). | Active (minimal) |

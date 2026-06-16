@@ -190,19 +190,24 @@ Notes:
 
 ## 5. Assets: storage, identity, references
 
-### Storage — a new public layer
+### Storage — the existing public `materials` layer (no new layer)
 
-Add an `assets` **layer** to the contract (the layer→repo→directory model in
-`packages/package-contract/src/layers.ts` already supports this additively).
+Reusable carrier media live under the existing **`materials`** layer — **not a
+new layer.** The [package contract](package-contract-v1.md) §2 fixes the nine
+layers as **closed in v1** ("tools MUST NOT invent additional layers"), and
+`materials` is already defined as "derived and authored teaching materials:
+slides, worksheets, assignments, … diagrams, images, charts." Carrier assets are
+exactly that, so they belong there and require no contract change.
 
-- `assets/` lives in the **public** repo. Reusable media must be public to be
-  permalink-able and renderable.
-- The two-repo invariant extends for free: **a public document may reference
-  only public assets.** The reference resolver enforces this fail-closed,
-  exactly like `assertPathAllowedInRepo`. Truly private figures stay in
+- Assets live in `materials/` in the **public** repo (it is a public layer).
+  Reusable media must be public to be permalink-able and renderable.
+- The two-repo invariant applies unchanged: **a public document may reference
+  only public files.** The reference resolver enforces this fail-closed, exactly
+  like `assertPathAllowedInRepo`. Truly private figures stay in
   `private-instructor/` and simply cannot be referenced from public content.
-- Suggested sub-structure (convention, not enforced): `assets/structures/`,
-  `assets/plots/`, `assets/figures/`.
+- Suggested sub-structure (convention, not contract — the contract classifies
+  only by top-level directory): `materials/structures/`, `materials/plots/`,
+  `materials/figures/`.
 
 ### Identity & provenance
 
@@ -233,9 +238,9 @@ it. An `<img>` renders the SVG and is **inert** — the embedded source in
 
 ### Two link forms (decision: support both)
 
-- **Live path** — `…/<default-branch>/assets/structures/benzene.ketcher.svg`.
+- **Live path** — `…/<default-branch>/materials/structures/benzene.ketcher.svg`.
   Edits propagate; used while authoring.
-- **Pinned permalink** — `…/<commit-sha>/assets/structures/benzene.ketcher.svg`.
+- **Pinned permalink** — `…/<commit-sha>/materials/structures/benzene.ketcher.svg`.
   Immutable and reproducible.
 
 **Pin at publish/snapshot.** Authoring uses live paths; at publish/snapshot time
@@ -283,7 +288,7 @@ the *same* validation locally that the importer runs server-side — no surprise
 Deliverables:
 
 - a `validate(project)` function in `package-contract` (pure) — checks manifest,
-  chapter layout, `assets/` rules, naming, block-ID rules, and that every
+  chapter layout, `materials/` carrier rules, naming, block-ID rules, and that every
   carrier's `kind`/`format` is registered;
 - the **Agent Skill** (project-layout contract in prose), generated from the
   kind registry + schema so it can't drift — this also *finishes* the unshipped
@@ -322,8 +327,9 @@ Re-sequenced around the primitive (supersedes the old per-feature M11–M13 and
 removes the orz gap #5 blocker — the carrier foundation is strictly more useful):
 
 1. **Foundation** (gates the rest): `orz-artifacts` carrier codec + **kind
-   registry**; contract gains the `assets` layer, asset reference/resolver
-   (two-repo enforced), asset records (id, hash, alt text), and `validate()`.
+   registry**; carrier reference/resolver over the existing public `materials`
+   layer (two-repo enforced; no new layer), asset records (id, hash, alt text),
+   and `validate()`.
 2. **M11 — Ketcher asset kind** (`.ketcher.svg`): editor integration,
    intra-package search + click-insert, render/export. *First asset kind.*
 3. **Plot asset kind** (`.plot.svg`, Plotly): *second kind — proves the registry
@@ -339,8 +345,11 @@ removes the orz gap #5 blocker — the carrier foundation is strictly more usefu
 
 ## 10. Relationship to existing invariants
 
-- **Two-repo invariant** — extended to assets: public docs reference only public
-  assets; resolver fails closed. Never a bypass.
+- **Two-repo invariant** — applies unchanged: assets live in the public
+  `materials` layer; public docs reference only public files; resolver fails
+  closed. Never a bypass.
+- **Closed layer set (contract v1 §2)** — respected: assets reuse `materials`;
+  **no new layer is invented.**
 - **Block identity** — unchanged for text; assets get their own id + hash.
 - **Repos are source of truth** — assets and documents are repo files; app DB
   state stays a rebuildable projection.
