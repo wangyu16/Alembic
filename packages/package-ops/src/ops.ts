@@ -19,6 +19,14 @@ import {
   type WriteAssetResult,
 } from "./assets";
 import { listArtifacts, type ArtifactStatus } from "./worksheets";
+import {
+  applyProposedChangeSet,
+  gatherCoherenceContext,
+  type ApplyProposedChangeSetOptions,
+  type ApplyProposedChangeSetResult,
+  type CoherenceContext,
+} from "./coherence";
+import type { ProposedChangeSet } from "@alembic/package-contract";
 
 /**
  * The canonical package **content** operations, bound to one (store, package).
@@ -50,6 +58,14 @@ export interface PackageOps {
   writeAsset(input: WriteAssetInput): Promise<WriteAssetResult>;
 
   listArtifacts(): Promise<ArtifactStatus[]>;
+
+  /** Read-only course projection the Tier-B coherence agent reasons over. */
+  gatherCoherenceContext(): Promise<CoherenceContext>;
+  /** Apply an accepted ProposedChangeSet through the validated write path. */
+  applyProposedChangeSet(
+    set: ProposedChangeSet,
+    opts?: ApplyProposedChangeSetOptions,
+  ): Promise<ApplyProposedChangeSetResult>;
 }
 
 /** Bind the content operations to a store + package — the same surface for
@@ -70,5 +86,9 @@ export function packageOps(store: PackageStore, packageId: string): PackageOps {
     writeAsset: (input) => writeAsset(store, packageId, input),
 
     listArtifacts: () => listArtifacts(store, packageId),
+
+    gatherCoherenceContext: () => gatherCoherenceContext(store, packageId),
+    applyProposedChangeSet: (set, opts) =>
+      applyProposedChangeSet(store, packageId, set, opts),
   };
 }

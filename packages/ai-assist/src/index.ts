@@ -7,3 +7,4 @@ export * from "./drafting";
 export * from "./restructure";
 export * from "./remediation";
 export * from "./structure-alt";
+export * from "./coherence-agent";

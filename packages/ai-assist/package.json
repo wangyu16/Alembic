@@ -12,6 +12,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@alembic/package-contract": "workspace:*",
     "@google/genai": "^2.8.0"
   }
 }

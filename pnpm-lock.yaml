@@ -102,6 +102,9 @@ importers:
 
   packages/ai-assist:
     dependencies:
+      '@alembic/package-contract':
+        specifier: workspace:*
+        version: link:../package-contract
       '@google/genai':
         specifier: ^2.8.0
         version: 2.8.0
