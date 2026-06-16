@@ -32,7 +32,7 @@ A package is organized into nine layers (`PACKAGE_LAYERS` in [`layers.ts`](../..
 | `concepts` | Concept map data, prerequisites, correlations, learning flow. Stored as structured lists in v0.1 (the visual editor is deferred, the data layer is not). | Active (structured lists) |
 | `objectives` | Learning objectives and alignment records. | Active (structured lists) |
 | `materials` | Derived and authored teaching materials: slides, worksheets, assignments, discussions, interactives, diagrams, images, charts. **Reusable carrier assets (`.ketcher.svg`, `.plot.svg`, …) live here** — see [carriers-and-assets.md](carriers-and-assets.md); no new layer is added (the layer set stays closed). | Active (worksheet only) |
-| `assessment-support` | Assessment blueprints, public-safe question-template rules, rubrics, evaluation designs. | Reserved (directory exists; question-template system is post-v0.1) |
+| `assessment-support` | Assessment blueprints, public-safe question-template rules, rubrics, evaluation designs. Populated with `templates/`, `blueprints/`, `items/` (public-safe question templates, blueprints, generated items); see [`assessments.ts`](../../packages/package-contract/src/assessments.ts). Answer keys live in `private-instructor`. | Active |
 | `private-instructor` | Instructor notes, answer keys, embargoed assessments, private generated items. **The only private layer.** | Active |
 | `provenance` | Source records, attribution, adaptation notes, incident notes, embedded-source hashes (§9). | Active (minimal) |
 | `metadata` | Portal record, license status, accessibility status, course context, package structure. | Active (minimal) |
@@ -120,7 +120,10 @@ genchem-thermo-oer/
 ├── materials/
 │   └── worksheets/
 │       └── enthalpy-practice.md          # generated worksheet, educator-owned after generation
-├── assessment-support/                   # reserved in v0.1 (empty, kept by convention)
+├── assessment-support/
+│   ├── templates/                        # public-safe question templates (qt-*)
+│   ├── blueprints/                       # assessment blueprints (bp-*)
+│   └── items/                            # generated question items (qi-*); answer keys live under private-instructor/answer-keys/
 ├── provenance/
 │   ├── sources.json                      # source records (§9)
 │   └── adaptations.json                  # adaptation notes (§9)
@@ -192,7 +195,7 @@ which renders `<h2 id="blk-abc12345">`, deterministically overriding markdown-it
 2. **Never reused.** A retired ID MUST NOT be assigned to any other block, ever, in any package.
 3. **Edit vs. replace.** Editing preserves identity; *deliberately replacing* a block creates a **new ID** with a provenance link to the old one, recorded as `replacesId` on the new block. Delete-then-recreate is replacement, not editing (the v0.1 editor honors this: delete + add = new ID).
 4. **Default unit = heading-bounded section.** The default block is the section (`kind: "section"`). Ordinary paragraphs do NOT need individual IDs.
-5. **Optional finer anchors.** Addressable sub-elements MAY carry their own IDs with kinds `figure`, `equation`, `structure` (chemical structure), and `question-template-item` (reserved until the question-template system ships). The kind set is closed in v1 (`BlockKindSchema`).
+5. **Optional finer anchors.** Addressable sub-elements MAY carry their own IDs with kinds `figure`, `equation`, `structure` (chemical structure), and `question-template-item` (the question-template system shipped in Phase 4 but uses its own `qt-`/`bp-`/`qi-` record IDs rather than block anchors, so this block-anchor kind remains reserved by choice). The kind set is closed in v1 (`BlockKindSchema`).
 6. **Copy = adapt.** When a block is copied into another package, the copy MUST receive a new ID plus an `adaptedFrom` reference `{ packageId, blockId, snapshot? }` to the source block. This is the basis for block-level attribution and upstream/downstream improvement loops. The `snapshot` field is reserved in v0.1 (snapshots are post-v0.1, §10) but present in the schema so adaptation records can be snapshot-pinned later without a schema bump.
 7. **AI preserves IDs.** AI editors MUST preserve block IDs during rewrites (enforced via the orz-markdown Agent Skill in prompts *and* post-generation validation that rejects ID-damaged output).
 8. **Validated on every save.** Every save MUST run ID-integrity validation: all IDs well-formed, no duplicates within the package (`validateBlockIds`). A save that fails validation MUST be rejected, not silently repaired.
@@ -286,7 +289,7 @@ Named here so future versions slot in without disturbing v1 packages:
 - **Snapshots-as-tags.** A snapshot is a named, immutable package version implemented as a Git tag, with restore/compare/cite semantics and optional DOI minting ([goal.md §5](../goal.md)). v1 reserves the hooks — `adaptedFrom.snapshot`, the `CITATION.cff` allowlist entry — but defines no snapshot operations. v0.1 ships *restore to a previous save* only.
 - **Multi-author.** Roles (co-author, TA-with-private-access, reviewer), per-layer permissions, shared review queues, multi-author citation. v1 keeps the door open (multiple contributors in provenance; no component may assume a single writer) but defines no collaboration semantics.
 - **`research-schema` layer contents.** The layer, its directory, and its public-repo assignment exist in v1; the actual event-log and rubric schema formats are unspecified until the research instrumentation design lands. Tools MUST preserve unknown files there.
-- **Question-template system.** The `question-template-item` block kind and the `assessment-support` layer are reserved; template-rule formats are post-v0.1.
+- **Question-template system.** Shipped in Phase 4 (M22): the `assessment-support` layer and the template/blueprint/item/answer-key Zod schemas now exist (see [`assessments.ts`](../../packages/package-contract/src/assessments.ts)). The assessment system uses its own `qt-`/`bp-`/`qi-` record IDs (not block anchors), so only the `question-template-item` block-anchor kind remains unused.
 - **Multi-chapter courses.** A course = one package = one static site with an index and many chapters (each a study-guide page plus its concept map, objectives, slides, and question templates). v0.1 ships the degenerate single-chapter case; the general model and its additive evolution path are specified in [course-structure.md](course-structure.md). Reserved hooks: an optional `chapters` index in the manifest and per-chapter files within existing layers.
 - **Package rename & delete.** Not in v0.1. Title rename (metadata only; `packageId` stays immutable) and delete semantics — sandbox delete vs GitHub "remove from Alembic" vs guarded repo deletion — are designed in [package-lifecycle.md](package-lifecycle.md).
 - **AI-assisted merge** for stale artifacts (§8) and the **import pipeline** ID-fallback (§6, rule 9).

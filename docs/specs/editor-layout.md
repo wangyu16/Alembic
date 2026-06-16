@@ -80,7 +80,8 @@ Never add a seventh top-level panel — extend an existing category.
 - **Review** group: `TierPanel` (changes & review) + `A11yPanel` +
   `CoherencePanel` (whole-course coherence agent — M18) + `ReconcilePanel`
   (changes made outside Alembic / "Scan for leaks" — M20).
-- **Generate** group: `WorksheetPanel` (+ future slides/PDF).
+- **Generate** group: `WorksheetPanel`, a Slides & PDF section, and
+  `AssessmentsPanel` (assessments & question templates).
 - **Publish & share** group: `PublishingPanel` (publish, portal, versions;
   + future snapshots/citation).
 - **Preview:** always-on right pane.

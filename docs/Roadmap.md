@@ -85,7 +85,7 @@ Deliberately deferred: agent harness, Ketcher, question templates, adaptation, s
 
 **Goal: stand up the container worker tier that owns the deferred worker-side work.**
 
-Several deferrals across phases share one prerequisite — a real container worker tier — and are discharged together once it exists: `.md.pdf` generation (M13.3), foreign-format import parsers (M12.2), worker-side agent execution (M19.1), moving the static-site build job off in-process (M6.1), and the one-click leakage-remediation / history-rewrite mechanism (M21.3). This note gives those deferrals an explicit owner. Note that **Phase 4's LMS export (QTI / Common Cartridge) also depends on this tier.**
+Several deferrals across phases share one prerequisite — a real container worker tier — and are discharged together once it exists: `.md.pdf` generation (M13.3), foreign-format import parsers (M12.2), worker-side agent execution (M19.1), moving the static-site build job off in-process (M6.1), and the one-click leakage-remediation / history-rewrite mechanism (M21.3). This note gives those deferrals an explicit owner. **Phase 4's assessment layer and its LMS export (QTI / Common Cartridge) were built WITHOUT the worker tier** — the verified build (see Status) shows LMS export is a pure XML transformer + in-process zip — so the worker tier is needed only for the five items listed above. **Reframe:** since no upcoming phase (5 adaptation, 6 portal) forces the worker tier, it is now a "capability-completion track" — schedulable opportunistically rather than a blocker.
 
 ---
 
@@ -100,6 +100,8 @@ Several deferrals across phases share one prerequisite — a real container work
 
 **Exit criteria:** an instructor runs a quiz cycle — template → generated questions → export to LMS — with keys never touching the public repo.
 
+> **Realized scope (annotation):** the bullets above describe the full vision; here is what shipped. **Shipped:** the assessment/template/blueprint/item + answer-key contract (M22); single-call AI question generation routed through the Tier-3 itemized review queue (M23); private-repo answer keys + embargo metadata + a release-gate leakage check (M24.1/24.3); QTI 1.2 + Common Cartridge export as a pure transformer + dependency-free in-process zip (M25) — **confirmed: no worker tier needed.** **Deferred (follow-ups):** the blueprint/embargo editor UI, the owner early-lift action, and per-blueprint embargo gating at export.
+
 ---
 
 ## Phase 5 — Adaptation Ecosystem (v0.6–v0.7)
@@ -112,6 +114,8 @@ Several deferrals across phases share one prerequisite — a real container work
 - Citation: stable snapshot URLs, opt-in DOI minting (Zenodo), auto-generated `CITATION.cff`.
 
 **Exit criteria:** two educators exchange improvements on a shared package lineage without either touching Git concepts.
+
+> **Prerequisites / sequencing (note):** Phase-5 prerequisites are satisfied — block identity (Phase 0), publishing (Phase 1), reconciliation (M20), and snapshots (M15) are all in place. `adaptedFrom.snapshot` (M15.5) was deliberately deferred to land as the LEADING sub-module of Phase 5. Note that M20 reconciliation still needs its live pass + migration `0008` applied before suggest-back / pull-updates can run against real repos.
 
 ---
 
