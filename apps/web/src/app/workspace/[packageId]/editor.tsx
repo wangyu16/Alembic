@@ -417,7 +417,7 @@ export function StudyGuideEditor({
           onEdit={openEditAsset}
         />
         <AIDraftPanel packageId={packageId} activePath={initialPath} onQueued={() => router.refresh()} />
-        <ImportPanel packageId={packageId} activePath={initialPath} onImported={() => router.refresh()} />
+        <ImportPanel packageId={packageId} activePath={initialPath} dirty={dirty} onImported={() => router.refresh()} />
 
         <CategoryLabel>Review</CategoryLabel>
         <ToolSection title="Changes & review" badge={reviewQueue.length || undefined}>
@@ -701,10 +701,12 @@ function AIDraftPanel({
 function ImportPanel({
   packageId,
   activePath,
+  dirty,
   onImported,
 }: {
   packageId: string;
   activePath: string;
+  dirty: boolean;
   onImported: () => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -724,8 +726,10 @@ function ImportPanel({
       const content = await file.text();
       const r = await importFileAction(packageId, file.name, content, activePath);
       if (r.ok) {
-        setNote(r.message ?? "Imported.");
-        onImported();
+        // Imported sections are appended to the saved chapter; the editor holds
+        // blocks in state, so reload to surface them (and refresh the asset list).
+        if (typeof window !== "undefined") window.location.reload();
+        else onImported();
       } else setError(r.error ?? "Import failed.");
     } catch {
       setError("Couldn't read that file.");
@@ -740,7 +744,7 @@ function ImportPanel({
     setError(null);
     const r = await restructureImportAction(packageId, text, activePath);
     if (r.ok) {
-      setNote("Restructured into the review queue below.");
+      setNote("Restructured — review and accept it in “Changes & review” below.");
       setText("");
       onImported();
     } else setError(r.error ?? "Couldn't restructure.");
@@ -762,21 +766,29 @@ function ImportPanel({
         <button onClick={() => setOpen(false)} className="text-xs text-muted hover:text-ink">Close</button>
       </div>
 
-      <label className="text-sm">
+      <div>
         <span className="mb-1 block text-xs text-muted">
-          Open a file (.md.html, .slides.html, .ketcher.svg, .plot.svg, .md)
+          Open a file — its sections are added to the end of this chapter
+          (a <code>.ketcher.svg</code>/<code>.plot.svg</code> is added to your figures)
         </span>
-        <input
-          type="file"
-          accept=".md.html,.slides.html,.ketcher.svg,.plot.svg,.md,.markdown,.txt,text/markdown,text/plain,image/svg+xml,text/html"
-          onChange={onFile}
-          disabled={busy}
-          className="text-xs"
-        />
-      </label>
+        <label
+          className={`btn btn-primary btn-sm cursor-pointer ${dirty || busy ? "pointer-events-none opacity-50" : ""}`}
+        >
+          {busy ? "Importing…" : "Choose a file…"}
+          <input
+            type="file"
+            accept=".md.html,.slides.html,.ketcher.svg,.plot.svg,.md,.markdown,.txt,text/markdown,text/plain,image/svg+xml,text/html"
+            onChange={onFile}
+            disabled={busy || dirty}
+            className="hidden"
+          />
+        </label>
+        <span className="ml-2 text-xs text-faint">.md.html · .slides.html · .ketcher.svg · .plot.svg · .md</span>
+        {dirty && <p className="mt-1 text-xs text-warn">Save your changes before importing a file.</p>}
+      </div>
 
-      <div className="mt-3">
-        <span className="mb-1 block text-xs text-muted">…or paste notes to restructure with AI (reviewed before applying)</span>
+      <div className="mt-4 border-t border-[var(--edge-soft)] pt-3">
+        <span className="mb-1 block text-xs text-muted">…or paste notes to restructure with AI (reviewed before it&rsquo;s applied)</span>
         <textarea
           value={text}
           onChange={(e) => setText(e.target.value)}
@@ -787,13 +799,13 @@ function ImportPanel({
         <button
           onClick={restructure}
           disabled={busy || !text.trim()}
-          className="btn btn-primary btn-sm mt-2"
+          className="btn btn-ghost btn-sm mt-2"
         >
           {busy ? "Working…" : "Restructure → review queue"}
         </button>
       </div>
 
-      <p className="mt-2 text-xs text-faint">
+      <p className="mt-3 text-xs text-faint">
         Word/PDF/PowerPoint import is coming (handled server-side).
       </p>
       {note && <p className="mt-2 text-xs text-ok">{note}</p>}
