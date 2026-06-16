@@ -38,8 +38,11 @@ All three must pass before any push.
    commit path that skips this check.
 2. **`packages/package-contract` is pure** — no IO, no framework imports. It is
    the single owner of the package schema. Everything else consumes it.
-3. **The editor UI is a replaceable client.** UI code calls package operations;
-   it never touches files, Git, or schema internals directly.
+3. **The editor UI is a replaceable client.** UI code calls package operations
+   via `packageOps(store, packageId)` (`packages/package-ops`); it never touches
+   files, Git, or schema internals directly. Every writer — UI server actions,
+   the agent/worker, the local studio — goes through `packageOps` (the one
+   validated write path); never add a route around it.
 4. **Repos are the source of truth.** App-side DB state must always be a
    rebuildable projection of repository content.
 5. **`packages/github-bridge` is the only code that talks to GitHub.**
@@ -50,6 +53,12 @@ All three must pass before any push.
    them; validate with `validateBlockIds` on every save path.
 8. **Publish/registration always requires explicit educator approval**
    (Tier 3). Never automate past it.
+9. **Phases 3–8 land as durable logic + thin disposable client** (the
+   editing/viewing UI is overhauled after v1.0). Extend via existing seams —
+   carrier kind registry, `CHANGE_KINDS`+tiers, entitlement resolver,
+   `research-events` enum, additive+versioned manifest — never a parallel
+   mechanism; layers are closed. Durable artifacts carry typed data, not
+   rendered HTML. See [docs/specs/forward-compatibility.md](docs/specs/forward-compatibility.md).
 
 ## Conventions
 
