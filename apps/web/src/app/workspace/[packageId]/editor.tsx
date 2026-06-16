@@ -31,6 +31,7 @@ import { generateSlidesAction } from "./slides-actions";
 import { importFileAction, restructureImportAction } from "./import-actions";
 import { runCoherenceAgentAction } from "./agent-actions";
 import { reconcilePackageAction, scanForLeaksAction } from "./reconcile-actions";
+import { loadPlanningAction, savePlanningAction, type PlanningData } from "./planning-actions";
 import {
   addCitationAction,
   createSnapshotAction,
@@ -418,6 +419,7 @@ export function StudyGuideEditor({
         </button>
 
         <CategoryLabel>Author</CategoryLabel>
+        <PlanningPanel packageId={packageId} />
         <AssetsPanel
           packageId={packageId}
           onNew={(kind) => setEditing({ kind })}
@@ -799,6 +801,156 @@ function CoherencePanel({
           ))}
         </ul>
       )}
+      {error && <p className="mt-2 text-sm text-danger">{error}</p>}
+    </div>
+  );
+}
+
+const splitIds = (s: string): string[] =>
+  s.split(",").map((x) => x.trim()).filter(Boolean);
+
+/**
+ * M9.6 — the thin client for the hidden planning layer: course-level concept
+ * map (topics + prerequisites/correlations) and learning objectives. Lives in
+ * the public repo (adaptable) but is not rendered on the student site; it is the
+ * intent the study guide and the coherence agent are checked against.
+ */
+function PlanningPanel({ packageId }: { packageId: string }) {
+  const [open, setOpen] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [concepts, setConcepts] = useState<
+    { id: string; label: string; prerequisites: string[]; related: string[] }[]
+  >([]);
+  const [objectives, setObjectives] = useState<
+    { id: string; text: string; conceptIds: string[] }[]
+  >([]);
+  const [note, setNote] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function openPanel() {
+    setOpen(true);
+    if (loaded) return;
+    setBusy(true);
+    const r = await loadPlanningAction(packageId);
+    if (r.ok && r.data) {
+      setConcepts(r.data.concepts.map((c) => ({
+        id: c.id, label: c.label, prerequisites: c.prerequisites, related: c.related,
+      })));
+      setObjectives(r.data.objectives.map((o) => ({
+        id: o.id, text: o.text, conceptIds: o.conceptIds,
+      })));
+      setLoaded(true);
+    } else {
+      setError(r.error ?? "Couldn't load the concept map.");
+    }
+    setBusy(false);
+  }
+
+  async function save() {
+    setBusy(true);
+    setError(null);
+    setNote(null);
+    const data: PlanningData = {
+      concepts: concepts.map((c) => ({ ...c, blockIds: [] })),
+      objectives: objectives.map((o) => ({ ...o, blockIds: [] })),
+    };
+    const r = await savePlanningAction(packageId, data);
+    if (r.ok) setNote("Saved.");
+    else setError(r.error ?? "Couldn't save.");
+    setBusy(false);
+  }
+
+  if (!open) {
+    return (
+      <button onClick={openPanel} className="btn btn-ghost">
+        🗺️ Concept map &amp; objectives
+      </button>
+    );
+  }
+
+  return (
+    <div className="panel p-3">
+      <div className="mb-2 flex items-center justify-between">
+        <span className="text-sm font-medium">Concept map &amp; objectives</span>
+        <button onClick={() => setOpen(false)} className="text-xs text-muted hover:text-ink">Close</button>
+      </div>
+      <p className="mb-2 text-xs text-muted">
+        The course&rsquo;s planning layer — stored in the repository, never shown on
+        the student site. The coherence review checks your content against it.
+      </p>
+
+      <div className="text-xs font-medium uppercase tracking-wide text-faint">Objectives</div>
+      <ul className="mt-1 space-y-1">
+        {objectives.map((o, i) => (
+          <li key={i} className="flex flex-wrap items-center gap-1">
+            <input
+              value={o.id} placeholder="id" aria-label="objective id"
+              onChange={(e) => setObjectives((xs) => xs.map((x, j) => j === i ? { ...x, id: e.target.value } : x))}
+              className="field w-20 text-xs"
+            />
+            <input
+              value={o.text} placeholder="what the learner can do"
+              onChange={(e) => setObjectives((xs) => xs.map((x, j) => j === i ? { ...x, text: e.target.value } : x))}
+              className="field min-w-0 flex-1 text-xs"
+            />
+            <input
+              value={o.conceptIds.join(", ")} placeholder="concept ids"
+              onChange={(e) => setObjectives((xs) => xs.map((x, j) => j === i ? { ...x, conceptIds: splitIds(e.target.value) } : x))}
+              className="field w-28 text-xs"
+            />
+            <button onClick={() => setObjectives((xs) => xs.filter((_, j) => j !== i))} className="text-xs text-danger" aria-label="remove">×</button>
+          </li>
+        ))}
+      </ul>
+      <button
+        onClick={() => setObjectives((xs) => [...xs, { id: "", text: "", conceptIds: [] }])}
+        className="mt-1 text-xs text-muted hover:text-ink"
+      >
+        + objective
+      </button>
+
+      <div className="mt-3 text-xs font-medium uppercase tracking-wide text-faint">Concepts</div>
+      <ul className="mt-1 space-y-1">
+        {concepts.map((c, i) => (
+          <li key={i} className="flex flex-wrap items-center gap-1">
+            <input
+              value={c.id} placeholder="id" aria-label="concept id"
+              onChange={(e) => setConcepts((xs) => xs.map((x, j) => j === i ? { ...x, id: e.target.value } : x))}
+              className="field w-20 text-xs"
+            />
+            <input
+              value={c.label} placeholder="topic"
+              onChange={(e) => setConcepts((xs) => xs.map((x, j) => j === i ? { ...x, label: e.target.value } : x))}
+              className="field min-w-0 flex-1 text-xs"
+            />
+            <input
+              value={c.prerequisites.join(", ")} placeholder="after (ids)"
+              onChange={(e) => setConcepts((xs) => xs.map((x, j) => j === i ? { ...x, prerequisites: splitIds(e.target.value) } : x))}
+              className="field w-24 text-xs"
+            />
+            <input
+              value={c.related.join(", ")} placeholder="related (ids)"
+              onChange={(e) => setConcepts((xs) => xs.map((x, j) => j === i ? { ...x, related: splitIds(e.target.value) } : x))}
+              className="field w-24 text-xs"
+            />
+            <button onClick={() => setConcepts((xs) => xs.filter((_, j) => j !== i))} className="text-xs text-danger" aria-label="remove">×</button>
+          </li>
+        ))}
+      </ul>
+      <button
+        onClick={() => setConcepts((xs) => [...xs, { id: "", label: "", prerequisites: [], related: [] }])}
+        className="mt-1 text-xs text-muted hover:text-ink"
+      >
+        + concept
+      </button>
+
+      <div className="mt-3">
+        <button onClick={save} disabled={busy} className="btn btn-primary btn-sm">
+          {busy ? "Working…" : "Save planning layer"}
+        </button>
+      </div>
+      {note && <p className="mt-2 text-xs text-ok">{note}</p>}
       {error && <p className="mt-2 text-sm text-danger">{error}</p>}
     </div>
   );
