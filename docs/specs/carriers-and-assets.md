@@ -401,3 +401,10 @@ removes the orz gap #5 blocker — the carrier foundation is strictly more usefu
   export-only (format with attachment) before full re-edit.
 - **Asset rename/move** — breaks live references; needs a reference-rewrite
   helper (mirrors chapter rename).
+- **Per-kind display & editing UX (needs intensive revision)** — current
+  surfaces (asset picker rows, import flow, slide/PDF generation, inline
+  preview) are **demo-adequate but not designed per type**. Each carrier kind
+  should eventually have a considered list/preview presentation and editing
+  affordance (thumbnail, in-place edit, replace-from-file, where it appears).
+  This is the UI counterpart to the kind registry — a future pass keyed off
+  `CarrierKind`, governed by [editor-layout.md](editor-layout.md).
