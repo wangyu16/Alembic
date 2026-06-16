@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useState, useTransition, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -406,24 +406,26 @@ export function StudyGuideEditor({
           + Add section
         </button>
 
+        <CategoryLabel>Author</CategoryLabel>
         <AssetsPanel
           packageId={packageId}
           onNew={(kind) => setEditing({ kind })}
           onInsert={(path) => insertMarkdown(`\n\n![](${path})\n`)}
           onEdit={openEditAsset}
         />
-
         <AIDraftPanel packageId={packageId} activePath={initialPath} onQueued={() => router.refresh()} />
 
-        <TierPanel
-          packageId={packageId}
-          activePath={initialPath}
-          dirty={dirty}
-          reviewAll={reviewAll}
-          recentChanges={recentChanges}
-          reviewQueue={reviewQueue}
-        />
-
+        <CategoryLabel>Review</CategoryLabel>
+        <ToolSection title="Changes & review" badge={reviewQueue.length || undefined}>
+          <TierPanel
+            packageId={packageId}
+            activePath={initialPath}
+            dirty={dirty}
+            reviewAll={reviewAll}
+            recentChanges={recentChanges}
+            reviewQueue={reviewQueue}
+          />
+        </ToolSection>
         <A11yPanel
           packageId={packageId}
           activePath={initialPath}
@@ -433,20 +435,26 @@ export function StudyGuideEditor({
           onChanged={() => router.refresh()}
         />
 
-        <WorksheetPanel
-          packageId={packageId}
-          artifacts={artifacts}
-          selectedBlockIds={[...selected]}
-          dirty={dirty}
-          onChanged={() => router.refresh()}
-        />
+        <CategoryLabel>Generate</CategoryLabel>
+        <ToolSection title="Worksheets & artifacts" badge={artifacts.length || undefined}>
+          <WorksheetPanel
+            packageId={packageId}
+            artifacts={artifacts}
+            selectedBlockIds={[...selected]}
+            dirty={dirty}
+            onChanged={() => router.refresh()}
+          />
+        </ToolSection>
 
-        <PublishingPanel
-          packageId={packageId}
-          publishing={publishing}
-          dirty={dirty}
-          onChanged={() => router.refresh()}
-        />
+        <CategoryLabel>Publish &amp; share</CategoryLabel>
+        <ToolSection title="Publish, website & versions" defaultOpen={publishing.published}>
+          <PublishingPanel
+            packageId={packageId}
+            publishing={publishing}
+            dirty={dirty}
+            onChanged={() => router.refresh()}
+          />
+        </ToolSection>
       </div>
 
       <div className="flex flex-col gap-3">
@@ -478,6 +486,48 @@ export function StudyGuideEditor({
           onSaved={onAssetSaved}
         />
       )}
+    </div>
+  );
+}
+
+/** A small category divider grouping tools by workflow frequency (see
+ *  docs/specs/editor-layout.md). */
+function CategoryLabel({ children }: { children: ReactNode }) {
+  return (
+    <div className="mt-3 px-1 text-xs font-semibold uppercase tracking-wide text-faint">
+      {children}
+    </div>
+  );
+}
+
+/** A consistent collapsible group header. Default collapsed so no single tool
+ *  dominates the column; an optional `badge` signals attention without opening. */
+function ToolSection({
+  title,
+  badge,
+  defaultOpen = false,
+  children,
+}: {
+  title: string;
+  badge?: number;
+  defaultOpen?: boolean;
+  children: ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div>
+      <button
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm text-muted transition-colors hover:bg-elevated hover:text-ink"
+      >
+        <span className="font-medium">{title}</span>
+        <span className="flex items-center gap-2">
+          {badge ? <span className="chip text-xs">{badge}</span> : null}
+          <span className="text-xs text-faint">{open ? "▾" : "▸"}</span>
+        </span>
+      </button>
+      {open && <div className="mt-2">{children}</div>}
     </div>
   );
 }
@@ -665,7 +715,6 @@ function TierPanel({
 
   return (
     <div className="panel p-3">
-      <h3 className="text-sm font-medium">Changes & review</h3>
 
       <div className="mt-2 flex flex-wrap items-center gap-3">
         <button
@@ -917,7 +966,6 @@ function WorksheetPanel({
 
   return (
     <div className="panel p-3">
-      <h3 className="text-sm font-medium">Worksheets</h3>
       <p className="mt-1 text-xs text-faint">
         Generated from your saved study guide. Tick sections above to target them,
         or generate from all saved sections.
@@ -1034,7 +1082,6 @@ function PublishingPanel({
 
   return (
     <div className="panel p-3">
-      <h3 className="text-sm font-medium">Publishing</h3>
 
       {!publishing.configured ? (
         <p className="mt-1 text-xs text-faint">
