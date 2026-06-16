@@ -234,14 +234,15 @@ adding the next type a registration, not a rewrite. See
 
 | # | Sub-module | Verify by | Status |
 | --- | --- | --- | --- |
-| 11.0a | `orz-artifacts` carrier codec — `embed`/`extract`/`detectVersion` per payload (SVG/HTML/PDF); format-version markers; legacy = format 0; append-only fixtures | round-trip + legacy fixtures pass; pure, Node + browser | ⬜ (orz-stack) |
-| 11.0b | Kind registry (`CarrierKind`: id, role, extension, codec, editor, altText) | a new kind registers without touching consumers | ⬜ |
-| 11.0c | Carrier reference resolver over the public `materials` layer (public-only refs, fail-closed) — **no new layer** (contract v1 layer set is closed; `materials` already covers diagrams/images/charts) | public docs cannot reference private files; path rules hold | ⬜ |
-| 11.0d | Asset records (stable id + content hash, reusing M3 hashing) + required alt text | asset round-trips with stable id; alt text travels | ⬜ |
-| 11.0e | `validate(project)` (pure) — one contract, two surfaces (validator == Agent Skill) | a conforming local project passes the same check the importer runs | ⬜ |
+| 11.0a | Carrier codec — `embed`/`extract`/`detectVersion` per payload (SVG/HTML; PDF later); format-version markers; legacy = format 0 | round-trip + legacy fixtures pass; pure, Node + browser | ✅ new pure `@alembic/carriers` (future orz-artifacts): `embedSource`/`extractSource`/`detectFormatVersion`/`hasCarrier`; SVG `<metadata id="orz-carrier" data-orz-kind/format><![CDATA[…]]>` + HTML non-exec `<script>`; `]]>`/`</` escaping; legacy `orz-chart-meta`→format 0; 17 tests |
+| 11.0b | Kind registry (`CarrierKind`: id, role, extension, payload, formatVersion) | a new kind registers without touching consumers | ✅ `registerKind`/`getKind`/`getKindByExtension` (longest-suffix)/`listKinds`/`BUILTIN_KINDS` (ketcher, plot = svg/asset; md, slides = html/document); editors bound web-side |
+| 11.0c | Carrier reference resolver over the public `materials` layer (public-only refs, fail-closed) — **no new layer** (contract v1 layer set is closed; `materials` already covers diagrams/images/charts) | public docs cannot reference private files; path rules hold | ✅ contract `assertPublicReference` (throws on private layer), `classifyReference` (live/pinned/external), `livePermalink`/`pinnedPermalink` |
+| 11.0d | Asset records (stable id + content hash, reusing M3 hashing) + required alt text | asset round-trips with stable id; alt text travels | ✅ contract `AssetRecordSchema` (`ast-…` id, path, kind, payload, `hashContent`, required `altText`); package-ops `listAssets`/`readAsset`/`writeAsset` over `materials/` (5 tests) |
+| 11.0e | `validate(project, {knownKinds})` (pure) — one contract, two surfaces (validator == Agent Skill) | a conforming local project passes the same check the importer runs | ✅ contract `validateProject(input, {knownCarrierExtensions})` — manifest parse, path/repo rules, chapter existence, carrier-in-public-layer; collects issues, injects kinds (no registry dep) |
 
-*Exit:* an asset carrier round-trips through `orz-artifacts`; a registered kind
-is consumed by editor/importer/renderer without bespoke code.
+*Exit:* ✅ an asset carrier round-trips through the codec; a registered kind is
+consumed by package-ops asset ops without bespoke code (editor/importer/renderer
+wiring follows in M11/M11b/M13/M12).
 
 ### M11 — Chemistry-first: structures (`.ketcher.svg`)
 
@@ -329,6 +330,7 @@ Cost/scale via a gateway + per-task model selection. See [specs/ai-architecture.
 ## Log
 
 ### 2026-06-16
+- **M11.0 carrier foundation — done.** Built via two concurrent subagents on disjoint pure packages, integrated by hand. New **`@alembic/carriers`** (future orz-artifacts): pure carrier codec (`embedSource`/`extractSource`/`detectFormatVersion`/`hasCarrier`) for SVG (`<metadata id="orz-carrier">` CDATA) + HTML (non-exec `<script>`) with `]]>`/`</` escaping and legacy format-0 detection, plus the **kind registry** (`BUILTIN_KINDS`: ketcher/plot/md/slides; `getKindByExtension` longest-suffix) — 17 tests. **`package-contract`** gained the asset model (`AssetRecordSchema` with required alt text, `newAssetId`), the reference resolver (`assertPublicReference` fail-closed on private layers; `classifyReference`; `livePermalink`/`pinnedPermalink`), and pure **`validateProject(input, {knownCarrierExtensions})`** (kinds injected, no registry dep) — +25 tests. **`package-ops`** gained `listAssets`/`readAsset`/`writeAsset` over the public `materials/` layer (5 tests). Reuses existing `materials` layer — **no new layer** (contract v1 layer set stays closed). 242 package tests green; typecheck + web build pass. Next: M11 Ketcher editor (`.ketcher.svg`) on this foundation.
 - **Migrations 0005 + 0006 applied to production** — M10 tier queue and M14 accessibility features now live.
 - **Carriers & assets design** ([specs/carriers-and-assets.md](specs/carriers-and-assets.md)). Unifies `.ketcher.svg` / `.plot.svg` / `.md.html` / `.slides.html` / `.md.pdf` under one **carrier** primitive (renderable payload + embedded source + `kind`/`format` markers) with two roles (authored **assets** vs derived **documents**) and a **kind registry** as the single extension point. Assets are standalone, public, addressable, referenced by permalink (intra-package = searchable click-insert; inter-package = paste the universal permalink). Decisions locked: foundation-first; live path + pin-at-publish; reuse via permalink universality. Borrows ideas from the orz VS Code extensions but the Alembic contract is authoritative. **Re-sequenced v0.3** around a new **M11.0 carrier foundation** (gates M11/M12/M13; supersedes the orz gap #5 blocker): `orz-artifacts` codec + registry, carrier resolver over the public `materials` layer (no new layer — contract v1 layer set stays closed), asset records, `validate()` → M11 Ketcher → M11b plot → M13 document carriers → M12 import/local-upload.
 

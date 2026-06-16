@@ -1,0 +1,14 @@
+{
+  "name": "@alembic/carriers",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Carrier codec + kind registry: self-contained dual-extension files (renderable payload + embedded source + kind/format markers). Pure TypeScript — no IO. Future orz-artifacts.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  }
+}

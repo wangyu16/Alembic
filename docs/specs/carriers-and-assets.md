@@ -167,12 +167,15 @@ slide editor; documents are regenerated from blocks.
 One mechanism per payload type. Defined here; implemented in `orz-artifacts`.
 
 - **SVG** (`.ketcher.svg`, `.plot.svg`): source in a single
-  `<metadata id="orz-carrier">` element wrapping a `<![CDATA[ … ]]>` island,
-  preceded by a small JSON header `{ "kind": …, "format": … }`. The SVG is
-  **regenerated entirely on every save** from the source (source is truth).
+  `<metadata id="orz-carrier" data-orz-kind="…" data-orz-format="…">` element
+  wrapping a `<![CDATA[ … ]]>` island (a literal `]]>` in the source is split
+  across two CDATA sections). Injected as the first child of the root `<svg>`.
+  The SVG is **regenerated entirely on every save** from the source.
 - **HTML** (`.md.html`, `.slides.html`): source in a
-  `<script type="application/orz-carrier+…" id="orz-carrier">` block (script
-  type prevents execution; survives copy/paste).
+  `<script type="application/orz-carrier+json" id="orz-carrier"
+  data-orz-kind="…" data-orz-format="…">` block injected before `</body>`
+  (script `type` prevents execution; `</` in the source is escaped as `<\/` so
+  it survives the script context and copy/paste).
 - **PDF** (`.md.pdf`): source as an embedded file attachment (`source.*`) plus
   the kind/format in document metadata (XMP). PDF is the hardest round-trip and
   is scheduled last (§9).
