@@ -30,7 +30,7 @@ import { listAssetsAction, readAssetAction } from "./asset-actions";
 import { generateSlidesAction } from "./slides-actions";
 import { importFileAction, restructureImportAction } from "./import-actions";
 import { runCoherenceAgentAction } from "./agent-actions";
-import { reconcilePackageAction } from "./reconcile-actions";
+import { reconcilePackageAction, scanForLeaksAction } from "./reconcile-actions";
 import {
   addCitationAction,
   createSnapshotAction,
@@ -813,14 +813,18 @@ function ReconcilePanel({ packageId }: { packageId: string }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
-  const [violations, setViolations] = useState<string[]>([]);
+  const [paths, setPaths] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
 
-  async function run() {
-    setBusy(true);
+  function reset() {
     setError(null);
     setNote(null);
-    setViolations([]);
+    setPaths([]);
+  }
+
+  async function reconcile() {
+    setBusy(true);
+    reset();
     const r = await reconcilePackageAction(packageId);
     if (!r.ok) {
       setError(r.error ?? "Couldn't check for outside changes.");
@@ -833,9 +837,30 @@ function ReconcilePanel({ packageId }: { packageId: string }) {
       setNote(`Absorbed ${n} change${n === 1 ? "" : "s"} made outside Alembic. Reloading…`);
       if (typeof window !== "undefined") window.location.reload();
     } else if (r.status === "quarantined") {
-      setViolations(r.violations ?? []);
+      setPaths(r.violations ?? []);
       setError(
         "External changes were held back: they break the public/private boundary or section identifiers. Review them on GitHub before syncing.",
+      );
+    }
+    setBusy(false);
+  }
+
+  async function scan() {
+    setBusy(true);
+    reset();
+    const r = await scanForLeaksAction(packageId);
+    if (!r.ok) {
+      setError(r.error ?? "Couldn't scan the published repository.");
+    } else if (r.status === "not-connected") {
+      setNote("This package isn't connected to GitHub publishing yet.");
+    } else if (r.status === "clean") {
+      setNote("No private content found in the published repository. ✓");
+    } else if (r.status === "inconclusive") {
+      setNote("The repository is too large to scan fully here — review it on GitHub.");
+    } else if (r.status === "leaks") {
+      setPaths(r.leaked ?? []);
+      setError(
+        "Files that don't belong in the PUBLIC repository were found — a possible private-content leak. Follow the remediation procedure (docs/specs/leakage-remediation.md) to purge them, and rotate any exposed secrets.",
       );
     }
     setBusy(false);
@@ -859,14 +884,24 @@ function ReconcilePanel({ packageId }: { packageId: string }) {
         Absorbs edits made directly in GitHub or VS Code — unless they break the
         public/private boundary, which are held back for your review.
       </p>
-      <button onClick={run} disabled={busy} className="btn btn-primary btn-sm">
-        {busy ? "Checking…" : "Check now"}
-      </button>
+      <div className="flex flex-wrap gap-2">
+        <button onClick={reconcile} disabled={busy} className="btn btn-primary btn-sm">
+          {busy ? "Working…" : "Check now"}
+        </button>
+        <button
+          onClick={scan}
+          disabled={busy}
+          title="Audit the whole published repo for private content (a safety check)"
+          className="btn btn-ghost btn-sm"
+        >
+          Scan for leaks
+        </button>
+      </div>
       {note && <p className="mt-2 text-xs text-ok">{note}</p>}
       {error && <p className="mt-2 text-sm text-danger">{error}</p>}
-      {violations.length > 0 && (
+      {paths.length > 0 && (
         <ul className="mt-2 list-disc space-y-1 pl-4 text-xs text-danger">
-          {violations.map((v, i) => (
+          {paths.map((v, i) => (
             <li key={i}>{v}</li>
           ))}
         </ul>

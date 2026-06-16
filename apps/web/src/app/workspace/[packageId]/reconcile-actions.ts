@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
 import { supabaseEventLogger } from "@/lib/events";
-import { reconcilePackage } from "@/lib/github";
+import { reconcilePackage, scanPublicRepoForLeaks } from "@/lib/github";
 
 async function requireUser() {
   const supabase = await createSupabaseServerClient();
@@ -68,5 +68,44 @@ export async function reconcilePackageAction(
     return { ok: true, status: "up-to-date" };
   } catch {
     return { ok: false, error: "Couldn't check for outside changes. Please try again." };
+  }
+}
+
+export interface LeakScanResult {
+  ok: boolean;
+  status?: "not-connected" | "clean" | "leaks" | "inconclusive";
+  /** Private-layer paths found in the public repo (the leak). */
+  leaked?: string[];
+  error?: string;
+}
+
+/**
+ * M21 — audit the whole published (public) repo for private content that leaked
+ * into it. Detection only: if anything is found, follow the remediation runbook
+ * (docs/specs/leakage-remediation.md) — the destructive history purge is a
+ * deliberate, guarded operator step, not automated here.
+ */
+export async function scanForLeaksAction(packageId: string): Promise<LeakScanResult> {
+  const { supabase, user } = await requireUser();
+  const store = new SupabaseSandboxStore(supabase);
+  const events = supabaseEventLogger(supabase);
+  try {
+    const res = await scanPublicRepoForLeaks(supabase, store, user.id, packageId);
+    if (!res) return { ok: true, status: "not-connected" };
+    if (res.leaked.length > 0) {
+      await events.log({
+        type: "leak.detected",
+        userId: user.id,
+        packageId,
+        detail: { count: res.leaked.length },
+        occurredAt: new Date().toISOString(),
+      });
+      return { ok: true, status: "leaks", leaked: res.leaked };
+    }
+    // No leak found, but a truncated tree means we couldn't see everything.
+    if (res.truncated) return { ok: true, status: "inconclusive" };
+    return { ok: true, status: "clean" };
+  } catch {
+    return { ok: false, error: "Couldn't scan the published repository. Please try again." };
   }
 }

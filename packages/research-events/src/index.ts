@@ -44,6 +44,9 @@ export const EVENT_TYPES = [
   // Phase 3 — external-edit reconciliation (foreign commits absorbed/quarantined).
   "reconcile.completed",
   "reconcile.quarantined",
+  // Phase 3 — leakage audit/remediation (M21).
+  "leak.detected",
+  "leak.remediated",
   "error.surfaced",
 ] as const;
 

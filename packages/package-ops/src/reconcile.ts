@@ -139,3 +139,25 @@ export async function reconcilePublicRepo(
     changedPaths: changed.map((c) => c.path),
   };
 }
+
+/**
+ * M21 — leakage audit. Given every file path in the PUBLIC repo tree, return
+ * those that violate the two-repo invariant (a private-layer path that must
+ * never live in the public repo). Pure; reuses the contract's fail-closed path
+ * check. A non-empty result means private content has leaked into the public
+ * repo — surface it and follow docs/specs/leakage-remediation.md (history
+ * purge + forced re-publication + incident note). Commit-time validation
+ * (`validateCommitPlan`) makes a leak via Alembic impossible; this audits for
+ * leaks introduced by foreign commits or pre-Alembic history.
+ */
+export function findLeakedPaths(publicRepoPaths: ReadonlyArray<string>): string[] {
+  const leaked: string[] = [];
+  for (const path of publicRepoPaths) {
+    try {
+      assertPathAllowedInRepo(path, "public");
+    } catch {
+      leaked.push(path);
+    }
+  }
+  return leaked;
+}

@@ -5,7 +5,7 @@ same commit as the work it tracks. Statuses: ✅ done · 🔄 partially shipped 
 
 **Production:** live at https://alembic.orz.how (Vercel project `alembic`, root `apps/web`, Node 22; Cloudflare DNS; Git auto-deploy on push to `main`).
 
-**Current focus: Phase 3 (v0.4) — agent harness.** M18 (bounded Tier-B coherence agent) core is built end to end (contract → ai-assist → package-ops → thin web client). Phase 2 (M9–M17) core is complete; v0.1 is live (M8.3 pilot ongoing). Next: M19 (agent execution & gating), then M20 (external-edit reconciliation) and M21 (leakage remediation). Heavier deferrals (worker-tier PDF/foreign-import, studio editing/local projects) remain tracked below. See [LocalSetup.md](LocalSetup.md) + [GitHubAppSetup.md](GitHubAppSetup.md).
+**Current focus: Phase 3 (v0.4) core complete — agent harness & repository intelligence.** M18 (bounded Tier-B coherence agent), M19 (agent-run job seam), M20 (external-edit reconciliation), M21 (leakage audit + remediation runbook) are all built and CI-green. Phase 2 (M9–M17) core is complete; v0.1 is live (M8.3 pilot ongoing). Remaining live passes: M18 coherence agent + M20 reconcile (need a connected/deployed environment — see Pending operator actions). Heavier deferrals (worker-tier PDF/foreign-import + agent execution, one-click remediation, studio editing/local projects) remain tracked below. Next phase: Phase 4 (assessment & question templates). See [LocalSetup.md](LocalSetup.md) + [GitHubAppSetup.md](GitHubAppSetup.md).
 
 ### Pending operator actions (human-in-the-loop)
 
@@ -26,7 +26,7 @@ These are the only things blocking full production parity with the code:
 | 0 | Foundations & contracts | ✅ |
 | 1 | Initial release: end-to-end loop (v0.1) | ✅ built + deployed (pilot M8.3 ongoing) |
 | 2 | Authoring depth & chemistry-first (tiers, a11y, carriers & assets: Ketcher/plots/slides/PDF, import, snapshots, gateway, local mode) | ✅ core built (M9–M17); documented deferrals → worker tier (PDF, foreign import), studio editing/projects, DOI/compare, per-institution quotas |
-| 3 | Agent harness & reconciliation | 🔄 in progress (M18 coherence agent + M19 job seam + M20 reconciliation done; M21 leakage remediation next) |
+| 3 | Agent harness & reconciliation | ✅ core built (M18 coherence agent, M19 job seam, M20 reconciliation, M21 leakage audit + runbook); deferred: worker-tier agent execution, one-click remediation, private-repo reconcile |
 | 4 | Assessment & question templates | ⬜ |
 | 5 | Adaptation ecosystem | ⬜ |
 | 6 | Portal & discovery | ⬜ |
@@ -412,11 +412,21 @@ unit-tested (no network/AI). **Needs a live pass** (edit a connected repo in
 GitHub, then "Check for outside changes"). Private-repo reconciliation + a
 3-way merge for same-file conflicts are future. Migration 0008 awaits `db push`.
 
-### M21 — Leakage remediation *(planned)*
+### M21 — Leakage remediation
 
-Detect a private-path leak in public history → documented procedure + a guarded
-bridge operation (history rewrite + forced re-publication + incident provenance
-note). github-bridge + runbook. ⬜
+Detect private content in the public repo → documented remediation procedure
+(history purge + forced re-publication + incident note). See
+[specs/leakage-remediation.md](specs/leakage-remediation.md).
+
+| # | Sub-module | Verify by | Status |
+| --- | --- | --- | --- |
+| 21.1 | Full-tree leak detection (audit the whole public repo, not just a diff) | a private-layer/non-allowlisted path in the public repo is flagged | ✅ github-bridge `listTree` (recursive, `truncated` flag); package-ops pure `findLeakedPaths` (reuses fail-closed `assertPathAllowedInRepo`; 2 tests); web `scanPublicRepoForLeaks` + `scanForLeaksAction` + "Scan for leaks" in the Review panel; `leak.detected`/`leak.remediated` events |
+| 21.2 | Remediation procedure (history rewrite + forced re-publication + incident note) | runbook is actionable; mechanism exists | ✅ [leakage-remediation.md](specs/leakage-remediation.md) runbook (contain → confirm scope → clean re-publication via `publishToBranch` parentless root commit *or* `git filter-repo` → forced re-publish → incident note → verify; secret-rotation + GitHub-cache caveats). The destructive purge is a **guarded operator step**, not one-click |
+| 21.3 | One-click in-app remediation execution | confirmed in-app purge & re-publish | ⏸ deferred (too dangerous to automate for the demo; mechanism exists via `publishToBranch`, gated behind the runbook). History-walking detection + private-repo audit also deferred |
+
+*Exit:* ✅ a leak in the public repo is detected by audit and there is an
+actionable remediation procedure; commit-time validation + M20 quarantine keep
+leaks from entering via Alembic. **Completes the Phase-3 core (M18–M21).**
 
 ## Phase 2 deferred follow-ups (tracked)
 
@@ -446,6 +456,22 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
 ## Log
 
 ### 2026-06-16
+- **M21 — leakage remediation (completes Phase 3 core).** M20 quarantine detects a
+  leak in a foreign *diff*; M21 audits the WHOLE public tree and documents cleanup.
+  github-bridge `listTree` (recursive, truncated flag); package-ops pure
+  `findLeakedPaths` (reuses fail-closed `assertPathAllowedInRepo` — flags any
+  private-layer or non-allowlisted path in the public repo; 2 tests); web
+  `scanPublicRepoForLeaks`/`scanForLeaksAction` + "Scan for leaks" in the Review
+  panel; `leak.detected`/`leak.remediated` events. Wrote the remediation runbook
+  [specs/leakage-remediation.md](specs/leakage-remediation.md) (contain → confirm
+  scope → clean re-publication via `publishToBranch` parentless root commit or
+  `git filter-repo` → forced re-publish → incident note → verify; secret-rotation +
+  GitHub-cache caveats). Destructive purge stays a **guarded operator step** (not
+  one-click). Caught a test assumption — the contract manifest is `alembic.json`,
+  not `manifest.json` (root-file allowlist), confirming the audit correctly flags
+  unrecognized root files. typecheck + all tests + web build green. **Phase 3 core
+  (M18–M21) complete.** Deferred: worker-tier agent execution, one-click in-app
+  remediation, history-walking detection, private-repo reconciliation.
 - **M20 — external-edit reconciliation.** Repos are the source of truth (CLAUDE.md
   rule 4); an advanced user may edit the public repo directly. New durable core
   (two concurrent subagents on disjoint packages): package-ops `reconcilePublicRepo`

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { PackageFile } from "./store";
 import { MemoryPackageStore } from "./memory-store";
-import { reconcilePublicRepo, type RepoReader } from "./reconcile";
+import { findLeakedPaths, reconcilePublicRepo, type RepoReader } from "./reconcile";
 
 const PKG = "pkg-1";
 
@@ -298,5 +298,30 @@ describe("reconcilePublicRepo", () => {
     expect(set.has(`public ${added}`)).toBe(true);
     expect(set.has(`public ${modified}`)).toBe(true);
     expect(set.has(`public ${removed}`)).toBe(false);
+  });
+});
+
+describe("findLeakedPaths (M21 audit)", () => {
+  it("returns nothing for a clean public tree", () => {
+    const paths = [
+      "study-guide/ch01.md",
+      "materials/structures/x.ketcher.svg",
+      "alembic.json",
+      "README.md",
+      "CITATION.cff",
+    ];
+    expect(findLeakedPaths(paths)).toEqual([]);
+  });
+
+  it("flags private-layer paths that leaked into the public repo", () => {
+    const paths = [
+      "study-guide/ch01.md",
+      "private-instructor/answers.md",
+      "private-instructor/keys/exam1.md",
+    ];
+    const leaked = findLeakedPaths(paths);
+    expect(leaked).toContain("private-instructor/answers.md");
+    expect(leaked).toContain("private-instructor/keys/exam1.md");
+    expect(leaked).not.toContain("study-guide/ch01.md");
   });
 });

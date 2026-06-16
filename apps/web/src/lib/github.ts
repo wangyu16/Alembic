@@ -8,6 +8,7 @@ import {
   type RepoCoords,
 } from "@alembic/github-bridge";
 import {
+  findLeakedPaths,
   reconcilePublicRepo,
   type PackageStore,
   type ReconcileOutcome,
@@ -177,4 +178,29 @@ export async function reconcilePackage(
     await recordSyncedSha(supabase, packageId, outcome.headSha);
   }
   return outcome;
+}
+
+/**
+ * M21 — audit the WHOLE public repo tree (not just a diff) for paths that
+ * violate the two-repo invariant: private content that has leaked into the
+ * public repo. Returns null when the package isn't GitHub-backed/connected.
+ * `truncated` means the tree exceeded GitHub's limit and the audit is
+ * inconclusive. A non-empty `leaked` means remediation is required — see
+ * docs/specs/leakage-remediation.md.
+ */
+export async function scanPublicRepoForLeaks(
+  supabase: SupabaseClient,
+  store: PackageStore,
+  userId: string,
+  packageId: string,
+): Promise<{ leaked: string[]; truncated: boolean } | null> {
+  const record = await store.getPackage(packageId);
+  const repo = record?.storage === "github" ? record.manifest.publicRepo : null;
+  if (!repo) return null;
+  const gh = await clientForUser(supabase, userId);
+  if (!gh) return null;
+  const coords: RepoCoords = { owner: repo.owner, repo: repo.name };
+  const head = await gh.client.getBranchHead(coords);
+  const { paths, truncated } = await gh.client.listTree(coords, head.commitSha);
+  return { leaked: findLeakedPaths(paths), truncated };
 }

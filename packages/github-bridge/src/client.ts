@@ -298,6 +298,27 @@ export class GitHubClient {
     return out;
   }
 
+  /**
+   * List every file (blob) path in the repo tree at a ref, recursively. Used by
+   * the leakage audit (M21) to scan the whole public repo — not just a diff —
+   * for paths that violate the two-repo invariant. `truncated` is true when the
+   * tree exceeded GitHub's response limit (very large repos); the caller should
+   * treat a truncated audit as inconclusive.
+   */
+  async listTree(
+    coords: RepoCoords,
+    ref: string,
+  ): Promise<{ paths: string[]; truncated: boolean }> {
+    const data = await this.request<{
+      tree: Array<{ path: string; type: string }>;
+      truncated?: boolean;
+    }>("GET", `/repos/${coords.owner}/${coords.repo}/git/trees/${ref}?recursive=1`);
+    return {
+      paths: data.tree.filter((e) => e.type === "blob").map((e) => e.path),
+      truncated: data.truncated === true,
+    };
+  }
+
   /** Read a UTF-8 file at a ref (commit/branch). Returns null if absent. */
   async getFileAtRef(
     coords: RepoCoords,
