@@ -212,6 +212,40 @@ export class GitHubClient {
     return { url: created.html_url };
   }
 
+  /** The repository's default branch name (e.g. "main"). */
+  async getDefaultBranch(coords: RepoCoords): Promise<string> {
+    const data = await this.request<{ default_branch: string }>(
+      "GET",
+      `/repos/${coords.owner}/${coords.repo}`,
+    );
+    return data.default_branch;
+  }
+
+  /** List tags (snapshots), newest-API-order first. */
+  async listTags(
+    coords: RepoCoords,
+    opts: { perPage?: number } = {},
+  ): Promise<Array<{ name: string; commitSha: string }>> {
+    const perPage = opts.perPage ?? 50;
+    const data = await this.request<Array<{ name: string; commit: { sha: string } }>>(
+      "GET",
+      `/repos/${coords.owner}/${coords.repo}/tags?per_page=${perPage}`,
+    );
+    return data.map((t) => ({ name: t.name, commitSha: t.commit.sha }));
+  }
+
+  /**
+   * Create a lightweight tag (snapshot) pointing at `sha`. Throws if the tag
+   * already exists (GitHub returns 422). A snapshot is immutable: it captures
+   * the whole repo — content and assets — at that commit.
+   */
+  async createTag(coords: RepoCoords, tag: string, sha: string): Promise<void> {
+    await this.request("POST", `/repos/${coords.owner}/${coords.repo}/git/refs`, {
+      ref: `refs/tags/${tag}`,
+      sha,
+    });
+  }
+
   /** Read a UTF-8 file at a ref (commit/branch). Returns null if absent. */
   async getFileAtRef(
     coords: RepoCoords,

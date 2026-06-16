@@ -29,6 +29,12 @@ import {
 import { listAssetsAction, readAssetAction } from "./asset-actions";
 import { generateSlidesAction } from "./slides-actions";
 import { importFileAction, restructureImportAction } from "./import-actions";
+import {
+  addCitationAction,
+  createSnapshotAction,
+  listSnapshotsAction,
+  type SnapshotInfo,
+} from "./snapshot-actions";
 import { KetcherEditor } from "./ketcher-editor";
 import { PlotEditor } from "./plot-editor";
 import type { AssetInfo } from "@alembic/package-ops";
@@ -474,6 +480,9 @@ export function StudyGuideEditor({
             onChanged={() => router.refresh()}
           />
         </ToolSection>
+        <ToolSection title="Snapshots & citation">
+          <SnapshotsPanel packageId={packageId} published={publishing.published} />
+        </ToolSection>
       </div>
 
       <div className="flex flex-col gap-3">
@@ -807,6 +816,94 @@ function ImportPanel({
 
       <p className="mt-3 text-xs text-faint">
         Word/PDF/PowerPoint import is coming (handled server-side).
+      </p>
+      {note && <p className="mt-2 text-xs text-ok">{note}</p>}
+      {error && <p className="mt-2 text-sm text-danger">{error}</p>}
+    </div>
+  );
+}
+
+function SnapshotsPanel({ packageId, published }: { packageId: string; published: boolean }) {
+  const [snaps, setSnaps] = useState<SnapshotInfo[] | null>(null);
+  const [name, setName] = useState("");
+  const [pending, start] = useTransition();
+  const [note, setNote] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (published && !snaps) void listSnapshotsAction(packageId).then(setSnaps);
+  }, [published, snaps, packageId]);
+
+  if (!published) {
+    return (
+      <p className="text-xs text-muted">
+        Publish to GitHub first — a snapshot is an immutable version of the published package.
+      </p>
+    );
+  }
+
+  const create = () => {
+    setError(null);
+    setNote(null);
+    start(async () => {
+      const r = await createSnapshotAction(packageId, name);
+      if (!r.ok) setError(r.error ?? "Couldn't create the snapshot.");
+      else {
+        setName("");
+        setNote(`Snapshot “${r.tag}” created.`);
+        setSnaps(null); // re-fetch the list
+      }
+    });
+  };
+  const cite = () => {
+    setError(null);
+    setNote(null);
+    start(async () => {
+      const r = await addCitationAction(packageId);
+      if (!r.ok) setError(r.error ?? "Couldn't add CITATION.cff.");
+      else setNote("CITATION.cff written to the repository.");
+    });
+  };
+
+  return (
+    <div className="panel p-3">
+      <div className="flex flex-wrap items-end gap-2">
+        <label className="flex-1 text-sm">
+          <span className="mb-1 block text-xs text-muted">Snapshot name (e.g. “Fall 2026”)</span>
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Fall 2026"
+            className="field w-full text-sm"
+          />
+        </label>
+        <button onClick={create} disabled={pending || !name.trim()} className="btn btn-primary btn-sm">
+          {pending ? "Working…" : "Take snapshot"}
+        </button>
+        <button onClick={cite} disabled={pending} className="btn btn-ghost btn-sm" title="Generate a CITATION.cff in the repository">
+          Add CITATION.cff
+        </button>
+      </div>
+
+      {snaps && snaps.length > 0 && (
+        <ul className="mt-3 divide-y divide-[var(--edge-soft)]">
+          {snaps.map((s) => (
+            <li key={s.name} className="flex items-center justify-between gap-2 py-2">
+              <span className="min-w-0 truncate text-sm">{s.name}</span>
+              <div className="flex shrink-0 items-center gap-2">
+                <span className="text-xs text-faint">{s.commitSha.slice(0, 7)}</span>
+                <a href={s.url} target="_blank" rel="noreferrer" className="link text-xs">View</a>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+      {snaps && snaps.length === 0 && (
+        <p className="mt-2 text-xs text-faint">No snapshots yet — name one and take it.</p>
+      )}
+      <p className="mt-2 text-xs text-faint">
+        A snapshot is a fixed, citable version of the whole package (content + figures). Adaptations
+        and citations should target a snapshot, not the moving head.
       </p>
       {note && <p className="mt-2 text-xs text-ok">{note}</p>}
       {error && <p className="mt-2 text-sm text-danger">{error}</p>}

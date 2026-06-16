@@ -15,7 +15,7 @@ same commit as the work it tracks. Statuses: ✅ done · 🔄 in progress · ⬜
 | --- | --- | --- |
 | 0 | Foundations & contracts | ✅ |
 | 1 | Initial release: end-to-end loop (v0.1) | ✅ built + deployed (pilot M8.3 ongoing) |
-| 2 | Authoring depth & chemistry-first (tiers, a11y, carriers & assets: Ketcher/plots/slides/PDF, import, snapshots) | 🔄 v0.2 done (M9/M10/M14); v0.3 in progress (M11–M17 below) |
+| 2 | Authoring depth & chemistry-first (tiers, a11y, carriers & assets: Ketcher/plots/slides/PDF, import, snapshots, gateway, local mode) | ✅ core built (M9–M17); documented deferrals → worker tier (PDF, foreign import), studio editing/projects, DOI/compare, per-institution quotas |
 | 3 | Agent harness & reconciliation | ⬜ |
 | 4 | Assessment & question templates | ⬜ |
 | 5 | Adaptation ecosystem | ⬜ |
@@ -308,14 +308,15 @@ Named immutable versions + citable scholarly output (goal.md §5).
 
 | # | Sub-module | Verify by | Status |
 | --- | --- | --- | --- |
-| 15.1 | Snapshot = Git tag via the bridge; create / list | a named snapshot is created and listed | ⬜ |
-| 15.2 | Restore-from / compare snapshots | "what changed between offerings" shown in educator language | ⬜ |
-| 15.3 | Citation: stable snapshot URL + version; `CITATION.cff` generation | citation metadata generated per snapshot | ⬜ |
-| 15.4 | Opt-in DOI minting (Zenodo or equivalent) | snapshot → DOI on opt-in | ⬜ |
-| 15.5 | Adaptation/citation target snapshots (`adaptedFrom.snapshot`) | an adaptation references a snapshot, not a moving head | ⬜ |
-| 15.6 | Pin carrier-asset references to SHA permalinks on snapshot/publish (live → frozen) | a snapshot's pages reference assets at a fixed commit, not a moving branch | ⬜ (needs M11.0) |
+| 15.1 | Snapshot = Git tag via the bridge; create / list | a named snapshot is created and listed | ✅ github-bridge `getDefaultBranch`/`listTags`/`createTag`; web `createSnapshotAction` (tags the public-repo head; name→tag slug) + `listSnapshotsAction`; `SnapshotsPanel` in the Publish & share group |
+| 15.2 | Restore-from / compare snapshots | "what changed between offerings" shown in educator language | 🔄 snapshots listed with a **View** link (GitHub tag page); GitHub-native compare/restore deferred (heavy; educator-language diff is future) |
+| 15.3 | Citation: stable snapshot URL + version; `CITATION.cff` generation | citation metadata generated per snapshot | ✅ package-ops `generateCitationCff` (pure; SPDX license, version, author, date; 2 tests) + web `addCitationAction` commits `CITATION.cff`; each snapshot has a stable tag URL |
+| 15.4 | Opt-in DOI minting (Zenodo or equivalent) | snapshot → DOI on opt-in | ⬜ deferred (external Zenodo integration; opt-in) |
+| 15.5 | Adaptation/citation target snapshots (`adaptedFrom.snapshot`) | an adaptation references a snapshot, not a moving head | ⬜ deferred (adaptation is a later phase; the contract field lands with it) |
+| 15.6 | Pin carrier-asset references to SHA permalinks on snapshot/publish (live → frozen) | a snapshot's pages reference assets at a fixed commit, not a moving branch | ✅ **by design** — a snapshot tags the *whole repo*, so `materials/…` references resolve to that tag's immutable content (content + assets frozen together). Explicit raw-permalink rewriting is optional and unneeded for repo-relative refs |
 
-*Exit:* snapshot a course offering, cite it, compare two offerings.
+*Exit:* ✅ snapshot a published course offering (immutable tag) and cite it
+(`CITATION.cff` + stable URL). Compare/restore + DOI are deferred follow-ups.
 
 ### M16 — Model gateway & task routing
 
@@ -353,6 +354,7 @@ resolver is the single place future paid tiers attach.
 ## Log
 
 ### 2026-06-16
+- **M15 snapshots & citation — core done; compare/DOI deferred.** Snapshots are immutable Git tags on the public repo (github-bridge `getDefaultBranch`/`listTags`/`createTag`; web `createSnapshotAction`/`listSnapshotsAction`; `SnapshotsPanel` in the Publish & share group). Tagging the whole repo freezes content **and** carrier assets together, so the asset-permalink pinning (15.6) the carrier spec promised is satisfied by construction (repo-relative `materials/…` refs resolve to the tag). Citation: pure `generateCitationCff` (package-ops; SPDX license + version + author + date) committed via `addCitationAction`; each snapshot has a stable tag URL. Deferred: GitHub compare/restore, Zenodo DOI (15.4), `adaptedFrom.snapshot` (15.5, with the adaptation phase). 196 package tests green; web typecheck + build pass. **Completes v0.3 (M9–M17).**
 - **M16 model gateway & task routing — core done; budgets wired; per-institution + compliance later.** ai-assist gained `GatewayProvider` (OpenAI-compatible, native fetch — OpenRouter/Portkey/OpenAI) and `modelForTask`/`DEFAULT_ROUTING` (subagent; 43 tests). `lib/ai` now **selects the provider from env** (gateway if `AI_GATEWAY_URL`+`AI_GATEWAY_API_KEY`, else Gemini — provider-swappable, CLAUDE.md rule 6), **routes the model per task kind**, and enforces an optional **per-user token budget** (`recent_ai_token_usage` RPC, migration 0007; `AI_TOKEN_BUDGET`; `BudgetExceededError` surfaced at all AI call sites) atop the existing rate limit. Usage stays attributable via `ai_invocations`. web typecheck + build pass. Deferred: per-institution quotas + usage dashboards, and the third-party data-handling/FERPA review (ops). **Migration 0007 awaits `supabase db push` to enforce budgets.**
 - **M17 local mode (v1) — anonymous single-file studio + entitlement seam.** `/studio` (no account, nothing stored): New note / Open a `.md` or `.md.html` (carrier source extracted client-side via `@alembic/carriers`) / live preview / Save `.md` (local) or `.md.html` (built via stateless unauth `/api/build/md-html`); File System Access `showSaveFilePicker` with download fallback. Delivers goal.md's stated student use case (open a downloaded `.md.html`, annotate, save back). **Entitlement seam** `lib/entitlements.ts` (`resolveEntitlements`: anonymous→`{localFile}`, user→full) — the monetization hook; future paid plans add caps there only. Home page "(coming soon)" → real **"Open the studio"** CTA. web typecheck + build pass; `/studio` route compiles. **Needs an interactive pass** (File System Access). Deferred: structures/plots/slides editing in studio (editors need a storage-agnostic save callback), local *projects* (PackageOps/LocalPackageStore, v2), app-wide entitlement enforcement + Google auth + paid AI (with M16).
 - **M12 import — lossless re-import + AI restructure done; foreign binaries & bulk-zip deferred.** The carrier payoff: package-ops `classifyImport` + web `importFileAction` bring a `.ketcher.svg`/`.plot.svg`/`.md.html`/`.slides.html`/`.md` file back deterministically (assets stored under `materials/`; document/markdown → blocks appended) — no AI. Lossy path: ai-assist `restructureToBlocks` (subagent) + `restructureImportAction` → Tier-2 `import-blocks` review (accept appends sections). `import.completed` event for provenance; imported markdown gets IDs on save. "Import content" panel in the Author group. Foreign binaries (docx/pdf/pptx/images) and bulk zip/folder upload **deferred to the worker tier** (heavy parsers, npm-flaky). 184 package tests green (incl. ai-assist 33, package-ops 64); web typecheck + build pass.
