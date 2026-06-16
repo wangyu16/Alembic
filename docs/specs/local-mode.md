@@ -13,7 +13,19 @@ visitor) opens a supported file from their computer — a `.md.html`,
 (including the structure editor), and saves it back to disk. No account, no
 cloud, no GitHub.
 
-Product principle (per project intent):
+This is **not a new idea** — it's already in [goal.md](../goal.md):
+
+- goal.md (Downloadable artifacts) states the exact use case: *"a student should
+  be able to download a public chapter study guide, open the `.md.html` file in
+  a compatible editor such as VS Code, and keep a private annotated copy with
+  personal notes."* Local mode is Alembic **being that compatible editor.**
+- goal.md **§11 (AI Credit & Sustainability Model)**: *"the software can remain
+  open source while AI inference remains an operating cost… support multiple
+  future credit models without changing its core architecture"* — and the AI
+  provider + billing layer must be **modular.** The entitlement seam (§2) is
+  that hook.
+
+Product principle (restated from goal.md §11):
 
 > **Content is OER and open. The *service* — running the platform and the AI —
 > costs money.** Local editing is free and anonymous today. Hosted AI, cloud
@@ -113,14 +125,20 @@ network.
 
 ## 6. Identity & AI
 
-- **Anonymous now.** No login for local editing. An `AuthProvider` interface is
-  introduced but has a single `anonymous` implementation today; Google/OIDC drop
-  in later without touching feature code.
+- **Anonymous now.** No login for local editing. Today's identity model is
+  **GitHub OAuth** (goal.md "Identity & GitHub model") — the signed-in educator,
+  whom the resolver treats as full-capability. Local mode adds an `anonymous`
+  identity (`{localFile}`). An `AuthProvider` interface (the goal.md Workspace/
+  Auth module) has only the `anonymous` + existing-GitHub paths today; a future
+  Google/OIDC **student** identity drops in without touching feature code.
 - **AI is an entitlement** (`ai`), **absent for anonymous → off in local mode.**
   The AI surfaces simply don't render, and the server refuses AI calls without
-  the entitlement. `AIProvider` (provider-swappable) is unchanged; cost
-  attribution continues through the existing governance log. Future paid plans
-  grant `ai`; metering/quotas attach at the resolver + governance layer.
+  the entitlement. Three distinct layers compose (don't conflate them):
+  **entitlement** = *may this identity use AI at all* (here); **gateway/credits**
+  (M16, ai-architecture.md §11) = *who pays, which model, what quota*;
+  **Tiers 1–3** (M10) = *what approval applies to a change*. `AIProvider` stays
+  provider-swappable; future paid AI for light users = M16 gateway + the `ai`
+  entitlement granted by a plan.
 - **Privacy is a feature:** local files never touch the server. (When AI is
   later enabled for paid users, only the relevant snippet is sent, under the
   existing tiers.)

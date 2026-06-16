@@ -15,7 +15,7 @@ same commit as the work it tracks. Statuses: ✅ done · 🔄 in progress · ⬜
 | --- | --- | --- |
 | 0 | Foundations & contracts | ✅ |
 | 1 | Initial release: end-to-end loop (v0.1) | ✅ built + deployed (pilot M8.3 ongoing) |
-| 2 | Authoring depth & chemistry-first (tiers, a11y, carriers & assets: Ketcher/plots/slides/PDF, import, snapshots) | 🔄 v0.2 done (M9/M10/M14); v0.3 in progress (M11–M16 below) |
+| 2 | Authoring depth & chemistry-first (tiers, a11y, carriers & assets: Ketcher/plots/slides/PDF, import, snapshots) | 🔄 v0.2 done (M9/M10/M14); v0.3 in progress (M11–M17 below) |
 | 3 | Agent harness & reconciliation | ⬜ |
 | 4 | Assessment & question templates | ⬜ |
 | 5 | Adaptation ecosystem | ⬜ |
