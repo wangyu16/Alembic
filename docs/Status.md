@@ -153,16 +153,25 @@ acceptance check and is independently implementable.
 
 **Suggested sequencing & grouping** (→ = depends on):
 
-- **v0.2 (authoring core):** M9 multi-chapter → M10 risk-tiered approvals →
-  M11 chemistry/structures → M14 accessibility.
-- **v0.3 (production depth):** M12 import (→ M9, M10) → M13 slides/PDF +
-  artifact lifecycle (→ orz-artifacts) → M15 snapshots & citation →
-  M16 model gateway.
+- **v0.2 (authoring core): ✅ done** — M9 multi-chapter → M10 risk-tiered
+  approvals → M14 accessibility.
+- **v0.3 (carriers & assets):** **M11.0 carrier foundation** (`orz-artifacts`
+  codec + kind registry; `assets` layer; reference resolver; `validate()`) →
+  M11 Ketcher `.ketcher.svg` → plot `.plot.svg` → M13 document carriers
+  (`.slides.html`, `.md.pdf`) → M12 import (lossless carrier re-import + lossy
+  foreign import + bulk local upload) → M15 snapshots & citation (pins asset
+  permalinks) → M16 model gateway. See
+  [specs/carriers-and-assets.md](specs/carriers-and-assets.md).
 
 **Cross-cutting dependencies:**
-- **orz-stack Phase B** (`orz-artifacts`: versioned embed/extract) gates M13;
-  **orz-markdown gap #5** (attrs on plugin blocks) gates M11 structure anchors
-  (see [orz-stack/docs/ConsolidationPlan.md](../../orz-stack/docs/ConsolidationPlan.md)).
+- **The carrier foundation (M11.0) gates M11/M12/M13** — one primitive
+  (self-contained dual-extension file + kind registry) underlies structures,
+  plots, slides, PDF, and `.md.html`. It **supersedes the old orz gap #5
+  blocker** (the registry is strictly more useful than per-block attrs).
+  `orz-artifacts` (orz-stack Phase B) owns the codecs; `package-contract` owns
+  placement/identity. See
+  [specs/carriers-and-assets.md](specs/carriers-and-assets.md) and
+  [orz-stack/docs/ConsolidationPlan.md](../../orz-stack/docs/ConsolidationPlan.md).
 - All AI features route through the **risk tiers (M10)**; the **execution &
   model-access design** is in [specs/ai-architecture.md](specs/ai-architecture.md);
   the **course/chapter model** in [specs/course-structure.md](specs/course-structure.md).
@@ -202,45 +211,76 @@ Generalize the single Tier-3 publish gate into Tiers 1/2/3 (goal.md §2).
 
 *Exit:* AI changes flow through the correct tier; publish stays gated.
 
-### M11 — Chemistry-first: structures
+### M11.0 — Carrier foundation (gates M11/M12/M13)
 
-Native chemical-structure editing as addressable blocks.
-
-| # | Sub-module | Verify by | Status |
-| --- | --- | --- | --- |
-| 11.1 | Ketcher integration in the editor (draw/edit structures) | draw a structure; SMILES/molfile captured | ⬜ |
-| 11.2 | Structure block (`kind: structure`) with SMILES/molfile as source + block-ID anchor | structure block round-trips with a stable ID | ⬜ (needs orz gap #5) |
-| 11.3 | Structure rendering in preview / site / exports | structure renders in preview and the published site | ⬜ |
-| 11.4 | AI alt-text for structures from SMILES/molfile (chemistry-first a11y) | alt text generated then reviewed (Tier-2) | ⬜ |
-| 11.5 | orz-markdown gap #5 upstream (attrs on plugin blocks) | equation/structure blocks accept `{{…[#blk-…]}}` | ⬜ (orz-stack) |
-
-*Exit:* a chemistry section with a drawn structure publishes with alt text.
-
-### M12 — Import pipeline
-
-Raw materials → study-guide blocks (Tier-2 reviewed).
+The single primitive: a self-contained dual-extension file (rendered payload +
+embedded source + `kind`/`format` markers) and the **kind registry** that makes
+adding the next type a registration, not a rewrite. See
+[specs/carriers-and-assets.md](specs/carriers-and-assets.md).
 
 | # | Sub-module | Verify by | Status |
 | --- | --- | --- | --- |
-| 12.1 | Upload/ingest: Word (.docx), PDF, PPTX, images, text | files accepted and stored for processing | ⬜ |
-| 12.2 | Worker-side extraction → normalized text/structure | each format yields normalized content | ⬜ |
-| 12.3 | AI-assisted restructuring into blocks (Tier-2 queue) | imported doc becomes reviewable study-guide blocks | ⬜ |
-| 12.4 | Provenance: source records + attribution for imports | imported blocks carry source + attribution | ⬜ |
-| 12.5 | Imported-markdown ID fallback (sidecar/content-hash until native IDs) | un-ID'd import matched until IDs are assigned (contract §6 r9) | ⬜ |
+| 11.0a | `orz-artifacts` carrier codec — `embed`/`extract`/`detectVersion` per payload (SVG/HTML/PDF); format-version markers; legacy = format 0; append-only fixtures | round-trip + legacy fixtures pass; pure, Node + browser | ⬜ (orz-stack) |
+| 11.0b | Kind registry (`CarrierKind`: id, role, extension, codec, editor, altText) | a new kind registers without touching consumers | ⬜ |
+| 11.0c | Contract `assets` layer + reference resolver (public-only refs, fail-closed) | public docs cannot reference private assets; path rules hold | ⬜ |
+| 11.0d | Asset records (stable id + content hash, reusing M3 hashing) + required alt text | asset round-trips with stable id; alt text travels | ⬜ |
+| 11.0e | `validate(project)` (pure) — one contract, two surfaces (validator == Agent Skill) | a conforming local project passes the same check the importer runs | ⬜ |
 
-*Exit:* a Word/PDF dump becomes a reviewed study-guide chapter.
+*Exit:* an asset carrier round-trips through `orz-artifacts`; a registered kind
+is consumed by editor/importer/renderer without bespoke code.
 
-### M13 — Artifacts & dual-extension formats
+### M11 — Chemistry-first: structures (`.ketcher.svg`)
 
-Slides + PDF artifacts; complete the derived-artifact lifecycle.
+First asset kind on the carrier foundation. (Borrows the idea from
+`vscode-ketcher`, not its untested internals.)
 
 | # | Sub-module | Verify by | Status |
 | --- | --- | --- | --- |
-| 13.1 | `orz-artifacts` shared package (versioned embed/extract; orz-stack Phase B) | embed/extract for `.md.html`/`.slides.html`/`.md.pdf` with format markers; legacy = format 0 | ⬜ (orz-stack) |
-| 13.2 | `.slides.html` generation from blocks + dual-extension | slide deck generated; source embedded + extractable | ⬜ |
-| 13.3 | `.md.pdf` generation (worker-side, paged.js/Chromium) + dual-extension | PDF generated with embedded source | ⬜ |
-| 13.4 | Slides/PDF as derived artifacts (source blocks + staleness) | edit a source block → slide flagged stale | ⬜ |
+| 11.1 | Ketcher editor integration (draw/edit) → `.ketcher.svg` carrier | draw a structure; SVG + embedded source saved | ⬜ |
+| 11.2 | Insert by reference + intra-package search & click-insert | searchable asset picker inserts the correct permalink | ⬜ |
+| 11.3 | Structure rendering in preview / site / exports (as `<img>`, inert) | structure renders in preview and the published site | ⬜ |
+| 11.4 | AI alt-text from structure source (chemistry-first a11y) | alt text generated then reviewed (Tier-2) | ⬜ |
+
+*Exit:* a chemistry section with a drawn, reusable structure publishes with alt text.
+
+### M11b — Plot/chart asset kind (`.plot.svg`)
+
+Second asset kind — proves the registry generalizes (adding it touches only one
+registration). Plotly spec as source. (Borrows from `orz-plot-vscode`.)
+
+| # | Sub-module | Verify by | Status |
+| --- | --- | --- | --- |
+| 11b.1 | Plot editor (Plotly spec) → `.plot.svg` carrier | author a chart; SVG + embedded spec saved | ⬜ |
+| 11b.2 | Registered as a kind; reuses §11.2 insert/search path with no new plumbing | plot assets appear in the same picker as structures | ⬜ |
+| 11b.3 | Static-SVG render on the published site (no heavy runtime) | chart renders without bundling Plotly into the site | ⬜ |
+
+*Exit:* a second asset type ships by registration alone.
+
+### M13 — Document carriers (`.slides.html`, `.md.pdf`)
+
+Derived carriers on the same codec; complete the derived-artifact lifecycle.
+
+| # | Sub-module | Verify by | Status |
+| --- | --- | --- | --- |
+| 13.1 | (folded into M11.0a) `orz-artifacts` document codecs for `.md.html`/`.slides.html`/`.md.pdf` | embed/extract with format markers; legacy = format 0 | ⬜ (orz-stack) |
+| 13.2 | `.slides.html` generation from blocks + carrier round-trip | slide deck generated; source embedded + extractable | ⬜ |
+| 13.3 | `.md.pdf` generation (worker-side, paged.js/Chromium) + carrier | PDF generated with embedded source (hardest round-trip; may ship export-only first) | ⬜ |
+| 13.4 | Slides/PDF as derived artifacts (source blocks + staleness, reuse M3) | edit a source block → slide flagged stale | ⬜ |
 | 13.5 | AI-assisted merge for stale artifacts (regenerate / merge / keep-mine complete) | merge applies block changes while preserving local edits, with review | ⬜ |
+
+### M12 — Import & local-first upload
+
+Lossless carrier re-import + lossy foreign import + bulk local-project upload.
+
+| # | Sub-module | Verify by | Status |
+| --- | --- | --- | --- |
+| 12.1 | Lossless re-import of any registered carrier (`.ketcher.svg`/`.plot.svg`/`.md.html`/…) | carrier `extract()`ed → asset/document registered, no AI | ⬜ |
+| 12.2 | Lossy foreign import: Word (.docx), PDF, PPTX, images, text → normalized | each format yields normalized content | ⬜ |
+| 12.3 | AI-assisted restructuring into blocks (Tier-2 queue) | imported doc becomes reviewable study-guide blocks | ⬜ |
+| 12.4 | Bulk local-project upload = lossless re-import over a tree, validated by `validate()` | a conforming local project uploads with zero friction | ⬜ |
+| 12.5 | Provenance + imported-markdown ID fallback (sidecar/content-hash until native IDs) | imports carry source + attribution; un-ID'd matched (contract §6 r9) | ⬜ |
+
+*Exit:* a complete local project (chapters + carriers) uploads, incorporates, and publishes.
 
 *Exit:* generate slides + a PDF handout from a chapter; both editable and drift-tracked.
 
@@ -284,6 +324,10 @@ Cost/scale via a gateway + per-task model selection. See [specs/ai-architecture.
 *Exit:* per-task model selection + per-user budgets live; still provider-swappable.
 
 ## Log
+
+### 2026-06-16
+- **Migrations 0005 + 0006 applied to production** — M10 tier queue and M14 accessibility features now live.
+- **Carriers & assets design** ([specs/carriers-and-assets.md](specs/carriers-and-assets.md)). Unifies `.ketcher.svg` / `.plot.svg` / `.md.html` / `.slides.html` / `.md.pdf` under one **carrier** primitive (renderable payload + embedded source + `kind`/`format` markers) with two roles (authored **assets** vs derived **documents**) and a **kind registry** as the single extension point. Assets are standalone, public, addressable, referenced by permalink (intra-package = searchable click-insert; inter-package = paste the universal permalink). Decisions locked: foundation-first; live path + pin-at-publish; reuse via permalink universality. Borrows ideas from the orz VS Code extensions but the Alembic contract is authoritative. **Re-sequenced v0.3** around a new **M11.0 carrier foundation** (gates M11/M12/M13; supersedes the orz gap #5 blocker): `orz-artifacts` codec + registry, `assets` layer + resolver, asset records, `validate()` → M11 Ketcher → M11b plot → M13 document carriers → M12 import/local-upload.
 
 ### 2026-06-11
 - Planning docs: product vision, [Roadmap](Roadmap.md), [InitialReleasePlan](InitialReleasePlan.md) (Gemini as dev-phase AI provider). Repo live at github.com/wangyu16/Alembic; CI green.
