@@ -28,6 +28,7 @@ import {
 } from "./a11y-actions";
 import { listAssetsAction, readAssetAction } from "./asset-actions";
 import { KetcherEditor } from "./ketcher-editor";
+import { PlotEditor } from "./plot-editor";
 import type { AssetInfo } from "@alembic/package-ops";
 import type { A11yReport, Fixable } from "@/lib/a11y";
 import {
@@ -217,21 +218,21 @@ export function StudyGuideEditor({
     [focus, markDirty],
   );
 
-  // Structure editor (M11.1): null = closed; {} = new; {path,source} = editing.
-  const [structure, setStructure] = useState<
-    null | { path?: string; source?: string }
+  // Asset editor (M11/M11b): null = closed; otherwise the kind + (edit) source.
+  const [editing, setEditing] = useState<
+    null | { kind: string; path?: string; source?: string }
   >(null);
-  const openEditStructure = useCallback(
-    async (path: string) => {
+  const openEditAsset = useCallback(
+    async (path: string, kind: string) => {
       const r = await readAssetAction(packageId, path);
-      setStructure({ path, source: r.ok ? r.source : undefined });
+      setEditing({ kind, path, source: r.ok ? r.source : undefined });
     },
     [packageId],
   );
-  const onStructureSaved = useCallback(
+  const onAssetSaved = useCallback(
     (path: string, altText: string) => {
       insertMarkdown(`\n\n![${altText}](${path})\n`);
-      setStructure(null);
+      setEditing(null);
       router.refresh();
     },
     [insertMarkdown, router],
@@ -405,11 +406,11 @@ export function StudyGuideEditor({
           + Add section
         </button>
 
-        <StructuresPanel
+        <AssetsPanel
           packageId={packageId}
-          onNew={() => setStructure({})}
+          onNew={(kind) => setEditing({ kind })}
           onInsert={(path) => insertMarkdown(`\n\n![](${path})\n`)}
-          onEdit={openEditStructure}
+          onEdit={openEditAsset}
         />
 
         <AIDraftPanel packageId={packageId} activePath={initialPath} onQueued={() => router.refresh()} />
@@ -458,30 +459,41 @@ export function StudyGuideEditor({
       </div>
       </div>
 
-      {structure && (
+      {editing?.kind === "ketcher" && (
         <KetcherEditor
           packageId={packageId}
           activePath={initialPath}
-          initialPath={structure.path}
-          initialSource={structure.source}
-          onClose={() => setStructure(null)}
-          onSaved={onStructureSaved}
+          initialPath={editing.path}
+          initialSource={editing.source}
+          onClose={() => setEditing(null)}
+          onSaved={onAssetSaved}
+        />
+      )}
+      {editing?.kind === "plot" && (
+        <PlotEditor
+          packageId={packageId}
+          initialPath={editing.path}
+          initialSource={editing.source}
+          onClose={() => setEditing(null)}
+          onSaved={onAssetSaved}
         />
       )}
     </div>
   );
 }
 
-function StructuresPanel({
+const EDITABLE_KINDS = new Set(["ketcher", "plot"]);
+
+function AssetsPanel({
   packageId,
   onNew,
   onInsert,
   onEdit,
 }: {
   packageId: string;
-  onNew: () => void;
+  onNew: (kind: string) => void;
   onInsert: (path: string) => void;
-  onEdit: (path: string) => void;
+  onEdit: (path: string, kind: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [assets, setAssets] = useState<AssetInfo[] | null>(null);
@@ -499,7 +511,7 @@ function StructuresPanel({
   if (!open) {
     return (
       <button onClick={() => setOpen(true)} className="btn btn-ghost">
-        🧪 Structures & figures
+        🧪 Figures: structures & charts
       </button>
     );
   }
@@ -507,10 +519,13 @@ function StructuresPanel({
   return (
     <div className="panel p-3">
       <div className="mb-2 flex items-center justify-between">
-        <span className="text-sm font-medium">Structures &amp; figures</span>
+        <span className="text-sm font-medium">Figures: structures &amp; charts</span>
         <button onClick={() => setOpen(false)} className="text-xs text-muted hover:text-ink">Close</button>
       </div>
-      <button onClick={onNew} className="btn btn-primary btn-sm">Draw a structure</button>
+      <div className="flex flex-wrap gap-2">
+        <button onClick={() => onNew("ketcher")} className="btn btn-primary btn-sm">Draw a structure</button>
+        <button onClick={() => onNew("plot")} className="btn btn-ghost btn-sm">New chart</button>
+      </div>
 
       {assets && assets.length > 0 && (
         <>
@@ -533,9 +548,9 @@ function StructuresPanel({
                   >
                     Insert
                   </button>
-                  {a.kind === "ketcher" && (
+                  {EDITABLE_KINDS.has(a.kind) && (
                     <button
-                      onClick={() => onEdit(a.path)}
+                      onClick={() => onEdit(a.path, a.kind)}
                       className="rounded border border-zinc-300 px-2 py-1 text-xs hover:bg-elevated dark:border-zinc-700"
                     >
                       Edit

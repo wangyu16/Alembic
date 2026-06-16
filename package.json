@@ -13,7 +13,9 @@
     "build": "pnpm -r build",
     "dev:web": "pnpm --filter @alembic/web dev",
     "dev:worker": "pnpm --filter @alembic/worker dev",
-    "fetch:ketcher": "node scripts/fetch-ketcher.mjs"
+    "fetch:ketcher": "node scripts/fetch-ketcher.mjs",
+    "fetch:plotly": "node scripts/fetch-plotly.mjs",
+    "fetch:vendor": "node scripts/fetch-vendor.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.19.21",

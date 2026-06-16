@@ -1,8 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { saveStructureAssetAction } from "./structure-actions";
-import { suggestStructureAltTextAction } from "./asset-actions";
+import { saveAssetAction, suggestStructureAltTextAction } from "./asset-actions";
 
 /**
  * Ketcher structure editor (M11.1), embedded as a lazy, sandboxed iframe of the
@@ -120,7 +119,8 @@ export function KetcherEditor({
     try {
       const s = await readStructure();
       if (!s) return;
-      const res = await saveStructureAssetAction(packageId, {
+      const res = await saveAssetAction(packageId, {
+        kind: "ketcher",
         path: initialPath,
         name,
         source: s.source,
