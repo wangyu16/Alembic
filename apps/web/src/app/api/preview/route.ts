@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { renderDocument } from "@alembic/renderer";
+import { getRenderTheme } from "@/lib/theme";
 
 /**
  * Server-side markdown preview. Returns a full themed (dark-elegant) document
@@ -18,5 +19,6 @@ export async function POST(request: Request) {
   if (source.length > 200_000) {
     return NextResponse.json({ error: "Content too large" }, { status: 413 });
   }
-  return NextResponse.json({ html: renderDocument("Preview", source) });
+  const theme = await getRenderTheme();
+  return NextResponse.json({ html: renderDocument("Preview", source, theme) });
 }

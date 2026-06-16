@@ -514,6 +514,18 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
 ## Log
 
 ### 2026-06-16
+- **Light theme.** Added a light/dark toggle (header ☀/☾) alongside the existing
+  dark-elegant default. Cookie-based (`alembic-theme`, single source of truth):
+  the root layout reads it server-side into `<html data-theme>` (no flash), the
+  toggle flips it instantly client-side, and **rendered markdown + `.md.html`
+  output switch to orz-markdown `light-neat-1`** when light is selected (vendored
+  `ORZ_LIGHT_NEAT_CSS` + `themeCss()` in the renderer; `themedDocument`/
+  `renderDocument`/`buildMdHtml` take a `theme`, default dark — backward-compatible).
+  Threaded through the in-app preview, worksheet viewer, and `.md.html` exports
+  (study-guide + artifact + studio). App-chrome light tokens in `globals.css`.
+  **Scoped to in-app rendering + `.md.html`** as requested; the published Pages
+  site + slide decks stay dark for now (a separate publish-time choice). renderer
+  33 tests + web typecheck + build green.
 - **M9.6 — the hidden planning layer, wired end to end (concept-map-first authoring).**
   Confirmed the design is coherent with goal.md (concepts/objectives are public-repo
   layers, adaptable on GitHub but not rendered on the student site; study-guide-centered

@@ -4,6 +4,7 @@ import { loadArtifactContent } from "@alembic/package-ops";
 import { renderDocument } from "@alembic/renderer";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
+import { getRenderTheme } from "@/lib/theme";
 
 export const dynamic = "force-dynamic";
 
@@ -23,7 +24,8 @@ export default async function ArtifactViewerPage({
   const loaded = await loadArtifactContent(store, packageId, artifactId);
   if (!loaded) notFound();
 
-  const html = renderDocument(loaded.record.title, loaded.content);
+  const theme = await getRenderTheme();
+  const html = renderDocument(loaded.record.title, loaded.content, theme);
 
   return (
     <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-4 px-6 py-8">

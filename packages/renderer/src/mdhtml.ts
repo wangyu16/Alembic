@@ -18,6 +18,7 @@ import {
   getKind,
 } from "@alembic/carriers";
 import { themedDocument } from "./document";
+import type { RenderTheme } from "./theme-css";
 
 export const MD_HTML_FORMAT_VERSION = 1;
 
@@ -41,6 +42,8 @@ export interface BuildMdHtmlInput {
    * Currently unused.
    */
   sourceHash?: string;
+  /** Rendered theme — dark-elegant (default) or light-neat. */
+  theme?: RenderTheme;
 }
 
 /** Build a self-contained `.md.html` carrier with embedded, extractable source. */
@@ -48,6 +51,7 @@ export function buildMdHtml(input: BuildMdHtmlInput): string {
   const rendered = themedDocument({
     title: input.title,
     bodyHtml: md.render(input.markdown),
+    theme: input.theme ?? "dark",
   });
   return embedSource({
     kind: "md",

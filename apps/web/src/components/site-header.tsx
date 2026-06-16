@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getRenderTheme } from "@/lib/theme";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 /**
  * Auth-aware top navigation. Server component: renders Sign in for anonymous
@@ -21,6 +23,8 @@ export async function SiteHeader() {
     (user?.user_metadata?.["user_name"] as string | undefined) ??
     (user?.user_metadata?.["full_name"] as string | undefined);
 
+  const theme = await getRenderTheme();
+
   return (
     <header className="border-b border-edge/70 backdrop-blur supports-[backdrop-filter]:bg-canvas/70 sticky top-0 z-10">
       <nav className="mx-auto flex w-full max-w-5xl items-center justify-between px-6 py-3.5">
@@ -33,6 +37,7 @@ export async function SiteHeader() {
           </span>
         </Link>
         <div className="flex items-center gap-5 text-sm text-muted">
+          <ThemeToggle initial={theme} />
           <Link href="/portal" className="transition-colors hover:text-ink">
             Discover
           </Link>

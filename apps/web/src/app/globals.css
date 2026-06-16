@@ -29,6 +29,33 @@
   --border:        var(--edge);
 }
 
+/* ── Light-neat app theme ────────────────────────────────────────────────
+   Harmonizes with orz-markdown's light-neat-1 rendered output (clean white
+   surface, ink-on-light, blue accent). Selected via the header toggle, which
+   sets the alembic-theme cookie; the root layout reads it into data-theme.
+   Contrast checked: ink/canvas and muted/canvas clear 4.5:1. */
+[data-theme="light"] {
+  --canvas:        #fbfbfd;
+  --surface:       #ffffff;
+  --elevated:      #f3f4f8;
+  --edge:          #dee1ea;
+  --edge-soft:     #eaecf2;
+
+  --ink:           #1b2030;
+  --muted:         #5a6276;
+  --faint:         #868da0;
+
+  --accent:        #3a5ccc;
+  --accent-hover:  #2e4cb0;
+  --accent-ink:    #ffffff;
+  --accent-soft:   rgba(58, 92, 204, 0.12);
+
+  --danger:        #c2382b;
+  --warn:          #98660a;
+  --ok:            #1d864a;
+}
+html[data-theme="light"] { color-scheme: light; }
+
 @theme inline {
   --color-canvas: var(--canvas);
   --color-surface: var(--surface);

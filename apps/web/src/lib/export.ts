@@ -1,4 +1,4 @@
-import { buildMdHtml } from "@alembic/renderer";
+import { buildMdHtml, type RenderTheme } from "@alembic/renderer";
 import { hashContent } from "@alembic/package-contract";
 
 export function slugForFile(title: string): string {
@@ -30,12 +30,14 @@ export function mdHtmlResponse(input: {
   title: string;
   markdown: string;
   now?: Date;
+  theme?: RenderTheme;
 }): { response: Response; sourceHash: string } {
   const sourceHash = hashContent(input.markdown);
   const html = buildMdHtml({
     title: input.title,
     markdown: input.markdown,
     sourceHash,
+    theme: input.theme ?? "dark",
   });
   const filename = `${slugForFile(input.title)}-${fileStamp(input.now ?? new Date())}.md.html`;
   return {

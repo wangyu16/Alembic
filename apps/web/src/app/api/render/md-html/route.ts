@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { buildMdHtml } from "@alembic/renderer";
+import { getRenderTheme } from "@/lib/theme";
 
 /**
  * Build a self-contained `.md.html` carrier from Markdown (M17 studio save).
@@ -23,7 +24,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Content too large" }, { status: 413 });
   }
   try {
-    return NextResponse.json({ html: buildMdHtml({ title, markdown }) });
+    const theme = await getRenderTheme();
+    return NextResponse.json({ html: buildMdHtml({ title, markdown, theme }) });
   } catch (e) {
     // Never throw an HTML error page — return JSON so the studio can show why.
     return NextResponse.json(

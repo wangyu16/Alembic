@@ -3,6 +3,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
 import { supabaseEventLogger } from "@/lib/events";
 import { mdHtmlResponse } from "@/lib/export";
+import { getRenderTheme } from "@/lib/theme";
 
 export async function GET(
   _request: Request,
@@ -22,6 +23,7 @@ export async function GET(
   const { response, sourceHash } = mdHtmlResponse({
     title: loaded.record.title,
     markdown: loaded.content,
+    theme: await getRenderTheme(),
   });
 
   await supabaseEventLogger(supabase).log({
