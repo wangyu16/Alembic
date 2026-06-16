@@ -74,6 +74,26 @@ export interface ExtractedMdHtml {
  * `data-orz-format` value if present). Returns null when neither is present.
  */
 export function extractMdHtml(html: string): ExtractedMdHtml | null {
+  // Legacy first: the old <script id="md-source"> island also carries the
+  // provenance source-hash, which the shared carriers codec doesn't model. The
+  // `md-source` id can't match a new `orz-carrier` file, so new files fall
+  // through to the codec below.
+  const match = html.match(
+    /<script\s+([^>]*?type="text\/markdown"[^>]*?)>([\s\S]*?)<\/script>/i,
+  );
+  if (match && /\bid="md-source"/.test(match[1] ?? "")) {
+    const attrs = match[1] ?? "";
+    const formatVersion = Number(attrs.match(/data-orz-format="(\d+)"/)?.[1] ?? 0);
+    const sourceHash = attrs.match(/data-orz-source-hash="([^"]*)"/)?.[1];
+    // Strip the single leading/trailing newline introduced by the old template.
+    const raw = (match[2] ?? "").replace(/^\n/, "").replace(/\n$/, "");
+    return {
+      formatVersion,
+      markdown: unescapeFromScript(raw),
+      ...(sourceHash ? { sourceHash } : {}),
+    };
+  }
+
   // New codec: the shared carrier island.
   try {
     const result = extractSource(html);
@@ -82,24 +102,6 @@ export function extractMdHtml(html: string): ExtractedMdHtml | null {
       markdown: result.source,
     };
   } catch {
-    // No carrier island — fall through to the legacy path.
+    return null;
   }
-
-  // Legacy: in-document <script id="md-source"> island.
-  const match = html.match(
-    /<script\s+([^>]*?type="text\/markdown"[^>]*?)>([\s\S]*?)<\/script>/i,
-  );
-  if (!match) return null;
-  const attrs = match[1] ?? "";
-  if (!/\bid="md-source"/.test(attrs)) return null;
-
-  const formatVersion = Number(attrs.match(/data-orz-format="(\d+)"/)?.[1] ?? 0);
-  const sourceHash = attrs.match(/data-orz-source-hash="([^"]*)"/)?.[1];
-  // Strip the single leading/trailing newline introduced by the old template.
-  const raw = (match[2] ?? "").replace(/^\n/, "").replace(/\n$/, "");
-  return {
-    formatVersion,
-    markdown: unescapeFromScript(raw),
-    ...(sourceHash ? { sourceHash } : {}),
-  };
 }

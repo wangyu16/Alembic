@@ -65,15 +65,19 @@ function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-/** Find the carrier <script id="orz-carrier"> opening tag + body. Because the
- * source's "</script>" is escaped to "<\/script>", the first literal
- * "</script>" we hit really is the island's closing tag. */
-function matchCarrierScript(file: string): { openTag: string; body: string } | null {
+// Legacy `.md.html` island id (pre-carrier-codec); always read as format 0,
+// kind "md", so files exported before the unification stay openable forever.
+const LEGACY_MD_HTML_ID = "md-source";
+
+/** Find a <script id="..."> opening tag + body. Because the source's
+ * "</script>" is escaped to "<\/script>", the first literal "</script>" we hit
+ * really is the island's closing tag. */
+function matchScriptById(file: string, id: string): { openTag: string; body: string } | null {
   const re = /<script\b([^>]*)>([\s\S]*?)<\/script\s*>/gi;
   let m: RegExpExecArray | null;
   while ((m = re.exec(file)) !== null) {
     const attrs = m[1] ?? "";
-    if (readAttr(attrs, "id") === CARRIER_ELEMENT_ID) {
+    if (readAttr(attrs, "id") === id) {
       return { openTag: `<script${attrs}>`, body: m[2] ?? "" };
     }
   }
@@ -81,30 +85,42 @@ function matchCarrierScript(file: string): { openTag: string; body: string } | n
 }
 
 /**
- * Extract the source from an HTML carrier.
- * Returns null if no carrier <script> island is present.
+ * Extract the source from an HTML carrier. Tries the current `orz-carrier`
+ * island, then the legacy `md-source` island (format 0, kind "md"). Returns
+ * null if neither is present.
  */
 export function extractHtml(file: string): ExtractResult | null {
-  const found = matchCarrierScript(file);
-  if (!found) return null;
-  const kind = readAttr(found.openTag, ATTR_KIND) ?? "";
-  const formatRaw = readAttr(found.openTag, ATTR_FORMAT);
-  const format = formatRaw !== null ? Number.parseInt(formatRaw, 10) : 0;
-  return {
-    kind,
-    format: Number.isFinite(format) ? format : 0,
-    source: unescapeFromScript(found.body),
-  };
+  const current = matchScriptById(file, CARRIER_ELEMENT_ID);
+  if (current) {
+    const formatRaw = readAttr(current.openTag, ATTR_FORMAT);
+    const format = formatRaw !== null ? Number.parseInt(formatRaw, 10) : 0;
+    return {
+      kind: readAttr(current.openTag, ATTR_KIND) ?? "",
+      format: Number.isFinite(format) ? format : 0,
+      source: unescapeFromScript(current.body),
+    };
+  }
+  const legacy = matchScriptById(file, LEGACY_MD_HTML_ID);
+  if (legacy) {
+    const formatRaw = readAttr(legacy.openTag, ATTR_FORMAT);
+    const format = formatRaw !== null ? Number.parseInt(formatRaw, 10) : 0;
+    return {
+      kind: "md",
+      format: Number.isFinite(format) ? format : 0,
+      source: unescapeFromScript(legacy.body),
+    };
+  }
+  return null;
 }
 
 /**
  * Detect the carrier format version of an HTML file.
- * - carrier <script> with data-orz-format → that integer (>= 1)
- * - carrier <script> without the marker → 0
+ * - `orz-carrier` <script> with data-orz-format → that integer (>= 1)
+ * - `orz-carrier`/legacy `md-source` <script> without the marker → 0
  * - no island → null
  */
 export function detectHtmlVersion(file: string): number | null {
-  const found = matchCarrierScript(file);
+  const found = matchScriptById(file, CARRIER_ELEMENT_ID) ?? matchScriptById(file, LEGACY_MD_HTML_ID);
   if (!found) return null;
   const formatRaw = readAttr(found.openTag, ATTR_FORMAT);
   if (formatRaw !== null) {

@@ -160,6 +160,25 @@ describe("legacy format-0 extraction", () => {
     expect(out.kind).toBe("plot");
     expect(out.format).toBe(0);
   });
+
+  // Old .md.html used <script id="md-source"> (escaping only </script>).
+  it("recovers a legacy md-source .md.html as kind=md", () => {
+    const file =
+      '<!doctype html><html><body><h1>x</h1>' +
+      '<script type="text/markdown" id="md-source" data-orz-format="1">' +
+      "# Title\n\nHas a tag: <\\/script> here.\n</script></body></html>";
+    expect(detectFormatVersion(file)).toBe(1);
+    const out = extractSource(file);
+    expect(out.kind).toBe("md");
+    expect(out.source).toContain("# Title");
+    expect(out.source).toContain("</script>");
+  });
+
+  it("reads an unmarked legacy md-source island as format 0", () => {
+    const file = '<html><body><script type="text/markdown" id="md-source"># Note</script></body></html>';
+    expect(detectFormatVersion(file)).toBe(0);
+    expect(extractSource(file).kind).toBe("md");
+  });
 });
 
 describe("registry", () => {
