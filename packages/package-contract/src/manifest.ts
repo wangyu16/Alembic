@@ -83,6 +83,22 @@ export const PackageManifestSchema = z.object({
   chapters: z.array(ChapterRefSchema).optional(),
   /** Last accessibility audit result. Optional and additive (absent = unknown). */
   accessibility: AccessibilityStatusSchema.optional(),
+  /**
+   * Package-level adaptation lineage: set when this package was forked/adapted
+   * from another (goal.md §5). Optional + additive; absent = an original work.
+   * Typed loosely here (the full record lives in adaptation.ts) to keep the
+   * manifest free of import cycles; ops/validation use AdaptationSourceSchema.
+   */
+  adaptedFrom: z
+    .object({
+      packageId: z.string().min(1),
+      title: z.string().optional(),
+      snapshot: z.string().optional(),
+      license: LicenseSchema,
+      attribution: z.string().min(1),
+      url: z.string().optional(),
+    })
+    .optional(),
   createdAt: z.iso.datetime(),
 });
 

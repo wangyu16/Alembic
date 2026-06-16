@@ -28,7 +28,7 @@ These are the only things blocking full production parity with the code:
 | 2 | Authoring depth & chemistry-first (tiers, a11y, carriers & assets: Ketcher/plots/slides/PDF, import, snapshots, gateway, local mode) | ✅ core built (M9–M17); documented deferrals → worker tier (PDF, foreign import), studio editing/projects, DOI/compare, per-institution quotas |
 | 3 | Agent harness & reconciliation | ✅ core built (M18 coherence agent, M19 job seam, M20 reconciliation, M21 leakage audit + runbook); deferred: worker-tier agent execution, one-click remediation, private-repo reconcile |
 | 4 | Assessment & question templates | ✅ core built (M22 contract, M23 generation, M24 answer-key/embargo, M25 LMS export); follow-ups: blueprint/embargo editor UI + early-lift. No worker tier needed |
-| 5 | Adaptation ecosystem | ⬜ |
+| 5 | Adaptation ecosystem | 🔄 planned (M26–M29 decomposed; leads with the lineage/license contract; no worker tier) |
 | 6 | Portal & discovery | ⬜ |
 | 7 | Research operations & study readiness | ⬜ |
 | 8 | Hardening & sustainability | ⬜ |
@@ -485,6 +485,50 @@ worker-side agent — the separate Phase 3.5 infra block.)
 
 *Exit:* an instructor runs a quiz cycle — template → generated questions →
 export to LMS — with keys never touching the public repo.
+
+## Phase 5 sub-modules (v0.6–v0.7 — adaptation ecosystem)
+
+**Goal:** make reuse a two-way street — adapt/fork at every scale with lineage +
+attribution + license-compatibility; pull upstream updates; suggest changes back;
+deepen citation (DOI). Exit: two educators exchange improvements on a shared
+package lineage without either touching Git.
+
+**Prerequisites in place:** block identity + `adaptedFrom {packageId, blockId,
+snapshot?}` on `BlockSchema` (P0); two-repo publishing (P1); external-edit
+reconciliation M20 (needs its live pass + migration 0008); snapshots M15 (tag =
+immutable target) + `CITATION.cff` (M15.3) + stable snapshot URLs (M15.1);
+`suggest-back` already a Tier-3 change kind (M10). Per the coherence pass, Phase 5
+leads with the lineage contract (the deferred M15.5 `adaptedFrom.snapshot`).
+
+**No worker tier needed** (all in-process / single-call AI). External
+integrations (Zenodo DOI; GitHub PR materialization) are scoped/deferred.
+
+### M26 — Adaptation & lineage (fork at every scale) *(durable core first)*
+
+| # | Sub-module | Verify by | Status |
+| --- | --- | --- | --- |
+| 26.1 | Contract: package-level `adaptedFrom` (manifest) + `adaptedFrom.snapshot` (blocks, M15.5) + pure license-compatibility (`canAdapt(source,target)`) + attribution record | adapting CC-BY→CC-BY-SA allowed; NC/SA incompatibilities rejected; lineage validates | ⬜ |
+| 26.2 | package-ops adapt ops: copy block / artifact / chapter / whole course with NEW ids + `adaptedFrom` lineage (+ `replacesId` where replacing), attribution preserved, gated on `canAdapt` | unit tests: fork a chapter → new ids, lineage + attribution recorded; license-incompatible adapt blocked | ⬜ |
+| 26.3 | Thin web "Adapt" flow (adapt a block/chapter/package into the educator's workspace) | educator adapts content; new package/blocks carry lineage | ⬜ |
+
+### M27 — Pull updates (upstream → adapter) *(planned)*
+
+Detect upstream changes to adapted blocks (stored `adaptedFrom.snapshot` vs a
+newer upstream snapshot via the bridge), notify in teaching terms, take-update /
+AI-assisted merge / keep-mine with **recorded divergence** (reuses M3 staleness +
+M20 reconciliation + M18 merge patterns). ⬜
+
+### M28 — Suggest back (adapter → author) *(planned)*
+
+Block-level suggestion through the **Tier-3 `suggest-back`** gate; optional
+materialization as a **GitHub PR** to the upstream public repo (new bridge
+`createPullRequest` — needs App PR permission on upstream). Suggestion is typed
+data; PR is the optional bridge. ⬜
+
+### M29 — Citation depth: DOI *(M15.4 — external, likely deferred)*
+
+Opt-in **Zenodo DOI** minting on a snapshot (external API + token). `CITATION.cff`
++ stable snapshot URLs already shipped (M15.3/15.1). ⏸ pending a Zenodo account/token.
 
 ## Phase 2 deferred follow-ups (tracked)
 

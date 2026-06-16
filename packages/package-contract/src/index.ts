@@ -6,6 +6,7 @@ export * from "./concepts";
 export * from "./change-tiers";
 export * from "./proposals";
 export * from "./assessments";
+export * from "./adaptation";
 export * from "./manifest";
 export * from "./ids";
 export * from "./assets";
