@@ -46,6 +46,9 @@ export async function SiteHeader() {
               <Link href="/workspace" className="transition-colors hover:text-ink">
                 Workspace
               </Link>
+              <Link href="/studio" className="transition-colors hover:text-ink">
+                Studio
+              </Link>
               {handle && <span className="text-faint">{handle}</span>}
               <form action="/auth/signout" method="post">
                 <button type="submit" className="btn btn-ghost btn-sm">
