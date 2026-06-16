@@ -32,10 +32,28 @@ import {
   loadObjectives,
   saveObjectives,
 } from "./planning";
+import {
+  saveQuestionTemplate,
+  loadQuestionTemplate,
+  listQuestionTemplates,
+  saveBlueprint,
+  loadBlueprint,
+  listBlueprints,
+  saveQuestionItem,
+  loadQuestionItem,
+  listQuestionItems,
+  saveAnswerKey,
+  loadAnswerKey,
+  isReleased,
+} from "./assessments";
 import type {
   ProposedChangeSet,
   ConceptMap,
   Objectives,
+  QuestionTemplate,
+  AssessmentBlueprint,
+  QuestionItem,
+  AnswerKey,
 } from "@alembic/package-contract";
 
 /**
@@ -76,6 +94,24 @@ export interface PackageOps {
   loadObjectives(scope: "course" | "chapter", slug?: string): Promise<Objectives>;
   saveObjectives(objectives: Objectives, slug?: string): Promise<void>;
 
+  /** Assessment layer: question templates (public-safe). */
+  saveQuestionTemplate(t: QuestionTemplate): Promise<void>;
+  loadQuestionTemplate(id: string): Promise<QuestionTemplate | null>;
+  listQuestionTemplates(): Promise<QuestionTemplate[]>;
+  /** Assessment layer: assessment blueprints (public-safe). */
+  saveBlueprint(b: AssessmentBlueprint): Promise<void>;
+  loadBlueprint(id: string): Promise<AssessmentBlueprint | null>;
+  listBlueprints(): Promise<AssessmentBlueprint[]>;
+  /** Assessment layer: generated question items / stems (public-safe). */
+  saveQuestionItem(item: QuestionItem): Promise<void>;
+  loadQuestionItem(id: string): Promise<QuestionItem | null>;
+  listQuestionItems(): Promise<QuestionItem[]>;
+  /** Assessment layer: answer keys (instructor-only; PRIVATE repo). */
+  saveAnswerKey(key: AnswerKey): Promise<void>;
+  loadAnswerKey(itemId: string): Promise<AnswerKey | null>;
+  /** Pure embargo time check: is a blueprint released at `now`? */
+  isReleased(blueprint: AssessmentBlueprint, now: Date): boolean;
+
   /** Read-only course projection the Tier-B coherence agent reasons over. */
   gatherCoherenceContext(): Promise<CoherenceContext>;
   /** Apply an accepted ProposedChangeSet through the validated write path. */
@@ -109,6 +145,19 @@ export function packageOps(store: PackageStore, packageId: string): PackageOps {
     loadObjectives: (scope, slug) => loadObjectives(store, packageId, scope, slug),
     saveObjectives: (objectives, slug) =>
       saveObjectives(store, packageId, objectives, slug),
+
+    saveQuestionTemplate: (t) => saveQuestionTemplate(store, packageId, t),
+    loadQuestionTemplate: (id) => loadQuestionTemplate(store, packageId, id),
+    listQuestionTemplates: () => listQuestionTemplates(store, packageId),
+    saveBlueprint: (b) => saveBlueprint(store, packageId, b),
+    loadBlueprint: (id) => loadBlueprint(store, packageId, id),
+    listBlueprints: () => listBlueprints(store, packageId),
+    saveQuestionItem: (item) => saveQuestionItem(store, packageId, item),
+    loadQuestionItem: (id) => loadQuestionItem(store, packageId, id),
+    listQuestionItems: () => listQuestionItems(store, packageId),
+    saveAnswerKey: (key) => saveAnswerKey(store, packageId, key),
+    loadAnswerKey: (itemId) => loadAnswerKey(store, packageId, itemId),
+    isReleased: (blueprint, now) => isReleased(blueprint, now),
 
     gatherCoherenceContext: () => gatherCoherenceContext(store, packageId),
     applyProposedChangeSet: (set, opts) =>

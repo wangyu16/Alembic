@@ -76,5 +76,25 @@ export async function releaseGates(
     message: "Some content is in the wrong place. Private materials must stay private; resolve this before publishing.",
   });
 
+  // 5. Answer keys & embargo — belt-and-suspenders, named for answer keys so
+  // the educator message is specific. Re-assert every PUBLIC file's path
+  // against the public-repo contract; an answer-key/private path staged public
+  // is a leak of instructor-only material.
+  let answerKeysSafe = true;
+  for (const f of files) {
+    if (f.repo !== "public") continue;
+    try {
+      assertPathAllowedInRepo(f.path, "public");
+    } catch {
+      answerKeysSafe = false;
+      break;
+    }
+  }
+  checks.push({
+    name: "Answer keys & embargo",
+    ok: answerKeysSafe,
+    message: "Answer keys must stay private and were found staged for publication.",
+  });
+
   return { ok: checks.every((c) => c.ok), checks };
 }

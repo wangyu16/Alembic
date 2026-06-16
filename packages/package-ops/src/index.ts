@@ -12,5 +12,6 @@ export * from "./slides";
 export * from "./import";
 export * from "./citation";
 export * from "./planning";
+export * from "./assessments";
 export * from "./ops";
 export * from "./reconcile";

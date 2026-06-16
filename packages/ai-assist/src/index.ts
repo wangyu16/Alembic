@@ -9,3 +9,4 @@ export * from "./plan-draft";
 export * from "./remediation";
 export * from "./structure-alt";
 export * from "./coherence-agent";
+export * from "./question-gen";

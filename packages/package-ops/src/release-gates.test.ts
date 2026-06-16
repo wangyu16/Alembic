@@ -27,6 +27,29 @@ describe("releaseGates", () => {
     expect(result.checks.find((c) => c.name === "Study guide")?.ok).toBe(false);
   });
 
+  it("passes the Answer keys & embargo gate for a clean package", async () => {
+    const store = new MemoryPackageStore();
+    const { packageId } = await createSandboxPackage(store, input);
+    const result = await releaseGates(store, packageId);
+    expect(result.checks.find((c) => c.name === "Answer keys & embargo")?.ok).toBe(true);
+  });
+
+  it("fails the Answer keys & embargo gate when an answer key is staged public", async () => {
+    const store = new MemoryPackageStore();
+    const { packageId } = await createSandboxPackage(store, input);
+    // Plant an answer-key-style file in the PUBLIC partition (simulating a leak).
+    await store.putFiles(packageId, [
+      {
+        repo: "public",
+        path: "private-instructor/answer-keys/qi-abcd1234.json",
+        content: JSON.stringify({ itemId: "qi-abcd1234", answer: "leaked" }),
+      },
+    ]);
+    const result = await releaseGates(store, packageId);
+    expect(result.ok).toBe(false);
+    expect(result.checks.find((c) => c.name === "Answer keys & embargo")?.ok).toBe(false);
+  });
+
   it("flags a public file placed in a private layer path", async () => {
     const store = new MemoryPackageStore();
     const { packageId } = await createSandboxPackage(store, input);
