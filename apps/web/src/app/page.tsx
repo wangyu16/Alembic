@@ -7,13 +7,20 @@ export default function Home() {
     <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col justify-center gap-10 px-6 py-24">
       <div className="flex flex-col gap-6">
         <h1 className="font-serif text-5xl leading-[1.05] tracking-tight text-ink text-balance">
-          Turn your teaching into open, reusable resources.
+          Turn your teaching materials into open and reusable resources.
         </h1>
         <p className="max-w-xl text-lg leading-relaxed text-muted text-pretty">
           Alembic is an authoring studio for STEM educators. Organize the
           knowledge and shape the pedagogy — it handles structure, versioning,
           publishing, and provenance, all on infrastructure you own. No Git, no
           Markdown tooling, no developer workflows.
+        </p>
+        <p className="max-w-xl text-base leading-relaxed text-muted text-pretty">
+          Students and self-learners can open, edit, and annotate Alembic files —
+          a downloaded <code className="text-ink">.md.html</code> study guide or a{" "}
+          <code className="text-ink">.ketcher.svg</code> structure — right in the
+          browser, no account needed.{" "}
+          <span className="text-faint">(coming soon)</span>
         </p>
       </div>
 
