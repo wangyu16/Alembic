@@ -124,18 +124,38 @@ export default function StudioPage() {
   async function saveMdHtml() {
     setError(null);
     setNote("Building…");
+    let carrier: string;
     try {
-      const res = await fetch("/api/build/md-html", {
+      const res = await fetch("/api/render/md-html", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ markdown, title: fileName }),
       });
-      if (!res.ok) throw new Error("build failed");
-      const { html: carrier } = (await res.json()) as { html: string };
-      await saveBlob(carrier, `${fileName}.md.html`, "text/html");
+      if (!res.ok) {
+        // Surface the real reason: 404 → the build endpoint isn't deployed yet;
+        // 5xx → a server render error (message included).
+        let detail = `${res.status}`;
+        try {
+          const body = (await res.json()) as { error?: string };
+          if (body?.error) detail = `${res.status} — ${body.error}`;
+        } catch {
+          /* non-JSON (e.g. a 404 HTML page) */
+        }
+        setError(
+          res.status === 404
+            ? "The .md.html builder isn't available on this deployment yet (404). Try again after the next deploy, or use Save .md."
+            : `Couldn't build the .md.html file (${detail}).`,
+        );
+        return;
+      }
+      ({ html: carrier } = (await res.json()) as { html: string });
     } catch {
-      setError("Couldn't build the .md.html file.");
+      setError("Couldn't reach the .md.html builder. Check your connection, or use Save .md.");
+      return;
     }
+    // Build succeeded — saving is a separate step (a cancelled file picker is
+    // not a build failure).
+    await saveBlob(carrier, `${fileName}.md.html`, "text/html");
   }
 
   if (!ENTITLED_LOCAL) return null; // defensive; anonymous always has localFile
