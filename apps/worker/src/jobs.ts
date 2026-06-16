@@ -24,7 +24,32 @@ export interface BuildResult {
   message?: string;
 }
 
-export type WorkerJob = BuildSiteJob;
+/**
+ * Tier-B coherence-agent run (Roadmap Phase 3). The job *contract* is the
+ * forward-compatible seam: today the agent runs in-process inside the web server
+ * action (`runCoherenceAgentAction`), gated by the governed provider (rate limit
+ * + per-user token budget). When the container worker tier matures, the SAME job
+ * shape moves there — callers and the produced data (a `ProposedChangeSet` routed
+ * into the Tier-2 review queue) don't change. No parallel write path.
+ */
+export interface AgentRunJob {
+  type: "agent-run";
+  packageId: string;
+  /** Platform user the run is attributed to (governance + quota). */
+  requestedBy: string;
+  /** What the educator asked the agent to review/do. */
+  task: string;
+}
+
+export interface AgentRunResult {
+  ok: boolean;
+  /** Number of block-level changes queued for Tier-2 review. */
+  queued: number;
+  /** Educator-facing summary on failure — never a raw stack trace. */
+  message?: string;
+}
+
+export type WorkerJob = BuildSiteJob | AgentRunJob;
 
 /** M6 implements checkout → orz-markdown build → Pages push. */
 export async function handleBuildSite(job: BuildSiteJob): Promise<BuildResult> {
@@ -32,5 +57,18 @@ export async function handleBuildSite(job: BuildSiteJob): Promise<BuildResult> {
     ok: false,
     rendererVersion: rendererVersion(),
     message: `Build for ${job.packageId} not implemented yet (M6)`,
+  };
+}
+
+/**
+ * Worker-tier entry point for an agent run. Deferred: the bounded agent needs a
+ * package store + governed AIProvider, which live app-side today, so execution
+ * stays in-process (web action). This stub marks the seam for the worker tier.
+ */
+export async function handleAgentRun(job: AgentRunJob): Promise<AgentRunResult> {
+  return {
+    ok: false,
+    queued: 0,
+    message: `Worker-tier agent run for ${job.packageId} not implemented yet (runs in-process via the web action; M19/Phase-3 worker tier)`,
   };
 }

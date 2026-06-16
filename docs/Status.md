@@ -14,6 +14,7 @@ These are the only things blocking full production parity with the code:
 1. **Apply migration `0007_ai_budget.sql`** (`supabase db push` or dashboard) — enables the per-user AI token budget (dormant until `AI_TOKEN_BUDGET` is also set). 0005 + 0006 are already applied.
 2. **Set the Vercel build command to run `node ../../scripts/fetch-vendor.mjs && next build`** (not `fetch-ketcher`) so **Plotly** is vendored too — otherwise the plot editor 404s on its runtime in production.
 3. **Interactive verification passes** (can't run in CI): plot render (M11b), slides render (M13), studio File System Access open/save (M17). Ketcher (M11) is already verified live.
+4. **Set the Portkey env vars in Vercel** (`AI_GATEWAY_URL=https://api.portkey.ai/v1`, `AI_GATEWAY_API_KEY`, `AI_MODEL_DEFAULT/FAST/STRONG` = `@<provider-slug>/<model>`) to verify the **M18 coherence agent** live. Local dev can't reach Portkey from this machine (the dev Mac's security/firewall blocks the `node` binary's outbound — `curl` works, `node` ETIMEDOUTs — not an app issue); Vercel's egress is clean. See [ai-architecture.md](specs/ai-architecture.md).
 
 **Deferred chore:** bump renderer to orz-markdown 1.1.0 (published) — reverted to 1.0.0 temporarily because the npm registry was unreachable during M2 and CI uses `--frozen-lockfile`. Behavior is unaffected (1.0.0 supports the attrs block-ID syntax); redo when the registry is reachable.
 
@@ -386,14 +387,14 @@ proposed edits as Tier-2 teaching-material changes. **Needs a live in-app pass**
 (requires a configured AI provider; the agent core is unit-tested with a fake
 provider + stub harness).
 
-### M19 — Agent execution & gating *(next)*
+### M19 — Agent execution & gating
 
 | # | Sub-module | Verify by | Status |
 | --- | --- | --- | --- |
-| 19.1 | Agent run behind the worker job interface (in-process for dev; worker-ready) | a coherence run is modeled as a job; runs in-process now, movable to the worker tier | ⬜ |
-| 19.2 | Gating: entitlement + per-user token budget (Tier B is the expensive tier) | a run is blocked when budget is exhausted; usage attributable | 🔄 budget/rate-limit enforced via the governed provider (M16); explicit per-run quota/entitlement-cap later |
+| 19.1 | Agent run behind the worker job interface (in-process for dev; worker-ready) | a coherence run is modeled as a job; runs in-process now, movable to the worker tier | 🔄 `AgentRunJob`/`AgentRunResult` job contract added to `apps/worker/jobs.ts` (the forward-compat seam, mirroring `BuildSiteJob`); execution stays in-process in `runCoherenceAgentAction`. Worker-tier `handleAgentRun` is a stub — moving Tier B to the container worker is deferred (same pattern as the build job) |
+| 19.2 | Gating: entitlement + per-user token budget (Tier B is the expensive tier) | a run is blocked when budget is exhausted; usage attributable | 🔄 budget/rate-limit enforced via the governed provider (M16); usage attributable via `ai_invocations`. Explicit per-run quota / entitlement cap later |
 
-### M20 — External-edit reconciliation *(planned)*
+### M20 — External-edit reconciliation *(next)*
 
 Detect foreign commits (stored projection SHA vs remote head), rebuild the
 projection, re-validate invariants (`validateProject` + `validateCommitPlan`),
