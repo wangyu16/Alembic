@@ -4,6 +4,7 @@ export * from "./block-source";
 export * from "./artifacts";
 export * from "./concepts";
 export * from "./change-tiers";
+export * from "./proposals";
 export * from "./manifest";
 export * from "./ids";
 export * from "./assets";

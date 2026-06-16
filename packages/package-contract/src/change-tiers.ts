@@ -30,6 +30,7 @@ export const CHANGE_KINDS = [
   "import-blocks",
   "suggest-example",
   "a11y-fix",
+  "coherence-edit",
   // Tier 3 — trust boundary, itemized review, never lowered
   "publish",
   "register",
@@ -53,6 +54,7 @@ export const BASE_TIER: Record<ChangeKind, Tier> = {
   "import-blocks": 2,
   "suggest-example": 2,
   "a11y-fix": 2,
+  "coherence-edit": 2,
   publish: 3,
   register: 3,
   "license-change": 3,

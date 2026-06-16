@@ -36,6 +36,14 @@ export const EVENT_TYPES = [
   "review.queued",
   "a11y.checked",
   "import.completed",
+  // Phase 3 — Tier-B coherence agent (a producer of reviewed changes; its
+  // proposals enter the same review queue as human-decided ai.suggestion.*).
+  "agent.run.requested",
+  "agent.run.completed",
+  "agent.run.failed",
+  // Phase 3 — external-edit reconciliation (foreign commits absorbed/quarantined).
+  "reconcile.completed",
+  "reconcile.quarantined",
   "error.surfaced",
 ] as const;
 
