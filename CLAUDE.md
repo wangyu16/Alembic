@@ -76,8 +76,20 @@ All three must pass before any push.
 
 ## Workflow
 
+- **Plan before implementing.** Always produce a thorough, modularized plan
+  first. When the work decomposes cleanly, break it into independent pieces and
+  employ **subagents to implement and verify concurrently** (disjoint packages /
+  files), then integrate by hand. Place durable logic first, thin client last
+  (see rule 9).
 - Commit and push to `main` (https://github.com/wangyu16/Alembic) when each
   major step completes, after typecheck + tests + build pass locally.
-- Update [docs/Status.md](docs/Status.md) in the same commit as the work it tracks.
+- **Always update [docs/Status.md](docs/Status.md)** in the same commit as the
+  work it tracks — every status change (✅/🔄/⏸/⬜), new milestone, deferral, or
+  pending operator action. Status.md is the canonical tracker; never let it drift.
+- **After each phase, run a coherence pass** over the goal/plan/status docs
+  ([goal.md](docs/goal.md), [Roadmap.md](docs/Roadmap.md), Status.md, and
+  [docs/specs/](docs/specs/)): verify status matches the code, the docs don't
+  contradict each other or the product vision, and the future plan still holds —
+  fix drift before starting the next phase. (Fan out read-only audits when broad.)
 - Secrets live in `apps/web/.env.local` (gitignored); `.env.example` documents
   the required variables. Never commit real keys.
