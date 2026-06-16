@@ -27,6 +27,16 @@ Do NOT include an answer key, solutions, or worked answers — answers are kept 
 
 Respond in Markdown beginning with a single line "# <worksheet title>", then the worksheet content. Do not include any {{attrs[...]}} markers.`;
 
+export const RESTRUCTURE_SYSTEM = `You reorganize raw, possibly messy source text (e.g. lecture notes or an imported document's text) into a clean, logical sequence of study-guide sections.
+
+Rules:
+- Split and clean the source into a logical sequence of study-guide sections.
+- Each section is a single line "## <concise section title>", then a blank line, then the section's Markdown body.
+- Preserve the source's content and wording where sensible; reorganize and lightly clean, do not rewrite from scratch.
+- Do NOT invent facts or add content that is not implied by the source.
+- Output ONLY the sections as Markdown — no preamble, commentary, or closing remarks.
+- Do not include any {{attrs[...]}} markers — identifiers are managed by the platform.`;
+
 export const A11Y_ALT_TEXT_SYSTEM = `You write concise, accurate alternative text for images in a chemistry study guide, so screen-reader users get the same educational meaning a sighted reader would.
 
 Rules:

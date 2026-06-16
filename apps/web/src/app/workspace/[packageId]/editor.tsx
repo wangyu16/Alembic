@@ -28,6 +28,7 @@ import {
 } from "./a11y-actions";
 import { listAssetsAction, readAssetAction } from "./asset-actions";
 import { generateSlidesAction } from "./slides-actions";
+import { importFileAction, restructureImportAction } from "./import-actions";
 import { KetcherEditor } from "./ketcher-editor";
 import { PlotEditor } from "./plot-editor";
 import type { AssetInfo } from "@alembic/package-ops";
@@ -416,6 +417,7 @@ export function StudyGuideEditor({
           onEdit={openEditAsset}
         />
         <AIDraftPanel packageId={packageId} activePath={initialPath} onQueued={() => router.refresh()} />
+        <ImportPanel packageId={packageId} activePath={initialPath} onImported={() => router.refresh()} />
 
         <CategoryLabel>Review</CategoryLabel>
         <ToolSection title="Changes & review" badge={reviewQueue.length || undefined}>
@@ -690,6 +692,110 @@ function AIDraftPanel({
       <button onClick={run} disabled={busy || !instruction.trim()} className="btn btn-primary btn-sm mt-2">
         {busy ? "Drafting…" : "Draft → review queue"}
       </button>
+      {note && <p className="mt-2 text-xs text-ok">{note}</p>}
+      {error && <p className="mt-2 text-sm text-danger">{error}</p>}
+    </div>
+  );
+}
+
+function ImportPanel({
+  packageId,
+  activePath,
+  onImported,
+}: {
+  packageId: string;
+  activePath: string;
+  onImported: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setBusy(true);
+    setNote(null);
+    setError(null);
+    try {
+      const content = await file.text();
+      const r = await importFileAction(packageId, file.name, content, activePath);
+      if (r.ok) {
+        setNote(r.message ?? "Imported.");
+        onImported();
+      } else setError(r.error ?? "Import failed.");
+    } catch {
+      setError("Couldn't read that file.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function restructure() {
+    setBusy(true);
+    setNote(null);
+    setError(null);
+    const r = await restructureImportAction(packageId, text, activePath);
+    if (r.ok) {
+      setNote("Restructured into the review queue below.");
+      setText("");
+      onImported();
+    } else setError(r.error ?? "Couldn't restructure.");
+    setBusy(false);
+  }
+
+  if (!open) {
+    return (
+      <button onClick={() => setOpen(true)} className="btn btn-ghost">
+        ⬆ Import content
+      </button>
+    );
+  }
+
+  return (
+    <div className="panel p-3">
+      <div className="mb-2 flex items-center justify-between">
+        <span className="text-sm font-medium">Import content</span>
+        <button onClick={() => setOpen(false)} className="text-xs text-muted hover:text-ink">Close</button>
+      </div>
+
+      <label className="text-sm">
+        <span className="mb-1 block text-xs text-muted">
+          Open a file (.md.html, .slides.html, .ketcher.svg, .plot.svg, .md)
+        </span>
+        <input
+          type="file"
+          accept=".md.html,.slides.html,.ketcher.svg,.plot.svg,.md,.markdown,.txt,text/markdown,text/plain,image/svg+xml,text/html"
+          onChange={onFile}
+          disabled={busy}
+          className="text-xs"
+        />
+      </label>
+
+      <div className="mt-3">
+        <span className="mb-1 block text-xs text-muted">…or paste notes to restructure with AI (reviewed before applying)</span>
+        <textarea
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          rows={3}
+          placeholder="Paste lecture notes, an outline, or rough text…"
+          className="field w-full text-sm"
+        />
+        <button
+          onClick={restructure}
+          disabled={busy || !text.trim()}
+          className="btn btn-primary btn-sm mt-2"
+        >
+          {busy ? "Working…" : "Restructure → review queue"}
+        </button>
+      </div>
+
+      <p className="mt-2 text-xs text-faint">
+        Word/PDF/PowerPoint import is coming (handled server-side).
+      </p>
       {note && <p className="mt-2 text-xs text-ok">{note}</p>}
       {error && <p className="mt-2 text-sm text-danger">{error}</p>}
     </div>

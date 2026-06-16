@@ -34,6 +34,7 @@ export const EVENT_TYPES = [
   "change.undone",
   "review.queued",
   "a11y.checked",
+  "import.completed",
   "error.surfaced",
 ] as const;
 

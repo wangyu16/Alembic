@@ -169,10 +169,23 @@ async function applyAccepted(
     url?: string;
     oldText?: string;
     suggestion?: string;
+    blocks?: Array<{ title: string; body: string }>;
   };
   let committed: { path: string; content: string } | null = null;
 
-  if (change.kind === "a11y-fix" && detail.rule && detail.url != null && detail.suggestion != null) {
+  if (change.kind === "import-blocks" && detail.blocks?.length) {
+    // AI-restructured import: append the reviewed sections to the chapter.
+    const doc = await loadStudyGuide(store, packageId, detail.path);
+    const { blocks } = await saveStudyGuide(store, packageId, {
+      path: detail.path,
+      preamble: doc.preamble,
+      blocks: [
+        ...doc.blocks,
+        ...detail.blocks.map((b) => ({ id: null, title: b.title, body: b.body })),
+      ],
+    });
+    committed = { path: detail.path, content: serializeStudyGuide(doc.preamble, blocks) };
+  } else if (change.kind === "a11y-fix" && detail.rule && detail.url != null && detail.suggestion != null) {
     // Apply the accepted fix to whichever block still contains the target.
     const doc = await loadStudyGuide(store, packageId, detail.path);
     let applied = false;
