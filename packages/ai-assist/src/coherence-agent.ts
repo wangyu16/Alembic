@@ -41,11 +41,30 @@ export interface CoherenceContextChapter {
   blocks: CoherenceContextBlock[];
 }
 
+/** A learning objective from the hidden planning layer (alignment target). */
+export interface CoherenceObjective {
+  id: string;
+  text: string;
+  conceptIds: string[];
+}
+
+/** A concept from the hidden planning layer (prerequisites + correlations). */
+export interface CoherenceConcept {
+  id: string;
+  label: string;
+  prerequisites: string[];
+  related: string[];
+}
+
 export interface CoherenceRunInput {
   /** What the educator asked, e.g. "make terminology consistent". */
   task: string;
   courseTitle?: string;
   chapters: CoherenceContextChapter[];
+  /** Course-level learning objectives the content should cover, if defined. */
+  objectives?: CoherenceObjective[];
+  /** Course-level concept map (ordering/correlations), if defined. */
+  concepts?: CoherenceConcept[];
 }
 
 /**
@@ -61,6 +80,8 @@ export interface CoherenceHarness {
 export const COHERENCE_SYSTEM = `You are a coherence reviewer for an open educational resource (OER) authoring platform. An educator gives you a TASK and the full text of a course, organized into chapters; each chapter has a slug, and each block within it has an id, a title, and a Markdown body.
 
 Your job is to review the course for coherence and pedagogy — consistent terminology, objectives matched to supporting content, valid cross-references, and a sensible learning sequence — and propose a small, reviewable set of changes. You OPTIMIZE for coherence; you do not enforce correctness. A human educator reviews and approves everything you propose; nothing is applied automatically.
+
+When a CONCEPT MAP and LEARNING OBJECTIVES are provided (the course's hidden planning layer), use them as the source of truth for intent: flag objectives with no supporting content as 'objective-coverage' findings, and topics sequenced against their stated prerequisites as 'ordering' findings. Cite the relevant concept/objective ids in the finding summary. Never propose changing the planning layer itself — only the study-guide blocks.
 
 BLOCK IDENTITY RULES (critical — violating these makes your output unusable):
 - You may ONLY reference block ids that appear verbatim in the input.
@@ -159,6 +180,25 @@ function serializeCourse(input: CoherenceRunInput): string {
   const parts: string[] = [];
   if (input.courseTitle?.trim()) parts.push(`Course: ${input.courseTitle.trim()}`);
   parts.push(`Task: ${input.task}`);
+
+  if (input.concepts?.length) {
+    parts.push("");
+    parts.push("Concept map (prerequisites = must come first; related = correlated topics):");
+    for (const c of input.concepts) {
+      const pre = c.prerequisites.length ? ` — after: ${c.prerequisites.join(", ")}` : "";
+      const rel = c.related.length ? ` — related: ${c.related.join(", ")}` : "";
+      parts.push(`- [${c.id}] ${c.label}${pre}${rel}`);
+    }
+  }
+  if (input.objectives?.length) {
+    parts.push("");
+    parts.push("Learning objectives (each should be supported by the study guide):");
+    for (const o of input.objectives) {
+      const concepts = o.conceptIds.length ? ` (concepts: ${o.conceptIds.join(", ")})` : "";
+      parts.push(`- [${o.id}] ${o.text}${concepts}`);
+    }
+  }
+
   parts.push("");
   parts.push("Course content (address blocks by their given id):");
 

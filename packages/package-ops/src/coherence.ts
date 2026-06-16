@@ -17,12 +17,15 @@
 
 import {
   validateProposedChangeSet,
+  type Concept,
+  type Objective,
   type ProposedChangeSet,
   type StudyGuideBlock,
 } from "@alembic/package-contract";
 import type { PackageStore } from "./store";
 import { listChapters } from "./chapters";
 import { loadStudyGuide, saveStudyGuide } from "./study-guide";
+import { loadConceptMap, loadObjectives } from "./planning";
 
 /** A single persisted block as the agent sees it (id is always present). */
 export interface CoherenceContextBlock {
@@ -39,6 +42,10 @@ export interface CoherenceContextChapter {
 
 export interface CoherenceContext {
   chapters: CoherenceContextChapter[];
+  /** Course-level learning objectives (the hidden planning layer), if any. */
+  objectives: Objective[];
+  /** Course-level concept map (prerequisites/correlations), if any. */
+  concepts: Concept[];
 }
 
 /**
@@ -61,7 +68,11 @@ export async function gatherCoherenceContext(
       .map((b) => ({ id: b.id, title: b.title, body: b.body }));
     out.push({ slug: chapter.slug, title: chapter.title, blocks });
   }
-  return { chapters: out };
+  // The hidden planning layer (course scope): objectives are the agent's
+  // alignment targets, the concept map gives prerequisite/correlation order.
+  const { objectives } = await loadObjectives(store, packageId, "course");
+  const { concepts } = await loadConceptMap(store, packageId, "course");
+  return { chapters: out, objectives, concepts };
 }
 
 /**

@@ -102,6 +102,19 @@ export async function runCoherenceAgentAction(
       task: trimmed,
       courseTitle: record?.title,
       chapters: context.chapters,
+      // Feed the hidden planning layer so the agent can check objective
+      // coverage and prerequisite ordering against the educator's intent.
+      objectives: context.objectives.map((o) => ({
+        id: o.id,
+        text: o.text,
+        conceptIds: o.conceptIds,
+      })),
+      concepts: context.concepts.map((c) => ({
+        id: c.id,
+        label: c.label,
+        prerequisites: c.prerequisites,
+        related: c.related,
+      })),
     });
 
     // Defensive re-validation against the live package before queuing.
