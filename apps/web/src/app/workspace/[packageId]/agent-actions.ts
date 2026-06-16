@@ -164,6 +164,7 @@ export async function runCoherenceAgentAction(
     // Surface the real cause server-side (terminal/Vercel logs) — the educator
     // sees only the friendly message, but we must be able to diagnose failures.
     console.error("[coherence] run failed:", e instanceof Error ? e.message : e);
+    if (e instanceof Error && e.cause) console.error("[coherence] cause:", e.cause);
     await events.log({
       type: "agent.run.failed",
       userId: user.id,
