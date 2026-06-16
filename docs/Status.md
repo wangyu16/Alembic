@@ -5,7 +5,7 @@ same commit as the work it tracks. Statuses: ✅ done · 🔄 partially shipped 
 
 **Production:** live at https://alembic.orz.how (Vercel project `alembic`, root `apps/web`, Node 22; Cloudflare DNS; Git auto-deploy on push to `main`).
 
-**Current focus: Phase 2 (v0.2–v0.3) core is complete (M9–M17 built).** v0.1 is live end to end (M8.3 pilot ongoing). The remaining Phase-2 work is the explicitly-deferred list (see "Pending operator actions" and the ⏸ rows below) — heavier items (worker-tier PDF + foreign-import, studio structure/plot editing + local projects) sit at the Phase-2/Phase-3 boundary. Next phase candidates: Phase 3 (agent harness) or a pilot-hardening pass. See [LocalSetup.md](LocalSetup.md) + [GitHubAppSetup.md](GitHubAppSetup.md).
+**Current focus: Phase 3 (v0.4) — agent harness.** M18 (bounded Tier-B coherence agent) core is built end to end (contract → ai-assist → package-ops → thin web client). Phase 2 (M9–M17) core is complete; v0.1 is live (M8.3 pilot ongoing). Next: M19 (agent execution & gating), then M20 (external-edit reconciliation) and M21 (leakage remediation). Heavier deferrals (worker-tier PDF/foreign-import, studio editing/local projects) remain tracked below. See [LocalSetup.md](LocalSetup.md) + [GitHubAppSetup.md](GitHubAppSetup.md).
 
 ### Pending operator actions (human-in-the-loop)
 
@@ -24,7 +24,7 @@ These are the only things blocking full production parity with the code:
 | 0 | Foundations & contracts | ✅ |
 | 1 | Initial release: end-to-end loop (v0.1) | ✅ built + deployed (pilot M8.3 ongoing) |
 | 2 | Authoring depth & chemistry-first (tiers, a11y, carriers & assets: Ketcher/plots/slides/PDF, import, snapshots, gateway, local mode) | ✅ core built (M9–M17); documented deferrals → worker tier (PDF, foreign import), studio editing/projects, DOI/compare, per-institution quotas |
-| 3 | Agent harness & reconciliation | ⬜ |
+| 3 | Agent harness & reconciliation | 🔄 in progress (M18 bounded coherence agent core done) |
 | 4 | Assessment & question templates | ⬜ |
 | 5 | Adaptation ecosystem | ⬜ |
 | 6 | Portal & discovery | ⬜ |
@@ -357,6 +357,55 @@ and saves it back — anonymous, no cloud, no AI. Structures/plots/slides editin
 in the studio + local *projects* are the next iterations. The entitlement
 resolver is the single place future paid tiers attach.
 
+## Phase 3 sub-modules (v0.4 — agent harness & repository intelligence)
+
+**Goal:** move multi-file, repository-aware work from hand-rolled code to a
+bounded agent, and absorb external edits cleanly. Per
+[ai-architecture.md](specs/ai-architecture.md), the Tier-B coherence agent is the
+differentiator; per [forward-compatibility.md](specs/forward-compatibility.md)
+it is a *producer of reviewed changes* through `packageOps` + tiers +
+`validateCommitPlan` — never a parallel write path; output is typed data.
+
+**Posture:** the Tier-B agent is built as a **bounded, app-orchestrated agent**
+over the single-call `AIProvider` (provider-swappable), not a container/CLI
+coding-agent. The full container-CLI harness and full git-history-rewrite
+tooling are explicitly **deferred to the worker tier**, behind the same
+swappable boundaries.
+
+### M18 — Bounded coherence agent (Tier B)
+
+| # | Sub-module | Verify by | Status |
+| --- | --- | --- | --- |
+| 18.1 | `ProposedChangeSet` contract (typed agent output) + validator | round-trips; validator enforces block-ID integrity (refs exist, reorder = permutation, IDs never invented) | ✅ contract `proposals.ts` (versioned envelope; `update`/`create`/`reorder-block` ops — no destructive delete; `CoherenceFinding`; `validateProposedChangeSet`); `coherence-edit` Tier-2 change kind; append-only `agent.run.*`/`reconcile.*` events. 9 tests |
+| 18.2 | Bounded coherence agent + harness boundary (ai-assist) | agent emits a schema-valid set from package context; harness swappable; ID-preservation enforced | ✅ `coherence-agent.ts`: `CoherenceHarness` interface (engine swappable), `createProviderCoherenceHarness` (strict `COHERENCE_SYSTEM` prompt, tolerant JSON parse, marker-strip, version-stamp + schema-validate), `createStubCoherenceHarness` (no-network). `coherence-agent` task routed to the strong model. 6 tests |
+| 18.3 | package-ops agent read/apply surface (bound to `packageOps`) | gather context across chapters; apply an accepted set through `saveStudyGuide` only | ✅ `coherence.ts`: `gatherCoherenceContext`/`blockIdsByChapter`/`applyProposedChangeSet` (validates then applies update/create/reorder via the one validated write path; subset via `operationIndices`); wired into the `packageOps` facade. 8 tests |
+| 18.4 | Thin web client: run the agent, route results into the Tier-2 queue | educator runs a whole-course review; suggestions appear as reviewable items; accept applies through `packageOps` | ✅ `agent-actions.ts` `runCoherenceAgentAction` (governed provider = rate limit + token budget; gathers context, runs the agent, queues one `coherence-edit` per op, logs `agent.run.*`); `change-actions` accept branch applies via `applyProposedChangeSet` (stale-tolerant); `CoherencePanel` in the Review group. typecheck + build green |
+
+*Exit:* ✅ an educator requests a package-wide coherence review and reviews the
+proposed edits as Tier-2 teaching-material changes. **Needs a live in-app pass**
+(requires a configured AI provider; the agent core is unit-tested with a fake
+provider + stub harness).
+
+### M19 — Agent execution & gating *(next)*
+
+| # | Sub-module | Verify by | Status |
+| --- | --- | --- | --- |
+| 19.1 | Agent run behind the worker job interface (in-process for dev; worker-ready) | a coherence run is modeled as a job; runs in-process now, movable to the worker tier | ⬜ |
+| 19.2 | Gating: entitlement + per-user token budget (Tier B is the expensive tier) | a run is blocked when budget is exhausted; usage attributable | 🔄 budget/rate-limit enforced via the governed provider (M16); explicit per-run quota/entitlement-cap later |
+
+### M20 — External-edit reconciliation *(planned)*
+
+Detect foreign commits (stored projection SHA vs remote head), rebuild the
+projection, re-validate invariants (`validateProject` + `validateCommitPlan`),
+quarantine on violation, reconcile-first saves (no force-push). github-bridge +
+package-ops. ⬜
+
+### M21 — Leakage remediation *(planned)*
+
+Detect a private-path leak in public history → documented procedure + a guarded
+bridge operation (history rewrite + forced re-publication + incident provenance
+note). github-bridge + runbook. ⬜
+
 ## Phase 2 deferred follow-ups (tracked)
 
 Built milestones above carry ⏸/🔄 sub-rows where a slice was deliberately
@@ -385,6 +434,24 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
 ## Log
 
 ### 2026-06-16
+- **M18 — bounded Tier-B coherence agent (Phase 3 core).** The differentiator from
+  [ai-architecture.md](specs/ai-architecture.md), built the forward-compatible way:
+  an **app-orchestrated bounded agent** over the single-call `AIProvider` (not a
+  container/CLI harness), producing **typed data** that flows through the existing
+  Tier-2 review queue — no parallel write path. Layers: (1) contract
+  `ProposedChangeSet` + `validateProposedChangeSet` (block-ID integrity: refs must
+  exist, reorder = permutation, agent never invents/reuses IDs; `coherence-edit`
+  Tier-2 kind; `agent.run.*`/`reconcile.*` events) — 9 tests; (2) ai-assist
+  `CoherenceHarness` boundary (engine swappable) + `createProviderCoherenceHarness`
+  (strict ID-preserving prompt, tolerant JSON parse, version-stamp + schema-validate)
+  + `createStubCoherenceHarness` — 6 tests; (3) package-ops `gatherCoherenceContext`
+  / `applyProposedChangeSet` (applies update/create/reorder through `saveStudyGuide`
+  only) wired into the `packageOps` facade — 8 tests; (4) thin web client
+  `runCoherenceAgentAction` (governed provider: rate limit + token budget; queues one
+  reviewable item per op) + `change-actions` accept branch (stale-tolerant) +
+  `CoherencePanel` in the Review group. Built via two concurrent subagents on disjoint
+  packages (ai-assist + package-ops). typecheck + all tests + web build green. **Needs
+  a live in-app pass** (a configured AI provider). Next: M19 execution/gating.
 - **Forward-compatibility guardrails + `PackageOps` boundary (pre-Phase-3 foundation).** To keep Phases 3–8 from entrenching anything the post-v1.0 UI/UX overhaul must redo: wrote [specs/forward-compatibility.md](specs/forward-compatibility.md) (durable-core-stays-presentation-free; extend via existing seams not parallel mechanisms; one validated write path; thin disposable client; per-phase decoupling notes; anti-pattern review checklist) and added CLAUDE.md architecture rules 3 (strengthened: all writers go through `packageOps`) + 9 (Phases 3–8 = durable logic + thin client). Implemented the **`PackageOps` boundary**: `packageOps(store, packageId)` in `@alembic/package-ops` exposes the canonical content operations (study guide, chapters, carrier assets, artifacts) as one typed object — the same surface for cloud (Supabase), local studio (FSA, M17.1), and the Phase-3 agent/worker, all carrying the two-repo/block-ID/layer validation. 69 package-ops tests; web typecheck clean. Existing web actions already route through package-ops; new writers bind to the facade.
 - **M15 snapshots & citation — core done; compare/DOI deferred.** Snapshots are immutable Git tags on the public repo (github-bridge `getDefaultBranch`/`listTags`/`createTag`; web `createSnapshotAction`/`listSnapshotsAction`; `SnapshotsPanel` in the Publish & share group). Tagging the whole repo freezes content **and** carrier assets together, so the asset-permalink pinning (15.6) the carrier spec promised is satisfied by construction (repo-relative `materials/…` refs resolve to the tag). Citation: pure `generateCitationCff` (package-ops; SPDX license + version + author + date) committed via `addCitationAction`; each snapshot has a stable tag URL. Deferred: GitHub compare/restore, Zenodo DOI (15.4), `adaptedFrom.snapshot` (15.5, with the adaptation phase). 196 package tests green; web typecheck + build pass. **Completes v0.3 (M9–M17).**
 - **M16 model gateway & task routing — core done; budgets wired; per-institution + compliance later.** ai-assist gained `GatewayProvider` (OpenAI-compatible, native fetch — OpenRouter/Portkey/OpenAI) and `modelForTask`/`DEFAULT_ROUTING` (subagent; 43 tests). `lib/ai` now **selects the provider from env** (gateway if `AI_GATEWAY_URL`+`AI_GATEWAY_API_KEY`, else Gemini — provider-swappable, CLAUDE.md rule 6), **routes the model per task kind**, and enforces an optional **per-user token budget** (`recent_ai_token_usage` RPC, migration 0007; `AI_TOKEN_BUDGET`; `BudgetExceededError` surfaced at all AI call sites) atop the existing rate limit. Usage stays attributable via `ai_invocations`. web typecheck + build pass. Deferred: per-institution quotas + usage dashboards, and the third-party data-handling/FERPA review (ops). **Migration 0007 awaits `supabase db push` to enforce budgets.**

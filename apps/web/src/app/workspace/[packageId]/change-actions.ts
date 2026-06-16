@@ -2,8 +2,19 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { canAutoApply, serializeStudyGuide } from "@alembic/package-contract";
-import { loadStudyGuide, saveStudyGuide, tidyStudyGuide } from "@alembic/package-ops";
+import {
+  canAutoApply,
+  serializeStudyGuide,
+  PROPOSED_CHANGE_SET_VERSION,
+  type ProposalOp,
+  type ProposedChangeSet,
+} from "@alembic/package-contract";
+import {
+  applyProposedChangeSet,
+  loadStudyGuide,
+  saveStudyGuide,
+  tidyStudyGuide,
+} from "@alembic/package-ops";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
 import { supabaseEventLogger } from "@/lib/events";
@@ -170,6 +181,9 @@ async function applyAccepted(
     oldText?: string;
     suggestion?: string;
     blocks?: Array<{ title: string; body: string }>;
+    op?: ProposalOp;
+    chapterSlug?: string;
+    rationale?: string;
   };
   let committed: { path: string; content: string } | null = null;
 
@@ -221,6 +235,26 @@ async function applyAccepted(
       ],
     });
     committed = { path: detail.path, content: serializeStudyGuide(doc.preamble, blocks) };
+  } else if (change.kind === "coherence-edit" && detail.op) {
+    // A reviewed Tier-B coherence operation — apply it through the validated
+    // packageOps write path (applyProposedChangeSet preserves/mints IDs and
+    // re-validates against the live course). If the targeted block has since
+    // changed or vanished, validation throws and we accept silently (no commit),
+    // matching the a11y-fix behaviour.
+    const set: ProposedChangeSet = {
+      version: PROPOSED_CHANGE_SET_VERSION,
+      task: "reviewed coherence edit",
+      summary: detail.rationale ?? "Coherence edit",
+      findings: [],
+      operations: [detail.op],
+    };
+    try {
+      await applyProposedChangeSet(store, packageId, set);
+      const doc = await loadStudyGuide(store, packageId, detail.path);
+      committed = { path: detail.path, content: serializeStudyGuide(doc.preamble, doc.blocks) };
+    } catch {
+      // Stale proposal — the educator already moved on. Accept with no commit.
+    }
   } else if (change.kind === "formatting-tidy" && detail.content) {
     await store.putFiles(packageId, [{ repo: "public", path: detail.path, content: detail.content }]);
     committed = { path: detail.path, content: detail.content };

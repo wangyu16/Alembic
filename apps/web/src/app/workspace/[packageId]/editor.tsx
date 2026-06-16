@@ -29,6 +29,7 @@ import {
 import { listAssetsAction, readAssetAction } from "./asset-actions";
 import { generateSlidesAction } from "./slides-actions";
 import { importFileAction, restructureImportAction } from "./import-actions";
+import { runCoherenceAgentAction } from "./agent-actions";
 import {
   addCitationAction,
   createSnapshotAction,
@@ -444,6 +445,7 @@ export function StudyGuideEditor({
           fixables={a11yFixables}
           onChanged={() => router.refresh()}
         />
+        <CoherencePanel packageId={packageId} dirty={dirty} onQueued={() => router.refresh()} />
 
         <CategoryLabel>Generate</CategoryLabel>
         <ToolSection
@@ -702,6 +704,99 @@ function AIDraftPanel({
         {busy ? "Drafting…" : "Draft → review queue"}
       </button>
       {note && <p className="mt-2 text-xs text-ok">{note}</p>}
+      {error && <p className="mt-2 text-sm text-danger">{error}</p>}
+    </div>
+  );
+}
+
+/**
+ * M18.4 — the thin client for the Tier-B coherence agent. Reviews the WHOLE
+ * course (every chapter), then queues block-level suggestions into "Changes &
+ * review" above. Nothing is applied here — the educator reviews each item.
+ */
+function CoherencePanel({
+  packageId,
+  dirty,
+  onQueued,
+}: {
+  packageId: string;
+  dirty: boolean;
+  onQueued: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [task, setTask] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+  const [summary, setSummary] = useState<string | null>(null);
+  const [findings, setFindings] = useState<string[]>([]);
+  const [error, setError] = useState<string | null>(null);
+
+  async function run() {
+    setBusy(true);
+    setError(null);
+    setNote(null);
+    setSummary(null);
+    setFindings([]);
+    const result = await runCoherenceAgentAction(packageId, task);
+    if (result.ok) {
+      setSummary(result.summary ?? null);
+      setFindings(result.findings ?? []);
+      setNote(
+        result.queued
+          ? `Proposed ${result.queued} change${result.queued === 1 ? "" : "s"} — review them in “Changes & review” above.`
+          : "No changes suggested — the course looks coherent.",
+      );
+      setTask("");
+      onQueued();
+    } else {
+      setError(result.error ?? "Couldn't run the coherence review.");
+    }
+    setBusy(false);
+  }
+
+  if (!open) {
+    return (
+      <button onClick={() => setOpen(true)} className="btn btn-ghost">
+        🧭 Review whole-course coherence
+      </button>
+    );
+  }
+
+  return (
+    <div className="panel p-3">
+      <div className="mb-2 flex items-center justify-between">
+        <span className="text-sm font-medium">Whole-course coherence review</span>
+        <button onClick={() => setOpen(false)} className="text-xs text-muted hover:text-ink">Close</button>
+      </div>
+      <p className="mb-2 text-xs text-muted">
+        Reviews every chapter for consistency — terminology, objective coverage,
+        cross-references, ordering — and suggests edits for you to review.
+      </p>
+      <textarea
+        value={task}
+        onChange={(e) => setTask(e.target.value)}
+        placeholder="What to check? e.g. 'Make sure terminology is consistent across chapters and every objective is covered.'"
+        rows={2}
+        className="field w-full text-sm"
+      />
+      <button
+        onClick={run}
+        disabled={busy || dirty || !task.trim()}
+        title={dirty ? "Save your changes first" : undefined}
+        className="btn btn-primary btn-sm mt-2"
+      >
+        {busy ? "Reviewing the course…" : "Review → queue suggestions"}
+      </button>
+      {dirty && <p className="mt-1 text-xs text-warn">Save your changes before running a review.</p>}
+      {note && <p className="mt-2 text-xs text-ok">{note}</p>}
+      {summary && <p className="mt-2 text-sm text-muted">{summary}</p>}
+      {findings.length > 0 && (
+        <ul className="mt-2 list-disc space-y-1 pl-4 text-xs text-muted">
+          {findings.map((f, i) => (
+            <li key={i}>{f}</li>
+          ))}
+        </ul>
+      )}
       {error && <p className="mt-2 text-sm text-danger">{error}</p>}
     </div>
   );

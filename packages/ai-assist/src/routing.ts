@@ -44,5 +44,7 @@ export const DEFAULT_ROUTING: ModelRouting = {
     "draft-section": "gemini-2.0-pro",
     worksheet: "gemini-2.0-pro",
     "import-blocks": "gemini-2.0-pro",
+    // Tier-B whole-course coherence reasoning → the strongest model.
+    "coherence-agent": "gemini-2.0-pro",
   },
 };
