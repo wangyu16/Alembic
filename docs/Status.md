@@ -163,6 +163,9 @@ acceptance check and is independently implementable.
   foreign import + bulk local upload) → M15 snapshots & citation (pins asset
   permalinks) → M16 model gateway. See
   [specs/carriers-and-assets.md](specs/carriers-and-assets.md).
+- **M17 local mode & entitlements** (parallel track): builds on the carrier
+  single-file portability (needs M11.0); the entitlement seam is the hook future
+  accounts/paid-AI/cloud-sync attach to. See [specs/local-mode.md](specs/local-mode.md).
 
 **Cross-cutting dependencies:**
 - **The carrier foundation (M11.0) gates M11/M12/M13** — one primitive
@@ -327,9 +330,29 @@ Cost/scale via a gateway + per-task model selection. See [specs/ai-architecture.
 
 *Exit:* per-task model selection + per-user budgets live; still provider-swappable.
 
+### M17 — Local mode & entitlements
+
+A light, **anonymous, local** editor (open/edit/save supported files on disk; no
+account, no cloud, no AI), plus the **entitlement seam** future accounts / paid
+AI / cloud sync plug into. OER content stays open; the service (platform + AI)
+is the paid part. See [specs/local-mode.md](specs/local-mode.md).
+
+| # | Sub-module | Verify by | Status |
+| --- | --- | --- | --- |
+| 17.0 | Entitlement seam: `Capability`/`Identity`/`resolveEntitlements` + `AuthProvider` (anonymous impl) + server-side enforcement on cloud/AI endpoints | anonymous resolves to `{localFile}`; cloud user unchanged; AI/github refused without entitlement (server-checked) | ⬜ |
+| 17.1 | `PackageOps` interface + local impl over `LocalPackageStore` (File System Access) | the editor runs save/load against a local store with no server call | ⬜ |
+| 17.2 | Single-file studio: open/edit/save any carrier + "new note"; download/upload fallback | open a `.md.html`/`.ketcher.svg` from disk, edit, save back (no account) | ⬜ |
+| 17.3 | Client-capability audit (browser-clean path; Web Crypto hashing) | editing packages run in the browser with no Node-only deps | ⬜ |
+| 17.4 | *(later)* v2 local projects, v3 paid AI + accounts, v4 cloud sync | each lands behind the entitlement resolver, no feature rewrite | ⬜ |
+
+*Exit (v1):* a visitor opens a supported file from disk, edits it (structures
+included), and saves it back — anonymous, no cloud, no AI. The entitlement
+resolver is the single place future paid tiers attach.
+
 ## Log
 
 ### 2026-06-16
+- **Local mode & entitlements design** ([specs/local-mode.md](specs/local-mode.md)). A light, **anonymous, local** editor (open/edit/save supported carrier files on disk; no account, cloud, or AI) built on the carrier self-containment. Modeled as **capabilities → entitlements** resolved in one place (`resolveEntitlements(identity)`): today anonymous→`{localFile}`, cloud user→all; future paid plans add `ai`/`cloudProject`/sync with **no feature-code changes** — the resolver is the monetization seam (OER content stays open; the *service* is the paid part). Storage stays behind `PackageStore` (new `LocalPackageStore` over File System Access); the editor gets a `PackageOps` interface (cloud=server actions, local=client) — the one real refactor. Decisions: anonymous-only for now (pluggable `AuthProvider` later); no AI for anonymous (AI is an entitlement). Added **M17** to the tracker (17.0 entitlement seam → 17.1 local PackageOps → 17.2 single-file studio → 17.3 client-capability audit; v2/v3/v4 later). Known risk flagged: purge Node-only deps from the browser path (e.g. `hashContent` → Web Crypto).
 - **M11 chemistry structures — done & verified live.** The full draw→save→insert→preview round-trip works on alembic.orz.how (Ketcher canvas, `.ketcher.svg` carrier written via `writeAsset`, reference inserted, preview renders via `/api/asset`). First asset kind shipped on the carrier foundation. Delivery decision: **self-host + iframe** (chosen over bundling ketcher-react ~27 MB+ or a CDN). `pnpm fetch:ketcher` vendors the Ketcher v3.12.0 standalone build into `apps/web/public/ketcher/` (gitignored, 96 MB, fetched at deploy — zero JS-bundle impact). `ketcher-editor.tsx` embeds it in a lazy **same-origin** iframe (talks to `window.ketcher` directly — no postMessage) and produces a `.ketcher.svg` carrier (KetJSON source + rendered SVG) via `saveStructureAssetAction` → `writeAsset` → GitHub sync. Insert pipeline: `StructuresPanel` (searchable picker, Draw/Insert/Edit) + caret-aware `insertMarkdown`; preview rewrites `materials/…` refs to `GET /api/asset/[pkg]/[...path]` (store-served, public-only, fail-closed); ai-assist `suggestStructureAltText` powers "Describe with AI". web typecheck + build green. **Needs:** an interactive browser pass on the canvas + `pnpm fetch:ketcher` wired into the Vercel build command. Follow-ups: persist asset alt for re-insert; published-site asset path resolution (with M15 pinning).
 - **M11.0 carrier foundation — done.** Built via two concurrent subagents on disjoint pure packages, integrated by hand. New **`@alembic/carriers`** (future orz-artifacts): pure carrier codec (`embedSource`/`extractSource`/`detectFormatVersion`/`hasCarrier`) for SVG (`<metadata id="orz-carrier">` CDATA) + HTML (non-exec `<script>`) with `]]>`/`</` escaping and legacy format-0 detection, plus the **kind registry** (`BUILTIN_KINDS`: ketcher/plot/md/slides; `getKindByExtension` longest-suffix) — 17 tests. **`package-contract`** gained the asset model (`AssetRecordSchema` with required alt text, `newAssetId`), the reference resolver (`assertPublicReference` fail-closed on private layers; `classifyReference`; `livePermalink`/`pinnedPermalink`), and pure **`validateProject(input, {knownCarrierExtensions})`** (kinds injected, no registry dep) — +25 tests. **`package-ops`** gained `listAssets`/`readAsset`/`writeAsset` over the public `materials/` layer (5 tests). Reuses existing `materials` layer — **no new layer** (contract v1 layer set stays closed). 242 package tests green; typecheck + web build pass. Next: M11 Ketcher editor (`.ketcher.svg`) on this foundation.
 - **Migrations 0005 + 0006 applied to production** — M10 tier queue and M14 accessibility features now live.
