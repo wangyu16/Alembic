@@ -1,11 +1,19 @@
 # Alembic Status Tracker
 
 Live view of what is done, in progress, and coming. Update this file in the
-same commit as the work it tracks. Statuses: ✅ done · 🔄 in progress · ⬜ pending · ⏸ deferred.
+same commit as the work it tracks. Statuses: ✅ done · 🔄 partially shipped (remainder tracked in "Phase 2 deferred follow-ups") · ⬜ pending · ⏸ deferred.
 
 **Production:** live at https://alembic.orz.how (Vercel project `alembic`, root `apps/web`, Node 22; Cloudflare DNS; Git auto-deploy on push to `main`).
 
-**Current focus: Phase 2 (v0.2–v0.3) — authoring depth & chemistry-first.** v0.1 is built, deployed, and live-verified end to end (the M8.3 pilot is the only remaining v0.1 activity, ongoing). The Phase 2 modularized plan + tracker is below ("Phase 2 sub-modules"). See [LocalSetup.md](LocalSetup.md) + [GitHubAppSetup.md](GitHubAppSetup.md).
+**Current focus: Phase 2 (v0.2–v0.3) core is complete (M9–M17 built).** v0.1 is live end to end (M8.3 pilot ongoing). The remaining Phase-2 work is the explicitly-deferred list (see "Pending operator actions" and the ⏸ rows below) — heavier items (worker-tier PDF + foreign-import, studio structure/plot editing + local projects) sit at the Phase-2/Phase-3 boundary. Next phase candidates: Phase 3 (agent harness) or a pilot-hardening pass. See [LocalSetup.md](LocalSetup.md) + [GitHubAppSetup.md](GitHubAppSetup.md).
+
+### Pending operator actions (human-in-the-loop)
+
+These are the only things blocking full production parity with the code:
+
+1. **Apply migration `0007_ai_budget.sql`** (`supabase db push` or dashboard) — enables the per-user AI token budget (dormant until `AI_TOKEN_BUDGET` is also set). 0005 + 0006 are already applied.
+2. **Set the Vercel build command to run `node ../../scripts/fetch-vendor.mjs && next build`** (not `fetch-ketcher`) so **Plotly** is vendored too — otherwise the plot editor 404s on its runtime in production.
+3. **Interactive verification passes** (can't run in CI): plot render (M11b), slides render (M13), studio File System Access open/save (M17). Ketcher (M11) is already verified live.
 
 **Deferred chore:** bump renderer to orz-markdown 1.1.0 (published) — reverted to 1.0.0 temporarily because the npm registry was unreachable during M2 and CI uses `--frozen-lockfile`. Behavior is unaffected (1.0.0 supports the attrs block-ID syntax); redo when the registry is reachable.
 
@@ -46,7 +54,7 @@ unless a dependency is noted.
 | 2. Ship Agent Skill in the npm tarball | M3 (AI drafting) | ⬜ |
 | 3. Add ID-preservation rules to the Agent Skill | M3 (AI drafting) | ⬜ |
 | 4. Versioned embed/extract module + format-version marker | M4 (.md.html export) | ⬜ |
-| 5. Attribute pass-through for plugin blocks (equations/structures) | Phase 2 | ⬜ |
+| 5. Attribute pass-through for plugin blocks (equations/structures) | — | ⏸ superseded by the M11.0 carrier registry (assets are addressable carrier files, not attr-tagged plugin blocks) |
 
 ### M1 — Auth & shell
 
@@ -300,8 +308,6 @@ Lossless carrier re-import + lossy foreign import + bulk local-project upload.
 
 *Exit (demo):* re-import a carrier (`.ketcher.svg` / `.md.html`) or Markdown losslessly, or paste notes → AI-restructured reviewable sections. Foreign binaries + bulk zip upload are designed and deferred to the worker tier.
 
-*Exit:* generate slides + a PDF handout from a chapter; both editable and drift-tracked.
-
 ### M15 — Snapshots & citation
 
 Named immutable versions + citable scholarly output (goal.md §5).
@@ -342,7 +348,7 @@ is the paid part. See [specs/local-mode.md](specs/local-mode.md).
 | --- | --- | --- | --- |
 | 17.0 | Entitlement seam: `Capability`/`Identity`/`resolveEntitlements` (the monetization hook) | anonymous resolves to `{localFile}`; cloud user → full set; future plans add caps here only | ✅ `lib/entitlements.ts` (pure; `resolveEntitlements`/`can`/`ANONYMOUS`); studio consumes it. App-wide server enforcement + `AuthProvider` (Google) land with paid AI (M16/v3) |
 | 17.1 | `PackageOps` interface + local impl over `LocalPackageStore` (File System Access) | the editor runs save/load against a local store with no server call | 🔄 v2 (local **projects**); not needed for the v1 single-file studio |
-| 17.2 | Single-file studio: open/edit/save Markdown & `.md.html`; "new note"; FSA + download fallback | open a `.md.html` from disk, edit, save back (no account) | ✅ `/studio` (anonymous): New note / Open file (`.md`/`.md.html`, carrier source extracted client-side via `@alembic/carriers`) / live preview / Save `.md` (local) / Save `.md.html` (stateless `/api/build/md-html`); FSA `showSaveFilePicker` + download fallback. **Structures/plots/slides editing deferred** (their editors need a storage-agnostic save callback) |
+| 17.2 | Single-file studio: open/edit/save Markdown & `.md.html`; "new note"; FSA + download fallback | open a `.md.html` from disk, edit, save back (no account) | ✅ `/studio` (anonymous): New note / Open file (`.md`/`.md.html`, carrier source extracted client-side via `@alembic/carriers`) / live preview / Save `.md` (local) / Save `.md.html` (stateless `/api/render/md-html`); FSA `showSaveFilePicker` + download fallback. **Structures/plots/slides editing deferred** (their editors need a storage-agnostic save callback) |
 | 17.3 | Client-capability audit (browser-clean path; Web Crypto hashing) | editing runs in the browser with no Node-only deps | 🔄 carriers codec is browser-clean (studio uses it directly); preview + `.md.html` build run server-side (orz-markdown isn't browser-safe — stateless, nothing stored). Full audit (Web Crypto hashing) with local projects (v2) |
 | 17.4 | *(later)* v2 local projects, v3 paid AI + accounts, v4 cloud sync | each lands behind the entitlement resolver, no feature rewrite | ⬜ |
 
@@ -351,12 +357,37 @@ and saves it back — anonymous, no cloud, no AI. Structures/plots/slides editin
 in the studio + local *projects* are the next iterations. The entitlement
 resolver is the single place future paid tiers attach.
 
+## Phase 2 deferred follow-ups (tracked)
+
+Built milestones above carry ⏸/🔄 sub-rows where a slice was deliberately
+parked. Consolidated here so nothing is lost (none is actively in progress):
+
+- **Worker tier** (gates several): real `.md.pdf` generation (Chromium/paged.js,
+  M13.3) and foreign-format import parsers — Word/PDF/PPTX/images (M12.2).
+- **Studio carrier editing + local projects** (M17 v1.5 / v2): structure/plot/
+  slide editing in `/studio` (needs storage-agnostic editor save callbacks);
+  `LocalPackageStore`/`PackageOps` over a directory; the client-capability audit
+  (Web Crypto hashing).
+- **Snapshots depth** (M15): GitHub compare/restore (15.2), Zenodo DOI (15.4),
+  `adaptedFrom.snapshot` (15.5 — lands with the adaptation phase).
+- **AI gateway depth** (M16): per-institution quotas + usage dashboards (16.3);
+  the third-party data-handling/FERPA review (16.4, ops — see
+  [ai-architecture.md](specs/ai-architecture.md)).
+- **Concepts/objectives editor** (M9.6): contract schemas exist; ops + editor UI later.
+- **Smaller correctness follow-ups** (prose-only until now, tracked here):
+  - per-chapter `.md.html`/`.md.pdf` export (today the export covers the active chapter; the no-lock-in build concatenates chapters);
+  - **asset alt-text persistence** so re-inserting an existing asset isn't `![]()` (currently empty alt on re-insert — an a11y gap);
+  - **Agent Skill generation** from the kind registry (`validate()` shipped; the skill doc + npm-tarball packaging, orz gaps #2/#3, remain);
+  - **asset rename/move** reference-rewrite helper (see [carriers-and-assets.md §11](specs/carriers-and-assets.md));
+  - published-site `materials/…` path resolution at build time.
+- **Per-kind display & editing UX** revision (demo-adequate now) — see [carriers-and-assets.md §11](specs/carriers-and-assets.md).
+
 ## Log
 
 ### 2026-06-16
 - **M15 snapshots & citation — core done; compare/DOI deferred.** Snapshots are immutable Git tags on the public repo (github-bridge `getDefaultBranch`/`listTags`/`createTag`; web `createSnapshotAction`/`listSnapshotsAction`; `SnapshotsPanel` in the Publish & share group). Tagging the whole repo freezes content **and** carrier assets together, so the asset-permalink pinning (15.6) the carrier spec promised is satisfied by construction (repo-relative `materials/…` refs resolve to the tag). Citation: pure `generateCitationCff` (package-ops; SPDX license + version + author + date) committed via `addCitationAction`; each snapshot has a stable tag URL. Deferred: GitHub compare/restore, Zenodo DOI (15.4), `adaptedFrom.snapshot` (15.5, with the adaptation phase). 196 package tests green; web typecheck + build pass. **Completes v0.3 (M9–M17).**
 - **M16 model gateway & task routing — core done; budgets wired; per-institution + compliance later.** ai-assist gained `GatewayProvider` (OpenAI-compatible, native fetch — OpenRouter/Portkey/OpenAI) and `modelForTask`/`DEFAULT_ROUTING` (subagent; 43 tests). `lib/ai` now **selects the provider from env** (gateway if `AI_GATEWAY_URL`+`AI_GATEWAY_API_KEY`, else Gemini — provider-swappable, CLAUDE.md rule 6), **routes the model per task kind**, and enforces an optional **per-user token budget** (`recent_ai_token_usage` RPC, migration 0007; `AI_TOKEN_BUDGET`; `BudgetExceededError` surfaced at all AI call sites) atop the existing rate limit. Usage stays attributable via `ai_invocations`. web typecheck + build pass. Deferred: per-institution quotas + usage dashboards, and the third-party data-handling/FERPA review (ops). **Migration 0007 awaits `supabase db push` to enforce budgets.**
-- **M17 local mode (v1) — anonymous single-file studio + entitlement seam.** `/studio` (no account, nothing stored): New note / Open a `.md` or `.md.html` (carrier source extracted client-side via `@alembic/carriers`) / live preview / Save `.md` (local) or `.md.html` (built via stateless unauth `/api/build/md-html`); File System Access `showSaveFilePicker` with download fallback. Delivers goal.md's stated student use case (open a downloaded `.md.html`, annotate, save back). **Entitlement seam** `lib/entitlements.ts` (`resolveEntitlements`: anonymous→`{localFile}`, user→full) — the monetization hook; future paid plans add caps there only. Home page "(coming soon)" → real **"Open the studio"** CTA. web typecheck + build pass; `/studio` route compiles. **Needs an interactive pass** (File System Access). Deferred: structures/plots/slides editing in studio (editors need a storage-agnostic save callback), local *projects* (PackageOps/LocalPackageStore, v2), app-wide entitlement enforcement + Google auth + paid AI (with M16).
+- **M17 local mode (v1) — anonymous single-file studio + entitlement seam.** `/studio` (no account, nothing stored): New note / Open a `.md` or `.md.html` (carrier source extracted client-side via `@alembic/carriers`) / live preview / Save `.md` (local) or `.md.html` (built via stateless unauth `/api/render/md-html`); File System Access `showSaveFilePicker` with download fallback. Delivers goal.md's stated student use case (open a downloaded `.md.html`, annotate, save back). **Entitlement seam** `lib/entitlements.ts` (`resolveEntitlements`: anonymous→`{localFile}`, user→full) — the monetization hook; future paid plans add caps there only. Home page "(coming soon)" → real **"Open the studio"** CTA. web typecheck + build pass; `/studio` route compiles. **Needs an interactive pass** (File System Access). Deferred: structures/plots/slides editing in studio (editors need a storage-agnostic save callback), local *projects* (PackageOps/LocalPackageStore, v2), app-wide entitlement enforcement + Google auth + paid AI (with M16).
 - **M12 import — lossless re-import + AI restructure done; foreign binaries & bulk-zip deferred.** The carrier payoff: package-ops `classifyImport` + web `importFileAction` bring a `.ketcher.svg`/`.plot.svg`/`.md.html`/`.slides.html`/`.md` file back deterministically (assets stored under `materials/`; document/markdown → blocks appended) — no AI. Lossy path: ai-assist `restructureToBlocks` (subagent) + `restructureImportAction` → Tier-2 `import-blocks` review (accept appends sections). `import.completed` event for provenance; imported markdown gets IDs on save. "Import content" panel in the Author group. Foreign binaries (docx/pdf/pptx/images) and bulk zip/folder upload **deferred to the worker tier** (heavy parsers, npm-flaky). 184 package tests green (incl. ai-assist 33, package-ops 64); web typecheck + build pass.
 - **M13 document carriers — slides done; PDF designed + interim print.** Examined the orz extensions (`orz-slides-html-vscode`, `orz-md-pdf-vscode`) and found real design problems (per-slide source islands with no single source of truth; no format-version markers; embedded reveal.js; CDN KaTeX) — fixes captured in [carriers-and-assets.md §4a](specs/carriers-and-assets.md) to feed back. Built: renderer `slides.ts` (lightweight **self-contained** deck — no reveal/CDN) + migrated `.md.html` onto the shared carrier codec (old `md-source` files read as format 0); package-ops `generateSlidesArtifact` (one slide per section, derived artifact with source-block staleness, idempotent regen); contract `DerivedArtifactKind` += `slides`; web "Generate slides" in the **Generate** group (per [editor-layout.md](specs/editor-layout.md)) + View/Download via `/api/asset` + "Printable handout (PDF)" via browser Print. `.md.pdf` worker pipeline (Chromium/paged.js) deferred to the worker tier. 171 package tests green (contract 79, renderer 33, package-ops 59); web typecheck + build pass. Decision recap: lightweight deck · design-PDF-now + worker-later · unify `.md.html` now. **Needs an interactive slides render pass.**
 - **M11b plots (`.plot.svg`) — code complete (11b.2/11b.3 ✅; 11b.1 🔄 pending a live browser pass).** Proved the carrier registry generalizes: the `plot` kind was already in `BUILTIN_KINDS`, so the picker, `/api/asset` route, preview rewrite, and store all accepted it unchanged. New work was only the **editor** (`plot-editor.tsx`: lazy-loads vendored Plotly basic — `pnpm fetch:plotly` → `/vendor/`, gitignored ~1 MB, deploy-fetched, **never bundled into the site**; spec textarea + live preview; `toImage` SVG → carrier) and **generalizing the shared bits**: `saveAssetAction` (kind-aware path/ext, replaces `saveStructureAssetAction`) + `AssetsPanel` (Draw structure / New chart; Edit by kind). 11b.3 is free — the carrier stores the rendered SVG so the published site needs no runtime. web typecheck + build green; needs an interactive render pass + `fetch:vendor` wired into the Vercel build. New `pnpm fetch:vendor` runs both Ketcher + Plotly fetches.

@@ -55,9 +55,11 @@ Deliberately deferred: agent harness, Ketcher, question templates, adaptation, s
 - Import & local-first authoring: lossless re-import of any carrier; lossy foreign import (Word/PDF/PowerPoint/images → AI restructuring, Tier-2 queue); **bulk upload of a complete locally-authored project** validated by one shared contract (validator == Agent Skill).
 - Risk-tiered approval system implemented as policy (Tier 1 auto-apply + changelog/undo, Tier 2 batch queue, Tier 3 itemized — Tier 3 gates existed in v0.1 for publish; this phase generalizes the machinery).
 - AI accessibility checks (WCAG 2.1 AA), alt text for structures/plots from their carrier source.
-- Snapshots (named immutable versions via tags): list, restore, compare; snapshots pin asset permalinks to fixed commits.
+- Snapshots (named immutable versions via tags): list, restore, compare; snapshots pin asset permalinks to fixed commits (whole-repo tagging freezes content + assets together).
+- **Model gateway & cost controls**: provider-swappable gateway (OpenRouter/Portkey) + per-task model routing + per-user budgets behind the `AIProvider` seam, operationalizing the [§11 sustainability model](goal.md) — see [specs/ai-architecture.md](specs/ai-architecture.md).
+- **Local mode (anonymous studio)**: open/edit/save Alembic files on your own machine, no account — the student/self-learner surface and the **entitlement seam** future paid tiers attach to. See [specs/local-mode.md](specs/local-mode.md).
 
-**Exit criteria:** an educator can go from a messy Word/PDF dump — or a complete local project — to a polished published chemistry package (with reusable structures and plots) without leaving the app.
+**Exit criteria:** an educator can go from a messy Word/PDF dump — or a complete local project — to a polished published chemistry package (with reusable structures and plots) without leaving the app; a student can edit an exported file locally with no account.
 
 ---
 

@@ -8,10 +8,11 @@ principle and introduces the seam future monetization plugs into.
 ## 1. Purpose & principles
 
 A **light, local, anonymous** way to use Alembic's editing: a student (or any
-visitor) opens a supported file from their computer — a `.md.html`,
-`.ketcher.svg`, `.plot.svg`, or a new note — edits it with the full editor
-(including the structure editor), and saves it back to disk. No account, no
-cloud, no GitHub.
+visitor) opens a supported file from their computer — in **v1**, Markdown or a
+`.md.html` study guide (or a new note) — edits it and saves it back to disk. No
+account, no cloud, no GitHub. (Opening other carriers — `.ketcher.svg`,
+`.plot.svg`, `.slides.html` — for editing in the studio is **v2**; their editors
+must first be made storage-agnostic.)
 
 This is **not a new idea** — it's already in [goal.md](../goal.md):
 
@@ -117,7 +118,8 @@ markers), v1 needs almost nothing beyond what exists:
 
 1. Open: File System Access `showOpenFilePicker` → read file → `extractSource`
    (from `@alembic/carriers`) → route to the right editor by kind.
-2. Edit: the existing editors (block editor, Ketcher, future plot).
+2. Edit: a Markdown editor with live preview (v1). The carrier editors (Ketcher,
+   plot, slides) join in v2 once they take a storage-agnostic save callback.
 3. Save: `embedSource` → `showSaveFilePicker` (write back to the same handle).
 
 A "new note" is just an empty `.md.html` carrier. No package, no account, no
@@ -169,9 +171,12 @@ network.
 
 ## 9. Staged plan (each stage shippable)
 
-1. **v1 — single-file studio** (anonymous, no AI): open/edit/save one carrier;
-   "new note"; full editor incl. structures; FSA + download/upload fallback.
-2. **v2 — local project**: `LocalPackageStore` over a directory handle; edit a
+1. **v1 — single-file Markdown studio** (anonymous, no AI): open/edit/save a
+   `.md`/`.md.html` (carrier source extracted client-side); "new note"; Markdown
+   editor + live preview; FSA `showSaveFilePicker` + download fallback. **Shipped.**
+2. **v1.5 — carrier editing in the studio**: open/edit `.ketcher.svg`/`.plot.svg`/
+   `.slides.html` once their editors take a storage-agnostic save callback.
+3. **v2 — local project**: `LocalPackageStore` over a directory handle; edit a
    whole package locally (chapters, `materials/`, manifest) via the local
    `PackageOps`.
 3. **v3 — identity + entitlements + paid AI**: `AuthProvider` (Google),
@@ -181,13 +186,16 @@ network.
 ## 10. Milestone mapping
 
 See [Status.md](../Status.md) **M17 — Local mode & entitlements**:
-- **M17.0** entitlement seam: `Capability`/`Identity`/`resolveEntitlements` +
-  `AuthProvider` (anonymous impl) + server-side enforcement on existing
-  cloud/AI endpoints (no behavior change today; everyone is anonymous-or-cloud).
-- **M17.1** `PackageOps` interface + local impl over `LocalPackageStore` (FSA).
-- **M17.2** single-file studio (open/edit/save carriers; new note; fallback).
-- **M17.3** client-capability audit (Web Crypto hashing; browser-clean path).
-- *(later)* v2 local projects, v3 paid AI, v4 cloud sync.
+- **M17.0** ✅ entitlement seam: `Capability`/`Identity`/`resolveEntitlements`
+  (`lib/entitlements.ts`). `AuthProvider` (Google) + app-wide server-side
+  enforcement land with paid AI (v3 / M16).
+- **M17.1** ⏸ `PackageOps` interface + `LocalPackageStore` (FSA) — v2 (local projects).
+- **M17.2** ✅ single-file Markdown studio (`/studio`: `.md`/`.md.html`, new note,
+  preview, FSA + download fallback). Carrier editing → v1.5.
+- **M17.3** 🔄 client-capability audit — carriers codec is browser-clean; full
+  audit (Web Crypto hashing) with local projects (v2).
+- *(later)* v1.5 carrier editing, v2 local projects, v3 paid AI, v4 cloud sync.
 
-*Exit (v1):* a visitor opens a `.md.html` or `.ketcher.svg` from disk, edits it
-(structures included), and saves it back — no account, no cloud, no AI.
+*Exit (v1):* ✅ a visitor opens a `.md.html` or Markdown file from disk, edits
+it, and saves it back — no account, no cloud, no AI. Carrier (structure/plot/
+slide) editing in the studio and local *projects* are the next iterations.
