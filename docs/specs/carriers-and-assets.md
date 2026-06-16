@@ -189,6 +189,35 @@ Notes:
   above; `detectVersion` recognizes the legacy markers as **format 0** so
   existing files import losslessly.
 
+### 4a. Document carriers (`.md.html`, `.slides.html`, `.md.pdf`) — M13 design
+
+Document carriers are **derived** (source of truth = study-guide blocks). The
+review of the orz VS Code extensions (`orz-slides-html-vscode`,
+`orz-md-pdf-vscode`) found design issues this milestone fixes — and these fixes
+are what should flow **back into the extensions**:
+
+| Problem found in the extensions | Fix (this design) |
+| --- | --- |
+| `.slides.html` stores **per-slide** `text/orz-slide` blocks + separate `orz-settings`/`orz-meta` islands — no single source of truth | **One source island** (the whole deck markdown) via the standard carrier envelope; legacy per-slide files read as **format 0** (chunks concatenated, `---`-joined) |
+| **No format-version marker** on slides or PDF | Every document carrier carries `data-orz-kind` + `data-orz-format` (PDF: in metadata); format 0 = legacy unmarked, always extractable |
+| Slides embed **reveal.js**; depend on a preview extension to render | **Lightweight self-contained deck** — sections + dark-elegant theme + tiny inline scroll-snap/arrow-key nav; math/chem baked at build via orz-markdown; no reveal, no external runtime |
+| `.md.pdf` loads **KaTeX CSS from a CDN** (needs network) | Inline KaTeX CSS — fully self-contained, offline |
+| Three divergent embed mechanisms; in Alembic `.md.html` used its own `id="md-source"` | One HTML mechanism (`id="orz-carrier"`) for `md`+`slides`; one PDF-attachment mechanism for `pdf`. `.md.html` migrated; old `md-source` files read as format 0 |
+
+Conventions:
+- **Slide boundaries:** an explicit `---` line (thematic break) in the deck
+  source. In Alembic the deck is derived **one slide per study-guide section**.
+- **Staleness:** document carriers are M3 derived artifacts (source-block
+  hashes) — edit a block → the deck/PDF reads "out of date" → regenerate.
+  Regeneration is deterministic and idempotent (one deck per chapter).
+- **`.md.pdf`:** generated **worker-side** (Chromium/paged.js, per goal.md
+  "builds run app-side in the worker tier"), source embedded as a `source.md`
+  attachment + markers. Until the worker tier lands, the interim path is
+  **browser Print → Save as PDF** from the `.md.html`.
+
+> These conventions are the spec to propagate to `orz-stack/spec/artifact-formats.md`
+> and the three extensions during consolidation (Phase C).
+
 ---
 
 ## 5. Assets: storage, identity, references

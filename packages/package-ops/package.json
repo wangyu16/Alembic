@@ -14,6 +14,7 @@
   "dependencies": {
     "@alembic/ai-assist": "workspace:*",
     "@alembic/carriers": "workspace:*",
-    "@alembic/package-contract": "workspace:*"
+    "@alembic/package-contract": "workspace:*",
+    "@alembic/renderer": "workspace:*"
   }
 }

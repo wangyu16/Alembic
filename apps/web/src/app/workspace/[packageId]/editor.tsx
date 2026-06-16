@@ -27,6 +27,7 @@ import {
   suggestA11yFixAction,
 } from "./a11y-actions";
 import { listAssetsAction, readAssetAction } from "./asset-actions";
+import { generateSlidesAction } from "./slides-actions";
 import { KetcherEditor } from "./ketcher-editor";
 import { PlotEditor } from "./plot-editor";
 import type { AssetInfo } from "@alembic/package-ops";
@@ -70,6 +71,7 @@ interface EditorBlock extends StudyGuideBlock {
 
 export interface ArtifactSummary {
   artifactId: string;
+  kind: "worksheet" | "slides";
   title: string;
   path: string;
   status: "fresh" | "divergent";
@@ -436,11 +438,26 @@ export function StudyGuideEditor({
         />
 
         <CategoryLabel>Generate</CategoryLabel>
-        <ToolSection title="Worksheets & artifacts" badge={artifacts.length || undefined}>
+        <ToolSection
+          title="Worksheets"
+          badge={artifacts.filter((a) => a.kind === "worksheet").length || undefined}
+        >
           <WorksheetPanel
             packageId={packageId}
-            artifacts={artifacts}
+            artifacts={artifacts.filter((a) => a.kind === "worksheet")}
             selectedBlockIds={[...selected]}
+            dirty={dirty}
+            onChanged={() => router.refresh()}
+          />
+        </ToolSection>
+        <ToolSection
+          title="Slides & PDF"
+          badge={artifacts.filter((a) => a.kind === "slides").length || undefined}
+        >
+          <SlidesPanel
+            packageId={packageId}
+            activePath={initialPath}
+            slides={artifacts.filter((a) => a.kind === "slides")}
             dirty={dirty}
             onChanged={() => router.refresh()}
           />
@@ -935,6 +952,92 @@ function A11yPanel({
           {error && <p className="mt-2 text-sm text-danger">{error}</p>}
         </div>
       )}
+    </div>
+  );
+}
+
+function SlidesPanel({
+  packageId,
+  activePath,
+  slides,
+  dirty,
+  onChanged,
+}: {
+  packageId: string;
+  activePath: string;
+  slides: ArtifactSummary[];
+  dirty: boolean;
+  onChanged: () => void;
+}) {
+  const [pending, start] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+
+  const generate = () => {
+    setError(null);
+    start(async () => {
+      const r = await generateSlidesAction(packageId, activePath);
+      if (!r.ok) setError(r.error ?? "Couldn't generate slides.");
+      else onChanged();
+    });
+  };
+
+  return (
+    <div className="panel p-3">
+      <div className="flex flex-wrap items-center gap-3">
+        <button
+          onClick={generate}
+          disabled={pending || dirty}
+          title={dirty ? "Save your changes first" : "Build a slide deck from this chapter"}
+          className="btn btn-primary btn-sm"
+        >
+          {pending ? "Generating…" : slides.length ? "Regenerate slides" : "Generate slides"}
+        </button>
+        <a
+          href={`/workspace/${packageId}/export/study-guide`}
+          target="_blank"
+          rel="noreferrer"
+          className="btn btn-ghost btn-sm"
+          title="Opens the study guide; use your browser's Print → Save as PDF"
+        >
+          Printable handout (PDF)
+        </a>
+      </div>
+      {dirty && <p className="mt-1 text-xs text-warn">Save your changes before generating.</p>}
+
+      {slides.length > 0 && (
+        <ul className="mt-3 divide-y divide-[var(--edge-soft)]">
+          {slides.map((s) => (
+            <li key={s.artifactId} className="flex items-center justify-between gap-2 py-2">
+              <span className="min-w-0 truncate text-sm">
+                {s.title}
+                {s.stale && <span className="ml-2 text-xs text-warn">· out of date</span>}
+              </span>
+              <div className="flex shrink-0 gap-2">
+                <a
+                  href={`/api/asset/${packageId}/${s.path}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="rounded border border-zinc-300 px-2 py-1 text-xs hover:bg-elevated dark:border-zinc-700"
+                >
+                  View
+                </a>
+                <a
+                  href={`/api/asset/${packageId}/${s.path}`}
+                  download
+                  className="rounded border border-zinc-300 px-2 py-1 text-xs hover:bg-elevated dark:border-zinc-700"
+                >
+                  Download
+                </a>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+      <p className="mt-2 text-xs text-faint">
+        Slides are generated from this chapter&rsquo;s sections — edit the study guide,
+        then regenerate. PDF export (server-rendered) is coming; for now use Print → Save as PDF.
+      </p>
+      {error && <p className="mt-2 text-sm text-danger">{error}</p>}
     </div>
   );
 }

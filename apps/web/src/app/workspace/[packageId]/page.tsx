@@ -122,6 +122,7 @@ export default async function EditorPage({
         }))}
         artifacts={artifacts.map((a) => ({
           artifactId: a.record.artifactId,
+          kind: a.record.kind,
           title: a.record.title,
           path: a.record.path,
           status: a.record.status,

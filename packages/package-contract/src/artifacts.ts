@@ -13,7 +13,7 @@ import type { StudyGuideBlock } from "./block-source";
 
 export const ARTIFACT_ID_PATTERN = /^art-[a-z0-9]{8,}$/;
 
-export const DerivedArtifactKindSchema = z.enum(["worksheet"]);
+export const DerivedArtifactKindSchema = z.enum(["worksheet", "slides"]);
 export type DerivedArtifactKind = z.infer<typeof DerivedArtifactKindSchema>;
 
 /** A study-guide block this artifact was generated from, with its version. */
