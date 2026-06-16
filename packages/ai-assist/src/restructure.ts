@@ -52,7 +52,7 @@ export async function restructureToBlocks(
  *   block titled from the context (or "Imported content").
  * - Each title and body is sanitized with stripBlockMarkers and trimmed.
  */
-function splitIntoBlocks(
+export function splitIntoBlocks(
   markdown: string,
   context?: string,
 ): RestructuredBlock[] {

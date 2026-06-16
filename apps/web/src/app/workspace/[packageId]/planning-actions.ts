@@ -13,9 +13,13 @@ import {
   saveConceptMap,
   saveObjectives,
 } from "@alembic/package-ops";
+import { draftOutlineFromPlan } from "@alembic/ai-assist";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
+import { supabaseEventLogger } from "@/lib/events";
 import { syncFilesToGitHub } from "@/lib/github";
+import { governedProvider, RateLimitError, BudgetExceededError } from "@/lib/ai";
+import { recordChange } from "@/lib/changes";
 
 async function requireUser() {
   const supabase = await createSupabaseServerClient();
@@ -81,5 +85,68 @@ export async function savePlanningAction(
     return { ok: true, data: { concepts: conceptMap.concepts, objectives: objectives.objectives } };
   } catch {
     return { ok: false, error: "Couldn't save the concept map. Check the entries and try again." };
+  }
+}
+
+export interface OutlineResult {
+  ok: boolean;
+  queued?: number;
+  error?: string;
+}
+
+/**
+ * M9.6d — draft study-guide sections FROM the planning layer (concept-map-first
+ * authoring): the AI proposes ordered sections covering the course objectives,
+ * sequenced by prerequisites, routed into the Tier-2 review queue for `path`
+ * (reusing the `import-blocks` accept path that appends reviewed sections).
+ * Nothing is applied without review.
+ */
+export async function outlineFromPlanAction(
+  packageId: string,
+  path: string,
+): Promise<OutlineResult> {
+  const { supabase, user } = await requireUser();
+  const store = new SupabaseSandboxStore(supabase);
+  const events = supabaseEventLogger(supabase);
+  try {
+    const record = await store.getPackage(packageId);
+    const { concepts } = await loadConceptMap(store, packageId, "course");
+    const { objectives } = await loadObjectives(store, packageId, "course");
+    if (objectives.length === 0) {
+      return { ok: false, error: "Add at least one objective first — the study guide is drafted from them." };
+    }
+    const provider = governedProvider(supabase, {
+      userId: user.id,
+      packageId,
+      kind: "draft-section",
+    });
+    const { blocks } = await draftOutlineFromPlan(provider, {
+      objectives: objectives.map((o) => ({ id: o.id, text: o.text, conceptIds: o.conceptIds })),
+      concepts: concepts.map((c) => ({ id: c.id, label: c.label, prerequisites: c.prerequisites, related: c.related })),
+      context: record?.title,
+    });
+    if (blocks.length === 0) return { ok: false, error: "The draft came back empty. Try again." };
+    await recordChange(supabase, {
+      packageId,
+      userId: user.id,
+      tier: 2,
+      kind: "import-blocks",
+      summary: `Draft from plan: ${blocks.length} section${blocks.length === 1 ? "" : "s"}`,
+      detail: { path, blocks: blocks.map((b) => ({ title: b.title, body: b.body })) },
+      status: "pending",
+    });
+    await events.log({
+      type: "review.queued",
+      userId: user.id,
+      packageId,
+      detail: { kind: "import-blocks", source: "plan" },
+      occurredAt: new Date().toISOString(),
+    });
+    return { ok: true, queued: blocks.length };
+  } catch (e) {
+    if (e instanceof RateLimitError || e instanceof BudgetExceededError) {
+      return { ok: false, error: e.message };
+    }
+    return { ok: false, error: "Couldn't draft from the plan. Please try again." };
   }
 }

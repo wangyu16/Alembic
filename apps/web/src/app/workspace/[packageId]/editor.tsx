@@ -31,7 +31,7 @@ import { generateSlidesAction } from "./slides-actions";
 import { importFileAction, restructureImportAction } from "./import-actions";
 import { runCoherenceAgentAction } from "./agent-actions";
 import { reconcilePackageAction, scanForLeaksAction } from "./reconcile-actions";
-import { loadPlanningAction, savePlanningAction, type PlanningData } from "./planning-actions";
+import { loadPlanningAction, savePlanningAction, outlineFromPlanAction, type PlanningData } from "./planning-actions";
 import {
   addCitationAction,
   createSnapshotAction,
@@ -419,7 +419,7 @@ export function StudyGuideEditor({
         </button>
 
         <CategoryLabel>Author</CategoryLabel>
-        <PlanningPanel packageId={packageId} />
+        <PlanningPanel packageId={packageId} activePath={initialPath} onQueued={() => router.refresh()} />
         <AssetsPanel
           packageId={packageId}
           onNew={(kind) => setEditing({ kind })}
@@ -815,7 +815,15 @@ const splitIds = (s: string): string[] =>
  * the public repo (adaptable) but is not rendered on the student site; it is the
  * intent the study guide and the coherence agent are checked against.
  */
-function PlanningPanel({ packageId }: { packageId: string }) {
+function PlanningPanel({
+  packageId,
+  activePath,
+  onQueued,
+}: {
+  packageId: string;
+  activePath: string;
+  onQueued: () => void;
+}) {
   const [open, setOpen] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -945,9 +953,29 @@ function PlanningPanel({ packageId }: { packageId: string }) {
         + concept
       </button>
 
-      <div className="mt-3">
+      <div className="mt-3 flex flex-wrap gap-2">
         <button onClick={save} disabled={busy} className="btn btn-primary btn-sm">
           {busy ? "Working…" : "Save planning layer"}
+        </button>
+        <button
+          onClick={async () => {
+            setBusy(true);
+            setError(null);
+            setNote(null);
+            const r = await outlineFromPlanAction(packageId, activePath);
+            if (r.ok) {
+              setNote(`Drafted ${r.queued} section(s) from the plan — review them in “Changes & review”.`);
+              onQueued();
+            } else {
+              setError(r.error ?? "Couldn't draft from the plan.");
+            }
+            setBusy(false);
+          }}
+          disabled={busy || objectives.length === 0}
+          title={objectives.length === 0 ? "Add an objective first" : "Draft study-guide sections covering these objectives (reviewed before applying)"}
+          className="btn btn-ghost btn-sm"
+        >
+          ✨ Draft study guide from plan →
         </button>
       </div>
       {note && <p className="mt-2 text-xs text-ok">{note}</p>}

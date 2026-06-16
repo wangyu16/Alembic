@@ -208,7 +208,7 @@ single chapter is the degenerate case). See [course-structure.md](specs/course-s
 | 9.3 | renderer multi-page site (index/TOC + per-chapter pages + inter-chapter nav) | site builds N chapter pages + index; single-chapter output unchanged | ✅ `buildCourseSite` (TOC + per-chapter pages + prev/next; single = inline); `buildSite` kept; 23 tests |
 | 9.4 | Editor chapter switcher wrapping the single-doc editor | author a 2-chapter course; switch/reorder; per-chapter save | ✅ ChapterBar (add/select/rename/reorder/delete); per-chapter edit+save; GitHub-backed packages sync chapter files + manifest |
 | 9.5 | Course index = student-facing chapter TOC | published landing lists chapters with working links | ✅ site build + in-app preview use `buildCourseSite` (index TOC) |
-| 9.6 | Concepts + objectives at course and chapter level (data layer) | structured records per chapter validate against contract | 🔄 contract schemas done (`ConceptMap`/`Objectives` + record paths); ops/editor later |
+| 9.6 | Concepts + objectives — the hidden planning layer (data → ops → editor → linkages) | author a concept map + objectives in the workspace; the study guide drafts from them and the coherence agent checks against them | ✅ contract schemas (`ConceptMap`/`Objectives`); package-ops `planning.ts` load/save (course/chapter, public layers, facade; 10 tests); web `PlanningPanel` (Author group) edits the map+objectives; **map→study-guide** drafting (`draftOutlineFromPlan` → Tier-2 queue); **map→coherence-agent** (objectives/concepts feed the M18 agent's coverage/ordering checks). Not rendered on the student site. Chapter-scope editor UI + objective↔block alignment recording later |
 
 *Exit:* author and publish a 3-chapter course as one site.
 
@@ -456,6 +456,20 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
 ## Log
 
 ### 2026-06-16
+- **M9.6 — the hidden planning layer, wired end to end (concept-map-first authoring).**
+  Confirmed the design is coherent with goal.md (concepts/objectives are public-repo
+  layers, adaptable on GitHub but not rendered on the student site; study-guide-centered
+  generation), then built out the loop that was data-layer-only: package-ops `planning.ts`
+  (load/save concept map + objectives at course/chapter scope through the validated write
+  path; facade; 10 tests); web `PlanningPanel` (Author group — add/edit objectives +
+  concepts, synced to the repo); **map→study-guide** drafting (ai-assist
+  `draftOutlineFromPlan` → Tier-2 review queue via the existing `import-blocks` accept
+  path); **map→coherence-agent** (M18 now reads objectives/concepts and checks coverage +
+  prerequisite ordering, citing ids, never editing the planning layer itself). Built as a
+  Phase-4 prerequisite (assessment aligns to concepts/objectives). package-ops 98 +
+  ai-assist 49 tests; web typecheck + build green. The AI drafting + agent linkage need a
+  live pass (Portkey on Vercel). Deferred: chapter-scope editor UI, objective↔block
+  alignment recording.
 - **M21 — leakage remediation (completes Phase 3 core).** M20 quarantine detects a
   leak in a foreign *diff*; M21 audits the WHOLE public tree and documents cleanup.
   github-bridge `listTree` (recursive, truncated flag); package-ops pure
