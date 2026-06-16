@@ -17,16 +17,17 @@ export default function Home() {
         </p>
         <p className="max-w-xl text-base leading-relaxed text-muted text-pretty">
           Students and self-learners can open, edit, and annotate Alembic files —
-          a downloaded <code className="text-ink">.md.html</code> study guide or a{" "}
-          <code className="text-ink">.ketcher.svg</code> structure — right in the
-          browser, no account needed.{" "}
-          <span className="text-faint">(coming soon)</span>
+          a downloaded <code className="text-ink">.md.html</code> study guide or your
+          own notes — right in the browser, no account needed.
         </p>
       </div>
 
       <div className="flex flex-wrap items-center gap-4">
         <Link href="/workspace" className="btn btn-primary">
           Open your workspace
+        </Link>
+        <Link href="/studio" className="btn btn-ghost">
+          Open the studio
         </Link>
         <Link href="/portal" className="btn btn-ghost">
           Browse the index
