@@ -56,7 +56,7 @@ alembic/
     package-contract/     # schema, manifest, block-ID rules, validation, release gates (PURE, no IO)
     renderer/             # orz-markdown wrapper, student-page build, .md.html generation
     github-bridge/        # App auth, repo templates, commits, Pages publish, path invariant
-    ai-assist/            # AIProvider interface + Anthropic implementation + prompts
+    ai-assist/            # AIProvider interface + Gemini implementation (dev phase) + prompts
     research-events/      # event taxonomy + logger client
   docs/
 ```

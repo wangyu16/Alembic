@@ -159,11 +159,16 @@ Usage is attributable via the `ai_invocations` governance log.
 
 **Gateway wiring (how to switch from Gemini-direct):** set `AI_GATEWAY_URL` +
 `AI_GATEWAY_API_KEY` (the app then prefers the gateway over Gemini). For
-**Portkey** (the chosen control plane): `AI_GATEWAY_URL=https://api.portkey.ai/v1`,
-`AI_GATEWAY_API_KEY=<portkey-key>`, and `AI_GATEWAY_HEADERS={"x-portkey-virtual-key":"<vk>"}`
-to route to a provider credential. Model ids come from `AI_MODEL_DEFAULT` and the
-optional `AI_MODEL_FAST`/`AI_MODEL_STRONG` cheap-vs-strong overrides (set equal to
-collapse to one model for light testing). Full recipe in `.env.example`.
+**Portkey** (the chosen control plane) the primary recipe uses the **Model
+Catalog** form: `AI_GATEWAY_URL=https://api.portkey.ai/v1`,
+`AI_GATEWAY_API_KEY=<portkey-key>` (the Portkey key goes in `Authorization:
+Bearer`), and the model ids name the catalog provider slug —
+`AI_MODEL_DEFAULT=@<provider-slug>/<model>` (plus the optional
+`AI_MODEL_FAST`/`AI_MODEL_STRONG` cheap-vs-strong overrides; set equal to
+collapse to one model for light testing). No virtual-key header is needed.
+*(Legacy alternative — older Portkey accounts route via a virtual key instead:
+set `AI_GATEWAY_HEADERS={"x-portkey-virtual-key":"<vk>"}` and use bare model
+ids.)* Full recipe in `.env.example`.
 
 **Open (ops/compliance, not code):** before enabling a hosted gateway for real
 student/educator data, complete a **data-handling review** — what the gateway

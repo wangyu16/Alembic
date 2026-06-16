@@ -75,9 +75,11 @@ Never add a seventh top-level panel — extend an existing category.
 ## 5. Current mapping (implementation)
 
 - **Action bar:** `ChapterBar` + Save + Download + Publish.
-- **Canvas:** block list + "Add section" + **Author** group (`AssetsPanel`
-  figures/charts, `AIDraftPanel`).
-- **Review** group: `TierPanel` (changes & review) + `A11yPanel`.
+- **Canvas:** block list + "Add section" + **Author** group (`PlanningPanel`
+  concept map & objectives — M9.6, `AssetsPanel` figures/charts, `AIDraftPanel`).
+- **Review** group: `TierPanel` (changes & review) + `A11yPanel` +
+  `CoherencePanel` (whole-course coherence agent — M18) + `ReconcilePanel`
+  (changes made outside Alembic / "Scan for leaks" — M20).
 - **Generate** group: `WorksheetPanel` (+ future slides/PDF).
 - **Publish & share** group: `PublishingPanel` (publish, portal, versions;
   + future snapshots/citation).

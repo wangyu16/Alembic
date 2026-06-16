@@ -29,6 +29,12 @@ that the *next* such format is a registration, not a rewrite.
 > - `kind` — which editor owns it (`ketcher`, `plot`, `md`, `slides`, `pdf`, …)
 > - `format` — an integer format-version, so extraction never breaks.
 
+> **`pdf` is reserved, not yet implemented.** The code today defines
+> `CarrierPayload = "svg" | "html"` and `BUILTIN_KINDS` has no `pdf` entry
+> (`packages/carriers/src/types.ts`, `registry.ts`); the `pdf` payload/kind is
+> reserved for v2 and arrives with the worker tier (§4, §9). Wherever this spec
+> mentions `pdf` / `.md.pdf` below, read it as planned, not shipped.
+
 A carrier therefore satisfies three guarantees at once:
 
 1. **Renders anywhere** — open it in a browser or `<img>` and it just shows.
@@ -79,19 +85,20 @@ That registry is the backbone that makes future expansion cheap.
 
 ```ts
 interface CarrierKind {
-  id: string;                       // "ketcher" | "plot" | "md" | "slides" | "pdf"
+  id: string;             // "ketcher" | "plot" | "md" | "slides"  ("pdf" reserved, see below)
   role: "asset" | "document";
-  extension: string;                // ".ketcher.svg"
-  payload: "svg" | "html" | "pdf";  // how it renders
-  // codec (lives in orz-artifacts; pure, Node + browser):
-  embed(source: string): Uint8Array | string;
-  extract(file: Uint8Array | string): { source: string; format: number };
-  detectVersion(file: Uint8Array | string): number;
-  // editor + a11y:
-  editorId: string;                 // which editor component opens it
-  deriveAltText?(source: string): string;  // accessibility, see §8
+  extension: string;      // ".ketcher.svg"
+  payload: "svg" | "html";  // how it renders ("pdf" reserved for v2)
+  formatVersion: number;  // the current format version this kind writes
 }
 ```
+
+> The registry entry is **just data** — the 5 fields above (see
+> `packages/carriers/src/types.ts`). The codecs are **free module functions** of
+> the carriers package (`embedSource` / `extractSource` / `detectFormatVersion`),
+> not methods on the kind; and **editor binding happens web-side** (the client
+> maps `kind → editor component`), not in the registry. This keeps the carriers
+> package pure and free of any editor/UI dependency.
 
 Consumers iterate the registry instead of hardcoding types:
 

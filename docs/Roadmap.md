@@ -48,6 +48,7 @@ Deliberately deferred: agent harness, Ketcher, question templates, adaptation, s
 
 **Goal: make the workspace genuinely good for a chemist, not just functional.**
 
+- **Concepts/objectives planning layer** — the hidden pedagogical planning layer: concept map + learning objectives, stored in the public repo but hidden from the published student site, with map→study-guide drafting and map→coherence-agent checks (aligns with [goal.md](goal.md) Principle 2 + §8).
 - **Multi-chapter courses** — a course as one site with an index and many chapters (each: study-guide page + concept map + objectives + slides + question templates). The target model and additive evolution path from v0.1's single-chapter case are specified in [specs/course-structure.md](specs/course-structure.md).
 - **Carriers & assets** — one primitive: a self-contained dual-extension file (renderable payload + embedded editable source + `kind`/`format` markers) with a **kind registry** + per-kind editors as the single extension point. Unifies chemical structures (`.ketcher.svg`), plots/charts (`.plot.svg`), and the document formats (`.md.html`/`.slides.html`/`.md.pdf`). Reusable media are standalone files in the public `materials` layer, inserted by permalink (intra-package = searchable click-insert; inter-package = paste the universal link). Specified in [specs/carriers-and-assets.md](specs/carriers-and-assets.md); codecs live in `orz-artifacts` (orz-stack Phase B). **This foundation gates structures/plots/slides/PDF/import.**
 - Ketcher integration for chemical-structure editing → `.ketcher.svg` assets; plots/charts → `.plot.svg` assets (a second kind by registration alone).
@@ -74,7 +75,17 @@ Deliberately deferred: agent harness, Ketcher, question templates, adaptation, s
 - External-edit reconciliation completed: detect foreign commits, rebuild projections, re-validate invariants, quarantine on violation, concurrent-edit safety (no force-push, reconcile-first saves).
 - Leakage remediation procedure (history rewrite + forced re-publication + incident provenance note) implemented and documented.
 
+> **Realized scope split (annotation):** the bullets above describe the full vision. In the actual build the scope split in two. **Shipped:** a bounded, app-orchestrated agent over the single-call `AIProvider` that produces reviewed `ProposedChangeSet`s through `packageOps` + the tier system; external-edit reconciliation; the leakage audit plus a documented remediation runbook. **Deferred to the worker tier:** the full container/CLI coding-agent harness, worker-side agent execution, and the one-click history-rewrite remediation mechanism. (See the Worker tier infra note below.)
+
 **Exit criteria:** an advanced user can edit the repo in VS Code, and Alembic absorbs it cleanly; an educator can request a package-wide restructuring and review it as a teaching-material change.
+
+---
+
+## Phase 3.5 — Worker tier (cross-cutting infra)
+
+**Goal: stand up the container worker tier that owns the deferred worker-side work.**
+
+Several deferrals across phases share one prerequisite — a real container worker tier — and are discharged together once it exists: `.md.pdf` generation (M13.3), foreign-format import parsers (M12.2), worker-side agent execution (M19.1), moving the static-site build job off in-process (M6.1), and the one-click leakage-remediation / history-rewrite mechanism (M21.3). This note gives those deferrals an explicit owner. Note that **Phase 4's LMS export (QTI / Common Cartridge) also depends on this tier.**
 
 ---
 
@@ -82,7 +93,7 @@ Deliberately deferred: agent harness, Ketcher, question templates, adaptation, s
 
 **Goal: the assessment-support layer, with hard public/private boundaries.**
 
-- Assessment blueprints and question-template rules (concept/objective alignment, context, difficulty, representations, parameters, misconception targets).
+- Assessment blueprints and question-template rules (concept/objective alignment, context, difficulty, representations, parameters, misconception targets). (The concept/objective alignment substrate is already wired in Phase 2 — M9.6 — so this phase builds on it rather than introducing it. The deferred Tier-3 *assessment* itemized-review flow — M10.3 — belongs here.)
 - AI question generation from templates; generated items respect instructor-defined design.
 - Private-repo workflows: answer keys, embargoed assessments (auto-release dates, owner-only early lift), answer-key leakage checks in release gates.
 - One-way LMS export (QTI / Common Cartridge) so question sets reach Canvas/Moodle.
@@ -121,7 +132,7 @@ Deliberately deferred: agent harness, Ketcher, question templates, adaptation, s
 
 **Goal: the platform as a credible IUSE research instrument.**
 
-- Full research event taxonomy (authoring steps, AI accept/reject/edit with Tier-1 logged separately, reuse events, completeness, workload indicators).
+- Full research event taxonomy (authoring steps, AI accept/reject/edit with Tier-1 logged separately, reuse events, completeness, workload indicators). (Already partly built: the event taxonomy — including the Tier-1-vs-human categories — and per-user AI credit/budget enforcement are substantially in place from Phases 1–3. The remainder of this phase is institution-level quotas/dashboards, FERPA/IRB third-party-data review, the admin/ops module, and institution-managed mode.)
 - De-identified CSV/JSON export for the evaluator team; data-governance boundaries (research logs separate from both repos).
 - Centrally managed AI credits: project-funded quotas, consistent model access, rate limits, usage visibility.
 - Admin/operations module: component status, error monitoring, demo content management, consent/status flags.
@@ -137,7 +148,7 @@ Deliberately deferred: agent harness, Ketcher, question templates, adaptation, s
 
 - Pluggable AI billing: institution-managed keys, BYO keys, hosted tiers, community credits, open-weight model options.
 - Portal governance handoff: named stewardship, open registration with moderation.
-- Account lifecycle: repository transfer on institution exit; verified "usable as plain Git repo without Alembic" guarantee.
+- Account lifecycle: repository transfer on institution exit; verified "usable as plain Git repo without Alembic" guarantee. (The no-lock-in build config is already verified for *new* repos — v0.1 release criterion #3; the remaining work is backfilling it into pre-existing repos plus repository-transfer-on-exit.)
 - Multi-author groundwork promotion (roles, per-layer permissions, shared review queues) as demand proves out — explicitly post-v1.
 - Performance, accessibility audit of Alembic itself, documentation, open-source release hygiene.
 

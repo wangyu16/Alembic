@@ -179,9 +179,9 @@ network.
 3. **v2 — local project**: `LocalPackageStore` over a directory handle; edit a
    whole package locally (chapters, `materials/`, manifest) via the local
    `PackageOps`.
-3. **v3 — identity + entitlements + paid AI**: `AuthProvider` (Google),
+4. **v3 — identity + entitlements + paid AI**: `AuthProvider` (Google),
    `resolveEntitlements` with plans, AI for entitled users, metering/quotas.
-4. **v4 — cloud sync** for signed-in light users.
+5. **v4 — cloud sync** for signed-in light users.
 
 ## 10. Milestone mapping
 
