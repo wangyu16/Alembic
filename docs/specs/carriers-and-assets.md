@@ -114,6 +114,52 @@ Consumers iterate the registry instead of hardcoding types:
 This keeps `package-contract` pure (CLAUDE.md rule 2) and `orz-artifacts`
 reusable outside Alembic.
 
+### Per-kind editors (the editor contract)
+
+Each carrier kind has its **own dedicated editor**, so a kind can be added,
+removed, or rewritten with no blast radius. The decoupling comes not from
+"separate editors" alone but from every editor implementing the **same small
+interface the host calls** — the host never knows Ketcher or Plotly internals:
+
+```ts
+interface CarrierEditor {
+  kind: string;                                 // "ketcher"
+  mount(el: HTMLElement, opts: { source: string; readOnly: boolean }): void;
+  getSource(): string;                          // current editable source
+  renderPayload(source: string): string | Uint8Array;  // the SVG/HTML the file shows
+  deriveAltText?(source: string): string;       // accessibility (§5)
+  unmount(): void;
+}
+```
+
+The registry maps `kind → CarrierEditor`. **Add** = one editor module + one
+registry line; **delete** = remove both; **modify** = edit one module. The host,
+importer, renderer, and insert menu are untouched because they speak only the
+contract.
+
+Five properties make this genuinely independent (not just separate files):
+
+1. **Editors never touch Git/files/schema.** Source in → source + rendered
+   payload out. The host owns save→commit, the carrier envelope (`embed`/
+   `extract`), two-repo enforcement, and insert-by-reference. This is CLAUDE.md
+   rule 3 ("the editor UI is a replaceable client") applied per kind.
+2. **Lazy-load each editor.** Heavy editors (Ketcher, Plotly ~1 MB) are
+   dynamically imported only when opened, so a new kind never bloats the base
+   app. Code-splitting is part of the isolation.
+3. **Error boundary / sandbox per editor.** A buggy or third-party editor fails
+   as "couldn't open this item," never crashing the workspace.
+4. **Shared chrome, isolated surface.** A thin **editor host** renders common
+   chrome (toolbar, save, alt-text prompt, error boundary) uniformly and embeds
+   only the kind-specific editing surface — consistency *and* independence.
+5. **Independent versioning.** Each kind pins its own `{codec, formatVersion,
+   editor}`; the plot format can evolve without touching Ketcher.
+
+**Scope:** dedicated editors are for **assets** (Ketcher, Plotly — interactive
+editors that *produce* the file). For **documents** (`.slides.html`, `.md.pdf`)
+the source of truth is blocks, so the "editor" is the existing block editor +
+renderer generation — not a separate hand-editor. We do not build a WYSIWYG
+slide editor; documents are regenerated from blocks.
+
 ---
 
 ## 4. Carrier file format (embed mechanisms)
