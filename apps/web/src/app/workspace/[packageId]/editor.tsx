@@ -30,6 +30,7 @@ import { listAssetsAction, readAssetAction } from "./asset-actions";
 import { generateSlidesAction } from "./slides-actions";
 import { importFileAction, restructureImportAction } from "./import-actions";
 import { runCoherenceAgentAction } from "./agent-actions";
+import { reconcilePackageAction } from "./reconcile-actions";
 import {
   addCitationAction,
   createSnapshotAction,
@@ -446,6 +447,7 @@ export function StudyGuideEditor({
           onChanged={() => router.refresh()}
         />
         <CoherencePanel packageId={packageId} dirty={dirty} onQueued={() => router.refresh()} />
+        <ReconcilePanel packageId={packageId} />
 
         <CategoryLabel>Generate</CategoryLabel>
         <ToolSection
@@ -798,6 +800,77 @@ function CoherencePanel({
         </ul>
       )}
       {error && <p className="mt-2 text-sm text-danger">{error}</p>}
+    </div>
+  );
+}
+
+/**
+ * M20 — the thin client for external-edit reconciliation. Absorbs edits made
+ * directly in GitHub/VS Code into Alembic's projection, or surfaces a quarantine
+ * when an external change breaks the public/private boundary or block IDs.
+ */
+function ReconcilePanel({ packageId }: { packageId: string }) {
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+  const [violations, setViolations] = useState<string[]>([]);
+  const [error, setError] = useState<string | null>(null);
+
+  async function run() {
+    setBusy(true);
+    setError(null);
+    setNote(null);
+    setViolations([]);
+    const r = await reconcilePackageAction(packageId);
+    if (!r.ok) {
+      setError(r.error ?? "Couldn't check for outside changes.");
+    } else if (r.status === "not-connected") {
+      setNote("This package isn't connected to GitHub publishing yet.");
+    } else if (r.status === "up-to-date") {
+      setNote("Up to date — no changes were made outside Alembic.");
+    } else if (r.status === "absorbed") {
+      const n = r.changedPaths?.length ?? 0;
+      setNote(`Absorbed ${n} change${n === 1 ? "" : "s"} made outside Alembic. Reloading…`);
+      if (typeof window !== "undefined") window.location.reload();
+    } else if (r.status === "quarantined") {
+      setViolations(r.violations ?? []);
+      setError(
+        "External changes were held back: they break the public/private boundary or section identifiers. Review them on GitHub before syncing.",
+      );
+    }
+    setBusy(false);
+  }
+
+  if (!open) {
+    return (
+      <button onClick={() => setOpen(true)} className="btn btn-ghost">
+        🔄 Check for outside changes
+      </button>
+    );
+  }
+
+  return (
+    <div className="panel p-3">
+      <div className="mb-2 flex items-center justify-between">
+        <span className="text-sm font-medium">Changes made outside Alembic</span>
+        <button onClick={() => setOpen(false)} className="text-xs text-muted hover:text-ink">Close</button>
+      </div>
+      <p className="mb-2 text-xs text-muted">
+        Absorbs edits made directly in GitHub or VS Code — unless they break the
+        public/private boundary, which are held back for your review.
+      </p>
+      <button onClick={run} disabled={busy} className="btn btn-primary btn-sm">
+        {busy ? "Checking…" : "Check now"}
+      </button>
+      {note && <p className="mt-2 text-xs text-ok">{note}</p>}
+      {error && <p className="mt-2 text-sm text-danger">{error}</p>}
+      {violations.length > 0 && (
+        <ul className="mt-2 list-disc space-y-1 pl-4 text-xs text-danger">
+          {violations.map((v, i) => (
+            <li key={i}>{v}</li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

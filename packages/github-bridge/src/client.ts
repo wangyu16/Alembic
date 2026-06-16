@@ -246,6 +246,58 @@ export class GitHubClient {
     });
   }
 
+  /**
+   * Paths changed between two commits (base..head), via the Compare API.
+   * Used by reconciliation to find what a foreign commit touched. If base is
+   * null (never synced) returns []  — the caller treats that as "reconcile all".
+   */
+  async compareCommits(
+    coords: RepoCoords,
+    base: string | null,
+    head: string,
+  ): Promise<Array<{ path: string; status: "added" | "modified" | "removed" }>> {
+    if (base === null || base === head) return [];
+    const data = await this.request<{
+      files?: Array<{
+        filename: string;
+        status: string;
+        previous_filename?: string;
+      }>;
+    }>(
+      "GET",
+      `/repos/${coords.owner}/${coords.repo}/compare/${base}...${head}`,
+    );
+    const out: Array<{
+      path: string;
+      status: "added" | "modified" | "removed";
+    }> = [];
+    for (const f of data.files ?? []) {
+      switch (f.status) {
+        case "added":
+        case "copied":
+          out.push({ path: f.filename, status: "added" });
+          break;
+        case "removed":
+          out.push({ path: f.filename, status: "removed" });
+          break;
+        case "modified":
+        case "changed":
+          out.push({ path: f.filename, status: "modified" });
+          break;
+        case "renamed":
+          if (f.previous_filename) {
+            out.push({ path: f.previous_filename, status: "removed" });
+          }
+          out.push({ path: f.filename, status: "added" });
+          break;
+        default:
+          // unchanged or any unknown status: skip
+          break;
+      }
+    }
+    return out;
+  }
+
   /** Read a UTF-8 file at a ref (commit/branch). Returns null if absent. */
   async getFileAtRef(
     coords: RepoCoords,

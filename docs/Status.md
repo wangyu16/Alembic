@@ -12,6 +12,7 @@ same commit as the work it tracks. Statuses: ✅ done · 🔄 partially shipped 
 These are the only things blocking full production parity with the code:
 
 1. **Apply migration `0007_ai_budget.sql`** (`supabase db push` or dashboard) — enables the per-user AI token budget (dormant until `AI_TOKEN_BUDGET` is also set). 0005 + 0006 are already applied.
+1b. **Apply migration `0008_reconcile.sql`** — adds `packages.last_synced_sha` for M20 external-edit reconciliation (additive column; safe to backfill NULL).
 2. **Set the Vercel build command to run `node ../../scripts/fetch-vendor.mjs && next build`** (not `fetch-ketcher`) so **Plotly** is vendored too — otherwise the plot editor 404s on its runtime in production.
 3. **Interactive verification passes** (can't run in CI): plot render (M11b), slides render (M13), studio File System Access open/save (M17). Ketcher (M11) is already verified live.
 4. **Set the Portkey env vars in Vercel** (`AI_GATEWAY_URL=https://api.portkey.ai/v1`, `AI_GATEWAY_API_KEY`, `AI_MODEL_DEFAULT/FAST/STRONG` = `@<provider-slug>/<model>`) to verify the **M18 coherence agent** live. Local dev can't reach Portkey from this machine (the dev Mac's security/firewall blocks the `node` binary's outbound — `curl` works, `node` ETIMEDOUTs — not an app issue); Vercel's egress is clean. See [ai-architecture.md](specs/ai-architecture.md).
@@ -25,7 +26,7 @@ These are the only things blocking full production parity with the code:
 | 0 | Foundations & contracts | ✅ |
 | 1 | Initial release: end-to-end loop (v0.1) | ✅ built + deployed (pilot M8.3 ongoing) |
 | 2 | Authoring depth & chemistry-first (tiers, a11y, carriers & assets: Ketcher/plots/slides/PDF, import, snapshots, gateway, local mode) | ✅ core built (M9–M17); documented deferrals → worker tier (PDF, foreign import), studio editing/projects, DOI/compare, per-institution quotas |
-| 3 | Agent harness & reconciliation | 🔄 in progress (M18 bounded coherence agent core done) |
+| 3 | Agent harness & reconciliation | 🔄 in progress (M18 coherence agent + M19 job seam + M20 reconciliation done; M21 leakage remediation next) |
 | 4 | Assessment & question templates | ⬜ |
 | 5 | Adaptation ecosystem | ⬜ |
 | 6 | Portal & discovery | ⬜ |
@@ -394,12 +395,22 @@ provider + stub harness).
 | 19.1 | Agent run behind the worker job interface (in-process for dev; worker-ready) | a coherence run is modeled as a job; runs in-process now, movable to the worker tier | 🔄 `AgentRunJob`/`AgentRunResult` job contract added to `apps/worker/jobs.ts` (the forward-compat seam, mirroring `BuildSiteJob`); execution stays in-process in `runCoherenceAgentAction`. Worker-tier `handleAgentRun` is a stub — moving Tier B to the container worker is deferred (same pattern as the build job) |
 | 19.2 | Gating: entitlement + per-user token budget (Tier B is the expensive tier) | a run is blocked when budget is exhausted; usage attributable | 🔄 budget/rate-limit enforced via the governed provider (M16); usage attributable via `ai_invocations`. Explicit per-run quota / entitlement cap later |
 
-### M20 — External-edit reconciliation *(next)*
+### M20 — External-edit reconciliation
 
-Detect foreign commits (stored projection SHA vs remote head), rebuild the
-projection, re-validate invariants (`validateProject` + `validateCommitPlan`),
-quarantine on violation, reconcile-first saves (no force-push). github-bridge +
-package-ops. ⬜
+Absorb edits made directly in GitHub/VS Code ("foreign commits") into Alembic's
+projection — or quarantine them when they break an invariant.
+
+| # | Sub-module | Verify by | Status |
+| --- | --- | --- | --- |
+| 20.1 | Detect foreign commits (last-synced SHA vs remote head) | divergence detected; clean repo = no-op | ✅ `packages.last_synced_sha` (migration 0008); `lib/github` records it on every commit; github-bridge `compareCommits(base,head)` lists changed paths (8 tests) |
+| 20.2 | Rebuild projection from repo content + re-validate invariants; quarantine on violation | a foreign edit that leaks a private path into the public repo, or corrupts block IDs, is **held back** (store untouched) | ✅ package-ops `reconcilePublicRepo` (network-free `RepoReader`): validates every changed path with `assertPathAllowedInRepo` + block-ID integrity, **collect-all then fail-closed** — absorb only a fully-clean changeset, else quarantine writing nothing. 9 adversarial tests (leak + dup-ID + mixed quarantine prove no partial absorb) |
+| 20.3 | Reconcile-first saves (no force-push); educator-facing reconcile | save refuses to overwrite an external commit; a "Check for outside changes" surface absorbs/quarantines | ✅ save detects head≠last-synced and skips the auto-sync with a warning (local save still persists; never force-pushes — commits keep `base_tree`); `reconcilePackageAction` + `ReconcilePanel` (Review group) absorb clean changes / show quarantine violations; `reconcile.completed`/`reconcile.quarantined` events |
+
+*Exit:* ✅ an external edit to the public repo is absorbed cleanly, and a
+boundary-violating one is quarantined for review — the durable core is fully
+unit-tested (no network/AI). **Needs a live pass** (edit a connected repo in
+GitHub, then "Check for outside changes"). Private-repo reconciliation + a
+3-way merge for same-file conflicts are future. Migration 0008 awaits `db push`.
 
 ### M21 — Leakage remediation *(planned)*
 
@@ -435,6 +446,27 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
 ## Log
 
 ### 2026-06-16
+- **M20 — external-edit reconciliation.** Repos are the source of truth (CLAUDE.md
+  rule 4); an advanced user may edit the public repo directly. New durable core
+  (two concurrent subagents on disjoint packages): package-ops `reconcilePublicRepo`
+  over a network-free `RepoReader` — detects foreign commits, validates every
+  changed path with `assertPathAllowedInRepo` + block-ID integrity, **collect-all
+  then fail-closed**: absorbs only a fully-clean changeset, else **quarantines and
+  writes nothing** (a private path leaked into the public repo, or corrupted IDs,
+  is held back). 9 adversarial tests prove no partial absorb. github-bridge gained
+  `compareCommits(base,head)` (8 tests). Web: `packages.last_synced_sha` (migration
+  0008) recorded on every commit; save is **reconcile-first / no force-push**
+  (detects head≠last-synced, skips the auto-sync with a warning rather than
+  overwriting an external commit; commits already keep `base_tree`); explicit
+  `reconcilePackageAction` + `ReconcilePanel` (Review group) absorb clean changes
+  or surface quarantine violations; `reconcile.completed`/`reconcile.quarantined`
+  events. typecheck + all tests (incl. 17 new) + web build green. **Needs a live
+  pass** + migration 0008 `db push`. Deferred: private-repo reconcile, same-file
+  3-way merge, and leakage *remediation* (M21 — quarantine detects; M21 cleans up).
+- **M19 — agent execution & gating.** `AgentRunJob`/`AgentRunResult` job contract
+  added to the worker tier (forward-compat seam mirroring `BuildSiteJob`); the
+  agent runs in-process for now (gated by the governed provider). Worker-tier
+  execution + per-run quota deferred.
 - **M18 — bounded Tier-B coherence agent (Phase 3 core).** The differentiator from
   [ai-architecture.md](specs/ai-architecture.md), built the forward-compatible way:
   an **app-orchestrated bounded agent** over the single-call `AIProvider` (not a

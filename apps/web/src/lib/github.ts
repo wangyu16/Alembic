@@ -5,8 +5,14 @@ import {
   getInstallationToken,
   GitHubClient,
   type FileChange,
+  type RepoCoords,
 } from "@alembic/github-bridge";
-import type { PackageStore } from "@alembic/package-ops";
+import {
+  reconcilePublicRepo,
+  type PackageStore,
+  type ReconcileOutcome,
+  type RepoReader,
+} from "@alembic/package-ops";
 
 export interface GithubConfig {
   appId: string;
@@ -99,9 +105,76 @@ export async function syncFilesToGitHub(
   if (!repo) return;
   const gh = await clientForUser(supabase, userId);
   if (!gh) return;
-  await commitFiles(
+  const { commitSha } = await commitFiles(
     gh.client,
     { owner: repo.owner, repo: repo.name },
     { repo: "public", summary, changes },
   );
+  // Track what we last synced so external (foreign) commits become detectable.
+  await recordSyncedSha(supabase, packageId, commitSha);
+}
+
+/** Persist the last commit SHA Alembic synced for a package (M20). */
+export async function recordSyncedSha(
+  supabase: SupabaseClient,
+  packageId: string,
+  sha: string,
+): Promise<void> {
+  await supabase.from("packages").update({ last_synced_sha: sha }).eq("id", packageId);
+}
+
+/** The last SHA Alembic synced, or null if never synced / unknown. */
+export async function syncedShaFor(
+  supabase: SupabaseClient,
+  packageId: string,
+): Promise<string | null> {
+  const { data } = await supabase
+    .from("packages")
+    .select("last_synced_sha")
+    .eq("id", packageId)
+    .maybeSingle();
+  return (data?.last_synced_sha as string | null) ?? null;
+}
+
+/** A network-backed RepoReader over the public repo (keeps package-ops IO-free). */
+function githubRepoReader(client: GitHubClient, coords: RepoCoords): RepoReader {
+  return {
+    getHeadSha: async () => (await client.getBranchHead(coords)).commitSha,
+    listChangedPaths: (base, head) => client.compareCommits(coords, base, head),
+    readFileAtRef: (path, ref) => client.getFileAtRef(coords, path, ref),
+  };
+}
+
+/**
+ * Reconcile a GitHub-backed package's public repo against external edits (M20):
+ * detect foreign commits past the last-synced SHA, rebuild the projection, and
+ * re-validate the two-repo invariant + block-ID integrity — quarantining on
+ * violation (never absorbing a bad state). Returns null when the package isn't
+ * GitHub-backed or publishing isn't connected. On a clean reconcile the synced
+ * SHA advances to the new head.
+ */
+export async function reconcilePackage(
+  supabase: SupabaseClient,
+  store: PackageStore,
+  userId: string,
+  packageId: string,
+): Promise<ReconcileOutcome | null> {
+  const record = await store.getPackage(packageId);
+  const repo = record?.storage === "github" ? record.manifest.publicRepo : null;
+  if (!repo) return null;
+  const gh = await clientForUser(supabase, userId);
+  if (!gh) return null;
+  const coords: RepoCoords = { owner: repo.owner, repo: repo.name };
+  const lastSyncedSha = await syncedShaFor(supabase, packageId);
+  const outcome = await reconcilePublicRepo(store, packageId, {
+    lastSyncedSha,
+    reader: githubRepoReader(gh.client, coords),
+  });
+  // Advance the synced pointer only when the repo state is clean (up-to-date or
+  // cleanly absorbed). A quarantine leaves it untouched so the divergence stays
+  // visible until resolved.
+  if (outcome.status === "up-to-date" || outcome.status === "absorbed") {
+    await recordSyncedSha(supabase, packageId, outcome.headSha);
+  }
+  return outcome;
 }

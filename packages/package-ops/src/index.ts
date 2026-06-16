@@ -12,3 +12,4 @@ export * from "./slides";
 export * from "./import";
 export * from "./citation";
 export * from "./ops";
+export * from "./reconcile";

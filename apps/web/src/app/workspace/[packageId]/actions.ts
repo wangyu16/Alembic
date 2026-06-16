@@ -14,7 +14,7 @@ import { commitFiles } from "@alembic/github-bridge";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
 import { supabaseEventLogger } from "@/lib/events";
-import { clientForUser } from "@/lib/github";
+import { clientForUser, recordSyncedSha, syncedShaFor } from "@/lib/github";
 
 export interface SaveResult {
   ok: boolean;
@@ -68,16 +68,29 @@ export async function saveStudyGuideAction(
     try {
       const gh = await clientForUser(supabase, user.id);
       if (gh) {
-        const content = serializeStudyGuide(doc.preamble, blocks);
-        await commitFiles(
-          gh.client,
-          { owner: repo.owner, repo: repo.name },
-          {
-            repo: "public",
-            summary: `Update ${doc.path}`,
-            changes: [{ path: doc.path, content }],
-          },
-        );
+        const coords = { owner: repo.owner, repo: repo.name };
+        // Reconcile-first / no force-push (M20): if the repo head moved past what
+        // we last synced, someone edited it outside Alembic — don't silently
+        // overwrite their commit. The local save still persists; the educator
+        // absorbs the external change via "Check for outside changes" first.
+        const lastSynced = await syncedShaFor(supabase, packageId);
+        const head = await gh.client.getBranchHead(coords).catch(() => null);
+        if (lastSynced && head && head.commitSha !== lastSynced) {
+          warning =
+            "This package was changed outside Alembic. Your edit is saved here but wasn't synced — open “Check for outside changes” to review and absorb them first.";
+        } else {
+          const content = serializeStudyGuide(doc.preamble, blocks);
+          const { commitSha } = await commitFiles(
+            gh.client,
+            coords,
+            {
+              repo: "public",
+              summary: `Update ${doc.path}`,
+              changes: [{ path: doc.path, content }],
+            },
+          );
+          await recordSyncedSha(supabase, packageId, commitSha);
+        }
       } else {
         warning = "Saved. Reconnect publishing to sync changes to GitHub.";
       }
