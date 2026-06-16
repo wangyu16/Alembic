@@ -27,7 +27,7 @@ These are the only things blocking full production parity with the code:
 | 1 | Initial release: end-to-end loop (v0.1) | ✅ built + deployed (not yet *shipped* — 2 of 6 release criteria pending the M8.3 pilot) |
 | 2 | Authoring depth & chemistry-first (tiers, a11y, carriers & assets: Ketcher/plots/slides/PDF, import, snapshots, gateway, local mode) | ✅ core built (M9–M17); documented deferrals → worker tier (PDF, foreign import), studio editing/projects, DOI/compare, per-institution quotas |
 | 3 | Agent harness & reconciliation | ✅ core built (M18 coherence agent, M19 job seam, M20 reconciliation, M21 leakage audit + runbook); deferred: worker-tier agent execution, one-click remediation, private-repo reconcile |
-| 4 | Assessment & question templates | ⬜ |
+| 4 | Assessment & question templates | ⬜ planned (M22–M25 decomposed; does **not** force the worker tier — LMS export is a pure XML+zip transformer) |
 | 5 | Adaptation ecosystem | ⬜ |
 | 6 | Portal & discovery | ⬜ |
 | 7 | Research operations & study readiness | ⬜ |
@@ -427,6 +427,64 @@ Detect private content in the public repo → documented remediation procedure
 *Exit:* ✅ a leak in the public repo is detected by audit and there is an
 actionable remediation procedure; commit-time validation + M20 quarantine keep
 leaks from entering via Alembic. **Completes the Phase-3 core (M18–M21).**
+
+## Phase 4 sub-modules (v0.5 — assessment & question templates)
+
+**Goal:** the assessment-support layer with hard public/private boundaries —
+instructor-defined question templates → AI-generated items → LMS export, with
+answer keys and embargoed assessments that never touch the public repo.
+
+**Prerequisites already in place:** concept/objective alignment substrate (M9.6);
+Tier-3 change kinds `assessment-edit`/`answer-key`/`suggest-back` (M10, pinned at
+Tier 3); the two-repo invariant + leak audit (M5/M20/M21) for answer-key safety;
+release gates (M6.3) to extend. The deferred **M10.3 Tier-3 itemized assessment
+review** folds into M22/M24.
+
+**Layers (closed set — no new layer):** question templates + public-safe supports
+→ the public **`assessment-support`** layer; answer keys + embargoed assessments
+→ the private **`private-instructor`** layer.
+
+**Worker-tier dependency — pinned by this plan:** M22–M24 are contract +
+single-call AI + in-process work and need **no** worker tier. LMS export (M25) is
+a **pure XML transformer + in-process zip** (QTI XML; Common Cartridge `.imscc` =
+zip of XML + manifest) — lighter than the Chromium PDF path, so it is feasible
+server-side **without** standing up the worker tier. ⇒ **Phase 4 does not force
+the worker tier.** (The worker tier remains needed for PDF/foreign-import/
+worker-side agent — the separate Phase 3.5 infra block.)
+
+### M22 — Assessment & question-template contract *(durable core, pure)*
+
+| # | Sub-module | Verify by | Status |
+| --- | --- | --- | --- |
+| 22.1 | Question-template schema (concept/objective alignment, context, difficulty, representations, parameters, misconception targets) | a template validates; references concept/objective ids | ⬜ |
+| 22.2 | Assessment blueprint schema (selection of templates/objectives, weighting, embargo metadata) | a blueprint validates against the contract | ⬜ |
+| 22.3 | Question-item + answer-key records (item in `assessment-support`; key in `private-instructor`; alignment back to template/objective) | placement enforced by `assertPathAllowedInRepo`; key path is private-only | ⬜ |
+
+### M23 — AI question generation *(Tier A — single-call, no worker tier)*
+
+| # | Sub-module | Verify by | Status |
+| --- | --- | --- | --- |
+| 23.1 | Generate items from a template (ai-assist), respecting instructor design + alignment + misconception targets | generated item matches the template's constraints | ⬜ |
+| 23.2 | Items routed through review (Tier-2 draft / Tier-3 for answer keys) + provenance to the template | each item reviewed; key generation is Tier-3 itemized | ⬜ |
+
+### M24 — Private-repo answer keys & embargo *(security-critical; in-process)*
+
+| # | Sub-module | Verify by | Status |
+| --- | --- | --- | --- |
+| 24.1 | Answer keys written only to the private repo; never staged public (reuse the two-repo invariant) | adversarial test: a key can't reach the public repo via any path | ⬜ |
+| 24.2 | Embargoed assessments: auto-release date + owner-only early lift | embargo metadata gates publication; lift is Tier-3 | ⬜ |
+| 24.3 | Answer-key leakage checks in release gates (extend M6.3 + the M21 audit) | a publish carrying a key/embargoed item is blocked with an educator-facing reason | ⬜ |
+
+### M25 — One-way LMS export (QTI / Common Cartridge) *(pure transformer + zip)*
+
+| # | Sub-module | Verify by | Status |
+| --- | --- | --- | --- |
+| 25.1 | QTI item/assessment XML transformer over assessment data (pure, like the renderer) | exported XML validates against QTI; round-trips key fields | ⬜ |
+| 25.2 | Common Cartridge `.imscc` packaging (manifest + XML, in-process zip) | the package imports into Canvas/Moodle | ⬜ |
+| 25.3 | Export excludes embargoed/answer-key content unless owner-authorized | export of a public-safe set carries no private content | ⬜ |
+
+*Exit:* an instructor runs a quiz cycle — template → generated questions →
+export to LMS — with keys never touching the public repo.
 
 ## Phase 2 deferred follow-ups (tracked)
 
