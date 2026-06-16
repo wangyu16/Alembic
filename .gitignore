@@ -27,3 +27,6 @@ coverage/
 # Claude Code local settings
 .claude/settings.local.json
 .vercel
+
+# Vendored Ketcher standalone build (authoring editor; fetched via pnpm fetch:ketcher)
+apps/web/public/ketcher/

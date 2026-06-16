@@ -26,6 +26,9 @@ import {
   recheckA11yAction,
   suggestA11yFixAction,
 } from "./a11y-actions";
+import { listAssetsAction, readAssetAction } from "./asset-actions";
+import { KetcherEditor } from "./ketcher-editor";
+import type { AssetInfo } from "@alembic/package-ops";
 import type { A11yReport, Fixable } from "@/lib/a11y";
 import {
   publishToGitHubAction,
@@ -147,10 +150,17 @@ export function StudyGuideEditor({
   useEffect(() => {
     const id = setTimeout(async () => {
       try {
+        // Resolve carrier-asset references (materials/…) to the authoring asset
+        // route so they render in the preview before publish (M11.3). The
+        // published site uses the portable path/permalink unchanged.
+        const previewSource = source.replace(
+          /(!\[[^\]]*\]\()(materials\/[^)\s]+)/g,
+          (_m, pre: string, p: string) => `${pre}/api/asset/${packageId}/${p}`,
+        );
         const res = await fetch("/api/preview", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ source }),
+          body: JSON.stringify({ source: previewSource }),
         });
         const data = (await res.json()) as { html?: string };
         setHtml(data.html ?? "");
@@ -159,7 +169,7 @@ export function StudyGuideEditor({
       }
     }, 350);
     return () => clearTimeout(id);
-  }, [source]);
+  }, [source, packageId]);
 
   const dirty = save.kind === "dirty" || save.kind === "error";
   const markDirty = useCallback(() => {
@@ -183,6 +193,48 @@ export function StudyGuideEditor({
       markDirty();
     },
     [markDirty],
+  );
+
+  // Track the last-focused block body + caret, so an inserted asset reference
+  // lands where the educator was typing (else it appends a new section).
+  const [focus, setFocus] = useState<{ key: string; pos: number } | null>(null);
+  const insertMarkdown = useCallback(
+    (md: string) => {
+      setBlocks((bs) => {
+        const target = focus && bs.find((b) => b.key === focus.key);
+        if (target) {
+          const pos = Math.min(focus.pos, target.body.length);
+          const body = target.body.slice(0, pos) + md + target.body.slice(pos);
+          return bs.map((b) => (b.key === target.key ? { ...b, body } : b));
+        }
+        return [
+          ...bs,
+          { key: newKey(), id: null, title: "Figure", body: md.trim() },
+        ];
+      });
+      markDirty();
+    },
+    [focus, markDirty],
+  );
+
+  // Structure editor (M11.1): null = closed; {} = new; {path,source} = editing.
+  const [structure, setStructure] = useState<
+    null | { path?: string; source?: string }
+  >(null);
+  const openEditStructure = useCallback(
+    async (path: string) => {
+      const r = await readAssetAction(packageId, path);
+      setStructure({ path, source: r.ok ? r.source : undefined });
+    },
+    [packageId],
+  );
+  const onStructureSaved = useCallback(
+    (path: string, altText: string) => {
+      insertMarkdown(`\n\n![${altText}](${path})\n`);
+      setStructure(null);
+      router.refresh();
+    },
+    [insertMarkdown, router],
   );
 
   const deleteBlock = useCallback(
@@ -335,6 +387,8 @@ export function StudyGuideEditor({
                 <textarea
                   value={block.body}
                   onChange={(e) => update(block.key, "body", e.target.value)}
+                  onFocus={(e) => setFocus({ key: block.key, pos: e.currentTarget.selectionStart })}
+                  onSelect={(e) => setFocus({ key: block.key, pos: e.currentTarget.selectionStart })}
                   placeholder="Write in Markdown — chemistry (H~2~O) and math ($E=mc^2$) supported."
                   rows={Math.max(3, block.body.split("\n").length + 1)}
                   className="field mt-2 w-full resize-y font-mono text-sm"
@@ -350,6 +404,13 @@ export function StudyGuideEditor({
         <button onClick={() => addBlock()} className="w-full rounded-lg border border-dashed border-edge px-3 py-2 text-sm text-muted transition-colors hover:bg-elevated hover:text-ink">
           + Add section
         </button>
+
+        <StructuresPanel
+          packageId={packageId}
+          onNew={() => setStructure({})}
+          onInsert={(path) => insertMarkdown(`\n\n![](${path})\n`)}
+          onEdit={openEditStructure}
+        />
 
         <AIDraftPanel packageId={packageId} activePath={initialPath} onQueued={() => router.refresh()} />
 
@@ -396,6 +457,99 @@ export function StudyGuideEditor({
         />
       </div>
       </div>
+
+      {structure && (
+        <KetcherEditor
+          packageId={packageId}
+          activePath={initialPath}
+          initialPath={structure.path}
+          initialSource={structure.source}
+          onClose={() => setStructure(null)}
+          onSaved={onStructureSaved}
+        />
+      )}
+    </div>
+  );
+}
+
+function StructuresPanel({
+  packageId,
+  onNew,
+  onInsert,
+  onEdit,
+}: {
+  packageId: string;
+  onNew: () => void;
+  onInsert: (path: string) => void;
+  onEdit: (path: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [assets, setAssets] = useState<AssetInfo[] | null>(null);
+  const [query, setQuery] = useState("");
+
+  useEffect(() => {
+    if (!open || assets) return;
+    void listAssetsAction(packageId).then(setAssets);
+  }, [open, assets, packageId]);
+
+  const shown = (assets ?? []).filter((a) =>
+    a.path.toLowerCase().includes(query.trim().toLowerCase()),
+  );
+
+  if (!open) {
+    return (
+      <button onClick={() => setOpen(true)} className="btn btn-ghost">
+        🧪 Structures & figures
+      </button>
+    );
+  }
+
+  return (
+    <div className="panel p-3">
+      <div className="mb-2 flex items-center justify-between">
+        <span className="text-sm font-medium">Structures &amp; figures</span>
+        <button onClick={() => setOpen(false)} className="text-xs text-muted hover:text-ink">Close</button>
+      </div>
+      <button onClick={onNew} className="btn btn-primary btn-sm">Draw a structure</button>
+
+      {assets && assets.length > 0 && (
+        <>
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search assets…"
+            className="field mt-3 w-full text-sm"
+          />
+          <ul className="mt-2 divide-y divide-[var(--edge-soft)]">
+            {shown.map((a) => (
+              <li key={a.path} className="flex items-center justify-between gap-2 py-2">
+                <span className="min-w-0 truncate text-xs text-muted" title={a.path}>
+                  {a.path.replace(/^materials\//, "")}
+                </span>
+                <div className="flex shrink-0 gap-2">
+                  <button
+                    onClick={() => onInsert(a.path)}
+                    className="rounded border border-zinc-300 px-2 py-1 text-xs hover:bg-elevated dark:border-zinc-700"
+                  >
+                    Insert
+                  </button>
+                  {a.kind === "ketcher" && (
+                    <button
+                      onClick={() => onEdit(a.path)}
+                      className="rounded border border-zinc-300 px-2 py-1 text-xs hover:bg-elevated dark:border-zinc-700"
+                    >
+                      Edit
+                    </button>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+      {assets && assets.length === 0 && (
+        <p className="mt-2 text-xs text-faint">No structures yet — draw one to reuse it across chapters.</p>
+      )}
     </div>
   );
 }

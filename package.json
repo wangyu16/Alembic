@@ -12,7 +12,8 @@
     "test": "pnpm -r test",
     "build": "pnpm -r build",
     "dev:web": "pnpm --filter @alembic/web dev",
-    "dev:worker": "pnpm --filter @alembic/worker dev"
+    "dev:worker": "pnpm --filter @alembic/worker dev",
+    "fetch:ketcher": "node scripts/fetch-ketcher.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.19.21",

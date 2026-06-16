@@ -1,7 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { listAssets, type AssetInfo } from "@alembic/package-ops";
+import { listAssets, readAsset, type AssetInfo } from "@alembic/package-ops";
 import { suggestStructureAltText } from "@alembic/ai-assist";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
@@ -21,6 +21,27 @@ export async function listAssetsAction(packageId: string): Promise<AssetInfo[]> 
   const { supabase } = await requireUser();
   const store = new SupabaseSandboxStore(supabase);
   return listAssets(store, packageId);
+}
+
+export interface ReadAssetResult {
+  ok: boolean;
+  source?: string;
+  error?: string;
+}
+
+/** Read a carrier asset's embedded source so the editor can re-open it. */
+export async function readAssetAction(
+  packageId: string,
+  path: string,
+): Promise<ReadAssetResult> {
+  const { supabase } = await requireUser();
+  const store = new SupabaseSandboxStore(supabase);
+  try {
+    const { source } = await readAsset(store, packageId, path);
+    return { ok: true, source };
+  } catch {
+    return { ok: false, error: "Couldn't open that asset." };
+  }
 }
 
 export interface AltTextResult {
