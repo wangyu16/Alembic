@@ -27,7 +27,7 @@ These are the only things blocking full production parity with the code:
 | 1 | Initial release: end-to-end loop (v0.1) | ✅ built + deployed (not yet *shipped* — 2 of 6 release criteria pending the M8.3 pilot) |
 | 2 | Authoring depth & chemistry-first (tiers, a11y, carriers & assets: Ketcher/plots/slides/PDF, import, snapshots, gateway, local mode) | ✅ core built (M9–M17); documented deferrals → worker tier (PDF, foreign import), studio editing/projects, DOI/compare, per-institution quotas |
 | 3 | Agent harness & reconciliation | ✅ core built (M18 coherence agent, M19 job seam, M20 reconciliation, M21 leakage audit + runbook); deferred: worker-tier agent execution, one-click remediation, private-repo reconcile |
-| 4 | Assessment & question templates | 🔄 in progress (M22 contract + M23 generation + M24 answer-key/embargo built; M25 LMS export next) |
+| 4 | Assessment & question templates | ✅ core built (M22 contract, M23 generation, M24 answer-key/embargo, M25 LMS export); follow-ups: blueprint/embargo editor UI + early-lift. No worker tier needed |
 | 5 | Adaptation ecosystem | ⬜ |
 | 6 | Portal & discovery | ⬜ |
 | 7 | Research operations & study readiness | ⬜ |
@@ -479,9 +479,9 @@ worker-side agent — the separate Phase 3.5 infra block.)
 
 | # | Sub-module | Verify by | Status |
 | --- | --- | --- | --- |
-| 25.1 | QTI item/assessment XML transformer over assessment data (pure, like the renderer) | exported XML validates against QTI; round-trips key fields | ⬜ |
-| 25.2 | Common Cartridge `.imscc` packaging (manifest + XML, in-process zip) | the package imports into Canvas/Moodle | ⬜ |
-| 25.3 | Export excludes embargoed/answer-key content unless owner-authorized | export of a public-safe set carries no private content | ⬜ |
+| 25.1 | QTI item/assessment XML transformer over assessment data (pure, like the renderer) | exported XML validates against QTI; round-trips key fields | ✅ package-ops `buildQti12` (QTI 1.2 `questestinterop`; MCQ → response_lid + resprocessing scoring the choice equal to the key answer; open → response_str + model-answer feedback; XML-escaped) |
+| 25.2 | Common Cartridge `.imscc` packaging (manifest + XML, in-process zip) | the package imports into Canvas/Moodle | ✅ `buildCommonCartridge` (CC 1.1 `imsmanifest.xml` + QTI file) + dependency-free **stored-zip writer** (`zipStore`, hand-rolled CRC-32, verified against system `unzip`) + `exportCommonCartridge`; **no npm dep added**. 15 tests (131 package-ops) |
+| 25.3 | Export excludes embargoed/answer-key content unless owner-authorized | export of a public-safe set carries no private content | ✅ web `GET …/export/lms` is owner-authenticated (= owner authorization); reads keys from the private partition, returns the `.imscc` download, logs `export.lms`; "Export to LMS (.imscc)" in the Assessments panel. Per-blueprint embargo gating lands with the blueprint UI follow-up |
 
 *Exit:* an instructor runs a quiz cycle — template → generated questions →
 export to LMS — with keys never touching the public repo.
@@ -514,6 +514,17 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
 ## Log
 
 ### 2026-06-16
+- **M25 — one-way LMS export (completes Phase 4 core).** package-ops `lms-export.ts`
+  (subagent): `buildQti12` (QTI 1.2 — MCQ scored against the answer key; open →
+  model-answer feedback; XML-escaped), `buildCommonCartridge` (CC 1.1 manifest +
+  QTI), and a **dependency-free stored-zip writer** (`zipStore` with hand-rolled
+  CRC-32, verified against the system `unzip` — no npm dep, dodging the flaky
+  registry) + `exportCommonCartridge`. 15 tests (131 package-ops). Web:
+  owner-authenticated `GET …/export/lms` bundles accepted items + their private
+  answer keys into a `.imscc` download (logs `export.lms`); "Export to LMS" button
+  in the Assessments panel. Confirmed: pure transformer + zip, **no worker tier**.
+  typecheck + all tests + web build green. **Phase 4 core complete (M22–M25).**
+  Follow-up: blueprint/embargo editor UI + owner early-lift.
 - **M22–M24 — assessment & question templates (Phase 4 core).** Built durable-first
   (two concurrent subagents on disjoint packages + hand-integrated web). Contract
   `assessments.ts` (M22): QuestionTemplate/AssessmentBlueprint/QuestionItem (public,

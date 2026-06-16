@@ -36,6 +36,7 @@ export const EVENT_TYPES = [
   "review.queued",
   "a11y.checked",
   "import.completed",
+  "export.lms",
   // Phase 3 — Tier-B coherence agent (a producer of reviewed changes; its
   // proposals enter the same review queue as human-decided ai.suggestion.*).
   "agent.run.requested",

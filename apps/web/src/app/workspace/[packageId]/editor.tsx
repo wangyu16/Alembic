@@ -1167,6 +1167,15 @@ function AssessmentsPanel({
         in the private repository, never published. {summary.itemCount} accepted item
         {summary.itemCount === 1 ? "" : "s"}.
       </p>
+      {summary.itemCount > 0 && (
+        <a
+          href={`/workspace/${packageId}/export/lms`}
+          className="btn btn-ghost btn-sm mb-2 inline-flex"
+          title="Download a Common Cartridge (.imscc) for Canvas/Moodle — includes answer keys"
+        >
+          ⬇ Export to LMS (.imscc)
+        </a>
+      )}
 
       <div className="text-xs font-medium uppercase tracking-wide text-faint">New template</div>
       <textarea
