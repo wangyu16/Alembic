@@ -35,16 +35,16 @@ export function modelForTask(kind: string, routing: ModelRouting): string {
  *   a stronger `-pro` variant where output quality matters more than cost.
  */
 export const DEFAULT_ROUTING: ModelRouting = {
-  default: "gemini-2.0-flash",
+  default: "gemini-2.5-flash",
   byTask: {
     // High-frequency, low-stakes → cheap/fast.
-    "a11y-fix": "gemini-2.0-flash",
-    "formatting-tidy": "gemini-2.0-flash",
+    "a11y-fix": "gemini-2.5-flash",
+    "formatting-tidy": "gemini-2.5-flash",
     // Content generation → stronger model.
-    "draft-section": "gemini-2.0-pro",
-    worksheet: "gemini-2.0-pro",
-    "import-blocks": "gemini-2.0-pro",
+    "draft-section": "gemini-2.5-pro",
+    worksheet: "gemini-2.5-pro",
+    "import-blocks": "gemini-2.5-pro",
     // Tier-B whole-course coherence reasoning → the strongest model.
-    "coherence-agent": "gemini-2.0-pro",
+    "coherence-agent": "gemini-2.5-pro",
   },
 };
