@@ -26,7 +26,17 @@ import {
   type ApplyProposedChangeSetResult,
   type CoherenceContext,
 } from "./coherence";
-import type { ProposedChangeSet } from "@alembic/package-contract";
+import {
+  loadConceptMap,
+  saveConceptMap,
+  loadObjectives,
+  saveObjectives,
+} from "./planning";
+import type {
+  ProposedChangeSet,
+  ConceptMap,
+  Objectives,
+} from "@alembic/package-contract";
 
 /**
  * The canonical package **content** operations, bound to one (store, package).
@@ -59,6 +69,13 @@ export interface PackageOps {
 
   listArtifacts(): Promise<ArtifactStatus[]>;
 
+  /** Hidden planning layer: concept map (topics + correlations/prerequisites). */
+  loadConceptMap(scope: "course" | "chapter", slug?: string): Promise<ConceptMap>;
+  saveConceptMap(map: ConceptMap, slug?: string): Promise<void>;
+  /** Hidden planning layer: per-scope learning objectives. */
+  loadObjectives(scope: "course" | "chapter", slug?: string): Promise<Objectives>;
+  saveObjectives(objectives: Objectives, slug?: string): Promise<void>;
+
   /** Read-only course projection the Tier-B coherence agent reasons over. */
   gatherCoherenceContext(): Promise<CoherenceContext>;
   /** Apply an accepted ProposedChangeSet through the validated write path. */
@@ -86,6 +103,12 @@ export function packageOps(store: PackageStore, packageId: string): PackageOps {
     writeAsset: (input) => writeAsset(store, packageId, input),
 
     listArtifacts: () => listArtifacts(store, packageId),
+
+    loadConceptMap: (scope, slug) => loadConceptMap(store, packageId, scope, slug),
+    saveConceptMap: (map, slug) => saveConceptMap(store, packageId, map, slug),
+    loadObjectives: (scope, slug) => loadObjectives(store, packageId, scope, slug),
+    saveObjectives: (objectives, slug) =>
+      saveObjectives(store, packageId, objectives, slug),
 
     gatherCoherenceContext: () => gatherCoherenceContext(store, packageId),
     applyProposedChangeSet: (set, opts) =>

@@ -11,5 +11,6 @@ export * from "./assets";
 export * from "./slides";
 export * from "./import";
 export * from "./citation";
+export * from "./planning";
 export * from "./ops";
 export * from "./reconcile";
