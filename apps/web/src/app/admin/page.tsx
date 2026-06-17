@@ -1,3 +1,4 @@
+import { summarizeUsage, type InvocationRow } from "@alembic/research-events";
 import { requireAdmin } from "@/lib/admin";
 import { Participants, Reports, type Participant, type ReportItem } from "./admin-client";
 
@@ -54,6 +55,13 @@ export default async function AdminPage() {
     .order("created_at", { ascending: false });
   const reports = ((reportRows as ReportItem[] | null) ?? []);
 
+  // AI usage (M36): token aggregates only — never prompts/outputs.
+  const { data: usageRows } = await service
+    .from("ai_invocations")
+    .select("user_id, kind, input_tokens, output_tokens");
+  const usage = summarizeUsage((usageRows as InvocationRow[] | null) ?? []);
+  const handleOf = new Map(participants.map((p) => [p.id, p.handle]));
+
   return (
     <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-8 px-6 py-12">
       <header>
@@ -82,6 +90,41 @@ export default async function AdminPage() {
         <div className="mt-2 flex gap-3">
           <a href="/admin/export?format=csv" className="btn btn-ghost btn-sm">Download CSV</a>
           <a href="/admin/export?format=json" className="btn btn-ghost btn-sm">Download JSON</a>
+        </div>
+      </section>
+
+      <section>
+        <h2 className="font-serif text-xl text-ink">AI usage</h2>
+        <p className="mt-1 text-sm text-muted">
+          {usage.totalCalls.toLocaleString()} calls · {usage.totalTokens.toLocaleString()} tokens
+          ({usage.totalInputTokens.toLocaleString()} in / {usage.totalOutputTokens.toLocaleString()} out).
+          Per-user budgets are enforced live (M16); per-institution quotas are a follow-up.
+        </p>
+        <div className="mt-2 grid gap-4 sm:grid-cols-2">
+          <div>
+            <div className="text-xs font-medium uppercase tracking-wide text-faint">By task</div>
+            <ul className="mt-1 text-sm text-muted">
+              {usage.byKind.slice(0, 8).map((k) => (
+                <li key={k.kind} className="flex justify-between gap-2">
+                  <span className="truncate">{k.kind}</span>
+                  <span className="shrink-0 text-faint">{k.tokens.toLocaleString()}</span>
+                </li>
+              ))}
+              {usage.byKind.length === 0 && <li className="text-faint">No AI usage yet.</li>}
+            </ul>
+          </div>
+          <div>
+            <div className="text-xs font-medium uppercase tracking-wide text-faint">Top participants</div>
+            <ul className="mt-1 text-sm text-muted">
+              {usage.byUser.slice(0, 8).map((u) => (
+                <li key={u.userId} className="flex justify-between gap-2">
+                  <span className="truncate">{handleOf.get(u.userId) || u.userId.slice(0, 8)}</span>
+                  <span className="shrink-0 text-faint">{u.tokens.toLocaleString()}</span>
+                </li>
+              ))}
+              {usage.byUser.length === 0 && <li className="text-faint">—</li>}
+            </ul>
+          </div>
         </div>
       </section>
 

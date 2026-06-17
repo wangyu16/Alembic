@@ -11,7 +11,7 @@ same commit as the work it tracks. Statuses: ✅ done · 🔄 partially shipped 
 
 These are the only things blocking full production parity with the code:
 
-1. **Migrations 0005–0010 are applied; `0011_admin.sql` awaits `db push`** (✅ 0005–0010; ⬜ 0011 = `profiles.is_admin` for the M35 admin module). Note: 0007's budget stays dormant until `AI_TOKEN_BUDGET` is set; after 0010 listing requires `portal_eligible=true`; after 0011, **flag yourself `is_admin=true`** (dashboard) to reach `/admin`. The admin module also needs `SUPABASE_SECRET_KEY` set (service-role reads) — and optionally `RESEARCH_EXPORT_SALT`.
+1. **Migrations 0005–0011 are all applied.** No migration pending. Config notes: 0007's budget stays dormant until `AI_TOKEN_BUDGET` is set; after 0010 listing requires `portal_eligible=true`; to reach `/admin`, **flag yourself `is_admin=true`** (dashboard) and set **`SUPABASE_SECRET_KEY`** (service-role reads) — optionally `RESEARCH_EXPORT_SALT`.
 2. ✅ **Done** — Vercel build command is `node ../../scripts/fetch-vendor.mjs && next build`; Plotly is vendored and the plot editor (M11b) works live.
 3. **Interactive verification passes** (can't run in CI): slides render (M13), studio File System Access open/save (M17), and the AI/reconcile live runs (M18 coherence agent, M9.6 draft-from-plan, M20 reconcile, M23 question generation, M26–M28 adapt/pull/suggest-back) once Portkey is on Vercel. Ketcher (M11) and plots (M11b) are verified live.
 4. **Set the Portkey env vars in Vercel** (`AI_GATEWAY_URL=https://api.portkey.ai/v1`, `AI_GATEWAY_API_KEY`, `AI_MODEL_DEFAULT/FAST/STRONG` = `@<provider-slug>/<model>`) to verify the **M18 coherence agent** live. Local dev can't reach Portkey from this machine (the dev Mac's security/firewall blocks the `node` binary's outbound — `curl` works, `node` ETIMEDOUTs — not an app issue); Vercel's egress is clean. See [ai-architecture.md](specs/ai-architecture.md).
@@ -29,7 +29,7 @@ These are the only things blocking full production parity with the code:
 | 4 | Assessment & question templates | ✅ core built (M22 contract, M23 generation, M24 answer-key/embargo, M25 LMS export); follow-ups: blueprint/embargo editor UI + early-lift. No worker tier needed |
 | 5 | Adaptation ecosystem | 🔄 core built (M26 adapt & lineage, M27 pull-updates, M28 suggest-back data path); deferred: M29 DOI + PR materialization (external), cross-owner adapt/suggest-back, AI-assisted merge (27.3), whole-package fork |
 | 6 | Portal & discovery | ✅ core built (M30 LRMI, M31 cross-owner adapt/suggest-back, M32 searchable portal, M33 governance scaffolding); migrations 0009/0010 applied |
-| 7 | Research operations & study readiness | 🔄 in progress (M34 export core + M35 admin/ops module built; M36 credits/quotas, M37 managed mode next) |
+| 7 | Research operations & study readiness | 🔄 in progress (M34 export + M35 admin + M36 usage/credits/FERPA built; M37 institution-managed mode next — heavier/external) |
 | 8 | Hardening & sustainability | ⬜ |
 
 ## v0.1 sub-modules
@@ -624,12 +624,13 @@ managed mode + the FERPA/IRB data-handling review (M16.4).
 | 35.2 | De-identified research export download | admin downloads CSV/JSON of de-identified events | ✅ `GET /admin/export?format=csv\|json` — service-reads `research_events`, applies the M34 `deidentifyEvents` with a salted one-way `exportPseudonymizer` (RESEARCH_EXPORT_SALT) |
 | 35.3 | Status, error monitoring, consent/status flags + report review | admin sees counts + recent errors; toggles `portal_eligible`; resolves `portal_reports` | ✅ `/admin` page: package/registration/event counts, recent `error.surfaced`, participant eligibility toggles (M33), open-report resolve/dismiss (the Phase-6 deferred admin UI). Demo-content management is a follow-up |
 
-### M36 — Centrally-managed AI credits & quotas *(planned)*
+### M36 — Centrally-managed AI credits & quotas
 
-Per-institution / project-funded quotas + usage visibility on top of the per-user
-budget (M16.3); usage dashboard over `ai_invocations` aggregates in the admin
-module. Includes the deferred **FERPA/IRB third-party data-handling review**
-(M16.4, ops). ⬜
+| # | Sub-module | Verify by | Status |
+| --- | --- | --- | --- |
+| 36.1 | Usage visibility (admin dashboard over `ai_invocations`) | admin sees total tokens/calls, by task, top participants — never prompts/outputs | ✅ research-events pure `summarizeUsage` (totals + by-kind + by-user, token-only; 4 tests) + an "AI usage" section in `/admin` (service-reads token columns only) |
+| 36.2 | Centrally-managed credits + consistent access | uniform per-user budget + gateway routing across the cohort | ✅ already delivered: per-user **token budget** (M16.3, `AI_TOKEN_BUDGET`) enforced uniformly + provider-swappable gateway/routing (M16) + governed logging. **Per-institution** grouping is a follow-up (needs an institution model) |
+| 36.3 | FERPA/IRB third-party data-handling review (M16.4) | a per-deployment review record exists | ✅ [specs/data-handling-review.md](specs/data-handling-review.md) — what the AI path touches, gateway retention/region/FERPA/IRB checks, a per-deployment decision table. Mechanism built (owner-insert-only log, admin-only export, de-identified research export); the review itself is a per-deployment operator/PI action |
 
 ### M37 — Institution / workshop-managed mode *(planned; heavier/external)*
 
@@ -664,6 +665,17 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
 ## Log
 
 ### 2026-06-17
+- **M36 — centrally-managed credits + usage visibility + FERPA/IRB review.**
+  research-events pure `summarizeUsage` (totals + by-kind + by-user, **token-only**,
+  never prompts/outputs; 4 tests → 13) + an "AI usage" section in `/admin`
+  (service-reads only the token columns). Centrally-managed credits are already
+  delivered (uniform per-user `AI_TOKEN_BUDGET` + gateway/routing + governed
+  logging); per-institution grouping is a follow-up (needs an institution model).
+  Wrote [specs/data-handling-review.md](specs/data-handling-review.md) closing the
+  M16.4 FERPA/IRB task (data-touch inventory, gateway retention/region/FERPA/IRB
+  checks, per-deployment decision table) — mechanism built, the review is a
+  per-deployment operator/PI action. typecheck + all tests + web build green.
+  Next: M37 institution-managed mode (org GitHub App — heavier/external).
 - **M35 — admin / operations module.** Admin gate: migration `0011`
   (`profiles.is_admin`); `requireAdmin` checks the user's own profile (user client),
   then hands out a service-role client (`lib/supabase/service`, server-only) for

@@ -91,3 +91,4 @@ export function createEventLogger(sink: EventSink) {
 }
 
 export * from "./deidentify";
+export * from "./usage";
