@@ -12,7 +12,9 @@ Do these in order — the production URL feeds back into the auth/App callbacks.
 
 In the Supabase SQL editor, run every file in
 [`supabase/migrations/`](../supabase/migrations/) in order (if you haven't):
-`0001_init` → `0002_ai_invocations` → `0003_github` → `0004_portal`.
+`0001_init` → `0002_ai_invocations` → `0003_github` → `0004_portal` →
+`0005_changes` → `0006_a11y` → `0007_ai_budget` → `0008_reconcile` →
+`0009_suggestions` → `0010_governance` → `0011_admin`.
 
 You may use your existing dev project, or create a separate production project
 and run all migrations there (recommended for a real pilot).
@@ -30,9 +32,23 @@ and run all migrations there (recommended for a real pilot).
 ### Environment variables (Vercel → Settings → Environment Variables)
 
 ```
+# Supabase
 NEXT_PUBLIC_SUPABASE_URL        = https://<project-ref>.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY   = <publishable/anon key>
-GEMINI_API_KEY                  = <Gemini key>
+SUPABASE_SECRET_KEY             = <service-role/secret key>   # admin module + research export (M35/M36)
+
+# AI — set EITHER Gemini-direct (b-blank) OR the gateway block. See .env.example for the full recipe.
+GEMINI_API_KEY                  = <Gemini key>                # dev/testing default
+# Gateway (Portkey, recommended for the pilot): the app prefers the gateway when these are set
+AI_GATEWAY_URL                  = https://api.portkey.ai/v1
+AI_GATEWAY_API_KEY              = <portkey-api-key>
+AI_MODEL_DEFAULT                = @<provider-slug>/gemini-2.5-flash
+AI_MODEL_STRONG                 = @<provider-slug>/gemini-2.5-pro
+# Optional governance:
+AI_TOKEN_BUDGET                 = <tokens per window, e.g. 2000000>   # per-user budget (M16; needs 0007)
+RESEARCH_EXPORT_SALT            = <random secret>            # stable pseudonyms in the research export (M34)
+
+# GitHub App (publishing)
 GITHUB_APP_ID                   = <App ID>
 GITHUB_APP_SLUG                 = <app slug>
 GITHUB_APP_PRIVATE_KEY          = <PEM with literal \n, one line>
@@ -40,6 +56,19 @@ GITHUB_TEMPLATE_OWNER           = <github username/org owning the templates>
 GITHUB_PUBLIC_TEMPLATE          = alembic-public-template
 GITHUB_PRIVATE_TEMPLATE         = alembic-private-template
 ```
+
+Notes:
+- **`SUPABASE_SECRET_KEY`** is the only way `/admin` (the research/ops module)
+  works — without it the page shows a "needs the service key" notice. It is the
+  service-role key; it is used *exclusively* behind `requireAdmin` (never on an
+  educator path) — see [specs/data-handling-review.md](specs/data-handling-review.md).
+- **`RESEARCH_EXPORT_SALT`** keeps de-identified pseudonyms stable across
+  exports; if unset it falls back to the secret key (still one-way, but rotates
+  if you rotate the key). Set a dedicated random value for the pilot.
+- **AI gateway vs. Gemini-direct:** the app prefers the gateway whenever
+  `AI_GATEWAY_URL` + `AI_GATEWAY_API_KEY` are present; otherwise it uses
+  `GEMINI_API_KEY`. For the pilot, route through Portkey (governance + budgets)
+  per [specs/ai-architecture.md](specs/ai-architecture.md).
 
 The first deploy will use the default `*.vercel.app` URL; the custom domain is
 step 3.
@@ -80,6 +109,23 @@ At `https://alembic.orz.how`:
 5. List on index → confirm it shows on `/portal`.
 6. Verify the published public repo's history has **no** `private-instructor`
    paths (the core invariant) — e.g. `gh api repos/<you>/<pkg>-oer/git/trees/main?recursive=1`.
+
+## 6. Enable the admin / research module
+
+`/admin` (study readiness, research export, AI-usage dashboard, participant &
+report management) is gated by `profiles.is_admin`. After you've signed in at
+least once (so your `profiles` row exists), flag yourself in the Supabase SQL
+editor:
+
+```sql
+update profiles set is_admin = true where github_username = '<your-gh-handle>';
+```
+
+Then open `https://alembic.orz.how/admin`. If it reports the service key is
+missing, `SUPABASE_SECRET_KEY` isn't set (step 2).
+
+For the full operator + live-verification + pilot sequence, follow
+[PilotReadiness.md](PilotReadiness.md).
 
 ## Notes & deferrals (v0.1)
 

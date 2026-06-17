@@ -7,6 +7,10 @@ tools. You organize the knowledge; Alembic handles the rest.
 You'll go from a blank page to a published study guide with a live web page in
 about 15 minutes.
 
+> Want a worked example to follow along? [DemoContent.md](DemoContent.md) is a
+> complete "Acid–Base Equilibria" package — copy-paste sections, a concept map,
+> AI prompts, and instructor notes — that touches every feature below.
+
 ---
 
 ## 1. Sign in

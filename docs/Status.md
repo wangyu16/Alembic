@@ -5,7 +5,7 @@ same commit as the work it tracks. Statuses: ✅ done · 🔄 partially shipped 
 
 **Production:** live at https://alembic.orz.how (Vercel project `alembic`, root `apps/web`, Node 22; Cloudflare DNS; Git auto-deploy on push to `main`).
 
-**Current focus: Phases 0–7 cores complete.** Phase 7 (research ops & study readiness) core is built — M34 de-identified export, M35 admin/ops module, M36 usage dashboard + centrally-managed credits + FERPA/IRB review (M37 institution-managed mode ⏸ deferred post-pilot). Phase 6 (portal & discovery: LRMI, **cross-owner adapt + suggest-back**, searchable portal, governance) complete; Phases 2–5 cores complete. v0.1 is deployed (not yet *shipped* — 2 of 6 release criteria pending the M8.3 pilot). **Only Phase 8 (hardening & sustainability) remains** — or a pilot-readiness pass. Remaining **live passes** (need Portkey on Vercel; `SUPABASE_SECRET_KEY` + `is_admin` for `/admin`): the AI/reconcile/adaptation flows (M18, M9.6, M20, M23, M26–M28, M31) + a structured-data-tester check for M30. Heavier deferrals (worker tier: PDF/foreign-import/agent-exec/one-click remediation; studio editing/local projects; M29 Zenodo DOI; M37) remain tracked below. See [LocalSetup.md](LocalSetup.md) + [GitHubAppSetup.md](GitHubAppSetup.md).
+**Current focus: Phases 0–7 cores complete.** Phase 7 (research ops & study readiness) core is built — M34 de-identified export, M35 admin/ops module, M36 usage dashboard + centrally-managed credits + FERPA/IRB review (M37 institution-managed mode ⏸ deferred post-pilot). Phase 6 (portal & discovery: LRMI, **cross-owner adapt + suggest-back**, searchable portal, governance) complete; Phases 2–5 cores complete. v0.1 is deployed (not yet *shipped* — 2 of 6 release criteria pending the M8.3 pilot). **Only Phase 8 (hardening & sustainability) remains** — or the pilot-readiness pass (the **scaffolding is now done**: [PilotReadiness.md](PilotReadiness.md) runbook, refreshed [Deployment.md](Deployment.md), worked [DemoContent.md](DemoContent.md), M8.1 ✅). Remaining work is operator/deployed: the **live passes** (need Portkey on Vercel; `SUPABASE_SECRET_KEY` + `is_admin` for `/admin`) — the AI/reconcile/adaptation flows (M18, M9.6, M20, M23, M26–M28, M31) + a structured-data-tester check for M30 — then the M8.3 pilot itself. Heavier deferrals (worker tier: PDF/foreign-import/agent-exec/one-click remediation; studio editing/local projects; M29 Zenodo DOI; M37) remain tracked below. See [LocalSetup.md](LocalSetup.md) + [GitHubAppSetup.md](GitHubAppSetup.md).
 
 ### Pending operator actions (human-in-the-loop)
 
@@ -124,9 +124,16 @@ unless a dependency is noted.
 
 | # | Sub-module | Verify by | Status |
 | --- | --- | --- | --- |
-| 8.1 | Demo content + educator quickstart (1 page) | a new user can follow it unaided | 🔄 [Quickstart.md](Quickstart.md) written; demo content via quickstart sample |
+| 8.1 | Demo content + educator quickstart (1 page) | a new user can follow it unaided | ✅ [Quickstart.md](Quickstart.md) + worked sample [DemoContent.md](DemoContent.md) (full "Acid–Base Equilibria" package: sections, concept map + objectives, AI/worksheet prompts, private notes + answer key, full-loop checklist) |
 | 8.2 | Deploy at alembic.orz.how (Cloudflare DNS → Vercel) | production URL serves the app | ✅ live on Vercel (project `alembic`, root `apps/web`); https://alembic.orz.how serves (200, valid TLS); Supabase Auth + GitHub App callbacks set to production |
-| 8.3 | Pilot with 1–3 chemistry educators; fix top frictions | full loop completed by a non-developer; release criteria met | ⬜ after deploy |
+| 8.3 | Pilot with 1–3 chemistry educators; fix top frictions | full loop completed by a non-developer; release criteria met | ⬜ after the live-verification sweep — protocol in [PilotReadiness.md](PilotReadiness.md) |
+
+**Pilot-readiness runbook:** [PilotReadiness.md](PilotReadiness.md) consolidates
+the operator setup delta (Part A), the live-verification passes that must run
+before the pilot (Part B), the M8.3 pilot protocol mapped to criteria #1 & #6
+(Part C), and post-pilot triage (Part D). [Deployment.md](Deployment.md) was
+refreshed in the same pass (migrations 0001–0011, gateway/admin/research env,
+admin-flagging step).
 
 ## Release criteria (v0.1)
 
@@ -144,8 +151,13 @@ hold before calling v0.1 shipped. Current standing:
 
 ### Open items before declaring v0.1 shipped
 
+- **Live-verification sweep** — run the Part B passes in
+  [PilotReadiness.md](PilotReadiness.md) on prod (first real gateway calls, the
+  AI/reconcile/adaptation/cross-owner flows, M30 structured-data check, two-repo
+  invariant re-check) before the pilot.
 - **M8.3 pilot** — run with 1–3 chemistry educators against criteria 1 & 6
-  (the last substantive gate).
+  (the last substantive gate); protocol + success bar in
+  [PilotReadiness.md](PilotReadiness.md) Part C.
 - **Deferred chore** — bump renderer to orz-markdown 1.1.0 once the npm
   registry is reachable from the dev machine (CI/Vercel builds already reach it).
 
