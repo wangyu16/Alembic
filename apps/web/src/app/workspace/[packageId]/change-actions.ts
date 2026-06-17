@@ -196,6 +196,9 @@ async function applyAccepted(
     choices?: string[];
     objectiveIds?: string[];
     answer?: string;
+    suggestBlockId?: string;
+    suggestedTitle?: string;
+    suggestedBody?: string;
   };
   let committed: { path: string; content: string } | null = null;
 
@@ -294,6 +297,18 @@ async function applyAccepted(
       "Add answer key (Alembic)",
     );
     // committed stays null — both repos already synced above.
+  } else if (change.kind === "suggest-back" && detail.suggestBlockId && detail.suggestedBody !== undefined) {
+    // An adapter's suggested edit to one of THIS package's blocks (M28). Apply
+    // the suggested title/body to the addressed block (id preserved), via the
+    // validated write path. If the block has since vanished, accept with no commit.
+    const doc = await loadStudyGuide(store, packageId, detail.path);
+    const block = doc.blocks.find((b) => b.id === detail.suggestBlockId);
+    if (block) {
+      if (detail.suggestedTitle) block.title = detail.suggestedTitle;
+      block.body = detail.suggestedBody;
+      const { blocks } = await saveStudyGuide(store, packageId, doc);
+      committed = { path: detail.path, content: serializeStudyGuide(doc.preamble, blocks) };
+    }
   } else if (change.kind === "formatting-tidy" && detail.content) {
     await store.putFiles(packageId, [{ repo: "public", path: detail.path, content: detail.content }]);
     committed = { path: detail.path, content: detail.content };

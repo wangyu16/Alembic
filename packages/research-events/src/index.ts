@@ -51,6 +51,7 @@ export const EVENT_TYPES = [
   // Phase 5 — adaptation ecosystem.
   "adaptation.completed",
   "upstream.update.applied",
+  "suggestion.sent",
   "error.surfaced",
 ] as const;
 

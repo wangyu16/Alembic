@@ -43,7 +43,10 @@ import {
   adaptChapterAction,
   listUpstreamUpdatesAction,
   applyUpstreamUpdateAction,
+  listAdaptedBlocksAction,
+  suggestBackAction,
   type AdaptSource,
+  type AdaptedBlock,
 } from "./adapt-actions";
 import type { UpstreamUpdate } from "@alembic/package-ops";
 import {
@@ -847,19 +850,32 @@ function AdaptPanel({
   const [busy, setBusy] = useState(false);
   const [sources, setSources] = useState<AdaptSource[]>([]);
   const [updates, setUpdates] = useState<UpstreamUpdate[]>([]);
+  const [adapted, setAdapted] = useState<AdaptedBlock[]>([]);
   const [note, setNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   async function openPanel() {
     setOpen(true);
     if (loaded) return;
-    const [s, u] = await Promise.all([
+    const [s, u, a] = await Promise.all([
       listAdaptSourcesAction(packageId),
       listUpstreamUpdatesAction(packageId, activePath),
+      listAdaptedBlocksAction(packageId, activePath),
     ]);
     setSources(s);
     setUpdates(u);
+    setAdapted(a);
     setLoaded(true);
+  }
+
+  async function suggestBack(targetBlockId: string) {
+    setBusy(true);
+    setError(null);
+    setNote(null);
+    const r = await suggestBackAction(packageId, targetBlockId, "");
+    if (r.ok) setNote("Suggestion sent to the source author's review queue.");
+    else setError(r.error ?? "Couldn't send the suggestion.");
+    setBusy(false);
   }
 
   async function resolve(targetBlockId: string, mode: "take" | "keep") {
@@ -965,6 +981,28 @@ function AdaptPanel({
             </li>
           ))}
         </ul>
+      )}
+      {adapted.length > 0 && (
+        <div className="mt-3">
+          <div className="text-xs font-medium uppercase tracking-wide text-faint">
+            Suggest your improvements back
+          </div>
+          <ul className="mt-1 divide-y divide-[var(--edge-soft)]">
+            {adapted.map((b) => (
+              <li key={b.targetBlockId} className="flex items-center justify-between gap-2 py-2">
+                <span className="min-w-0 truncate text-sm">{b.title}</span>
+                <button
+                  onClick={() => suggestBack(b.targetBlockId)}
+                  disabled={busy}
+                  title="Send your version to the source author for review"
+                  className="shrink-0 rounded border border-zinc-300 px-2 py-1 text-xs hover:bg-elevated disabled:opacity-50 dark:border-zinc-700"
+                >
+                  Suggest back →
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
       {note && <p className="mt-2 text-xs text-ok">{note}</p>}
       {error && <p className="mt-2 text-sm text-danger">{error}</p>}

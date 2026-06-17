@@ -11,6 +11,7 @@ import {
   loadStudyGuide,
   detectUpstreamUpdates,
   applyUpstreamUpdate,
+  loadAdaptationProvenance,
   AdaptationNotAllowedError,
   ADAPTATIONS_PROVENANCE_PATH,
   type UpstreamUpdate,
@@ -20,6 +21,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
 import { supabaseEventLogger } from "@/lib/events";
 import { syncFilesToGitHub } from "@/lib/github";
+import { recordChange } from "@/lib/changes";
 
 async function requireUser() {
   const supabase = await createSupabaseServerClient();
@@ -110,6 +112,91 @@ export async function adaptChapterAction(
   } catch (e) {
     if (e instanceof AdaptationNotAllowedError) return { ok: false, error: e.reason };
     return { ok: false, error: "Couldn't adapt that content. Please try again." };
+  }
+}
+
+export interface AdaptedBlock {
+  targetBlockId: string;
+  title: string;
+}
+
+/** M28 — adapted blocks in this chapter that have an upstream source to suggest back to. */
+export async function listAdaptedBlocksAction(
+  packageId: string,
+  path: string,
+): Promise<AdaptedBlock[]> {
+  const { supabase } = await requireUser();
+  const store = new SupabaseSandboxStore(supabase);
+  try {
+    const lineage = await loadAdaptationProvenance(store, packageId);
+    if (lineage.length === 0) return [];
+    const bySource = new Map(lineage.map((r) => [r.targetBlockId, r]));
+    const doc = await loadStudyGuide(store, packageId, path);
+    return doc.blocks
+      .filter((b) => b.id && bySource.has(b.id) && bySource.get(b.id)!.sourcePath)
+      .map((b) => ({ targetBlockId: b.id!, title: b.title }));
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * M28 — suggest the adapter's improved version of an adapted block BACK to the
+ * upstream source author. Platform-mediated (goal.md): records a Tier-3
+ * `suggest-back` change ON the upstream package's review queue; the author
+ * accepts/rejects it there. Optional GitHub-PR materialization is a follow-up.
+ */
+export async function suggestBackAction(
+  packageId: string,
+  targetBlockId: string,
+  note: string,
+): Promise<AdaptResult> {
+  const { supabase, user } = await requireUser();
+  const store = new SupabaseSandboxStore(supabase);
+  try {
+    const lineage = await loadAdaptationProvenance(store, packageId);
+    const ref = lineage.find((r) => r.targetBlockId === targetBlockId);
+    if (!ref || !ref.sourcePath) return { ok: false, error: "No upstream source recorded for that section." };
+
+    // The adapter's current (improved) version of the block.
+    const files = await store.listFiles(packageId);
+    const here = await store.getPackage(packageId);
+    let suggested: { title: string; body: string } | null = null;
+    for (const f of files) {
+      if (f.repo !== "public" || !f.path.startsWith("study-guide/")) continue;
+      const doc = await loadStudyGuide(store, packageId, f.path);
+      const b = doc.blocks.find((x) => x.id === targetBlockId);
+      if (b) { suggested = { title: b.title, body: b.body }; break; }
+    }
+    if (!suggested) return { ok: false, error: "That section no longer exists." };
+
+    // Queue a Tier-3 suggest-back on the UPSTREAM package's review queue.
+    await recordChange(supabase, {
+      packageId: ref.sourcePackageId,
+      userId: user.id,
+      tier: 3,
+      kind: "suggest-back",
+      summary: `Suggested edit to "${suggested.title}"${here ? ` from "${here.title}"` : ""}`,
+      detail: {
+        path: ref.sourcePath,
+        suggestBlockId: ref.sourceBlockId,
+        suggestedTitle: suggested.title,
+        suggestedBody: suggested.body,
+        fromPackageId: packageId,
+        note,
+      },
+      status: "pending",
+    });
+    await supabaseEventLogger(supabase).log({
+      type: "suggestion.sent",
+      userId: user.id,
+      packageId,
+      detail: { toPackageId: ref.sourcePackageId },
+      occurredAt: new Date().toISOString(),
+    });
+    return { ok: true };
+  } catch {
+    return { ok: false, error: "Couldn't send the suggestion. Please try again." };
   }
 }
 

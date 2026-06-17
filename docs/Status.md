@@ -28,7 +28,7 @@ These are the only things blocking full production parity with the code:
 | 2 | Authoring depth & chemistry-first (tiers, a11y, carriers & assets: Ketcher/plots/slides/PDF, import, snapshots, gateway, local mode) | ✅ core built (M9–M17); documented deferrals → worker tier (PDF, foreign import), studio editing/projects, DOI/compare, per-institution quotas |
 | 3 | Agent harness & reconciliation | ✅ core built (M18 coherence agent, M19 job seam, M20 reconciliation, M21 leakage audit + runbook); deferred: worker-tier agent execution, one-click remediation, private-repo reconcile |
 | 4 | Assessment & question templates | ✅ core built (M22 contract, M23 generation, M24 answer-key/embargo, M25 LMS export); follow-ups: blueprint/embargo editor UI + early-lift. No worker tier needed |
-| 5 | Adaptation ecosystem | 🔄 in progress (M26 adapt & lineage + M27 pull-updates built; M28 suggest-back, M29 DOI next) |
+| 5 | Adaptation ecosystem | 🔄 core built (M26 adapt & lineage, M27 pull-updates, M28 suggest-back data path); M29 DOI + PR materialization deferred (external) |
 | 6 | Portal & discovery | ⬜ |
 | 7 | Research operations & study readiness | ⬜ |
 | 8 | Hardening & sustainability | ⬜ |
@@ -523,12 +523,17 @@ integrations (Zenodo DOI; GitHub PR materialization) are scoped/deferred.
 from a cross-owner upstream via GitHub ties to the cross-owner-adaptation
 follow-up. AI-assisted merge (27.3) is the remaining slice.
 
-### M28 — Suggest back (adapter → author) *(planned)*
+### M28 — Suggest back (adapter → author)
 
-Block-level suggestion through the **Tier-3 `suggest-back`** gate; optional
-materialization as a **GitHub PR** to the upstream public repo (new bridge
-`createPullRequest` — needs App PR permission on upstream). Suggestion is typed
-data; PR is the optional bridge. ⬜
+| # | Sub-module | Verify by | Status |
+| --- | --- | --- | --- |
+| 28.1 | Block-level suggestion routed through the Tier-3 `suggest-back` gate (platform-mediated) | an adapter's improved block lands in the upstream author's review queue as a Tier-3 item | ✅ `listAdaptedBlocksAction` + `suggestBackAction` (uses the M26 lineage to find the upstream block; records a Tier-3 `suggest-back` change on the UPSTREAM package; logs `suggestion.sent`); AdaptPanel "Suggest your improvements back" |
+| 28.2 | Author review applies the suggestion to their block | accept → the upstream block's title/body updates (id preserved), synced; reject discards | ✅ `change-actions` `suggest-back` accept branch (applies via `saveStudyGuide`, stale-tolerant); Tier-3 = itemized (excluded from batch-accept) |
+| 28.3 | Optional materialization as a GitHub PR to the upstream public repo | a suggestion becomes a PR on the upstream repo | ⏸ deferred (external — needs a `createPullRequest` bridge + App PR permission on upstream) |
+
+*Notes:* the platform-mediated path works within the educator's own packages
+(same store/owner); cross-owner suggest-back (RLS-crossing insert into another
+owner's queue) needs a service-mediated path — the cross-owner-ecosystem follow-up.
 
 ### M29 — Citation depth: DOI *(M15.4 — external, likely deferred)*
 
@@ -563,6 +568,16 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
 ## Log
 
 ### 2026-06-17
+- **M28 — suggest back (adapter → author), data path.** Platform-mediated
+  (goal.md): `suggestBackAction` uses the M26 lineage to find the upstream block
+  and records a Tier-3 `suggest-back` change on the UPSTREAM package's review
+  queue (`listAdaptedBlocksAction` lists eligible blocks; AdaptPanel "Suggest your
+  improvements back"; logs `suggestion.sent`). The author accepts it via the
+  `change-actions` `suggest-back` branch (applies the suggested title/body to their
+  block through `saveStudyGuide`, stale-tolerant; Tier-3 itemized, not batchable).
+  typecheck + all tests + web build green. Deferred: GitHub-PR materialization
+  (28.3, external); cross-owner suggest-back (service-mediated). **Phase 5 core
+  (adapt + pull + suggest-back) complete**; M29 DOI remains (external/Zenodo).
 - **M27 — pull updates (upstream → adapter).** The lineage record (M26) now stores
   `sourcePath` + `sourceContentHash`; package-ops `detectUpstreamUpdates` flags
   adapted blocks whose source drifted (M3-style hashing), and
