@@ -569,8 +569,8 @@ then the search UI over it, then governance scaffolding.
 
 | # | Sub-module | Verify by | Status |
 | --- | --- | --- | --- |
-| 31.1 | Adapt a package you don't own (from the portal) — service-mediated read of a public package → adapt into your workspace with lineage | a stranger's published package adapts in with `adaptedFrom` + attribution + license gate | ⬜ |
-| 31.2 | Cross-owner suggest-back (RLS-crossing, service-mediated insert into the upstream author's review queue) | a suggestion from an adapter reaches a different owner's Tier-3 queue | ⬜ |
+| 31.1 | Adapt a package you don't own (from the portal) — **public GitHub read** of a registered package → adapt into your workspace with lineage | a stranger's published package adapts in with `adaptedFrom` + attribution + license gate | ✅ groundwork `adaptGivenBlocksInto` (decouples source-read from target-write); github-bridge tokenless `fetchPublicRepoFile` (raw.githubusercontent — no RLS bypass, no token); web `adaptFromPortalAction` (gated on portal registration; reads alembic.json + first chapter; license-gated) + `listPortalAdaptSourcesAction`; AdaptPanel "From the portal (other educators)". Adapts the source's first chapter |
+| 31.2 | Cross-owner suggest-back via a dedicated `suggestions` table (RLS: insert by any signed-in user targeting a registered package; select/resolve by the owner) | a suggestion from an adapter reaches a different owner's inbox; owner accepts → applies to their block | ⬜ next — needs migration `0009_suggestions.sql` |
 | 31.3 | *(optional)* GitHub-PR materialization of a suggestion (bridge `createPullRequest`) | a suggestion can become a PR on the upstream public repo | ⏸ deferred (external) |
 
 ### M32 — Searchable portal *(planned)*
@@ -612,6 +612,16 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
 ## Log
 
 ### 2026-06-17
+- **M31.1 — cross-owner adaptation (adapt a stranger's package).** Decision: dedicated
+  table + RLS, **public GitHub reads, no service-role bypass**. Groundwork:
+  `adaptGivenBlocksInto` (decouples source-read from target-write — the cross-owner
+  primitive; 139 package-ops tests unchanged). github-bridge `fetchPublicRepoFile`
+  (tokenless raw.githubusercontent read of a public repo). Web `adaptFromPortalAction`
+  (gated on portal registration = public + consented; reads the source's `alembic.json`
+  + first chapter from its public repo; license-gated via `canAdapt`; lineage +
+  attribution recorded) + `listPortalAdaptSourcesAction`; AdaptPanel "From the portal
+  (other educators)". typecheck + all tests + web build green. Next: **M31.2** cross-owner
+  suggest-back via a `suggestions` table (needs migration `0009_suggestions.sql`).
 - **M30 — LRMI / schema.org `LearningResource` markup (Phase 6 leading piece).**
   Published pages are now harvestable independently of the portal (goal.md §6).
   renderer `learning-resource.ts` (pure): `learningResource`/`learningResourceJsonLd`

@@ -4,19 +4,24 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import {
   serializeStudyGuide,
+  parseStudyGuide,
   type License,
 } from "@alembic/package-contract";
 import {
   adaptBlocksInto,
+  adaptGivenBlocksInto,
   loadStudyGuide,
   detectUpstreamUpdates,
   applyUpstreamUpdate,
   loadAdaptationProvenance,
+  chapterStudyGuidePath,
+  DEFAULT_STUDY_GUIDE_PATH,
   AdaptationNotAllowedError,
   ADAPTATIONS_PROVENANCE_PATH,
   type UpstreamUpdate,
   type PullUpdateMode,
 } from "@alembic/package-ops";
+import { fetchPublicRepoFile } from "@alembic/github-bridge";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
 import { supabaseEventLogger } from "@/lib/events";
@@ -112,6 +117,130 @@ export async function adaptChapterAction(
   } catch (e) {
     if (e instanceof AdaptationNotAllowedError) return { ok: false, error: e.reason };
     return { ok: false, error: "Couldn't adapt that content. Please try again." };
+  }
+}
+
+export interface PortalAdaptSource {
+  packageId: string;
+  title: string;
+  license: License;
+  publicRepoUrl: string;
+  siteUrl: string;
+}
+
+/** M31 — portal-registered packages (other educators') offered as adapt sources. */
+export async function listPortalAdaptSourcesAction(
+  packageId: string,
+): Promise<PortalAdaptSource[]> {
+  const { supabase } = await requireUser();
+  const { data } = await supabase
+    .from("portal_registrations")
+    .select("package_id, title, license, public_repo_url, site_url")
+    .neq("package_id", packageId)
+    .order("registered_at", { ascending: false });
+  return (
+    (data as
+      | { package_id: string; title: string; license: License; public_repo_url: string; site_url: string }[]
+      | null) ?? []
+  ).map((r) => ({
+    packageId: r.package_id,
+    title: r.title,
+    license: r.license,
+    publicRepoUrl: r.public_repo_url,
+    siteUrl: r.site_url,
+  }));
+}
+
+/** Parse `owner/repo` from a GitHub repo URL. */
+function repoCoordsFromUrl(url: string): { owner: string; repo: string } | null {
+  const m = url.match(/github\.com\/([^/]+)\/([^/?#]+?)(?:\.git)?\/?$/i);
+  return m ? { owner: m[1]!, repo: m[2]! } : null;
+}
+
+/**
+ * M31.1 — adapt a stranger's PUBLIC, portal-registered package into the current
+ * chapter. Reads the source's content from its public GitHub repo (no RLS bypass,
+ * no token — the content is genuinely public), then writes via the shared
+ * `adaptGivenBlocksInto` primitive (license-gated, new ids, recorded lineage +
+ * attribution). Adapts the source's first chapter.
+ */
+export async function adaptFromPortalAction(
+  packageId: string,
+  sourcePackageId: string,
+  targetPath: string,
+): Promise<AdaptResult> {
+  const { supabase, user } = await requireUser();
+  const store = new SupabaseSandboxStore(supabase);
+  try {
+    const target = await store.getPackage(packageId);
+    if (!target) return { ok: false, error: "Package not found." };
+
+    // The source must be portal-registered (= public + consented to discovery).
+    const { data: reg } = await supabase
+      .from("portal_registrations")
+      .select("title, license, public_repo_url, site_url")
+      .eq("package_id", sourcePackageId)
+      .maybeSingle();
+    if (!reg) return { ok: false, error: "That package isn't listed in the portal." };
+    const r = reg as { title: string; license: License; public_repo_url: string; site_url: string };
+    const coords = repoCoordsFromUrl(r.public_repo_url);
+    if (!coords) return { ok: false, error: "Couldn't resolve the source repository." };
+
+    // Read the source's first chapter from its public repo (tokenless).
+    const manifestRaw = await fetchPublicRepoFile(coords, "alembic.json");
+    let sourcePath = DEFAULT_STUDY_GUIDE_PATH;
+    if (manifestRaw) {
+      try {
+        const m = JSON.parse(manifestRaw) as { chapters?: { slug: string }[] };
+        if (m.chapters?.length) sourcePath = chapterStudyGuidePath(m.chapters[0]!.slug);
+      } catch { /* fall back to the default chapter path */ }
+    }
+    const md = await fetchPublicRepoFile(coords, sourcePath);
+    if (md == null) return { ok: false, error: "Couldn't read the source content." };
+    const parsed = parseStudyGuide(md);
+    const blocks = parsed.blocks
+      .filter((b) => b.id)
+      .map((b) => ({ sourceBlockId: b.id!, title: b.title, body: b.body }));
+    if (blocks.length === 0) return { ok: false, error: "The source has no sections to adapt." };
+
+    const res = await adaptGivenBlocksInto(store, {
+      target: { packageId, path: targetPath, license: target.manifest.license },
+      source: {
+        packageId: sourcePackageId,
+        title: r.title,
+        license: r.license,
+        attribution: `Adapted from "${r.title}"`,
+        url: r.site_url,
+        adaptedAt: new Date().toISOString(),
+      },
+      sourcePath,
+      blocks,
+    });
+
+    const doc = await loadStudyGuide(store, packageId, targetPath);
+    const provFile = (await store.listFiles(packageId)).find(
+      (f) => f.repo === "public" && f.path === ADAPTATIONS_PROVENANCE_PATH,
+    );
+    await syncFilesToGitHub(
+      supabase, store, user.id, packageId,
+      [
+        { path: targetPath, content: serializeStudyGuide(doc.preamble, doc.blocks) },
+        ...(provFile ? [{ path: ADAPTATIONS_PROVENANCE_PATH, content: provFile.content }] : []),
+      ],
+      `Adapt sections from "${r.title}" (Alembic)`,
+    );
+    await supabaseEventLogger(supabase).log({
+      type: "adaptation.completed",
+      userId: user.id,
+      packageId,
+      detail: { sourcePackageId, blocks: res.newBlockIds.length, crossOwner: true },
+      occurredAt: new Date().toISOString(),
+    });
+    revalidatePath(`/workspace/${packageId}`);
+    return { ok: true, adapted: res.newBlockIds.length };
+  } catch (e) {
+    if (e instanceof AdaptationNotAllowedError) return { ok: false, error: e.reason };
+    return { ok: false, error: "Couldn't adapt from the portal. Please try again." };
   }
 }
 

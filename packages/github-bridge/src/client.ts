@@ -6,6 +6,28 @@ export interface RepoCoords {
 }
 
 /**
+ * Read a file from a PUBLIC repo with NO authentication, via raw.githubusercontent.
+ * Used for cross-owner adaptation (M31): an educator adapts a stranger's
+ * portal-published package, whose content is genuinely public — so no
+ * installation token (which wouldn't cover another owner's repo) and no RLS
+ * bypass. Returns null on 404.
+ */
+export async function fetchPublicRepoFile(
+  coords: RepoCoords,
+  path: string,
+  ref = "main",
+  fetchImpl: FetchLike = defaultFetch,
+): Promise<string | null> {
+  const url = `https://raw.githubusercontent.com/${coords.owner}/${coords.repo}/${ref}/${path}`;
+  const res = await fetchImpl(url, { method: "GET" });
+  if (res.status === 404) return null;
+  if (!res.ok) {
+    throw new GitHubError(`Public read ${path} failed`, res.status, await res.text().catch(() => undefined));
+  }
+  return res.text();
+}
+
+/**
  * Thin GitHub REST client over an installation token. Only the operations
  * Alembic needs: create repos from templates, commit a file set atomically
  * (Git Data API), list commits, and read a file at a ref (for restore).

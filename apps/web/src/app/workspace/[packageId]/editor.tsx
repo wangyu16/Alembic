@@ -45,8 +45,11 @@ import {
   applyUpstreamUpdateAction,
   listAdaptedBlocksAction,
   suggestBackAction,
+  listPortalAdaptSourcesAction,
+  adaptFromPortalAction,
   type AdaptSource,
   type AdaptedBlock,
+  type PortalAdaptSource,
 } from "./adapt-actions";
 import type { UpstreamUpdate } from "@alembic/package-ops";
 import {
@@ -849,6 +852,7 @@ function AdaptPanel({
   const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
   const [sources, setSources] = useState<AdaptSource[]>([]);
+  const [portalSources, setPortalSources] = useState<PortalAdaptSource[]>([]);
   const [updates, setUpdates] = useState<UpstreamUpdate[]>([]);
   const [adapted, setAdapted] = useState<AdaptedBlock[]>([]);
   const [note, setNote] = useState<string | null>(null);
@@ -857,15 +861,32 @@ function AdaptPanel({
   async function openPanel() {
     setOpen(true);
     if (loaded) return;
-    const [s, u, a] = await Promise.all([
+    const [s, u, a, p] = await Promise.all([
       listAdaptSourcesAction(packageId),
       listUpstreamUpdatesAction(packageId, activePath),
       listAdaptedBlocksAction(packageId, activePath),
+      listPortalAdaptSourcesAction(packageId),
     ]);
     setSources(s);
     setUpdates(u);
     setAdapted(a);
+    setPortalSources(p);
     setLoaded(true);
+  }
+
+  async function adaptFromPortal(sourceId: string) {
+    setBusy(true);
+    setError(null);
+    setNote(null);
+    const r = await adaptFromPortalAction(packageId, sourceId, activePath);
+    if (r.ok) {
+      setNote(`Adapted ${r.adapted} section(s) from the portal — lineage + attribution recorded.`);
+      onAdapted();
+      if (typeof window !== "undefined") window.location.reload();
+    } else {
+      setError(r.error ?? "Couldn't adapt from the portal.");
+    }
+    setBusy(false);
   }
 
   async function suggestBack(targetBlockId: string) {
@@ -982,6 +1003,31 @@ function AdaptPanel({
           ))}
         </ul>
       )}
+      {portalSources.length > 0 && (
+        <div className="mt-3">
+          <div className="text-xs font-medium uppercase tracking-wide text-faint">
+            From the portal (other educators)
+          </div>
+          <ul className="mt-1 divide-y divide-[var(--edge-soft)]">
+            {portalSources.map((s) => (
+              <li key={s.packageId} className="flex items-center justify-between gap-2 py-2">
+                <span className="min-w-0 truncate text-sm">
+                  <span className="chip mr-1">{s.license}</span>{s.title}
+                </span>
+                <button
+                  onClick={() => adaptFromPortal(s.packageId)}
+                  disabled={busy}
+                  title="Adapt this published package's first chapter into the current chapter"
+                  className="shrink-0 rounded border border-zinc-300 px-2 py-1 text-xs hover:bg-elevated disabled:opacity-50 dark:border-zinc-700"
+                >
+                  Adapt →
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {adapted.length > 0 && (
         <div className="mt-3">
           <div className="text-xs font-medium uppercase tracking-wide text-faint">
