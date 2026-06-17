@@ -11,10 +11,19 @@ import { ThemeToggle } from "@/components/theme-toggle";
  */
 export async function SiteHeader() {
   let user = null;
+  let isAdmin = false;
   try {
     const supabase = await createSupabaseServerClient();
     const { data } = await supabase.auth.getUser();
     user = data.user;
+    if (user) {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("is_admin")
+        .eq("id", user.id)
+        .maybeSingle();
+      isAdmin = Boolean((profile as { is_admin?: boolean } | null)?.is_admin);
+    }
   } catch {
     // Not configured or no session → treat as anonymous.
   }
@@ -49,6 +58,11 @@ export async function SiteHeader() {
               <Link href="/studio" className="transition-colors hover:text-ink">
                 Studio
               </Link>
+              {isAdmin && (
+                <Link href="/admin" className="transition-colors hover:text-ink">
+                  Admin
+                </Link>
+              )}
               {handle && <span className="text-faint">{handle}</span>}
               <form action="/auth/signout" method="post">
                 <button type="submit" className="btn btn-ghost btn-sm">

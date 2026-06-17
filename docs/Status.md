@@ -11,7 +11,7 @@ same commit as the work it tracks. Statuses: ✅ done · 🔄 partially shipped 
 
 These are the only things blocking full production parity with the code:
 
-1. **Migrations 0005–0010 are all applied** (✅ 0005 tier queue, 0006 a11y, 0007 AI budget, 0008 reconciliation SHA, 0009 cross-owner suggestions, 0010 portal governance). No migration pending. Note: 0007's budget stays dormant until `AI_TOKEN_BUDGET` is set, and **after 0010 listing requires `portal_eligible=true`** — flag study participants in the dashboard.
+1. **Migrations 0005–0010 are applied; `0011_admin.sql` awaits `db push`** (✅ 0005–0010; ⬜ 0011 = `profiles.is_admin` for the M35 admin module). Note: 0007's budget stays dormant until `AI_TOKEN_BUDGET` is set; after 0010 listing requires `portal_eligible=true`; after 0011, **flag yourself `is_admin=true`** (dashboard) to reach `/admin`. The admin module also needs `SUPABASE_SECRET_KEY` set (service-role reads) — and optionally `RESEARCH_EXPORT_SALT`.
 2. ✅ **Done** — Vercel build command is `node ../../scripts/fetch-vendor.mjs && next build`; Plotly is vendored and the plot editor (M11b) works live.
 3. **Interactive verification passes** (can't run in CI): slides render (M13), studio File System Access open/save (M17), and the AI/reconcile live runs (M18 coherence agent, M9.6 draft-from-plan, M20 reconcile, M23 question generation, M26–M28 adapt/pull/suggest-back) once Portkey is on Vercel. Ketcher (M11) and plots (M11b) are verified live.
 4. **Set the Portkey env vars in Vercel** (`AI_GATEWAY_URL=https://api.portkey.ai/v1`, `AI_GATEWAY_API_KEY`, `AI_MODEL_DEFAULT/FAST/STRONG` = `@<provider-slug>/<model>`) to verify the **M18 coherence agent** live. Local dev can't reach Portkey from this machine (the dev Mac's security/firewall blocks the `node` binary's outbound — `curl` works, `node` ETIMEDOUTs — not an app issue); Vercel's egress is clean. See [ai-architecture.md](specs/ai-architecture.md).
@@ -29,7 +29,7 @@ These are the only things blocking full production parity with the code:
 | 4 | Assessment & question templates | ✅ core built (M22 contract, M23 generation, M24 answer-key/embargo, M25 LMS export); follow-ups: blueprint/embargo editor UI + early-lift. No worker tier needed |
 | 5 | Adaptation ecosystem | 🔄 core built (M26 adapt & lineage, M27 pull-updates, M28 suggest-back data path); deferred: M29 DOI + PR materialization (external), cross-owner adapt/suggest-back, AI-assisted merge (27.3), whole-package fork |
 | 6 | Portal & discovery | ✅ core built (M30 LRMI, M31 cross-owner adapt/suggest-back, M32 searchable portal, M33 governance scaffolding); migrations 0009/0010 applied |
-| 7 | Research operations & study readiness | 🔄 in progress (M34 de-identified export core built; M35 admin module, M36 credits/quotas, M37 managed mode next) |
+| 7 | Research operations & study readiness | 🔄 in progress (M34 export core + M35 admin/ops module built; M36 credits/quotas, M37 managed mode next) |
 | 8 | Hardening & sustainability | ⬜ |
 
 ## v0.1 sub-modules
@@ -616,13 +616,13 @@ managed mode + the FERPA/IRB data-handling review (M16.4).
 | 34.1 | Confirm/extend the event taxonomy for study completeness (reuse, completeness, workload indicators) | the events needed for the study's metrics exist (or are added additively) | ✅ reviewed — broad coverage: authoring (create/edit/save w/ `durationMs` workload signal), AI accept/edit/reject with **Tier-1 logged separately** from human decisions, reuse (`adaptation.completed`/`upstream.update.applied`/`suggestion.sent`), a11y, import, agent, reconcile, leak, export. Additive if a specific study metric is missing |
 | 34.2 | Pure de-identification + CSV/JSON serialization of `research_events` (stable participant pseudonym; never GitHub identity/content) | a row set exports to de-identified CSV + JSON; same user → same code; no raw user_id | ✅ research-events `deidentifyEvents` (caller injects a salted one-way `pseudonymize`, so the package stays dependency-free + the salt never lives there; drops raw user_id/package_id) + `eventsToCsv`/`eventsToJson` (RFC-4180 escaping). 5 tests (9 total). Download wiring lands in the M35 admin module |
 
-### M35 — Admin / operations module *(planned)*
+### M35 — Admin / operations module
 
-Admin-gated `/admin` (migration: `profiles.is_admin`): component/status view, error
-monitoring (`error.surfaced`), demo-content management, consent/status flags
-(toggle `portal_eligible`, review `portal_reports` — the Phase-6 deferred admin UI),
-and the **de-identified export download** (admin reads `research_events` via
-service-role + the M34 transformer). ⬜
+| # | Sub-module | Verify by | Status |
+| --- | --- | --- | --- |
+| 35.1 | Admin gate (`profiles.is_admin`) + service-role behind it | a non-admin is redirected; an admin reaches `/admin`; cross-user reads use the service role only after the gate | ✅ migration `0011` (`profiles.is_admin`); `lib/admin.requireAdmin` (checks own profile via user client, then hands out a service client); `lib/supabase/service` (service-role, server-only); "Admin" header link for admins |
+| 35.2 | De-identified research export download | admin downloads CSV/JSON of de-identified events | ✅ `GET /admin/export?format=csv\|json` — service-reads `research_events`, applies the M34 `deidentifyEvents` with a salted one-way `exportPseudonymizer` (RESEARCH_EXPORT_SALT) |
+| 35.3 | Status, error monitoring, consent/status flags + report review | admin sees counts + recent errors; toggles `portal_eligible`; resolves `portal_reports` | ✅ `/admin` page: package/registration/event counts, recent `error.surfaced`, participant eligibility toggles (M33), open-report resolve/dismiss (the Phase-6 deferred admin UI). Demo-content management is a follow-up |
 
 ### M36 — Centrally-managed AI credits & quotas *(planned)*
 
@@ -664,6 +664,17 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
 ## Log
 
 ### 2026-06-17
+- **M35 — admin / operations module.** Admin gate: migration `0011`
+  (`profiles.is_admin`); `requireAdmin` checks the user's own profile (user client),
+  then hands out a service-role client (`lib/supabase/service`, server-only) for
+  the cross-user reads research/admin need — **service-role used ONLY behind the
+  gate**. `/admin`: package/registration/event counts, recent `error.surfaced`,
+  participant `portal_eligible` toggles (M33), and open-`portal_reports`
+  resolve/dismiss (the Phase-6 deferred admin UI). De-identified export download
+  `GET /admin/export?format=csv|json` (service-reads `research_events` → M34
+  `deidentifyEvents` with a salted `exportPseudonymizer`). "Admin" header link for
+  admins. typecheck + web build green. **Migration 0011 + `SUPABASE_SECRET_KEY`
+  awaited.** Next: M36 credits/quotas + FERPA review. Demo-content management deferred.
 - **M34 — research event taxonomy + de-identified export (Phase 7 durable core).**
   Reviewed the taxonomy (34.1): broad coverage — authoring with `durationMs`
   workload signal, AI accept/edit/reject with Tier-1 logged separately, reuse
