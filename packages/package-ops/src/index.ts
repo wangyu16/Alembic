@@ -17,3 +17,4 @@ export * from "./ops";
 export * from "./reconcile";
 export * from "./lms-export";
 export * from "./adaptation";
+export * from "./pull-updates";

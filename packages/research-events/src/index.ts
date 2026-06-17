@@ -50,6 +50,7 @@ export const EVENT_TYPES = [
   "leak.remediated",
   // Phase 5 — adaptation ecosystem.
   "adaptation.completed",
+  "upstream.update.applied",
   "error.surfaced",
 ] as const;
 

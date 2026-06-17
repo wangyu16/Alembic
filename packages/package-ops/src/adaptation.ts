@@ -15,11 +15,17 @@
 import {
   canAdapt,
   assertPathAllowedInRepo,
+  hashContent,
   type AdaptationSource,
   type License,
 } from "@alembic/package-contract";
 import type { PackageStore } from "./store";
 import { loadStudyGuide, saveStudyGuide } from "./study-guide";
+
+/** Stable content hash of a source block (title + body) — drives M27 drift detection. */
+export function hashAdaptedBlock(block: { title: string; body: string }): string {
+  return hashContent(`${block.title}\n${block.body}`);
+}
 
 /** One adapted block's lineage (provenance/adaptations.json entry). */
 export interface AdaptedBlockRef {
@@ -28,6 +34,10 @@ export interface AdaptedBlockRef {
   sourceBlockId: string;
   /** Source snapshot tag the adaptation was pinned to, if any. */
   snapshot?: string;
+  /** Source chapter path the block came from (for pull-updates, M27). */
+  sourcePath?: string;
+  /** Hash of the source block at adaptation time — upstream drift = hash differs. */
+  sourceContentHash?: string;
 }
 
 export const ADAPTATIONS_PROVENANCE_PATH = "provenance/adaptations.json";
@@ -126,6 +136,8 @@ export async function adaptBlocksInto(
     targetBlockId: b.id!,
     sourcePackageId: input.source.packageId,
     sourceBlockId: selected[i]!.id!,
+    sourcePath: sourceDoc.path,
+    sourceContentHash: hashAdaptedBlock(selected[i]!),
     ...(input.attribution.snapshot ? { snapshot: input.attribution.snapshot } : {}),
   }));
 

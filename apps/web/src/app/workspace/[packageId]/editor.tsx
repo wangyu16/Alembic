@@ -38,7 +38,14 @@ import {
   generateItemsAction,
   type AssessmentSummary,
 } from "./assessment-actions";
-import { listAdaptSourcesAction, adaptChapterAction, type AdaptSource } from "./adapt-actions";
+import {
+  listAdaptSourcesAction,
+  adaptChapterAction,
+  listUpstreamUpdatesAction,
+  applyUpstreamUpdateAction,
+  type AdaptSource,
+} from "./adapt-actions";
+import type { UpstreamUpdate } from "@alembic/package-ops";
 import {
   addCitationAction,
   createSnapshotAction,
@@ -839,14 +846,36 @@ function AdaptPanel({
   const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
   const [sources, setSources] = useState<AdaptSource[]>([]);
+  const [updates, setUpdates] = useState<UpstreamUpdate[]>([]);
   const [note, setNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   async function openPanel() {
     setOpen(true);
     if (loaded) return;
-    setSources(await listAdaptSourcesAction(packageId));
+    const [s, u] = await Promise.all([
+      listAdaptSourcesAction(packageId),
+      listUpstreamUpdatesAction(packageId, activePath),
+    ]);
+    setSources(s);
+    setUpdates(u);
     setLoaded(true);
+  }
+
+  async function resolve(targetBlockId: string, mode: "take" | "keep") {
+    setBusy(true);
+    setError(null);
+    setNote(null);
+    const r = await applyUpstreamUpdateAction(packageId, activePath, targetBlockId, mode);
+    if (r.ok) {
+      setUpdates((xs) => xs.filter((u) => u.targetBlockId !== targetBlockId));
+      setNote(mode === "take" ? "Took the upstream version." : "Kept your version (divergence recorded).");
+      onAdapted();
+      if (mode === "take" && typeof window !== "undefined") window.location.reload();
+    } else {
+      setError(r.error ?? "Couldn't apply that update.");
+    }
+    setBusy(false);
   }
 
   async function adapt(sourceId: string) {
@@ -883,10 +912,44 @@ function AdaptPanel({
         identifiers, recorded lineage, and attribution. Only license-compatible
         adaptations are allowed.
       </p>
+      {updates.length > 0 && (
+        <div className="mb-3">
+          <div className="text-xs font-medium uppercase tracking-wide text-faint">
+            Updates from upstream ({updates.length})
+          </div>
+          <ul className="mt-1 divide-y divide-[var(--edge-soft)]">
+            {updates.map((u) => (
+              <li key={u.targetBlockId} className="py-2">
+                <div className="truncate text-sm" title={u.upstreamBody}>
+                  “{u.targetTitle}” changed upstream
+                </div>
+                <div className="mt-1 flex gap-2">
+                  <button
+                    onClick={() => resolve(u.targetBlockId, "take")}
+                    disabled={busy}
+                    className="rounded border border-zinc-300 px-2 py-1 text-xs hover:bg-elevated disabled:opacity-50 dark:border-zinc-700"
+                  >
+                    Take update
+                  </button>
+                  <button
+                    onClick={() => resolve(u.targetBlockId, "keep")}
+                    disabled={busy}
+                    className="rounded border border-zinc-300 px-2 py-1 text-xs hover:bg-elevated disabled:opacity-50 dark:border-zinc-700"
+                  >
+                    Keep mine
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      <div className="text-xs font-medium uppercase tracking-wide text-faint">Adapt sections</div>
       {sources.length === 0 ? (
-        <p className="text-xs text-faint">No other packages to adapt from yet.</p>
+        <p className="mt-1 text-xs text-faint">No other packages to adapt from yet.</p>
       ) : (
-        <ul className="divide-y divide-[var(--edge-soft)]">
+        <ul className="mt-1 divide-y divide-[var(--edge-soft)]">
           {sources.map((s) => (
             <li key={s.id} className="flex items-center justify-between gap-2 py-2">
               <span className="min-w-0 truncate text-sm">

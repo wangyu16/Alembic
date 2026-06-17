@@ -28,7 +28,7 @@ These are the only things blocking full production parity with the code:
 | 2 | Authoring depth & chemistry-first (tiers, a11y, carriers & assets: Ketcher/plots/slides/PDF, import, snapshots, gateway, local mode) | ✅ core built (M9–M17); documented deferrals → worker tier (PDF, foreign import), studio editing/projects, DOI/compare, per-institution quotas |
 | 3 | Agent harness & reconciliation | ✅ core built (M18 coherence agent, M19 job seam, M20 reconciliation, M21 leakage audit + runbook); deferred: worker-tier agent execution, one-click remediation, private-repo reconcile |
 | 4 | Assessment & question templates | ✅ core built (M22 contract, M23 generation, M24 answer-key/embargo, M25 LMS export); follow-ups: blueprint/embargo editor UI + early-lift. No worker tier needed |
-| 5 | Adaptation ecosystem | 🔄 in progress (M26 adapt & lineage built; M27 pull-updates, M28 suggest-back, M29 DOI next) |
+| 5 | Adaptation ecosystem | 🔄 in progress (M26 adapt & lineage + M27 pull-updates built; M28 suggest-back, M29 DOI next) |
 | 6 | Portal & discovery | ⬜ |
 | 7 | Research operations & study readiness | ⬜ |
 | 8 | Hardening & sustainability | ⬜ |
@@ -511,12 +511,17 @@ integrations (Zenodo DOI; GitHub PR materialization) are scoped/deferred.
 | 26.2 | package-ops adapt ops: copy block / artifact / chapter / whole course with NEW ids + `adaptedFrom` lineage (+ `replacesId` where replacing), attribution preserved, gated on `canAdapt` | unit tests: fork a chapter → new ids, lineage + attribution recorded; license-incompatible adapt blocked | ✅ package-ops `adaptBlocksInto` (license-gated; new minted ids via `saveStudyGuide`; per-block lineage in public `provenance/adaptations.json`; throws `AdaptationNotAllowedError`) + `loadAdaptationProvenance`. 4 tests (135 package-ops). Whole-package fork (createPackage + manifest.adaptedFrom) is a thin follow-up |
 | 26.3 | Thin web "Adapt" flow (adapt a block/chapter/package into the educator's workspace) | educator adapts content; new package/blocks carry lineage | ✅ `adapt-actions` (`listAdaptSourcesAction`, `adaptChapterAction` — license-gated, syncs chapter + provenance to GitHub, logs `adaptation.completed`) + `AdaptPanel` (Author group). Adapts among the educator's own packages; cross-owner/portal adaptation is a follow-up |
 
-### M27 — Pull updates (upstream → adapter) *(planned)*
+### M27 — Pull updates (upstream → adapter)
 
-Detect upstream changes to adapted blocks (stored `adaptedFrom.snapshot` vs a
-newer upstream snapshot via the bridge), notify in teaching terms, take-update /
-AI-assisted merge / keep-mine with **recorded divergence** (reuses M3 staleness +
-M20 reconciliation + M18 merge patterns). ⬜
+| # | Sub-module | Verify by | Status |
+| --- | --- | --- | --- |
+| 27.1 | Detect upstream changes to adapted blocks (M3-style hash drift over the lineage) | an edit to a source block surfaces an available update; clean = none | ✅ lineage (M26) now records `sourcePath` + `sourceContentHash`; package-ops `detectUpstreamUpdates` flags entries whose source hash drifted (skips legacy/removed). 4 tests (139 package-ops) |
+| 27.2 | Take-update / keep-mine with recorded divergence | take applies upstream + clears flag; keep leaves content but acknowledges (clears flag) | ✅ `applyUpstreamUpdate(take|keep)` — both advance the stored hash; take replaces via `saveStudyGuide`, keep records divergence. Web `listUpstreamUpdatesAction`/`applyUpstreamUpdateAction` + AdaptPanel "Updates from upstream" (Take/Keep), syncs chapter + provenance, logs `upstream.update.applied` |
+| 27.3 | AI-assisted merge for diverged blocks | merge upstream changes into the adapter's edited block, reviewed | ⬜ deferred (single-call provider merge → Tier-2 review; take/keep ship now) |
+
+*Notes:* detection runs within the educator's own packages (same store); pulling
+from a cross-owner upstream via GitHub ties to the cross-owner-adaptation
+follow-up. AI-assisted merge (27.3) is the remaining slice.
 
 ### M28 — Suggest back (adapter → author) *(planned)*
 
@@ -558,6 +563,16 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
 ## Log
 
 ### 2026-06-17
+- **M27 — pull updates (upstream → adapter).** The lineage record (M26) now stores
+  `sourcePath` + `sourceContentHash`; package-ops `detectUpstreamUpdates` flags
+  adapted blocks whose source drifted (M3-style hashing), and
+  `applyUpstreamUpdate(take|keep)` resolves each — take replaces the block via
+  `saveStudyGuide`, keep records divergence; both advance the stored hash to clear
+  the flag. Web `listUpstreamUpdatesAction`/`applyUpstreamUpdateAction` + the
+  AdaptPanel "Updates from upstream" (Take/Keep) sync the chapter + provenance and
+  log `upstream.update.applied`. 4 tests (139 package-ops); typecheck + build green.
+  Deferred: AI-assisted merge for diverged blocks (27.3); cross-owner upstream via
+  GitHub. Next: M28 suggest-back.
 - **M26 — adaptation & lineage (Phase 5, fork at every scale).** Built durable-first.
   Contract `adaptation.ts` (M26.1): `canAdapt` pure CC-4.0 compatibility matrix
   (CC0→any; BY→any BY* not CC0; SA→same; NC stays NC) with educator-facing

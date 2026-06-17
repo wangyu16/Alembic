@@ -9,8 +9,12 @@ import {
 import {
   adaptBlocksInto,
   loadStudyGuide,
+  detectUpstreamUpdates,
+  applyUpstreamUpdate,
   AdaptationNotAllowedError,
   ADAPTATIONS_PROVENANCE_PATH,
+  type UpstreamUpdate,
+  type PullUpdateMode,
 } from "@alembic/package-ops";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
@@ -106,5 +110,60 @@ export async function adaptChapterAction(
   } catch (e) {
     if (e instanceof AdaptationNotAllowedError) return { ok: false, error: e.reason };
     return { ok: false, error: "Couldn't adapt that content. Please try again." };
+  }
+}
+
+/** M27 — list adapted blocks whose upstream source has changed. */
+export async function listUpstreamUpdatesAction(
+  packageId: string,
+  targetPath: string,
+): Promise<UpstreamUpdate[]> {
+  const { supabase } = await requireUser();
+  const store = new SupabaseSandboxStore(supabase);
+  try {
+    return await detectUpstreamUpdates(store, packageId, targetPath);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * M27 — resolve one upstream update: "take" the upstream content or "keep" your
+ * own (recorded divergence). Syncs the changed chapter + the provenance record.
+ */
+export async function applyUpstreamUpdateAction(
+  packageId: string,
+  targetPath: string,
+  targetBlockId: string,
+  mode: PullUpdateMode,
+): Promise<AdaptResult> {
+  const { supabase, user } = await requireUser();
+  const store = new SupabaseSandboxStore(supabase);
+  try {
+    const res = await applyUpstreamUpdate(store, packageId, targetPath, targetBlockId, mode);
+    if (!res.applied) return { ok: false, error: "That update is no longer available." };
+
+    const provFile = (await store.listFiles(packageId)).find(
+      (f) => f.repo === "public" && f.path === ADAPTATIONS_PROVENANCE_PATH,
+    );
+    const changes = [
+      ...(res.content ? [{ path: targetPath, content: res.content }] : []),
+      ...(provFile ? [{ path: ADAPTATIONS_PROVENANCE_PATH, content: provFile.content }] : []),
+    ];
+    await syncFilesToGitHub(
+      supabase, store, user.id, packageId, changes,
+      mode === "take" ? "Take upstream update (Alembic)" : "Keep local version (Alembic)",
+    );
+    await supabaseEventLogger(supabase).log({
+      type: "upstream.update.applied",
+      userId: user.id,
+      packageId,
+      detail: { mode, targetBlockId },
+      occurredAt: new Date().toISOString(),
+    });
+    revalidatePath(`/workspace/${packageId}`);
+    return { ok: true };
+  } catch {
+    return { ok: false, error: "Couldn't apply that update. Please try again." };
   }
 }
