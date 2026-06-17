@@ -12,7 +12,7 @@ same commit as the work it tracks. Statuses: ✅ done · 🔄 partially shipped 
 These are the only things blocking full production parity with the code:
 
 1. **Migrations 0005–0008 are all applied** (✅ 0005 tier queue, 0006 a11y, 0007 AI budget, 0008 `packages.last_synced_sha` for M20 reconciliation). (0007's budget stays dormant until `AI_TOKEN_BUDGET` is set.)
-1b. **Apply migration `0009_suggestions.sql`** (`supabase db push` / dashboard) — the cross-owner suggest-back inbox (M31.2). RLS-only (consent = portal registration; owner-only resolve); cross-owner suggest-back is dormant until applied.
+1b. **Apply migrations `0009_suggestions.sql` + `0010_governance.sql`** (`supabase db push` / dashboard) — 0009 = the cross-owner suggest-back inbox (M31.2, RLS-only); 0010 = portal governance (`profiles.portal_eligible` + `portal_reports`, M33). Cross-owner suggest-back is dormant until 0009; **after 0010, listing requires `portal_eligible=true`** — flag study participants in the dashboard.
 2. ✅ **Done** — Vercel build command is `node ../../scripts/fetch-vendor.mjs && next build`; Plotly is vendored and the plot editor (M11b) works live.
 3. **Interactive verification passes** (can't run in CI): slides render (M13), studio File System Access open/save (M17), and the AI/reconcile live runs (M18 coherence agent, M9.6 draft-from-plan, M20 reconcile, M23 question generation, M26–M28 adapt/pull/suggest-back) once Portkey is on Vercel. Ketcher (M11) and plots (M11b) are verified live.
 4. **Set the Portkey env vars in Vercel** (`AI_GATEWAY_URL=https://api.portkey.ai/v1`, `AI_GATEWAY_API_KEY`, `AI_MODEL_DEFAULT/FAST/STRONG` = `@<provider-slug>/<model>`) to verify the **M18 coherence agent** live. Local dev can't reach Portkey from this machine (the dev Mac's security/firewall blocks the `node` binary's outbound — `curl` works, `node` ETIMEDOUTs — not an app issue); Vercel's egress is clean. See [ai-architecture.md](specs/ai-architecture.md).
@@ -29,7 +29,7 @@ These are the only things blocking full production parity with the code:
 | 3 | Agent harness & reconciliation | ✅ core built (M18 coherence agent, M19 job seam, M20 reconciliation, M21 leakage audit + runbook); deferred: worker-tier agent execution, one-click remediation, private-repo reconcile |
 | 4 | Assessment & question templates | ✅ core built (M22 contract, M23 generation, M24 answer-key/embargo, M25 LMS export); follow-ups: blueprint/embargo editor UI + early-lift. No worker tier needed |
 | 5 | Adaptation ecosystem | 🔄 core built (M26 adapt & lineage, M27 pull-updates, M28 suggest-back data path); deferred: M29 DOI + PR materialization (external), cross-owner adapt/suggest-back, AI-assisted merge (27.3), whole-package fork |
-| 6 | Portal & discovery | 🔄 in progress (M30 LRMI + M31 cross-owner adapt/suggest-back + M32 searchable portal built; M33 governance next) |
+| 6 | Portal & discovery | ✅ core built (M30 LRMI, M31 cross-owner adapt/suggest-back, M32 searchable portal, M33 governance scaffolding); migrations 0009/0010 await db push |
 | 7 | Research operations & study readiness | ⬜ |
 | 8 | Hardening & sustainability | ⬜ |
 
@@ -581,10 +581,16 @@ then the search UI over it, then governance scaffolding.
 | 32.1 | Search + facet filters over the portal index | filter by text + discipline + license + accessibility; result count shown | ✅ `PortalBrowser` client component (search over title/description; discipline/license/accessibility facets, client-side over the small index); `/portal` page split into server (data + LRMI JSON-LD) + this browser. Quality indicators: license chip + a11y badge. **level / artifact-type / teaching-time facets need richer registration metadata** (follow-up) |
 | 32.2 | Adaptation entry point wired to M31 | a listed package leads to adapting it | ✅ each result has "Visit site" / "Source" + an "Adapt →" link to the workspace, where the M31 AdaptPanel lists portal sources to adapt. (A one-click portal→adapt-with-preselected-source is a follow-up.) |
 
-### M33 — Governance scaffolding *(planned)*
+### M33 — Governance scaffolding
 
-Registration limited to study participants during the grant; reporting/takedown
-path designed (full stewardship handoff is Phase 8). ⬜
+| # | Sub-module | Verify by | Status |
+| --- | --- | --- | --- |
+| 33.1 | Registration limited to study participants during the grant | a non-participant can't list on the index; a flagged participant can | ✅ `profiles.portal_eligible` (migration `0010`, default false); `registerPackageAction` gates on it with an educator-facing message. Operator flags participants (dashboard) |
+| 33.2 | Reporting + takedown path | anyone can report a listing; operators review; takedown removes the listing | ✅ `portal_reports` table (RLS: insert by anyone, read by operators only); `reportPackageAction` + a "Report" control on portal cards; takedown = owner unlist or operator removal. Procedure in [specs/portal-governance.md](specs/portal-governance.md). In-app admin UI is Phase 7 |
+
+*Exit:* ✅ during the grant, only participants list; the public can report; a
+documented takedown path exists. **Completes the Phase-6 core (M30–M33).**
+Full moderation + open registration + stewardship handoff are Phase 8.
 
 ## Phase 2 deferred follow-ups (tracked)
 
@@ -614,6 +620,16 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
 ## Log
 
 ### 2026-06-17
+- **M33 — governance scaffolding (completes Phase 6 core).** Registration limited to
+  study participants during the grant: `profiles.portal_eligible` (migration `0010`,
+  default false); `registerPackageAction` gates on it (educator-facing message);
+  operator flags participants in the dashboard. Reporting/takedown: `portal_reports`
+  table (RLS — insert by anyone incl. anonymous, read by operators only) +
+  `reportPackageAction` + a "Report" control on portal cards; takedown = owner
+  unlist or operator removal; procedure in [specs/portal-governance.md](specs/portal-governance.md).
+  In-app admin/moderation UI is Phase 7; open registration + stewardship handoff
+  Phase 8. typecheck + web build green. **Migrations 0009 + 0010 await `db push`.**
+  **Phase 6 (portal & discovery) complete (M30–M33).**
 - **M32 — searchable portal.** `/portal` split into a server page (data + the M30.2
   LRMI `ItemList` JSON-LD) + a `PortalBrowser` client component: text search over
   title/description plus discipline / license / accessibility facets (client-side

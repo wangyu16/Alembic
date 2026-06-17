@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import { reportPackageAction } from "@/app/portal/actions";
 
 export interface PortalRegistration {
   package_id: string;
@@ -114,11 +115,56 @@ export function PortalBrowser({ registrations }: { registrations: PortalRegistra
                 <Link href="/workspace" className="text-muted hover:text-ink" title="Open a package and adapt this from the portal in the editor">
                   Adapt →
                 </Link>
+                <ReportControl packageId={r.package_id} />
               </div>
             </li>
           ))}
         </ul>
       )}
     </>
+  );
+}
+
+/** Minimal report affordance (M33): a reason field → portal_reports. */
+function ReportControl({ packageId }: { packageId: string }) {
+  const [open, setOpen] = useState(false);
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  if (done) return <span className="text-xs text-faint">Reported — thank you.</span>;
+  if (!open) {
+    return (
+      <button onClick={() => setOpen(true)} className="text-xs text-faint hover:text-ink">
+        Report
+      </button>
+    );
+  }
+  return (
+    <span className="flex items-center gap-1">
+      <input
+        value={reason}
+        onChange={(e) => setReason(e.target.value)}
+        placeholder="Reason…"
+        aria-label="Report reason"
+        className="field text-xs"
+      />
+      <button
+        onClick={async () => {
+          setBusy(true);
+          setError(null);
+          const r = await reportPackageAction(packageId, reason);
+          if (r.ok) setDone(true);
+          else setError(r.error ?? "Couldn't report.");
+          setBusy(false);
+        }}
+        disabled={busy || !reason.trim()}
+        className="text-xs text-danger hover:underline disabled:opacity-50"
+      >
+        Send
+      </button>
+      {error && <span className="text-xs text-danger">{error}</span>}
+    </span>
   );
 }
