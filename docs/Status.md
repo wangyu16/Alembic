@@ -124,7 +124,7 @@ unless a dependency is noted.
 
 | # | Sub-module | Verify by | Status |
 | --- | --- | --- | --- |
-| 8.1 | Demo content + educator quickstart (1 page) | a new user can follow it unaided | ✅ [Quickstart.md](Quickstart.md) + worked sample [DemoContent.md](DemoContent.md) (full "Acid–Base Equilibria" package: sections, concept map + objectives, AI/worksheet prompts, private notes + answer key, full-loop checklist) |
+| 8.1 | Demo content + educator quickstart (1 page) | a new user can follow it unaided | ✅ [Quickstart.md](Quickstart.md) + 3 worked samples across STEM: chemistry [DemoContent.md](DemoContent.md) (full loop), physics [demo/DemoContent-Physics.md](demo/DemoContent-Physics.md), biology [demo/DemoContent-Biology.md](demo/DemoContent-Biology.md) — each with sections, concept map + objectives, AI/worksheet prompts, and a private item showing the public/private boundary |
 | 8.2 | Deploy at alembic.orz.how (Cloudflare DNS → Vercel) | production URL serves the app | ✅ live on Vercel (project `alembic`, root `apps/web`); https://alembic.orz.how serves (200, valid TLS); Supabase Auth + GitHub App callbacks set to production |
 | 8.3 | Pilot with 1–3 chemistry educators; fix top frictions | full loop completed by a non-developer; release criteria met | ⬜ after the live-verification sweep — protocol in [PilotReadiness.md](PilotReadiness.md) |
 

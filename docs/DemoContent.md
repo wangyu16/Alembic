@@ -8,6 +8,11 @@ objectives ("hidden" planning layer), the public/private boundary, and publish.
 Use it as your own first package, or hand it to a pilot educator who'd rather
 not bring their own topic.
 
+> **More sample packages** (other STEM subjects, showing the platform isn't
+> chemistry-only):
+> - [Physics — "Motion in One Dimension"](demo/DemoContent-Physics.md) (equations, vectors, a worked free-fall example)
+> - [Biology — "Mendelian Inheritance"](demo/DemoContent-Biology.md) (Punnett-square tables and ratios, no equations needed)
+
 - **Title:** `Acid–Base Equilibria`
 - **License:** `CC-BY-4.0`
 
