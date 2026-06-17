@@ -12,8 +12,8 @@ same commit as the work it tracks. Statuses: ✅ done · 🔄 partially shipped 
 These are the only things blocking full production parity with the code:
 
 1. **Migrations 0005–0008 are all applied** (✅ 0005 tier queue, 0006 a11y, 0007 AI budget, 0008 `packages.last_synced_sha` for M20 reconciliation). No migration is currently pending. (0007's budget stays dormant until `AI_TOKEN_BUDGET` is set.)
-2. **Set the Vercel build command to run `node ../../scripts/fetch-vendor.mjs && next build`** (not `fetch-ketcher`) so **Plotly** is vendored too — otherwise the plot editor 404s on its runtime in production.
-3. **Interactive verification passes** (can't run in CI): plot render (M11b), slides render (M13), studio File System Access open/save (M17). Ketcher (M11) is already verified live.
+2. ✅ **Done** — Vercel build command is `node ../../scripts/fetch-vendor.mjs && next build`; Plotly is vendored and the plot editor (M11b) works live.
+3. **Interactive verification passes** (can't run in CI): slides render (M13), studio File System Access open/save (M17), and the AI/reconcile live runs (M18 coherence agent, M9.6 draft-from-plan, M20 reconcile, M23 question generation, M26–M28 adapt/pull/suggest-back) once Portkey is on Vercel. Ketcher (M11) and plots (M11b) are verified live.
 4. **Set the Portkey env vars in Vercel** (`AI_GATEWAY_URL=https://api.portkey.ai/v1`, `AI_GATEWAY_API_KEY`, `AI_MODEL_DEFAULT/FAST/STRONG` = `@<provider-slug>/<model>`) to verify the **M18 coherence agent** live. Local dev can't reach Portkey from this machine (the dev Mac's security/firewall blocks the `node` binary's outbound — `curl` works, `node` ETIMEDOUTs — not an app issue); Vercel's egress is clean. See [ai-architecture.md](specs/ai-architecture.md).
 
 **Deferred chore:** bump renderer to orz-markdown 1.1.0 (published) — reverted to 1.0.0 temporarily because the npm registry was unreachable during M2 and CI uses `--frozen-lockfile`. Behavior is unaffected (1.0.0 supports the attrs block-ID syntax); redo when the registry is reachable.
@@ -277,11 +277,11 @@ registration). Plotly spec as source. (Borrows from `orz-plot-vscode`.)
 
 | # | Sub-module | Verify by | Status |
 | --- | --- | --- | --- |
-| 11b.1 | Plot editor (Plotly spec) → `.plot.svg` carrier | author a chart; SVG + embedded spec saved | 🔄 `plot-editor.tsx` (lazy-loads vendored Plotly basic via `pnpm fetch:plotly` → `/vendor/`, gitignored, ~1 MB; spec textarea + live preview; `toImage` SVG → `saveAssetAction`). **Render needs a live browser pass** (can't run in CI) |
+| 11b.1 | Plot editor (Plotly spec) → `.plot.svg` carrier | author a chart; SVG + embedded spec saved | ✅ `plot-editor.tsx` (lazy-loads vendored Plotly basic via `pnpm fetch:plotly` → `/vendor/`, gitignored, ~1 MB; spec textarea + live preview; `toImage` SVG → `saveAssetAction`). **Verified live** (Vercel build vendors Plotly via `fetch-vendor`; plot render works in production) |
 | 11b.2 | Registered as a kind; reuses §11.2 insert/search path with no new plumbing | plot assets appear in the same picker as structures | ✅ `plot` already in `BUILTIN_KINDS`; generalized `saveAssetAction` (kind-aware path/ext) + `AssetsPanel` (Draw structure / New chart; Edit by kind) — **no new server/route/store code** (proves the registry generalizes) |
 | 11b.3 | Static-SVG render on the published site (no heavy runtime) | chart renders without bundling Plotly into the site | ✅ by design — the carrier stores the rendered SVG; the site shows it via `<img>`; Plotly is authoring-only (vendored, never bundled into the site) |
 
-*Exit:* ✅ a second asset type ships by registration + one editor — the shared pipeline (picker, save, `/api/asset`, preview) was reused unchanged. Render needs an interactive pass (like Ketcher).
+*Exit:* ✅ a second asset type ships by registration + one editor — the shared pipeline (picker, save, `/api/asset`, preview) was reused unchanged. **Verified live** (Plotly vendored via the Vercel `fetch-vendor` build command; plot render works in production).
 
 ### M13 — Document carriers (`.slides.html`, `.md.pdf`)
 
