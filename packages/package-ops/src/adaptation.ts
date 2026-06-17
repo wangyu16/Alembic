@@ -104,18 +104,55 @@ export async function adaptBlocksInto(
   store: PackageStore,
   input: AdaptBlocksInput,
 ): Promise<AdaptBlocksResult> {
-  const compat = canAdapt(input.attribution.license, input.target.license);
-  if (!compat.ok) {
-    throw new AdaptationNotAllowedError(compat.reason ?? "Licenses are not compatible.");
-  }
-
   const sourceDoc = await loadStudyGuide(store, input.source.packageId, input.source.path);
   const wanted = input.source.blockIds;
   const selected =
     wanted && wanted.length
       ? sourceDoc.blocks.filter((b) => b.id && wanted.includes(b.id))
       : sourceDoc.blocks.filter((b) => b.id);
-  if (selected.length === 0) {
+
+  return adaptGivenBlocksInto(store, {
+    target: input.target,
+    source: input.attribution,
+    sourcePath: sourceDoc.path,
+    blocks: selected.map((b) => ({ sourceBlockId: b.id!, title: b.title, body: b.body })),
+  });
+}
+
+/** A pre-read source block to adapt (read by the caller — possibly cross-owner). */
+export interface AdaptSourceBlock {
+  sourceBlockId: string;
+  title: string;
+  body: string;
+}
+
+export interface AdaptGivenBlocksInput {
+  target: { packageId: string; path: string; license: License };
+  /** Lineage/attribution for the source (license gates `canAdapt`). */
+  source: AdaptationSource;
+  /** Source chapter path the blocks came from (recorded in lineage). */
+  sourcePath: string;
+  /** Pre-read source blocks (the caller reads them — same-owner or, for the
+   *  cross-owner ecosystem (M31), via an elevated read of a public package). */
+  blocks: AdaptSourceBlock[];
+}
+
+/**
+ * Adapt pre-read source blocks into a target chapter — the shared primitive
+ * behind same-owner adaptation and cross-owner (portal) adaptation. The caller
+ * supplies the source blocks (read however is appropriate for the owner
+ * relationship); this only ever WRITES the target through `saveStudyGuide` and
+ * the public provenance record. License-gated; fresh ids; recorded lineage.
+ */
+export async function adaptGivenBlocksInto(
+  store: PackageStore,
+  input: AdaptGivenBlocksInput,
+): Promise<AdaptBlocksResult> {
+  const compat = canAdapt(input.source.license, input.target.license);
+  if (!compat.ok) {
+    throw new AdaptationNotAllowedError(compat.reason ?? "Licenses are not compatible.");
+  }
+  if (input.blocks.length === 0) {
     return { newBlockIds: [], lineage: [] };
   }
 
@@ -126,22 +163,21 @@ export async function adaptBlocksInto(
     preamble: targetDoc.preamble,
     blocks: [
       ...targetDoc.blocks,
-      ...selected.map((b) => ({ id: null, title: b.title, body: b.body })),
+      ...input.blocks.map((b) => ({ id: null, title: b.title, body: b.body })),
     ],
   });
 
-  // The appended blocks are the last `selected.length`, in source order.
+  // The appended blocks are the last N, in source order.
   const appended = blocks.slice(before);
   const lineage: AdaptedBlockRef[] = appended.map((b, i) => ({
     targetBlockId: b.id!,
     sourcePackageId: input.source.packageId,
-    sourceBlockId: selected[i]!.id!,
-    sourcePath: sourceDoc.path,
-    sourceContentHash: hashAdaptedBlock(selected[i]!),
-    ...(input.attribution.snapshot ? { snapshot: input.attribution.snapshot } : {}),
+    sourceBlockId: input.blocks[i]!.sourceBlockId,
+    sourcePath: input.sourcePath,
+    sourceContentHash: hashAdaptedBlock(input.blocks[i]!),
+    ...(input.source.snapshot ? { snapshot: input.source.snapshot } : {}),
   }));
 
-  // Append to the public provenance record.
   const existing = await loadAdaptationProvenance(store, input.target.packageId);
   const next = [...existing, ...lineage];
   assertPathAllowedInRepo(ADAPTATIONS_PROVENANCE_PATH, "public");
