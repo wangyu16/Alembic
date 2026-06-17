@@ -48,6 +48,8 @@ export const EVENT_TYPES = [
   // Phase 3 — leakage audit/remediation (M21).
   "leak.detected",
   "leak.remediated",
+  // Phase 5 — adaptation ecosystem.
+  "adaptation.completed",
   "error.surfaced",
 ] as const;
 

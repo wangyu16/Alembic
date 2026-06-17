@@ -38,6 +38,7 @@ import {
   generateItemsAction,
   type AssessmentSummary,
 } from "./assessment-actions";
+import { listAdaptSourcesAction, adaptChapterAction, type AdaptSource } from "./adapt-actions";
 import {
   addCitationAction,
   createSnapshotAction,
@@ -426,6 +427,7 @@ export function StudyGuideEditor({
 
         <CategoryLabel>Author</CategoryLabel>
         <PlanningPanel packageId={packageId} activePath={initialPath} onQueued={() => router.refresh()} />
+        <AdaptPanel packageId={packageId} activePath={initialPath} onAdapted={() => router.refresh()} />
         <AssetsPanel
           packageId={packageId}
           onNew={(kind) => setEditing({ kind })}
@@ -817,6 +819,95 @@ function CoherencePanel({
 
 const splitIds = (s: string): string[] =>
   s.split(",").map((x) => x.trim()).filter(Boolean);
+
+/**
+ * M26 — the thin client for adaptation. Adapt (fork) sections from another of
+ * your packages into the active chapter: license-gated (CC compatibility), with
+ * new ids + recorded lineage/attribution. Adapting from others' published
+ * packages (via the portal) is a follow-up.
+ */
+function AdaptPanel({
+  packageId,
+  activePath,
+  onAdapted,
+}: {
+  packageId: string;
+  activePath: string;
+  onAdapted: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [sources, setSources] = useState<AdaptSource[]>([]);
+  const [note, setNote] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function openPanel() {
+    setOpen(true);
+    if (loaded) return;
+    setSources(await listAdaptSourcesAction(packageId));
+    setLoaded(true);
+  }
+
+  async function adapt(sourceId: string) {
+    setBusy(true);
+    setError(null);
+    setNote(null);
+    const r = await adaptChapterAction(packageId, sourceId, activePath);
+    if (r.ok) {
+      setNote(`Adapted ${r.adapted} section(s) — edit them as your own. Lineage + attribution recorded.`);
+      onAdapted();
+      if (typeof window !== "undefined") window.location.reload();
+    } else {
+      setError(r.error ?? "Couldn't adapt that content.");
+    }
+    setBusy(false);
+  }
+
+  if (!open) {
+    return (
+      <button onClick={openPanel} className="btn btn-ghost">
+        ♻️ Adapt from another package
+      </button>
+    );
+  }
+
+  return (
+    <div className="panel p-3">
+      <div className="mb-2 flex items-center justify-between">
+        <span className="text-sm font-medium">Adapt from another package</span>
+        <button onClick={() => setOpen(false)} className="text-xs text-muted hover:text-ink">Close</button>
+      </div>
+      <p className="mb-2 text-xs text-muted">
+        Copy sections from another of your packages into this chapter — with new
+        identifiers, recorded lineage, and attribution. Only license-compatible
+        adaptations are allowed.
+      </p>
+      {sources.length === 0 ? (
+        <p className="text-xs text-faint">No other packages to adapt from yet.</p>
+      ) : (
+        <ul className="divide-y divide-[var(--edge-soft)]">
+          {sources.map((s) => (
+            <li key={s.id} className="flex items-center justify-between gap-2 py-2">
+              <span className="min-w-0 truncate text-sm">
+                <span className="chip mr-1">{s.license}</span>{s.title}
+              </span>
+              <button
+                onClick={() => adapt(s.id)}
+                disabled={busy}
+                className="shrink-0 rounded border border-zinc-300 px-2 py-1 text-xs hover:bg-elevated disabled:opacity-50 dark:border-zinc-700"
+              >
+                Adapt →
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {note && <p className="mt-2 text-xs text-ok">{note}</p>}
+      {error && <p className="mt-2 text-sm text-danger">{error}</p>}
+    </div>
+  );
+}
 
 /**
  * M9.6 — the thin client for the hidden planning layer: course-level concept

@@ -28,7 +28,7 @@ These are the only things blocking full production parity with the code:
 | 2 | Authoring depth & chemistry-first (tiers, a11y, carriers & assets: Ketcher/plots/slides/PDF, import, snapshots, gateway, local mode) | ✅ core built (M9–M17); documented deferrals → worker tier (PDF, foreign import), studio editing/projects, DOI/compare, per-institution quotas |
 | 3 | Agent harness & reconciliation | ✅ core built (M18 coherence agent, M19 job seam, M20 reconciliation, M21 leakage audit + runbook); deferred: worker-tier agent execution, one-click remediation, private-repo reconcile |
 | 4 | Assessment & question templates | ✅ core built (M22 contract, M23 generation, M24 answer-key/embargo, M25 LMS export); follow-ups: blueprint/embargo editor UI + early-lift. No worker tier needed |
-| 5 | Adaptation ecosystem | 🔄 planned (M26–M29 decomposed; leads with the lineage/license contract; no worker tier) |
+| 5 | Adaptation ecosystem | 🔄 in progress (M26 adapt & lineage built; M27 pull-updates, M28 suggest-back, M29 DOI next) |
 | 6 | Portal & discovery | ⬜ |
 | 7 | Research operations & study readiness | ⬜ |
 | 8 | Hardening & sustainability | ⬜ |
@@ -507,9 +507,9 @@ integrations (Zenodo DOI; GitHub PR materialization) are scoped/deferred.
 
 | # | Sub-module | Verify by | Status |
 | --- | --- | --- | --- |
-| 26.1 | Contract: package-level `adaptedFrom` (manifest) + `adaptedFrom.snapshot` (blocks, M15.5) + pure license-compatibility (`canAdapt(source,target)`) + attribution record | adapting CC-BY→CC-BY-SA allowed; NC/SA incompatibilities rejected; lineage validates | ⬜ |
-| 26.2 | package-ops adapt ops: copy block / artifact / chapter / whole course with NEW ids + `adaptedFrom` lineage (+ `replacesId` where replacing), attribution preserved, gated on `canAdapt` | unit tests: fork a chapter → new ids, lineage + attribution recorded; license-incompatible adapt blocked | ⬜ |
-| 26.3 | Thin web "Adapt" flow (adapt a block/chapter/package into the educator's workspace) | educator adapts content; new package/blocks carry lineage | ⬜ |
+| 26.1 | Contract: package-level `adaptedFrom` (manifest) + `adaptedFrom.snapshot` (blocks, M15.5) + pure license-compatibility (`canAdapt(source,target)`) + attribution record | adapting CC-BY→CC-BY-SA allowed; NC/SA incompatibilities rejected; lineage validates | ✅ contract `adaptation.ts` `canAdapt` (CC 4.0 matrix, reasons), `AdaptationSource` (required attribution, snapshot pin); manifest `adaptedFrom` (additive); block `adaptedFrom.snapshot` already present. 7 tests |
+| 26.2 | package-ops adapt ops: copy block / artifact / chapter / whole course with NEW ids + `adaptedFrom` lineage (+ `replacesId` where replacing), attribution preserved, gated on `canAdapt` | unit tests: fork a chapter → new ids, lineage + attribution recorded; license-incompatible adapt blocked | ✅ package-ops `adaptBlocksInto` (license-gated; new minted ids via `saveStudyGuide`; per-block lineage in public `provenance/adaptations.json`; throws `AdaptationNotAllowedError`) + `loadAdaptationProvenance`. 4 tests (135 package-ops). Whole-package fork (createPackage + manifest.adaptedFrom) is a thin follow-up |
+| 26.3 | Thin web "Adapt" flow (adapt a block/chapter/package into the educator's workspace) | educator adapts content; new package/blocks carry lineage | ✅ `adapt-actions` (`listAdaptSourcesAction`, `adaptChapterAction` — license-gated, syncs chapter + provenance to GitHub, logs `adaptation.completed`) + `AdaptPanel` (Author group). Adapts among the educator's own packages; cross-owner/portal adaptation is a follow-up |
 
 ### M27 — Pull updates (upstream → adapter) *(planned)*
 
@@ -557,7 +557,21 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
 
 ## Log
 
-### 2026-06-16
+### 2026-06-17
+- **M26 — adaptation & lineage (Phase 5, fork at every scale).** Built durable-first.
+  Contract `adaptation.ts` (M26.1): `canAdapt` pure CC-4.0 compatibility matrix
+  (CC0→any; BY→any BY* not CC0; SA→same; NC stays NC) with educator-facing
+  reasons + `AdaptationSource` (required attribution, snapshot pin = M15.5); manifest
+  gains additive `adaptedFrom`. package-ops `adaptBlocksInto` (M26.2): license-gated
+  copy of source blocks into a target chapter with NEW minted ids (identity never
+  reused) via `saveStudyGuide`, per-block lineage recorded in public
+  `provenance/adaptations.json`; `AdaptationNotAllowedError` on incompatible
+  licenses. Web (M26.3): `adapt-actions` + `AdaptPanel` (Author group) adapt
+  sections from another of your packages — license-gated, lineage + attribution
+  recorded, synced to GitHub, `adaptation.completed` logged. 7 contract + 4
+  package-ops tests; typecheck + all tests + web build green. Follow-ups:
+  whole-package fork (createPackage + manifest.adaptedFrom), cross-owner/portal
+  adaptation. Next: M27 pull-updates.
 - **M25 — one-way LMS export (completes Phase 4 core).** package-ops `lms-export.ts`
   (subagent): `buildQti12` (QTI 1.2 — MCQ scored against the answer key; open →
   model-answer feedback; XML-escaped), `buildCommonCartridge` (CC 1.1 manifest +
