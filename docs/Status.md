@@ -5,7 +5,7 @@ same commit as the work it tracks. Statuses: ✅ done · 🔄 partially shipped 
 
 **Production:** live at https://alembic.orz.how (Vercel project `alembic`, root `apps/web`, Node 22; Cloudflare DNS; Git auto-deploy on push to `main`).
 
-**Current focus: Phase 4 (v0.5) core complete — assessment & question templates.** M22 (assessment/template/blueprint/item + answer-key contract), M23 (single-call AI question generation through the Tier-3 itemized review queue), M24 (private-repo answer keys + embargo metadata + release-gate leakage check), M25 (QTI 1.2 + Common Cartridge LMS export as a pure transformer + in-process zip) — the Phase-4 core (M22–M25) — are all built and CI-green; confirmed no worker tier needed. Phase 3 (M18–M21) and Phase 2 (M9–M17) cores are complete; v0.1 is deployed (not yet *shipped* — 2 of 6 release criteria pending the M8.3 pilot). Remaining live passes: M18 coherence agent + M9.6 draft-from-plan + M20 reconcile + M23 question generation (all need Portkey on Vercel — see Pending operator actions). Heavier deferrals (worker-tier PDF/foreign-import + agent execution, one-click remediation, studio editing/local projects) remain tracked below. Phase-4 follow-ups: blueprint/embargo editor UI + owner early-lift; per-blueprint embargo gating at export. Next phase: Phase 5 (adaptation ecosystem). See [LocalSetup.md](LocalSetup.md) + [GitHubAppSetup.md](GitHubAppSetup.md).
+**Current focus: Phase 5 (v0.6–v0.7) core complete — adaptation ecosystem.** M26 (adapt & lineage), M27 (pull-updates take/keep), M28 (suggest-back data path) — the Phase-5 core — are all built and CI-green, **scoped to the educator's own packages (same-owner scope)**. Deferred: M29 Zenodo DOI, GitHub-PR materialization (28.3), cross-owner adaptation/suggest-back, AI-assisted merge (27.3), whole-package fork. Phase 4 (M22–M25), Phase 3 (M18–M21) and Phase 2 (M9–M17) cores are complete; v0.1 is deployed (not yet *shipped* — 2 of 6 release criteria pending the M8.3 pilot). Remaining live passes: M18 coherence agent + M9.6 draft-from-plan + M20 reconcile + M23 question generation + M26/M27/M28 adaptation (cross-owner needs the deferred service path) (all need Portkey on Vercel — see Pending operator actions). Heavier deferrals (worker-tier PDF/foreign-import + agent execution, one-click remediation, studio editing/local projects) remain tracked below. Next phase: Phase 6 (portal & discovery). See [LocalSetup.md](LocalSetup.md) + [GitHubAppSetup.md](GitHubAppSetup.md).
 
 ### Pending operator actions (human-in-the-loop)
 
@@ -28,8 +28,8 @@ These are the only things blocking full production parity with the code:
 | 2 | Authoring depth & chemistry-first (tiers, a11y, carriers & assets: Ketcher/plots/slides/PDF, import, snapshots, gateway, local mode) | ✅ core built (M9–M17); documented deferrals → worker tier (PDF, foreign import), studio editing/projects, DOI/compare, per-institution quotas |
 | 3 | Agent harness & reconciliation | ✅ core built (M18 coherence agent, M19 job seam, M20 reconciliation, M21 leakage audit + runbook); deferred: worker-tier agent execution, one-click remediation, private-repo reconcile |
 | 4 | Assessment & question templates | ✅ core built (M22 contract, M23 generation, M24 answer-key/embargo, M25 LMS export); follow-ups: blueprint/embargo editor UI + early-lift. No worker tier needed |
-| 5 | Adaptation ecosystem | 🔄 core built (M26 adapt & lineage, M27 pull-updates, M28 suggest-back data path); M29 DOI + PR materialization deferred (external) |
-| 6 | Portal & discovery | ⬜ |
+| 5 | Adaptation ecosystem | 🔄 core built (M26 adapt & lineage, M27 pull-updates, M28 suggest-back data path); deferred: M29 DOI + PR materialization (external), cross-owner adapt/suggest-back, AI-assisted merge (27.3), whole-package fork |
+| 6 | Portal & discovery | 🔄 planned (M30–M33; leads with LRMI, absorbs the cross-owner adapt/suggest-back ecosystem loop) |
 | 7 | Research operations & study readiness | ⬜ |
 | 8 | Hardening & sustainability | ⬜ |
 
@@ -320,7 +320,7 @@ Named immutable versions + citable scholarly output (goal.md §5).
 | 15.2 | Restore-from / compare snapshots | "what changed between offerings" shown in educator language | 🔄 snapshots listed with a **View** link (GitHub tag page); GitHub-native compare/restore deferred (heavy; educator-language diff is future) |
 | 15.3 | Citation: stable snapshot URL + version; `CITATION.cff` generation | citation metadata generated per snapshot | ✅ package-ops `generateCitationCff` (pure; SPDX license, version, author, date; 2 tests) + web `addCitationAction` commits `CITATION.cff`; each snapshot has a stable tag URL |
 | 15.4 | Opt-in DOI minting (Zenodo or equivalent) | snapshot → DOI on opt-in | ⬜ deferred (external Zenodo integration; opt-in) |
-| 15.5 | Adaptation/citation target snapshots (`adaptedFrom.snapshot`) | an adaptation references a snapshot, not a moving head | ⬜ deferred (adaptation is a later phase; the contract field lands with it) |
+| 15.5 | Adaptation/citation target snapshots (`adaptedFrom.snapshot`) | an adaptation references a snapshot, not a moving head | ✅ shipped with M26.1 — block-level `adaptedFrom.snapshot` field exists (`packages/package-contract/src/blocks.ts`); the package-level adaptation record (`AdaptationSource.snapshot`) is threaded through `adaptBlocksInto` so an adaptation pins a snapshot, not a moving head |
 | 15.6 | Pin carrier-asset references to SHA permalinks on snapshot/publish (live → frozen) | a snapshot's pages reference assets at a fixed commit, not a moving branch | ✅ **by design** — a snapshot tags the *whole repo*, so `materials/…` references resolve to that tag's immutable content (content + assets frozen together). Explicit raw-permalink rewriting is optional and unneeded for repo-relative refs |
 
 *Exit:* ✅ snapshot a published course offering (immutable tag) and cite it
@@ -539,6 +539,50 @@ owner's queue) needs a service-mediated path — the cross-owner-ecosystem follo
 
 Opt-in **Zenodo DOI** minting on a snapshot (external API + token). `CITATION.cff`
 + stable snapshot URLs already shipped (M15.3/15.1). ⏸ pending a Zenodo account/token.
+
+## Phase 6 sub-modules (v0.8 — portal & discovery)
+
+**Goal:** turn the generated portal index into a real discovery hub, and close
+the **cross-owner** ecosystem loop (discover a stranger's package → adapt it →
+suggest back) that Phase 5 built same-owner-only. Exit (goal.md §6): a stranger
+finds a package via the portal (or Google), previews it, and starts an adaptation.
+
+**Prerequisites in place:** published packages + `/portal` index + gated
+register/unregister (M7, migration 0004); accessibility badge
+(`portal_registrations.accessibility_status`, M14.2); the adaptation engine
+(M26–M28) — owner-agnostic at the contract/ops layer, only the RLS-crossing
+plumbing is missing. **Entry prerequisite:** apply migration `0008` + run the
+M20/M27/M28 live pass before cross-owner suggest-back/pull run against real repos.
+
+**Sequencing (per the post-Phase-5 coherence pass):** LRMI first (smallest, most
+decoupled), then the cross-owner path (unblocks the portal's headline action),
+then the search UI over it, then governance scaffolding.
+
+### M30 — LRMI / schema.org `LearningResource` markup *(leading; decoupled)*
+
+| # | Sub-module | Verify by | Status |
+| --- | --- | --- | --- |
+| 30.1 | Emit LRMI/schema.org `LearningResource` JSON-LD in published pages (rides `buildCourseSite`) | published pages carry valid `LearningResource` metadata (title, description, license, educational level, a11y); validates in a structured-data tester | ⬜ |
+| 30.2 | Portal index consumes the same standard metadata (no proprietary record) | the portal reads LRMI, not a bespoke format | ⬜ |
+
+### M31 — Cross-owner adaptation & suggest-back *(absorbed Phase-5 deferral; the real ecosystem)*
+
+| # | Sub-module | Verify by | Status |
+| --- | --- | --- | --- |
+| 31.1 | Adapt a package you don't own (from the portal) — service-mediated read of a public package → adapt into your workspace with lineage | a stranger's published package adapts in with `adaptedFrom` + attribution + license gate | ⬜ |
+| 31.2 | Cross-owner suggest-back (RLS-crossing, service-mediated insert into the upstream author's review queue) | a suggestion from an adapter reaches a different owner's Tier-3 queue | ⬜ |
+| 31.3 | *(optional)* GitHub-PR materialization of a suggestion (bridge `createPullRequest`) | a suggestion can become a PR on the upstream public repo | ⏸ deferred (external) |
+
+### M32 — Searchable portal *(planned)*
+
+Search/filter by topic, level, discipline, license, accessibility, artifact
+type, teaching time; package previews; quality/status indicators; adaptation
+entry points wired to M31. Over the existing `/portal` index + LRMI metadata. ⬜
+
+### M33 — Governance scaffolding *(planned)*
+
+Registration limited to study participants during the grant; reporting/takedown
+path designed (full stewardship handoff is Phase 8). ⬜
 
 ## Phase 2 deferred follow-ups (tracked)
 

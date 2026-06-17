@@ -32,10 +32,10 @@ editor entirely.
 
 | Category | Frequency | What lives here | Default |
 | --- | --- | --- | --- |
-| **Author** | constant | insert figures/charts (assets), AI draft a section | at the canvas; compact |
+| **Author** | constant | insert figures/charts (assets), AI draft a section, adapt blocks from another package + suggest improvements back + pull updates from upstream (the adaptation loop) | at the canvas; compact |
 | **Review** | periodic (before save/publish, after AI edits) | Changes & review (Tier-1/2 queue, undo, policy), Accessibility | collapsed group |
 | **Generate** | occasional | worksheets; *(future)* slides, PDF, other derived artifacts | collapsed group |
-| **Publish & share** | rare / milestone | publish site, list on portal, version history & restore; *(future)* snapshots, citation/DOI, suggest-back | collapsed group |
+| **Publish & share** | rare / milestone | publish site, list on portal, version history & restore, snapshots; *(future)* citation/DOI | collapsed group |
 | **App settings** | rare, not per-package | *(future)* model gateway, entitlements/billing, account | **not in the editor** — app-level settings |
 
 ## 3. Where a NEW feature goes (decision rule)
@@ -43,13 +43,17 @@ editor entirely.
 Ask, in order:
 
 1. **Is it edited *while writing* every session?** → Author, at the canvas
-   (e.g. a new asset kind's "Insert" button, concept/objective inline editors).
+   (e.g. a new asset kind's "Insert" button, concept/objective inline editors,
+   the adaptation loop — adapt blocks in, suggest improvements back, pull
+   upstream updates — which lives in the `AdaptPanel`).
 2. **Is it a quality/correctness check run periodically?** → Review
    (e.g. link-check, license/attribution check, a new a11y rule surface).
 3. **Does it derive an artifact from the blocks?** → Generate
    (e.g. `.slides.html`, `.md.pdf` — this is where M13 lands).
 4. **Does it cross a trust/sharing boundary or manage versions?** → Publish &
-   share (e.g. snapshots/citation = M15; suggest-back).
+   share (e.g. snapshots/citation = M15). *(Suggest-back crosses a sharing
+   boundary but ships in the Author/`AdaptPanel` surface as part of the
+   adaptation loop, not here — see rule 1.)*
 5. **Is it account/cost/model configuration, not per-package?** → App settings,
    **outside** the editor (e.g. model gateway = M16, billing/entitlements = M17).
 
@@ -76,7 +80,8 @@ Never add a seventh top-level panel — extend an existing category.
 
 - **Action bar:** `ChapterBar` + Save + Download + Publish.
 - **Canvas:** block list + "Add section" + **Author** group (`PlanningPanel`
-  concept map & objectives — M9.6, `AssetsPanel` figures/charts, `AIDraftPanel`).
+  concept map & objectives — M9.6, `AdaptPanel` adapt blocks + suggest-back +
+  pull-updates — Phase 5, `AssetsPanel` figures/charts, `AIDraftPanel`).
 - **Review** group: `TierPanel` (changes & review) + `A11yPanel` +
   `CoherencePanel` (whole-course coherence agent — M18) + `ReconcilePanel`
   (changes made outside Alembic / "Scan for leaks" — M20).

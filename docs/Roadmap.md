@@ -117,6 +117,8 @@ Several deferrals across phases share one prerequisite — a real container work
 
 > **Prerequisites / sequencing (note):** Phase-5 prerequisites are satisfied — block identity (Phase 0), publishing (Phase 1), reconciliation (M20), and snapshots (M15) are all in place. `adaptedFrom.snapshot` (M15.5) was deliberately deferred to land as the LEADING sub-module of Phase 5. Note that M20 reconciliation still needs its live pass + migration `0008` applied before suggest-back / pull-updates can run against real repos.
 
+> **Realized scope (annotation):** Shipped — adapt block/chapter with new IDs + `adapted-from` lineage + attribution + pure CC-4.0 license-compatibility gating (`canAdapt`, M26); pull-updates take/keep with recorded divergence over hash-drift detection (M27); platform-mediated block-level suggest-back through the Tier-3 gate (M28) — **all scoped to the educator's own packages (same store/owner)**. Deferred — Zenodo DOI (M29, external); GitHub-PR materialization of suggestions (28.3, external); **cross-owner adaptation + suggest-back** (the real two-way ecosystem — needs a service-mediated, RLS-crossing path); AI-assisted merge for diverged blocks (27.3); whole-package fork.
+
 ---
 
 ## Phase 6 — Portal & Discovery (v0.8)
