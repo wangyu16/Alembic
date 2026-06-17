@@ -11,8 +11,7 @@ same commit as the work it tracks. Statuses: ✅ done · 🔄 partially shipped 
 
 These are the only things blocking full production parity with the code:
 
-1. **Migrations 0005–0008 are all applied** (✅ 0005 tier queue, 0006 a11y, 0007 AI budget, 0008 `packages.last_synced_sha` for M20 reconciliation). (0007's budget stays dormant until `AI_TOKEN_BUDGET` is set.)
-1b. **Apply migrations `0009_suggestions.sql` + `0010_governance.sql`** (`supabase db push` / dashboard) — 0009 = the cross-owner suggest-back inbox (M31.2, RLS-only); 0010 = portal governance (`profiles.portal_eligible` + `portal_reports`, M33). Cross-owner suggest-back is dormant until 0009; **after 0010, listing requires `portal_eligible=true`** — flag study participants in the dashboard.
+1. **Migrations 0005–0010 are all applied** (✅ 0005 tier queue, 0006 a11y, 0007 AI budget, 0008 reconciliation SHA, 0009 cross-owner suggestions, 0010 portal governance). No migration pending. Note: 0007's budget stays dormant until `AI_TOKEN_BUDGET` is set, and **after 0010 listing requires `portal_eligible=true`** — flag study participants in the dashboard.
 2. ✅ **Done** — Vercel build command is `node ../../scripts/fetch-vendor.mjs && next build`; Plotly is vendored and the plot editor (M11b) works live.
 3. **Interactive verification passes** (can't run in CI): slides render (M13), studio File System Access open/save (M17), and the AI/reconcile live runs (M18 coherence agent, M9.6 draft-from-plan, M20 reconcile, M23 question generation, M26–M28 adapt/pull/suggest-back) once Portkey is on Vercel. Ketcher (M11) and plots (M11b) are verified live.
 4. **Set the Portkey env vars in Vercel** (`AI_GATEWAY_URL=https://api.portkey.ai/v1`, `AI_GATEWAY_API_KEY`, `AI_MODEL_DEFAULT/FAST/STRONG` = `@<provider-slug>/<model>`) to verify the **M18 coherence agent** live. Local dev can't reach Portkey from this machine (the dev Mac's security/firewall blocks the `node` binary's outbound — `curl` works, `node` ETIMEDOUTs — not an app issue); Vercel's egress is clean. See [ai-architecture.md](specs/ai-architecture.md).
@@ -29,8 +28,8 @@ These are the only things blocking full production parity with the code:
 | 3 | Agent harness & reconciliation | ✅ core built (M18 coherence agent, M19 job seam, M20 reconciliation, M21 leakage audit + runbook); deferred: worker-tier agent execution, one-click remediation, private-repo reconcile |
 | 4 | Assessment & question templates | ✅ core built (M22 contract, M23 generation, M24 answer-key/embargo, M25 LMS export); follow-ups: blueprint/embargo editor UI + early-lift. No worker tier needed |
 | 5 | Adaptation ecosystem | 🔄 core built (M26 adapt & lineage, M27 pull-updates, M28 suggest-back data path); deferred: M29 DOI + PR materialization (external), cross-owner adapt/suggest-back, AI-assisted merge (27.3), whole-package fork |
-| 6 | Portal & discovery | ✅ core built (M30 LRMI, M31 cross-owner adapt/suggest-back, M32 searchable portal, M33 governance scaffolding); migrations 0009/0010 await db push |
-| 7 | Research operations & study readiness | ⬜ |
+| 6 | Portal & discovery | ✅ core built (M30 LRMI, M31 cross-owner adapt/suggest-back, M32 searchable portal, M33 governance scaffolding); migrations 0009/0010 applied |
+| 7 | Research operations & study readiness | 🔄 in progress (M34 de-identified export core built; M35 admin module, M36 credits/quotas, M37 managed mode next) |
 | 8 | Hardening & sustainability | ⬜ |
 
 ## v0.1 sub-modules
@@ -571,7 +570,7 @@ then the search UI over it, then governance scaffolding.
 | # | Sub-module | Verify by | Status |
 | --- | --- | --- | --- |
 | 31.1 | Adapt a package you don't own (from the portal) — **public GitHub read** of a registered package → adapt into your workspace with lineage | a stranger's published package adapts in with `adaptedFrom` + attribution + license gate | ✅ groundwork `adaptGivenBlocksInto` (decouples source-read from target-write); github-bridge tokenless `fetchPublicRepoFile` (raw.githubusercontent — no RLS bypass, no token); web `adaptFromPortalAction` (gated on portal registration; reads alembic.json + first chapter; license-gated) + `listPortalAdaptSourcesAction`; AdaptPanel "From the portal (other educators)". Adapts the source's first chapter |
-| 31.2 | Cross-owner suggest-back via a dedicated `suggestions` table (RLS: insert by any signed-in user targeting a registered package; select/resolve by the owner) | a suggestion from an adapter reaches a different owner's inbox; owner accepts → applies to their block | ✅ migration `0009_suggestions.sql` (RLS — consent = registration; owner-only resolve; **no service-role bypass**); `lib/suggestions`; `suggestBackAction` routes same-owner→review-queue vs cross-owner→suggestions inbox (via `getPackage` ownership check); `listIncomingSuggestionsAction`/`resolveSuggestionAction` (accept applies via `saveStudyGuide` + sync); `SuggestionsInboxPanel` (Review group). **Awaits migration 0009 `db push`** |
+| 31.2 | Cross-owner suggest-back via a dedicated `suggestions` table (RLS: insert by any signed-in user targeting a registered package; select/resolve by the owner) | a suggestion from an adapter reaches a different owner's inbox; owner accepts → applies to their block | ✅ migration `0009_suggestions.sql` (RLS — consent = registration; owner-only resolve; **no service-role bypass**); `lib/suggestions`; `suggestBackAction` routes same-owner→review-queue vs cross-owner→suggestions inbox (via `getPackage` ownership check); `listIncomingSuggestionsAction`/`resolveSuggestionAction` (accept applies via `saveStudyGuide` + sync); `SuggestionsInboxPanel` (Review group). Migration 0009 applied |
 | 31.3 | *(optional)* GitHub-PR materialization of a suggestion (bridge `createPullRequest`) | a suggestion can become a PR on the upstream public repo | ⏸ deferred (external) |
 
 ### M32 — Searchable portal
@@ -591,6 +590,51 @@ then the search UI over it, then governance scaffolding.
 *Exit:* ✅ during the grant, only participants list; the public can report; a
 documented takedown path exists. **Completes the Phase-6 core (M30–M33).**
 Full moderation + open registration + stewardship handoff are Phase 8.
+
+## Phase 7 sub-modules (v0.9 — research operations & study readiness)
+
+**Goal:** make Alembic a credible IUSE research instrument — a complete event
+taxonomy, de-identified export for evaluators, centrally-managed AI credits, and
+an admin/ops module. Exit (goal.md §7): onboard a participant cohort with uniform
+AI access and produce clean exportable research data.
+
+**Already in place (Phases 1–6):** a broad `research-events` taxonomy (authoring,
+AI accept/reject/edit with **Tier-1 logged separately** from human decisions —
+M10.5; reuse events `adaptation.completed`/`upstream.update.applied`/
+`suggestion.sent`); per-user **token budget** + governed `ai_invocations` logging
+(M16.3); append-only `research_events` (user-insert-only RLS; export is
+admin/service-role). Remaining is export + admin + institution-level credits +
+managed mode + the FERPA/IRB data-handling review (M16.4).
+
+**No worker tier needed** (export = pure transformer; admin = read views; quotas
+= logic). The org-installed-App managed mode (M37) is the external/heavier piece.
+
+### M34 — Event taxonomy + de-identified export *(durable core first)*
+
+| # | Sub-module | Verify by | Status |
+| --- | --- | --- | --- |
+| 34.1 | Confirm/extend the event taxonomy for study completeness (reuse, completeness, workload indicators) | the events needed for the study's metrics exist (or are added additively) | ✅ reviewed — broad coverage: authoring (create/edit/save w/ `durationMs` workload signal), AI accept/edit/reject with **Tier-1 logged separately** from human decisions, reuse (`adaptation.completed`/`upstream.update.applied`/`suggestion.sent`), a11y, import, agent, reconcile, leak, export. Additive if a specific study metric is missing |
+| 34.2 | Pure de-identification + CSV/JSON serialization of `research_events` (stable participant pseudonym; never GitHub identity/content) | a row set exports to de-identified CSV + JSON; same user → same code; no raw user_id | ✅ research-events `deidentifyEvents` (caller injects a salted one-way `pseudonymize`, so the package stays dependency-free + the salt never lives there; drops raw user_id/package_id) + `eventsToCsv`/`eventsToJson` (RFC-4180 escaping). 5 tests (9 total). Download wiring lands in the M35 admin module |
+
+### M35 — Admin / operations module *(planned)*
+
+Admin-gated `/admin` (migration: `profiles.is_admin`): component/status view, error
+monitoring (`error.surfaced`), demo-content management, consent/status flags
+(toggle `portal_eligible`, review `portal_reports` — the Phase-6 deferred admin UI),
+and the **de-identified export download** (admin reads `research_events` via
+service-role + the M34 transformer). ⬜
+
+### M36 — Centrally-managed AI credits & quotas *(planned)*
+
+Per-institution / project-funded quotas + usage visibility on top of the per-user
+budget (M16.3); usage dashboard over `ai_invocations` aggregates in the admin
+module. Includes the deferred **FERPA/IRB third-party data-handling review**
+(M16.4, ops). ⬜
+
+### M37 — Institution / workshop-managed mode *(planned; heavier/external)*
+
+Org-installed GitHub App; bot commits authored as the educator; uniform managed
+AI access for a cohort. ⬜ (the org-App piece is external/heavier — likely staged)
 
 ## Phase 2 deferred follow-ups (tracked)
 
@@ -620,6 +664,16 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
 ## Log
 
 ### 2026-06-17
+- **M34 — research event taxonomy + de-identified export (Phase 7 durable core).**
+  Reviewed the taxonomy (34.1): broad coverage — authoring with `durationMs`
+  workload signal, AI accept/edit/reject with Tier-1 logged separately, reuse
+  events, a11y/import/agent/reconcile/leak/export — sufficient for the study,
+  additive if a metric is missing. Built (34.2) `@alembic/research-events`
+  `deidentifyEvents` (caller injects a salted one-way `pseudonymize`, keeping the
+  package dependency-free and the salt out of it; raw user_id/package_id dropped)
+  + `eventsToCsv`/`eventsToJson` (RFC-4180 escaping). 5 tests (9 total); typecheck
+  green. The export *download* (admin reads `research_events` via service-role +
+  this transformer) lands in M35. Next: M35 admin/ops module (needs `profiles.is_admin`).
 - **M33 — governance scaffolding (completes Phase 6 core).** Registration limited to
   study participants during the grant: `profiles.portal_eligible` (migration `0010`,
   default false); `registerPackageAction` gates on it (educator-facing message);
