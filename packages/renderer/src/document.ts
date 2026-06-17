@@ -27,6 +27,8 @@ export interface ThemedDocOptions {
   bodyHtml: string;
   /** Raw HTML appended after the content (e.g. an embedded-source script). */
   trailingHtml?: string;
+  /** Raw HTML injected into <head> (e.g. a JSON-LD LearningResource script). */
+  headHtml?: string;
   /** Rendered theme — dark-elegant (default) or light-neat. */
   theme?: RenderTheme;
 }
@@ -45,7 +47,7 @@ export function themedDocument(opts: ThemedDocOptions): string {
 <link rel="stylesheet" href="${KATEX_CSS}">
 <style>
 ${themeCss(theme)}
-</style>
+</style>${opts.headHtml ? `\n${opts.headHtml}` : ""}
 </head>
 <body>
 <div class="markdown-body">

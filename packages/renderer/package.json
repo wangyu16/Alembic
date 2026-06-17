@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@alembic/carriers": "workspace:*",
+    "@alembic/package-contract": "workspace:*",
     "orz-markdown": "^1.0.0"
   },
   "devDependencies": {

@@ -106,6 +106,16 @@ export async function publishSiteAction(
       chapters,
       worksheets,
       builtAt: new Date().toISOString(),
+      // LRMI/schema.org LearningResource metadata for the published index (M30).
+      meta: {
+        name: record!.title,
+        description: record!.manifest.description || undefined,
+        license: record!.manifest.license,
+        discipline: record!.manifest.discipline || undefined,
+        educationalLevel: record!.manifest.courseContext?.level,
+        url: `https://${repo.owner}.github.io/${repo.name}/`,
+        accessibility: record!.manifest.accessibility?.status,
+      },
     });
 
     const coords = { owner: repo.owner, repo: repo.name };

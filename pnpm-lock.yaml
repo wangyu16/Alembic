@@ -143,6 +143,9 @@ importers:
       '@alembic/carriers':
         specifier: workspace:*
         version: link:../carriers
+      '@alembic/package-contract':
+        specifier: workspace:*
+        version: link:../package-contract
       orz-markdown:
         specifier: ^1.0.0
         version: 1.0.0(@types/markdown-it@14.1.2)

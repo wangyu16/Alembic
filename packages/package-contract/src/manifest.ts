@@ -19,6 +19,20 @@ export const LicenseSchema = z.enum([
 
 export type License = z.infer<typeof LicenseSchema>;
 
+/** Canonical public URL for each license (for citation + LRMI/schema.org metadata). */
+export const LICENSE_URLS: Record<License, string> = {
+  "CC-BY-4.0": "https://creativecommons.org/licenses/by/4.0/",
+  "CC-BY-SA-4.0": "https://creativecommons.org/licenses/by-sa/4.0/",
+  "CC-BY-NC-4.0": "https://creativecommons.org/licenses/by-nc/4.0/",
+  "CC-BY-NC-SA-4.0": "https://creativecommons.org/licenses/by-nc-sa/4.0/",
+  "CC0-1.0": "https://creativecommons.org/publicdomain/zero/1.0/",
+};
+
+/** The canonical deed URL for a license id. */
+export function licenseUrl(license: License): string {
+  return LICENSE_URLS[license];
+}
+
 export const RepoRefSchema = z.object({
   owner: z.string().min(1),
   name: z.string().min(1),

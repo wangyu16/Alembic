@@ -11,6 +11,7 @@ export function renderMarkdown(source: string): string {
 }
 
 export * from "./theme-css";
+export * from "./learning-resource";
 export * from "./document";
 export * from "./mdhtml";
 export * from "./slides";

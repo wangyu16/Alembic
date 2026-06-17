@@ -28,7 +28,7 @@ These are the only things blocking full production parity with the code:
 | 3 | Agent harness & reconciliation | ✅ core built (M18 coherence agent, M19 job seam, M20 reconciliation, M21 leakage audit + runbook); deferred: worker-tier agent execution, one-click remediation, private-repo reconcile |
 | 4 | Assessment & question templates | ✅ core built (M22 contract, M23 generation, M24 answer-key/embargo, M25 LMS export); follow-ups: blueprint/embargo editor UI + early-lift. No worker tier needed |
 | 5 | Adaptation ecosystem | 🔄 core built (M26 adapt & lineage, M27 pull-updates, M28 suggest-back data path); deferred: M29 DOI + PR materialization (external), cross-owner adapt/suggest-back, AI-assisted merge (27.3), whole-package fork |
-| 6 | Portal & discovery | 🔄 planned (M30–M33; leads with LRMI, absorbs the cross-owner adapt/suggest-back ecosystem loop) |
+| 6 | Portal & discovery | 🔄 in progress (M30 LRMI/schema.org built; M31 cross-owner adapt/suggest-back, M32 search UI, M33 governance next) |
 | 7 | Research operations & study readiness | ⬜ |
 | 8 | Hardening & sustainability | ⬜ |
 
@@ -562,8 +562,8 @@ then the search UI over it, then governance scaffolding.
 
 | # | Sub-module | Verify by | Status |
 | --- | --- | --- | --- |
-| 30.1 | Emit LRMI/schema.org `LearningResource` JSON-LD in published pages (rides `buildCourseSite`) | published pages carry valid `LearningResource` metadata (title, description, license, educational level, a11y); validates in a structured-data tester | ⬜ |
-| 30.2 | Portal index consumes the same standard metadata (no proprietary record) | the portal reads LRMI, not a bespoke format | ⬜ |
+| 30.1 | Emit LRMI/schema.org `LearningResource` JSON-LD in published pages (rides `buildCourseSite`) | published pages carry valid `LearningResource` metadata (title, description, license, educational level, a11y); validates in a structured-data tester | ✅ renderer `learningResource`/`learningResourceJsonLd` (pure; license URL from contract `licenseUrl`; a11y hints only on a `pass`; `<` escaped) + `themedDocument` `headHtml` + `buildCourseSite` `meta` injects it on the index; web `site-actions` passes manifest-derived meta. 4 renderer tests. **Needs a structured-data-tester pass on a published site** |
+| 30.2 | Portal index consumes the same standard metadata (no proprietary record) | the portal reads LRMI, not a bespoke format | ✅ `/portal` emits a schema.org `ItemList` of `LearningResource` (built from `portal_registrations` via the same `learningResource` builder) — the discovery hub is itself harvestable, no bespoke record |
 
 ### M31 — Cross-owner adaptation & suggest-back *(absorbed Phase-5 deferral; the real ecosystem)*
 
@@ -612,6 +612,19 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
 ## Log
 
 ### 2026-06-17
+- **M30 — LRMI / schema.org `LearningResource` markup (Phase 6 leading piece).**
+  Published pages are now harvestable independently of the portal (goal.md §6).
+  renderer `learning-resource.ts` (pure): `learningResource`/`learningResourceJsonLd`
+  build a schema.org `LearningResource` JSON-LD (license URL from the new contract
+  `licenseUrl`/`LICENSE_URLS`; accessibility hints only when the audit passed; `<`
+  escaped for safe `<script>` embedding); `themedDocument` gained `headHtml`;
+  `buildCourseSite` takes `meta` and injects the JSON-LD on the index page; web
+  `site-actions` passes manifest-derived meta. M30.2: `/portal` emits a schema.org
+  `ItemList` of `LearningResource` from `portal_registrations` via the same builder
+  — consuming the standard, no proprietary record. Renderer gained a
+  `@alembic/package-contract` dep (for `licenseUrl`); 4 renderer tests (37 total);
+  typecheck + all tests + web build green. **Needs a structured-data-tester pass**
+  on a published site. Next: M31 cross-owner adapt/suggest-back.
 - **M28 — suggest back (adapter → author), data path.** Platform-mediated
   (goal.md): `suggestBackAction` uses the M26 lineage to find the upstream block
   and records a Tier-3 `suggest-back` change on the UPSTREAM package's review

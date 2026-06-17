@@ -21,6 +21,7 @@
 import { md } from "orz-markdown";
 import { rendererVersion } from "./index";
 import { escapeHtml, themedDocument } from "./document";
+import { learningResourceJsonLd, type LearningResourceMeta } from "./learning-resource";
 import type { SiteFile, SiteWorksheet } from "./site";
 
 export interface CourseChapter {
@@ -36,6 +37,8 @@ export interface CourseSiteInput {
   worksheets?: SiteWorksheet[];
   /** ISO timestamp, passed in for deterministic builds. */
   builtAt: string;
+  /** LRMI/schema.org metadata; when present, emitted as JSON-LD on the index (M30). */
+  meta?: LearningResourceMeta;
 }
 
 /**
@@ -60,6 +63,7 @@ export function buildCourseSite(input: CourseSiteInput): SiteFile[] {
   const files: SiteFile[] = [];
   const worksheets = input.worksheets ?? [];
   const chapters = input.chapters;
+  const indexHead = input.meta ? learningResourceJsonLd(input.meta) : undefined;
 
   if (chapters.length > 1) {
     // Multi-chapter: index is a table of contents.
@@ -77,7 +81,7 @@ export function buildCourseSite(input: CourseSiteInput): SiteFile[] {
     )}</h1>\n<ul>\n${toc}\n</ul>${wsNav ? `\n${wsNav}` : ""}`;
     files.push({
       path: "index.html",
-      content: themedDocument({ title: input.title, bodyHtml: indexBody }),
+      content: themedDocument({ title: input.title, bodyHtml: indexBody, headHtml: indexHead }),
     });
 
     chapters.forEach((c, i) => {
@@ -122,7 +126,7 @@ export function buildCourseSite(input: CourseSiteInput): SiteFile[] {
     }`;
     files.push({
       path: "index.html",
-      content: themedDocument({ title: input.title, bodyHtml: indexBody }),
+      content: themedDocument({ title: input.title, bodyHtml: indexBody, headHtml: indexHead }),
     });
   }
 

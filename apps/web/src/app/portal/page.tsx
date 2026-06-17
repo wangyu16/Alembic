@@ -1,4 +1,6 @@
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { learningResource } from "@alembic/renderer";
+import type { License } from "@alembic/package-contract";
 
 export const dynamic = "force-dynamic";
 
@@ -40,8 +42,33 @@ export default async function PortalPage() {
     /* index is best-effort */
   }
 
+  // M30.2 — the portal consumes the SAME standard metadata (schema.org), not a
+  // proprietary record: emit an ItemList of LearningResource so the discovery
+  // hub is itself harvestable. Inner @context is dropped (it lives on the list).
+  const itemListLd =
+    registrations.length > 0
+      ? JSON.stringify({
+          "@context": "https://schema.org",
+          "@type": "ItemList",
+          itemListElement: registrations.map((r, i) => {
+            const { ["@context"]: _ctx, ...item } = learningResource({
+              name: r.title,
+              description: r.description || undefined,
+              license: r.license as License,
+              discipline: r.discipline || undefined,
+              url: r.site_url || undefined,
+              accessibility: r.accessibility_status,
+            });
+            return { "@type": "ListItem", position: i + 1, item };
+          }),
+        }).replace(/</g, "\\u003c")
+      : null;
+
   return (
     <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-6 px-6 py-12">
+      {itemListLd && (
+        <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: itemListLd }} />
+      )}
       <header>
         <h1 className="font-serif text-3xl tracking-tight text-ink">Discover</h1>
         <p className="mt-1 text-muted">
