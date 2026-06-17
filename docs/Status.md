@@ -11,7 +11,8 @@ same commit as the work it tracks. Statuses: ✅ done · 🔄 partially shipped 
 
 These are the only things blocking full production parity with the code:
 
-1. **Migrations 0005–0008 are all applied** (✅ 0005 tier queue, 0006 a11y, 0007 AI budget, 0008 `packages.last_synced_sha` for M20 reconciliation). No migration is currently pending. (0007's budget stays dormant until `AI_TOKEN_BUDGET` is set.)
+1. **Migrations 0005–0008 are all applied** (✅ 0005 tier queue, 0006 a11y, 0007 AI budget, 0008 `packages.last_synced_sha` for M20 reconciliation). (0007's budget stays dormant until `AI_TOKEN_BUDGET` is set.)
+1b. **Apply migration `0009_suggestions.sql`** (`supabase db push` / dashboard) — the cross-owner suggest-back inbox (M31.2). RLS-only (consent = portal registration; owner-only resolve); cross-owner suggest-back is dormant until applied.
 2. ✅ **Done** — Vercel build command is `node ../../scripts/fetch-vendor.mjs && next build`; Plotly is vendored and the plot editor (M11b) works live.
 3. **Interactive verification passes** (can't run in CI): slides render (M13), studio File System Access open/save (M17), and the AI/reconcile live runs (M18 coherence agent, M9.6 draft-from-plan, M20 reconcile, M23 question generation, M26–M28 adapt/pull/suggest-back) once Portkey is on Vercel. Ketcher (M11) and plots (M11b) are verified live.
 4. **Set the Portkey env vars in Vercel** (`AI_GATEWAY_URL=https://api.portkey.ai/v1`, `AI_GATEWAY_API_KEY`, `AI_MODEL_DEFAULT/FAST/STRONG` = `@<provider-slug>/<model>`) to verify the **M18 coherence agent** live. Local dev can't reach Portkey from this machine (the dev Mac's security/firewall blocks the `node` binary's outbound — `curl` works, `node` ETIMEDOUTs — not an app issue); Vercel's egress is clean. See [ai-architecture.md](specs/ai-architecture.md).
@@ -28,7 +29,7 @@ These are the only things blocking full production parity with the code:
 | 3 | Agent harness & reconciliation | ✅ core built (M18 coherence agent, M19 job seam, M20 reconciliation, M21 leakage audit + runbook); deferred: worker-tier agent execution, one-click remediation, private-repo reconcile |
 | 4 | Assessment & question templates | ✅ core built (M22 contract, M23 generation, M24 answer-key/embargo, M25 LMS export); follow-ups: blueprint/embargo editor UI + early-lift. No worker tier needed |
 | 5 | Adaptation ecosystem | 🔄 core built (M26 adapt & lineage, M27 pull-updates, M28 suggest-back data path); deferred: M29 DOI + PR materialization (external), cross-owner adapt/suggest-back, AI-assisted merge (27.3), whole-package fork |
-| 6 | Portal & discovery | 🔄 in progress (M30 LRMI/schema.org built; M31 cross-owner adapt/suggest-back, M32 search UI, M33 governance next) |
+| 6 | Portal & discovery | 🔄 in progress (M30 LRMI + M31 cross-owner adapt/suggest-back built; M32 search UI, M33 governance next) |
 | 7 | Research operations & study readiness | ⬜ |
 | 8 | Hardening & sustainability | ⬜ |
 
@@ -570,7 +571,7 @@ then the search UI over it, then governance scaffolding.
 | # | Sub-module | Verify by | Status |
 | --- | --- | --- | --- |
 | 31.1 | Adapt a package you don't own (from the portal) — **public GitHub read** of a registered package → adapt into your workspace with lineage | a stranger's published package adapts in with `adaptedFrom` + attribution + license gate | ✅ groundwork `adaptGivenBlocksInto` (decouples source-read from target-write); github-bridge tokenless `fetchPublicRepoFile` (raw.githubusercontent — no RLS bypass, no token); web `adaptFromPortalAction` (gated on portal registration; reads alembic.json + first chapter; license-gated) + `listPortalAdaptSourcesAction`; AdaptPanel "From the portal (other educators)". Adapts the source's first chapter |
-| 31.2 | Cross-owner suggest-back via a dedicated `suggestions` table (RLS: insert by any signed-in user targeting a registered package; select/resolve by the owner) | a suggestion from an adapter reaches a different owner's inbox; owner accepts → applies to their block | ⬜ next — needs migration `0009_suggestions.sql` |
+| 31.2 | Cross-owner suggest-back via a dedicated `suggestions` table (RLS: insert by any signed-in user targeting a registered package; select/resolve by the owner) | a suggestion from an adapter reaches a different owner's inbox; owner accepts → applies to their block | ✅ migration `0009_suggestions.sql` (RLS — consent = registration; owner-only resolve; **no service-role bypass**); `lib/suggestions`; `suggestBackAction` routes same-owner→review-queue vs cross-owner→suggestions inbox (via `getPackage` ownership check); `listIncomingSuggestionsAction`/`resolveSuggestionAction` (accept applies via `saveStudyGuide` + sync); `SuggestionsInboxPanel` (Review group). **Awaits migration 0009 `db push`** |
 | 31.3 | *(optional)* GitHub-PR materialization of a suggestion (bridge `createPullRequest`) | a suggestion can become a PR on the upstream public repo | ⏸ deferred (external) |
 
 ### M32 — Searchable portal *(planned)*
@@ -612,6 +613,20 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
 ## Log
 
 ### 2026-06-17
+- **M31.2 — cross-owner suggest-back (completes the two-way ecosystem loop).** Per
+  the chosen model: a dedicated `suggestions` table (migration `0009`) with
+  **RLS, no service-role bypass** — insert only to a portal-registered package
+  (consent = registration) as yourself; read by the upstream owner (inbox) + the
+  sender; resolve by the owner only. `lib/suggestions` (send/list/get/setStatus);
+  `suggestBackAction` now routes by ownership (own package → the M28 review queue;
+  another owner's → the suggestions inbox); `listIncomingSuggestionsAction` +
+  `resolveSuggestionAction` (accept applies the suggested title/body to the block
+  via `saveStudyGuide` + sync; reject discards); `SuggestionsInboxPanel` (Review
+  group, shown only when suggestions exist). typecheck + all tests + web build
+  green. **Awaits migration 0009 `db push`.** **Phase 6 cross-owner ecosystem
+  (M31) complete** — adapt a stranger's package + suggest back, both RLS-clean.
+  Remaining Phase 6: M32 searchable portal, M33 governance. (28.3 GitHub-PR
+  materialization still deferred.)
 - **M31.1 — cross-owner adaptation (adapt a stranger's package).** Decision: dedicated
   table + RLS, **public GitHub reads, no service-role bypass**. Groundwork:
   `adaptGivenBlocksInto` (decouples source-read from target-write — the cross-owner

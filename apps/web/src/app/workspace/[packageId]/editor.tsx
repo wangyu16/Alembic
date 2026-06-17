@@ -47,6 +47,8 @@ import {
   suggestBackAction,
   listPortalAdaptSourcesAction,
   adaptFromPortalAction,
+  listIncomingSuggestionsAction,
+  resolveSuggestionAction,
   type AdaptSource,
   type AdaptedBlock,
   type PortalAdaptSource,
@@ -470,6 +472,7 @@ export function StudyGuideEditor({
           onChanged={() => router.refresh()}
         />
         <CoherencePanel packageId={packageId} dirty={dirty} onQueued={() => router.refresh()} />
+        <SuggestionsInboxPanel packageId={packageId} onResolved={() => router.refresh()} />
         <ReconcilePanel packageId={packageId} />
 
         <CategoryLabel>Generate</CategoryLabel>
@@ -1226,6 +1229,85 @@ function PlanningPanel({
         </button>
       </div>
       {note && <p className="mt-2 text-xs text-ok">{note}</p>}
+      {error && <p className="mt-2 text-sm text-danger">{error}</p>}
+    </div>
+  );
+}
+
+/**
+ * M31.2 — incoming cross-owner suggestions inbox (owner-only via RLS). Another
+ * educator who adapted this published package can suggest a block edit back;
+ * the owner accepts (applies to the block) or rejects.
+ */
+function SuggestionsInboxPanel({
+  packageId,
+  onResolved,
+}: {
+  packageId: string;
+  onResolved: () => void;
+}) {
+  const [items, setItems] = useState<{ id: number; title: string; body: string; note: string }[] | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function load() {
+    setItems(await listIncomingSuggestionsAction(packageId));
+  }
+  useEffect(() => {
+    void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [packageId]);
+
+  async function resolve(id: number, mode: "accept" | "reject") {
+    setBusy(true);
+    setError(null);
+    const r = await resolveSuggestionAction(packageId, id, mode);
+    if (r.ok) {
+      setItems((xs) => (xs ?? []).filter((s) => s.id !== id));
+      onResolved();
+      if (mode === "accept" && typeof window !== "undefined") window.location.reload();
+    } else {
+      setError(r.error ?? "Couldn't resolve the suggestion.");
+    }
+    setBusy(false);
+  }
+
+  // Hide entirely when there's nothing incoming (the common case).
+  if (!items || items.length === 0) return null;
+
+  return (
+    <div className="panel p-3">
+      <div className="mb-2 text-sm font-medium">
+        Suggestions from others <span className="chip ml-1">{items.length}</span>
+      </div>
+      <p className="mb-2 text-xs text-muted">
+        Educators who adapted this package have suggested edits. Accept to apply,
+        or reject.
+      </p>
+      <ul className="divide-y divide-[var(--edge-soft)]">
+        {items.map((s) => (
+          <li key={s.id} className="py-2">
+            <div className="truncate text-sm" title={s.body}>“{s.title}”</div>
+            {s.note && <div className="text-xs text-muted">{s.note}</div>}
+            <div className="mt-1 flex gap-2">
+              <button
+                onClick={() => resolve(s.id, "accept")}
+                disabled={busy}
+                className="rounded border border-zinc-300 px-2 py-1 text-xs hover:bg-elevated disabled:opacity-50 dark:border-zinc-700"
+              >
+                Accept
+              </button>
+              <button
+                onClick={() => resolve(s.id, "reject")}
+                disabled={busy}
+                className="rounded border border-zinc-300 px-2 py-1 text-xs text-danger hover:bg-elevated disabled:opacity-50 dark:border-zinc-700"
+              >
+                Reject
+              </button>
+            </div>
+          </li>
+        ))}
+      </ul>
       {error && <p className="mt-2 text-sm text-danger">{error}</p>}
     </div>
   );

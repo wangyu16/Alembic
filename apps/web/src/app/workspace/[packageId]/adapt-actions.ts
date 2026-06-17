@@ -11,6 +11,7 @@ import {
   adaptBlocksInto,
   adaptGivenBlocksInto,
   loadStudyGuide,
+  saveStudyGuide,
   detectUpstreamUpdates,
   applyUpstreamUpdate,
   loadAdaptationProvenance,
@@ -27,6 +28,12 @@ import { SupabaseSandboxStore } from "@/lib/sandbox-store";
 import { supabaseEventLogger } from "@/lib/events";
 import { syncFilesToGitHub } from "@/lib/github";
 import { recordChange } from "@/lib/changes";
+import {
+  sendSuggestion,
+  listIncomingSuggestions,
+  getSuggestion,
+  setSuggestionStatus,
+} from "@/lib/suggestions";
 
 async function requireUser() {
   const supabase = await createSupabaseServerClient();
@@ -299,33 +306,117 @@ export async function suggestBackAction(
     }
     if (!suggested) return { ok: false, error: "That section no longer exists." };
 
-    // Queue a Tier-3 suggest-back on the UPSTREAM package's review queue.
-    await recordChange(supabase, {
-      packageId: ref.sourcePackageId,
-      userId: user.id,
-      tier: 3,
-      kind: "suggest-back",
-      summary: `Suggested edit to "${suggested.title}"${here ? ` from "${here.title}"` : ""}`,
-      detail: {
-        path: ref.sourcePath,
-        suggestBlockId: ref.sourceBlockId,
+    // Same-owner vs cross-owner: getPackage returns null for a package the user
+    // doesn't own (RLS), which routes us to the cross-owner suggestions inbox.
+    const upstream = await store.getPackage(ref.sourcePackageId);
+    if (upstream) {
+      // Same-owner: queue a Tier-3 suggest-back on the upstream's review queue (M28).
+      await recordChange(supabase, {
+        packageId: ref.sourcePackageId,
+        userId: user.id,
+        tier: 3,
+        kind: "suggest-back",
+        summary: `Suggested edit to "${suggested.title}"${here ? ` from "${here.title}"` : ""}`,
+        detail: {
+          path: ref.sourcePath,
+          suggestBlockId: ref.sourceBlockId,
+          suggestedTitle: suggested.title,
+          suggestedBody: suggested.body,
+          fromPackageId: packageId,
+          note,
+        },
+        status: "pending",
+      });
+    } else {
+      // Cross-owner (M31.2): send to the upstream owner's suggestions inbox. RLS
+      // gates on the target being portal-registered (consent) + sender identity.
+      const sent = await sendSuggestion(supabase, {
+        targetPackageId: ref.sourcePackageId,
+        fromPackageId: packageId,
+        fromUserId: user.id,
+        chapterPath: ref.sourcePath,
+        sourceBlockId: ref.sourceBlockId,
         suggestedTitle: suggested.title,
         suggestedBody: suggested.body,
-        fromPackageId: packageId,
         note,
-      },
-      status: "pending",
-    });
+      });
+      if (!sent) {
+        return { ok: false, error: "Couldn't send — the source package may not be accepting suggestions." };
+      }
+    }
     await supabaseEventLogger(supabase).log({
       type: "suggestion.sent",
       userId: user.id,
       packageId,
-      detail: { toPackageId: ref.sourcePackageId },
+      detail: { toPackageId: ref.sourcePackageId, crossOwner: !upstream },
       occurredAt: new Date().toISOString(),
     });
     return { ok: true };
   } catch {
     return { ok: false, error: "Couldn't send the suggestion. Please try again." };
+  }
+}
+
+/** M31.2 — pending cross-owner suggestions in this package's inbox (owner-only via RLS). */
+export async function listIncomingSuggestionsAction(
+  packageId: string,
+): Promise<{ id: number; title: string; body: string; note: string }[]> {
+  const { supabase } = await requireUser();
+  try {
+    const rows = await listIncomingSuggestions(supabase, packageId);
+    return rows.map((s) => ({
+      id: s.id,
+      title: s.suggested_title ?? "(untitled)",
+      body: s.suggested_body,
+      note: s.note,
+    }));
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * M31.2 — the upstream owner resolves an incoming suggestion: "accept" applies
+ * the suggested title/body to the addressed block (via saveStudyGuide, synced),
+ * "reject" discards it. RLS ensures only the owner can resolve.
+ */
+export async function resolveSuggestionAction(
+  packageId: string,
+  suggestionId: number,
+  mode: "accept" | "reject",
+): Promise<AdaptResult> {
+  const { supabase, user } = await requireUser();
+  const store = new SupabaseSandboxStore(supabase);
+  try {
+    const s = await getSuggestion(supabase, suggestionId);
+    if (!s || s.target_package_id !== packageId || s.status !== "pending") {
+      return { ok: false, error: "That suggestion is no longer available." };
+    }
+    if (mode === "reject") {
+      await setSuggestionStatus(supabase, suggestionId, "rejected");
+      revalidatePath(`/workspace/${packageId}`);
+      return { ok: true };
+    }
+    // accept: apply the suggested content to the addressed block.
+    const doc = await loadStudyGuide(store, packageId, s.chapter_path);
+    const block = doc.blocks.find((b) => b.id === s.source_block_id);
+    if (!block) {
+      await setSuggestionStatus(supabase, suggestionId, "rejected");
+      return { ok: false, error: "The targeted section no longer exists; the suggestion was dismissed." };
+    }
+    if (s.suggested_title) block.title = s.suggested_title;
+    block.body = s.suggested_body;
+    const { blocks } = await saveStudyGuide(store, packageId, doc);
+    await syncFilesToGitHub(
+      supabase, store, user.id, packageId,
+      [{ path: s.chapter_path, content: serializeStudyGuide(doc.preamble, blocks) }],
+      "Accept suggested edit (Alembic)",
+    );
+    await setSuggestionStatus(supabase, suggestionId, "accepted");
+    revalidatePath(`/workspace/${packageId}`);
+    return { ok: true };
+  } catch {
+    return { ok: false, error: "Couldn't resolve the suggestion. Please try again." };
   }
 }
 
