@@ -15,6 +15,14 @@ export default function Home() {
           publishing, and provenance, all on infrastructure you own. No Git, no
           Markdown tooling, no developer workflows.
         </p>
+        <p className="max-w-xl border-l-2 border-edge-soft pl-4 text-lg leading-relaxed text-ink text-pretty">
+          Other tools help you write a <span className="text-muted">document</span>.
+          Alembic helps you build a <em className="font-serif">course</em> — a
+          connected map of concepts, objectives, and materials that stays
+          coherent as it grows, keeps your instructor notes and answer keys
+          private, and lets you adapt and remix open work with the credit carried
+          along. Your materials stay yours, forever.
+        </p>
         <p className="max-w-xl text-base leading-relaxed text-muted text-pretty">
           Students and self-learners can open, edit, and annotate Alembic files —
           a downloaded <code className="text-ink">.md.html</code> study guide or your
@@ -37,7 +45,7 @@ export default function Home() {
       <dl className="grid gap-x-8 gap-y-5 border-t border-edge-soft pt-8 sm:grid-cols-3">
         {[
           ["Study-guide centered", "Write in sections; slides and worksheets derive from them."],
-          ["Chemistry first", "Native notation, equations, and structures that just render."],
+          ["Every STEM field", "Equations, chemical formulas, and structures render natively as you type."],
           ["Yours to keep", "Published to your own GitHub, usable with or without Alembic."],
         ].map(([term, def]) => (
           <div key={term} className="flex flex-col gap-1">
