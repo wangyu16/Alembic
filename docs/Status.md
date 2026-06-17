@@ -5,7 +5,7 @@ same commit as the work it tracks. Statuses: ✅ done · 🔄 partially shipped 
 
 **Production:** live at https://alembic.orz.how (Vercel project `alembic`, root `apps/web`, Node 22; Cloudflare DNS; Git auto-deploy on push to `main`).
 
-**Current focus: Phase 5 (v0.6–v0.7) core complete — adaptation ecosystem.** M26 (adapt & lineage), M27 (pull-updates take/keep), M28 (suggest-back data path) — the Phase-5 core — are all built and CI-green, **scoped to the educator's own packages (same-owner scope)**. Deferred: M29 Zenodo DOI, GitHub-PR materialization (28.3), cross-owner adaptation/suggest-back, AI-assisted merge (27.3), whole-package fork. Phase 4 (M22–M25), Phase 3 (M18–M21) and Phase 2 (M9–M17) cores are complete; v0.1 is deployed (not yet *shipped* — 2 of 6 release criteria pending the M8.3 pilot). Remaining live passes: M18 coherence agent + M9.6 draft-from-plan + M20 reconcile + M23 question generation + M26/M27/M28 adaptation (cross-owner needs the deferred service path) (all need Portkey on Vercel — see Pending operator actions). Heavier deferrals (worker-tier PDF/foreign-import + agent execution, one-click remediation, studio editing/local projects) remain tracked below. Next phase: Phase 6 (portal & discovery). See [LocalSetup.md](LocalSetup.md) + [GitHubAppSetup.md](GitHubAppSetup.md).
+**Current focus: Phases 0–7 cores complete.** Phase 7 (research ops & study readiness) core is built — M34 de-identified export, M35 admin/ops module, M36 usage dashboard + centrally-managed credits + FERPA/IRB review (M37 institution-managed mode ⏸ deferred post-pilot). Phase 6 (portal & discovery: LRMI, **cross-owner adapt + suggest-back**, searchable portal, governance) complete; Phases 2–5 cores complete. v0.1 is deployed (not yet *shipped* — 2 of 6 release criteria pending the M8.3 pilot). **Only Phase 8 (hardening & sustainability) remains** — or a pilot-readiness pass. Remaining **live passes** (need Portkey on Vercel; `SUPABASE_SECRET_KEY` + `is_admin` for `/admin`): the AI/reconcile/adaptation flows (M18, M9.6, M20, M23, M26–M28, M31) + a structured-data-tester check for M30. Heavier deferrals (worker tier: PDF/foreign-import/agent-exec/one-click remediation; studio editing/local projects; M29 Zenodo DOI; M37) remain tracked below. See [LocalSetup.md](LocalSetup.md) + [GitHubAppSetup.md](GitHubAppSetup.md).
 
 ### Pending operator actions (human-in-the-loop)
 
@@ -29,7 +29,7 @@ These are the only things blocking full production parity with the code:
 | 4 | Assessment & question templates | ✅ core built (M22 contract, M23 generation, M24 answer-key/embargo, M25 LMS export); follow-ups: blueprint/embargo editor UI + early-lift. No worker tier needed |
 | 5 | Adaptation ecosystem | 🔄 core built (M26 adapt & lineage, M27 pull-updates, M28 suggest-back data path); deferred: M29 DOI + PR materialization (external), cross-owner adapt/suggest-back, AI-assisted merge (27.3), whole-package fork |
 | 6 | Portal & discovery | ✅ core built (M30 LRMI, M31 cross-owner adapt/suggest-back, M32 searchable portal, M33 governance scaffolding); migrations 0009/0010 applied |
-| 7 | Research operations & study readiness | 🔄 in progress (M34 export + M35 admin + M36 usage/credits/FERPA built; M37 institution-managed mode next — heavier/external) |
+| 7 | Research operations & study readiness | ✅ core built (M34 export, M35 admin, M36 usage/credits/FERPA); M37 institution-managed mode ⏸ deferred post-pilot |
 | 8 | Hardening & sustainability | ⬜ |
 
 ## v0.1 sub-modules
@@ -632,10 +632,14 @@ managed mode + the FERPA/IRB data-handling review (M16.4).
 | 36.2 | Centrally-managed credits + consistent access | uniform per-user budget + gateway routing across the cohort | ✅ already delivered: per-user **token budget** (M16.3, `AI_TOKEN_BUDGET`) enforced uniformly + provider-swappable gateway/routing (M16) + governed logging. **Per-institution** grouping is a follow-up (needs an institution model) |
 | 36.3 | FERPA/IRB third-party data-handling review (M16.4) | a per-deployment review record exists | ✅ [specs/data-handling-review.md](specs/data-handling-review.md) — what the AI path touches, gateway retention/region/FERPA/IRB checks, a per-deployment decision table. Mechanism built (owner-insert-only log, admin-only export, de-identified research export); the review itself is a per-deployment operator/PI action |
 
-### M37 — Institution / workshop-managed mode *(planned; heavier/external)*
+### M37 — Institution / workshop-managed mode *(⏸ deferred post-pilot)*
 
 Org-installed GitHub App; bot commits authored as the educator; uniform managed
-AI access for a cohort. ⬜ (the org-App piece is external/heavier — likely staged)
+AI access for a cohort. **⏸ Deferred to post-pilot** (user decision, 2026-06-17):
+heavy/external (org-level App install + bot-as-educator attribution), and best
+shaped by what the pilot actually needs. Uniform managed AI for a cohort is
+already covered by the per-user budget + gateway (M16/M36); the org-install piece
+is the deferred part.
 
 ## Phase 2 deferred follow-ups (tracked)
 
@@ -665,6 +669,11 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
 ## Log
 
 ### 2026-06-17
+- **M37 deferred post-pilot (user decision).** Institution/workshop-managed mode
+  (org-installed GitHub App, bot-as-educator commits) is heavy/external and best
+  shaped by pilot needs; uniform managed AI for a cohort is already covered by the
+  per-user budget + gateway (M16/M36). **Phase 7 core (M34–M36) complete.** Next
+  candidate: Phase 8 (hardening & sustainability) or a pilot-readiness pass.
 - **M36 — centrally-managed credits + usage visibility + FERPA/IRB review.**
   research-events pure `summarizeUsage` (totals + by-kind + by-user, **token-only**,
   never prompts/outputs; 4 tests → 13) + an "AI usage" section in `/admin`
