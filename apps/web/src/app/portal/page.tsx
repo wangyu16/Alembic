@@ -1,30 +1,11 @@
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { learningResource } from "@alembic/renderer";
 import type { License } from "@alembic/package-contract";
+import { PortalBrowser, type PortalRegistration } from "@/components/portal-browser";
 
 export const dynamic = "force-dynamic";
 
-interface Registration {
-  package_id: string;
-  title: string;
-  description: string;
-  discipline: string;
-  license: string;
-  public_repo_url: string;
-  site_url: string;
-  registered_at: string;
-  accessibility_status: "pass" | "warn" | "fail" | "unknown";
-}
-
-const A11Y_BADGE: Record<
-  Registration["accessibility_status"],
-  { label: string; className: string } | null
-> = {
-  pass: { label: "Accessible", className: "text-ok" },
-  warn: { label: "Accessibility: minor issues", className: "text-warn" },
-  fail: { label: "Accessibility: needs work", className: "text-danger" },
-  unknown: null,
-};
+type Registration = PortalRegistration & { registered_at: string };
 
 export default async function PortalPage() {
   const supabase = await createSupabaseServerClient();
@@ -79,40 +60,7 @@ export default async function PortalPage() {
       {registrations.length === 0 ? (
         <p className="text-muted">No packages have been listed yet.</p>
       ) : (
-        <ul className="divide-y divide-[var(--edge-soft)]">
-          {registrations.map((r) => (
-            <li key={r.package_id} className="py-5">
-              <div className="flex items-baseline justify-between gap-3">
-                <h2 className="font-serif text-xl text-ink">{r.title}</h2>
-                <span className="chip shrink-0">{r.license}</span>
-              </div>
-              {r.description && (
-                <p className="mt-1 text-sm leading-relaxed text-muted">
-                  {r.description}
-                </p>
-              )}
-              <div className="mt-2 flex items-center gap-4 text-sm">
-                <span className="text-xs text-faint">{r.discipline}</span>
-                {A11Y_BADGE[r.accessibility_status] && (
-                  <span className={`text-xs ${A11Y_BADGE[r.accessibility_status]!.className}`}>
-                    {A11Y_BADGE[r.accessibility_status]!.label}
-                  </span>
-                )}
-                <a href={r.site_url} target="_blank" rel="noreferrer" className="link">
-                  Visit site
-                </a>
-                <a
-                  href={r.public_repo_url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-muted hover:text-ink"
-                >
-                  Source
-                </a>
-              </div>
-            </li>
-          ))}
-        </ul>
+        <PortalBrowser registrations={registrations} />
       )}
     </main>
   );

@@ -29,7 +29,7 @@ These are the only things blocking full production parity with the code:
 | 3 | Agent harness & reconciliation | ✅ core built (M18 coherence agent, M19 job seam, M20 reconciliation, M21 leakage audit + runbook); deferred: worker-tier agent execution, one-click remediation, private-repo reconcile |
 | 4 | Assessment & question templates | ✅ core built (M22 contract, M23 generation, M24 answer-key/embargo, M25 LMS export); follow-ups: blueprint/embargo editor UI + early-lift. No worker tier needed |
 | 5 | Adaptation ecosystem | 🔄 core built (M26 adapt & lineage, M27 pull-updates, M28 suggest-back data path); deferred: M29 DOI + PR materialization (external), cross-owner adapt/suggest-back, AI-assisted merge (27.3), whole-package fork |
-| 6 | Portal & discovery | 🔄 in progress (M30 LRMI + M31 cross-owner adapt/suggest-back built; M32 search UI, M33 governance next) |
+| 6 | Portal & discovery | 🔄 in progress (M30 LRMI + M31 cross-owner adapt/suggest-back + M32 searchable portal built; M33 governance next) |
 | 7 | Research operations & study readiness | ⬜ |
 | 8 | Hardening & sustainability | ⬜ |
 
@@ -574,11 +574,12 @@ then the search UI over it, then governance scaffolding.
 | 31.2 | Cross-owner suggest-back via a dedicated `suggestions` table (RLS: insert by any signed-in user targeting a registered package; select/resolve by the owner) | a suggestion from an adapter reaches a different owner's inbox; owner accepts → applies to their block | ✅ migration `0009_suggestions.sql` (RLS — consent = registration; owner-only resolve; **no service-role bypass**); `lib/suggestions`; `suggestBackAction` routes same-owner→review-queue vs cross-owner→suggestions inbox (via `getPackage` ownership check); `listIncomingSuggestionsAction`/`resolveSuggestionAction` (accept applies via `saveStudyGuide` + sync); `SuggestionsInboxPanel` (Review group). **Awaits migration 0009 `db push`** |
 | 31.3 | *(optional)* GitHub-PR materialization of a suggestion (bridge `createPullRequest`) | a suggestion can become a PR on the upstream public repo | ⏸ deferred (external) |
 
-### M32 — Searchable portal *(planned)*
+### M32 — Searchable portal
 
-Search/filter by topic, level, discipline, license, accessibility, artifact
-type, teaching time; package previews; quality/status indicators; adaptation
-entry points wired to M31. Over the existing `/portal` index + LRMI metadata. ⬜
+| # | Sub-module | Verify by | Status |
+| --- | --- | --- | --- |
+| 32.1 | Search + facet filters over the portal index | filter by text + discipline + license + accessibility; result count shown | ✅ `PortalBrowser` client component (search over title/description; discipline/license/accessibility facets, client-side over the small index); `/portal` page split into server (data + LRMI JSON-LD) + this browser. Quality indicators: license chip + a11y badge. **level / artifact-type / teaching-time facets need richer registration metadata** (follow-up) |
+| 32.2 | Adaptation entry point wired to M31 | a listed package leads to adapting it | ✅ each result has "Visit site" / "Source" + an "Adapt →" link to the workspace, where the M31 AdaptPanel lists portal sources to adapt. (A one-click portal→adapt-with-preselected-source is a follow-up.) |
 
 ### M33 — Governance scaffolding *(planned)*
 
@@ -613,6 +614,14 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
 ## Log
 
 ### 2026-06-17
+- **M32 — searchable portal.** `/portal` split into a server page (data + the M30.2
+  LRMI `ItemList` JSON-LD) + a `PortalBrowser` client component: text search over
+  title/description plus discipline / license / accessibility facets (client-side
+  over the small index), a live result count, license + a11y quality indicators,
+  and per-result "Visit site" / "Source" / "Adapt →" (to the workspace AdaptPanel,
+  which lists portal sources — M31). typecheck + web build green. Follow-ups:
+  level / artifact-type / teaching-time facets (need richer registration metadata);
+  one-click portal→adapt with the source preselected. Remaining Phase 6: M33 governance.
 - **M31.2 — cross-owner suggest-back (completes the two-way ecosystem loop).** Per
   the chosen model: a dedicated `suggestions` table (migration `0009`) with
   **RLS, no service-role bypass** — insert only to a portal-registered package
