@@ -27,7 +27,7 @@ These are the only things blocking full production parity with the code:
 | 2 | Authoring depth & chemistry-first (tiers, a11y, carriers & assets: Ketcher/plots/slides/PDF, import, snapshots, gateway, local mode) | ✅ core built (M9–M17); documented deferrals → worker tier (PDF, foreign import), studio editing/projects, DOI/compare, per-institution quotas |
 | 3 | Agent harness & reconciliation | ✅ core built (M18 coherence agent, M19 job seam, M20 reconciliation, M21 leakage audit + runbook); deferred: worker-tier agent execution, one-click remediation, private-repo reconcile |
 | 4 | Assessment & question templates | ✅ core built (M22 contract, M23 generation, M24 answer-key/embargo, M25 LMS export); follow-ups: blueprint/embargo editor UI + early-lift. No worker tier needed |
-| 5 | Adaptation ecosystem | 🔄 core built (M26 adapt & lineage, M27 pull-updates, M28 suggest-back data path); deferred: M29 DOI + PR materialization (external), cross-owner adapt/suggest-back, AI-assisted merge (27.3), whole-package fork |
+| 5 | Adaptation ecosystem | 🔄 core built (M26 adapt & lineage, M27 pull-updates, M28 suggest-back data path); deferred: M29 Zenodo DOI, AI-assisted merge (27.3), whole-package fork, GitHub-PR materialization (28.3, external) (cross-owner adapt + suggest-back landed in Phase 6 / M31) |
 | 6 | Portal & discovery | ✅ core built (M30 LRMI, M31 cross-owner adapt/suggest-back, M32 searchable portal, M33 governance scaffolding); migrations 0009/0010 applied |
 | 7 | Research operations & study readiness | ✅ core built (M34 export, M35 admin, M36 usage/credits/FERPA); M37 institution-managed mode ⏸ deferred post-pilot |
 | 8 | Hardening & sustainability | ⬜ |
@@ -614,7 +614,7 @@ managed mode + the FERPA/IRB data-handling review (M16.4).
 | # | Sub-module | Verify by | Status |
 | --- | --- | --- | --- |
 | 34.1 | Confirm/extend the event taxonomy for study completeness (reuse, completeness, workload indicators) | the events needed for the study's metrics exist (or are added additively) | ✅ reviewed — broad coverage: authoring (create/edit/save w/ `durationMs` workload signal), AI accept/edit/reject with **Tier-1 logged separately** from human decisions, reuse (`adaptation.completed`/`upstream.update.applied`/`suggestion.sent`), a11y, import, agent, reconcile, leak, export. Additive if a specific study metric is missing |
-| 34.2 | Pure de-identification + CSV/JSON serialization of `research_events` (stable participant pseudonym; never GitHub identity/content) | a row set exports to de-identified CSV + JSON; same user → same code; no raw user_id | ✅ research-events `deidentifyEvents` (caller injects a salted one-way `pseudonymize`, so the package stays dependency-free + the salt never lives there; drops raw user_id/package_id) + `eventsToCsv`/`eventsToJson` (RFC-4180 escaping). 5 tests (9 total). Download wiring lands in the M35 admin module |
+| 34.2 | Pure de-identification + CSV/JSON serialization of `research_events` (stable participant pseudonym; never GitHub identity/content) | a row set exports to de-identified CSV + JSON; same user → same code; no raw user_id | ✅ research-events `deidentifyEvents` (caller injects a salted one-way `pseudonymize`, so the package stays dependency-free + the salt never lives there; drops raw user_id/package_id) + `eventsToCsv`/`eventsToJson` (RFC-4180 escaping). 5 tests (13 research-events total after M36). Download wiring lands in the M35 admin module |
 
 ### M35 — Admin / operations module
 

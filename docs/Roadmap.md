@@ -132,6 +132,8 @@ Several deferrals across phases share one prerequisite — a real container work
 
 **Exit criteria:** a stranger finds a package via the portal (or Google), previews it, and starts an adaptation.
 
+> **Realized scope (annotation):** Shipped — M30 LRMI/schema.org `LearningResource` in published pages + portal `ItemList` (consume the standard, no proprietary record); M31 cross-owner adapt (tokenless public GitHub read) + suggest-back (`suggestions` table, RLS, no service-role bypass); M32 searchable portal (text + discipline/license/a11y facets); M33 governance scaffolding (`portal_eligible` gating + `portal_reports` + takedown runbook). Deferred — level/artifact-type/teaching-time facets (need richer registration metadata); one-click portal→adapt-with-preselected-source; GitHub-PR materialization (M31.3, external).
+
 ---
 
 ## Phase 7 — Research Operations & Study Readiness (v0.9)
@@ -146,6 +148,8 @@ Several deferrals across phases share one prerequisite — a real container work
 
 **Exit criteria:** the study can onboard a participant cohort with uniform AI access and produce clean exportable research data.
 
+> **Realized scope (annotation):** Shipped — M34 de-identified CSV/JSON export (salted one-way pseudonym, raw ids dropped); M35 admin module (`is_admin` gate + service-role used ONLY behind it; counts/errors/eligibility/report-resolve); M36 usage dashboard + centrally-managed credits (uniform per-user `AI_TOKEN_BUDGET` + gateway) + FERPA/IRB data-handling review spec. Deferred — **M37 institution/workshop-managed mode (⏸ post-pilot)**; per-institution quotas/dashboards (needs an institution model); demo-content management (admin follow-up).
+
 ---
 
 ## Phase 8 — Hardening & Sustainability (v1.0 and beyond)
@@ -157,6 +161,10 @@ Several deferrals across phases share one prerequisite — a real container work
 - Account lifecycle: repository transfer on institution exit; verified "usable as plain Git repo without Alembic" guarantee. (The no-lock-in build config is already verified for *new* repos — v0.1 release criterion #3; the remaining work is backfilling it into pre-existing repos plus repository-transfer-on-exit.)
 - Multi-author groundwork promotion (roles, per-layer permissions, shared review queues) as demand proves out — explicitly post-v1.
 - Performance, accessibility audit of Alembic itself, documentation, open-source release hygiene.
+
+> **Carried-over deferrals (explicit ownership):** mirroring how Phase 3.5 was given an explicit owner, Phase 8 absorbs the remaining carried-over deferrals: the **worker tier** (`.md.pdf` M13.3, foreign-format import M12.2, worker-side agent execution M19.1, one-click leakage remediation M21.3); **M37** institution/workshop-managed mode + per-institution quotas; and **M29** Zenodo DOI. Several Phase-8 items are already partially in place: the billing seams (the entitlement resolver + the `AIProvider` gateway) and the no-lock-in build config for *new* repos (v0.1 release criterion #3).
+
+> **Pilot-readiness gate (precedes Phase 8):** the v0.1 pilot (M8.3) plus the outstanding live-verification passes are the real validation gate and should precede / gate Phase 8. A "pilot-readiness pass": set Portkey on Vercel + `SUPABASE_SECRET_KEY` + flag an admin (`is_admin`); run the live passes for M18, M9.6, M20, M23, M26–M28, M31 + the M30 structured-data check; finish the M8.1 demo content; then run M8.3.
 
 ---
 

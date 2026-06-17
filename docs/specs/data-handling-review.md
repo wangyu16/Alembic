@@ -16,8 +16,12 @@ in the choices for each deployment.
 - **Governance log** (`ai_invocations`): stores `prompt`, `output`, token counts,
   `kind`, `provider`, `model`, `user_id`. **RLS: owner-insert-only, no user
   select** — readable only by the service role (admin export). Never committed to
-  either repo. The de-identified research export (M34) **excludes** prompt/output
-  entirely (only token/kind aggregates + pseudonymous ids leave the platform).
+  either repo. The de-identified research export (M34, `/admin/export`) reads
+  `research_events` and carries only pseudonymous ids + public-safe
+  `research_events.detail` (**no prompts/outputs, and no AI token/kind data**).
+  The AI **token/kind aggregates** are a separate concern: they read
+  `ai_invocations` and are shown **in-app** in the admin dashboard (M36, `/admin`)
+  — they are never exported.
 
 ## Where it goes (the gateway question)
 
@@ -37,6 +41,17 @@ but routes prompts through a third party. Before enabling it for real data:
 4. **IRB.** The study's IRB protocol must cover third-party AI processing of
    participant-authored content; obtain consent language accordingly. Research
    logs stay separate from both repos (already enforced).
+
+## Access model invariant
+
+**No cross-owner educator workflow may use the service role.** Cross-owner
+adaptation reads **public GitHub content** (no RLS bypass), and cross-owner
+suggest-back goes through the RLS-gated `suggestions` table (consent = portal
+registration). The service role (`lib/supabase/service`) is reserved
+**exclusively** for the `requireAdmin`-gated research/ops surface (e.g. the M34
+export, the M36 dashboard). This is the same fail-closed discipline as the
+two-repo invariant: a future contributor must not add a "convenient"
+service-role shortcut to an educator path.
 
 ## Decision record (per deployment)
 

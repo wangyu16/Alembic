@@ -81,10 +81,14 @@ Never add a seventh top-level panel — extend an existing category.
 - **Action bar:** `ChapterBar` + Save + Download + Publish.
 - **Canvas:** block list + "Add section" + **Author** group (`PlanningPanel`
   concept map & objectives — M9.6, `AdaptPanel` adapt blocks + suggest-back +
-  pull-updates — Phase 5, `AssetsPanel` figures/charts, `AIDraftPanel`).
+  pull-updates — Phase 5; `AdaptPanel` also lists portal-registered packages
+  from other educators under "From the portal (other educators)"
+  (`listPortalAdaptSourcesAction`/`adaptFromPortalAction` — M31.1),
+  `AssetsPanel` figures/charts, `AIDraftPanel`).
 - **Review** group: `TierPanel` (changes & review) + `A11yPanel` +
-  `CoherencePanel` (whole-course coherence agent — M18) + `ReconcilePanel`
-  (changes made outside Alembic / "Scan for leaks" — M20).
+  `CoherencePanel` (whole-course coherence agent — M18) +
+  `SuggestionsInboxPanel` (cross-owner suggestions inbox — M31.2) +
+  `ReconcilePanel` (changes made outside Alembic / "Scan for leaks" — M20).
 - **Generate** group: `WorksheetPanel`, a Slides & PDF section, and
   `AssessmentsPanel` (assessments & question templates).
 - **Publish & share** group: `PublishingPanel` (publish, portal, versions;

@@ -174,5 +174,8 @@ ids.)* Full recipe in `.env.example`.
 student/educator data, complete a **data-handling review** — what the gateway
 and each routed provider may log/retain, region/residency, and FERPA/IRB
 obligations. Prefer a gateway mode that disables provider-side retention; record
-the decision per deployment. Per-institution quotas and usage dashboards are
-future work on top of the per-user budget.
+the decision per deployment. The data-handling review framework now lives in
+[data-handling-review.md](data-handling-review.md) (the mechanism is built; the
+per-deployment review remains an operator/PI action) — keep the two in sync.
+Per-institution quotas and usage dashboards are future work on top of the
+per-user budget.
