@@ -11,8 +11,7 @@ same commit as the work it tracks. Statuses: ✅ done · 🔄 partially shipped 
 
 These are the only things blocking full production parity with the code:
 
-1. **Apply migration `0007_ai_budget.sql`** (`supabase db push` or dashboard) — enables the per-user AI token budget (dormant until `AI_TOKEN_BUDGET` is also set). 0005 + 0006 are already applied.
-1b. **Apply migration `0008_reconcile.sql`** — adds `packages.last_synced_sha` for M20 external-edit reconciliation (additive column; safe to backfill NULL).
+1. **Migrations 0005–0008 are all applied** (✅ 0005 tier queue, 0006 a11y, 0007 AI budget, 0008 `packages.last_synced_sha` for M20 reconciliation). No migration is currently pending. (0007's budget stays dormant until `AI_TOKEN_BUDGET` is set.)
 2. **Set the Vercel build command to run `node ../../scripts/fetch-vendor.mjs && next build`** (not `fetch-ketcher`) so **Plotly** is vendored too — otherwise the plot editor 404s on its runtime in production.
 3. **Interactive verification passes** (can't run in CI): plot render (M11b), slides render (M13), studio File System Access open/save (M17). Ketcher (M11) is already verified live.
 4. **Set the Portkey env vars in Vercel** (`AI_GATEWAY_URL=https://api.portkey.ai/v1`, `AI_GATEWAY_API_KEY`, `AI_MODEL_DEFAULT/FAST/STRONG` = `@<provider-slug>/<model>`) to verify the **M18 coherence agent** live. Local dev can't reach Portkey from this machine (the dev Mac's security/firewall blocks the `node` binary's outbound — `curl` works, `node` ETIMEDOUTs — not an app issue); Vercel's egress is clean. See [ai-architecture.md](specs/ai-architecture.md).
@@ -337,7 +336,7 @@ Cost/scale via a gateway + per-task model selection. See [specs/ai-architecture.
 | 16.3 | Budgets / quotas per user + per institution; usage attribution | quota enforced; usage attributable | 🔄 per-user **token budget** (`recent_ai_token_usage` RPC, migration 0007; `AI_TOKEN_BUDGET`/`AI_BUDGET_WINDOW_SECONDS`; `BudgetExceededError` surfaced) on top of the existing rate limit; usage attributable via `ai_invocations` (tokens already logged). Per-institution quotas + dashboards later |
 | 16.4 | Governed logging via the gateway; data-handling review (FERPA/IRB) | prompts/outputs logged under governance; third-party data handling reviewed | 🔄 governed logging in place (`ai_invocations`, owner-insert-only, never in a repo); the third-party data-handling review (FERPA/IRB; what a gateway/provider may retain) is captured as an ops/compliance task in [ai-architecture.md](specs/ai-architecture.md) |
 
-*Exit:* per-task model selection + per-user budgets live; still provider-swappable. **Migration 0007 awaits `supabase db push` for budget enforcement.**
+*Exit:* per-task model selection + per-user budgets live; still provider-swappable. **Migration 0007 applied; the budget activates once `AI_TOKEN_BUDGET` is set.**
 
 ### M17 — Local mode & entitlements
 
@@ -410,7 +409,7 @@ projection — or quarantine them when they break an invariant.
 boundary-violating one is quarantined for review — the durable core is fully
 unit-tested (no network/AI). **Needs a live pass** (edit a connected repo in
 GitHub, then "Check for outside changes"). Private-repo reconciliation + a
-3-way merge for same-file conflicts are future. Migration 0008 awaits `db push`.
+3-way merge for same-file conflicts are future. (Migration 0008 applied.)
 
 ### M21 — Leakage remediation
 
@@ -495,7 +494,7 @@ package lineage without either touching Git.
 
 **Prerequisites in place:** block identity + `adaptedFrom {packageId, blockId,
 snapshot?}` on `BlockSchema` (P0); two-repo publishing (P1); external-edit
-reconciliation M20 (needs its live pass + migration 0008); snapshots M15 (tag =
+reconciliation M20 (migration 0008 applied; needs its live pass); snapshots M15 (tag =
 immutable target) + `CITATION.cff` (M15.3) + stable snapshot URLs (M15.1);
 `suggest-back` already a Tier-3 change kind (M10). Per the coherence pass, Phase 5
 leads with the lineage contract (the deferred M15.5 `adaptedFrom.snapshot`).
@@ -551,8 +550,9 @@ finds a package via the portal (or Google), previews it, and starts an adaptatio
 register/unregister (M7, migration 0004); accessibility badge
 (`portal_registrations.accessibility_status`, M14.2); the adaptation engine
 (M26–M28) — owner-agnostic at the contract/ops layer, only the RLS-crossing
-plumbing is missing. **Entry prerequisite:** apply migration `0008` + run the
-M20/M27/M28 live pass before cross-owner suggest-back/pull run against real repos.
+plumbing is missing. **Entry prerequisite:** run the M20/M27/M28 live pass
+(migration 0008 already applied) before cross-owner suggest-back/pull run against
+real repos.
 
 **Sequencing (per the post-Phase-5 coherence pass):** LRMI first (smallest, most
 decoupled), then the cross-owner path (unblocks the portal's headline action),
