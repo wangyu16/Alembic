@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState, useTransition } from "react";
 import type { PublishingState } from "../editor";
-import { publishToGitHubAction, restoreStudyGuideAction } from "../github-actions";
+import { publishToGitHubAction } from "../github-actions";
 import { publishSiteAction } from "../site-actions";
 import { registerPackageAction, unregisterPackageAction } from "../portal-actions";
 
@@ -30,14 +30,6 @@ function LinkIcon() {
   return (
     <svg viewBox="0 0 16 16" className={ico} fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden>
       <path d="M6.5 9.5l3-3M7 4.5l.8-.8a2.4 2.4 0 0 1 3.4 3.4l-.8.8M9 11.5l-.8.8a2.4 2.4 0 0 1-3.4-3.4l.8-.8" />
-    </svg>
-  );
-}
-function ClockIcon() {
-  return (
-    <svg viewBox="0 0 16 16" className={ico} fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden>
-      <circle cx="8" cy="8" r="6.5" />
-      <path d="M8 4.5V8l2.5 1.5" strokeLinecap="round" />
     </svg>
   );
 }
@@ -122,14 +114,11 @@ export function PublishHeader({
   const [repoBusy, startRepo] = useTransition();
   const [siteBusy, startSite] = useTransition();
   const [listBusy, startList] = useTransition();
-  const [restoreBusy, startRestore] = useTransition();
 
   const [error, setError] = useState<string | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
   const [gateFailures, setGateFailures] = useState<GateFailure[]>([]);
   const [copied, setCopied] = useState(false);
-  const [historyOpen, setHistoryOpen] = useState(false);
-  const historyRef = useRef<HTMLDivElement | null>(null);
 
   function clearMessages() {
     setError(null);
@@ -216,34 +205,6 @@ export function PublishHeader({
     });
   };
 
-  const onRestore = (sha: string) => {
-    if (!window.confirm("Restore this saved version? Unsaved changes will be discarded."))
-      return;
-    clearMessages();
-    setHistoryOpen(false);
-    startRestore(async () => {
-      const r = await restoreStudyGuideAction(packageId, sha);
-      if (r.ok) window.location.reload();
-      else setError(r.error ?? "Restore failed.");
-    });
-  };
-
-  // Close the history dropdown on outside click / Escape.
-  useEffect(() => {
-    if (!historyOpen) return;
-    const onDoc = (e: MouseEvent) => {
-      if (historyRef.current && !historyRef.current.contains(e.target as Node))
-        setHistoryOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setHistoryOpen(false);
-    document.addEventListener("mousedown", onDoc);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDoc);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [historyOpen]);
-
   if (!publishing.configured) {
     return (
       <p className="text-xs text-faint">Publishing isn’t set up on this deployment.</p>
@@ -311,46 +272,6 @@ export function PublishHeader({
             disabled={!published || siteBusy}
             title={published ? "Build the public web page and link" : "Save to GitHub first"}
           />
-        )}
-
-        {/* History */}
-        {published && publishing.versions.length > 0 && (
-          <div className="relative" ref={historyRef}>
-            <Control
-              icon={<ClockIcon />}
-              label="History"
-              onClick={() => setHistoryOpen((v) => !v)}
-              busy={restoreBusy}
-              title="Saved versions"
-            />
-            {historyOpen && (
-              <div className="absolute right-0 z-20 mt-1 w-72 rounded-lg border border-[var(--edge)] bg-[var(--bg)] p-1 shadow-lg">
-                <ul className="max-h-80 divide-y divide-[var(--edge-soft)] overflow-y-auto">
-                  {publishing.versions.map((v, i) => (
-                    <li key={v.sha} className="flex items-center justify-between gap-2 px-2 py-1.5">
-                      <div className="min-w-0">
-                        <div className="truncate text-xs text-ink">{v.message}</div>
-                        <div className="text-[11px] text-faint">
-                          {new Date(v.date).toLocaleString()}
-                        </div>
-                      </div>
-                      {i > 0 ? (
-                        <button
-                          type="button"
-                          onClick={() => onRestore(v.sha)}
-                          className="shrink-0 text-xs text-[var(--accent)] hover:underline"
-                        >
-                          Restore
-                        </button>
-                      ) : (
-                        <span className="shrink-0 text-[11px] text-faint">current</span>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </div>
         )}
 
         {/* List publicly */}

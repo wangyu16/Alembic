@@ -35,7 +35,7 @@ editor entirely.
 | **Author** | constant | insert figures/charts (assets), AI draft a section, adapt blocks from another package + suggest improvements back + pull updates from upstream (the adaptation loop) | at the canvas; compact |
 | **Review** | periodic (before save/publish, after AI edits) | Changes & review (Tier-1/2 queue, undo, policy), Accessibility | collapsed group |
 | **Generate** | occasional | worksheets; *(future)* slides, PDF, other derived artifacts | collapsed group |
-| **Publish & share** | rare / milestone | **header cluster** (see below): ① Save to GitHub, ② Publish web page, copy public link, History (versions/restore), List publicly. No side group — whole-package snapshot/citation lives on the **workspace package list**, not the editor. | header only |
+| **Publish & share** | rare / milestone | **header cluster** (see below): ① Save to GitHub, ② Publish web page, copy public link, List publicly. Per-chapter **History** sits by Save (current page only). No side group — whole-package snapshot/citation lives on the **workspace package list**, not the editor. | header only |
 | **App settings** | rare, not per-package | *(future)* model gateway, entitlements/billing, account | **not in the editor** — app-level settings |
 
 ## 3. Where a NEW feature goes (decision rule)
@@ -101,9 +101,14 @@ Never add a seventh top-level panel — extend an existing category.
   commit content; runs the connect→install→auto-resume flow when not connected)
   and **② Publish web page** (build the static site → GitHub Pages). Once the
   page exists the public **link is always copyable** (detected on load via the
-  `gh-pages` branch, so it survives reloads). **History** (clock) is a dropdown
-  of saved versions with restore — split out from publishing. **List publicly**
+  `gh-pages` branch, so it survives reloads). **List publicly**
   registers/unregisters on the portal.
+- **Per-chapter History** (`_components/chapter-history.tsx`) sits **next to Save**
+  in the study-guide toolbar, not in the publish header — it acts on the current
+  page only. The version list is scoped to the active chapter's file
+  (`listCommits` with `path`), and restore (`restoreStudyGuideAction(…, path)`)
+  writes that one file *forward*, so restoring one chapter never touches the
+  others and there is no history rewrite.
 - **Whole-package operations live on the workspace list, not the editor.**
   Rename / delete / archive-restore (lifecycle) and **snapshot + citation**
   (`_components/package-snapshots.tsx`, published rows only) are package-as-entity

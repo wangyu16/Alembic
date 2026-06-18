@@ -252,13 +252,16 @@ export interface RestoreResult {
 }
 
 /**
- * Restore the study guide to a previous saved version (a commit on the public
- * repo): read the file at that commit, rebuild the local projection, and
- * commit the restored content forward as a new commit.
+ * Restore a single chapter's study-guide file to a previous saved version (a
+ * commit on the public repo): read that file at the commit and commit it
+ * *forward* as a new commit. Per-file by design — restoring one chapter never
+ * touches the others, and there is no history rewrite. `path` is the active
+ * chapter's study-guide path (defaults to the single-chapter file).
  */
 export async function restoreStudyGuideAction(
   packageId: string,
   commitSha: string,
+  path: string = DEFAULT_STUDY_GUIDE_PATH,
 ): Promise<RestoreResult> {
   const supabase = await createSupabaseServerClient();
   const {
@@ -276,10 +279,9 @@ export async function restoreStudyGuideAction(
 
   try {
     const coords = { owner: repo.owner, repo: repo.name };
-    const path = DEFAULT_STUDY_GUIDE_PATH;
     const content = await gh.client.getFileAtRef(coords, path, commitSha);
     if (content === null) {
-      return { ok: false, error: "That version has no study guide to restore." };
+      return { ok: false, error: "That version has nothing to restore for this page." };
     }
     const parsed = parseStudyGuide(content);
     await saveStudyGuide(store, packageId, {

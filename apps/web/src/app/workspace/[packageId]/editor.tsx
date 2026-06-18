@@ -61,6 +61,7 @@ import { PublishHeader } from "./_components/publish-header";
 import type { AssetInfo } from "@alembic/package-ops";
 import type { A11yReport, Fixable } from "@/lib/a11y";
 import { ChapterNav } from "./chapter-nav";
+import { ChapterHistory } from "./_components/chapter-history";
 
 export interface PackageVersion {
   sha: string;
@@ -360,6 +361,14 @@ export function StudyGuideEditor({
             >
               Download .md.html
             </a>
+            {publishing.published && publishing.versions.length > 0 && (
+              <ChapterHistory
+                packageId={packageId}
+                path={initialPath}
+                versions={publishing.versions}
+                unitTerm={unitTerm}
+              />
+            )}
             <button
               onClick={onSave}
               disabled={save.kind === "saving"}

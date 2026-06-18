@@ -61,7 +61,8 @@ export default async function EditorPage({
 
   // For published packages, load the saved-version history and detect whether
   // the public website exists (gh-pages branch) so the copy-link stays
-  // available across reloads. Both best-effort — non-essential on failure.
+  // available across reloads. History is scoped to the ACTIVE chapter's file
+  // (per-chapter timeline). Both best-effort — non-essential on failure.
   let versions: Array<{ sha: string; message: string; date: string }> = [];
   let siteUrl: string | null = null;
   if (record.storage === "github" && pub) {
@@ -69,7 +70,10 @@ export default async function EditorPage({
       const gh = await clientForUser(supabase, user.id);
       if (gh) {
         const coords = { owner: pub.owner, repo: pub.name };
-        versions = await gh.client.listCommits(coords, { perPage: 15 });
+        versions = await gh.client.listCommits(coords, {
+          perPage: 15,
+          path: active?.path,
+        });
         const pagesSha = await gh.client.getRefSha(coords, "heads/gh-pages");
         if (pagesSha) siteUrl = `https://${pub.owner}.github.io/${pub.name}/`;
       }

@@ -139,13 +139,18 @@ export class GitHubClient {
 
   async listCommits(
     coords: RepoCoords,
-    opts: { perPage?: number } = {},
+    opts: { perPage?: number; path?: string } = {},
   ): Promise<Array<{ sha: string; message: string; date: string }>> {
+    // `path` scopes history to commits that touched one file (per-chapter
+    // history): GitHub returns only commits changing that path, newest first.
+    const pathParam = opts.path
+      ? `&path=${encodeURIComponent(opts.path)}`
+      : "";
     const data = await this.request<
       Array<{ sha: string; commit: { message: string; author: { date: string } } }>
     >(
       "GET",
-      `/repos/${coords.owner}/${coords.repo}/commits?per_page=${opts.perPage ?? 20}`,
+      `/repos/${coords.owner}/${coords.repo}/commits?per_page=${opts.perPage ?? 20}${pathParam}`,
     );
     return data.map((c) => ({
       sha: c.sha,
