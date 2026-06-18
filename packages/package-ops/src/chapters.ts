@@ -1,10 +1,13 @@
 import {
   assertPathAllowedInRepo,
   CHAPTER_SLUG_PATTERN,
+  conceptMapPath,
   newBlockId,
+  objectivesPath,
   parseManifest,
   type ChapterRef,
   type PackageManifest,
+  type UnitTerm,
 } from "@alembic/package-contract";
 import type { PackageFile, PackageStore } from "./store";
 import {
@@ -257,4 +260,92 @@ export async function deleteChapter(
 
   await writeManifest(store, packageId, { ...manifest, chapters });
   await store.deleteFiles(packageId, [{ repo: "public", path }]);
+}
+
+/**
+ * Rename a chapter's **page name** (slug) — the file name and public URL — while
+ * keeping its title and content. Moves every slug-keyed file (study-guide page,
+ * chapter-scoped concept map and objectives) to the new slug and updates the
+ * manifest. Block IDs are untouched, so derived artifacts stay linked. The
+ * chapter's public URL changes, so callers should warn the educator.
+ */
+export async function renameChapterPageName(
+  store: PackageStore,
+  packageId: string,
+  oldSlug: string,
+  newSlug: string,
+): Promise<{ slug: string; path: string; moved: { from: string; to: string }[] }> {
+  if (!CHAPTER_SLUG_PATTERN.test(newSlug)) {
+    throw new ChapterOperationError(`Invalid page name: "${newSlug}"`);
+  }
+
+  const manifest = await readManifest(store, packageId);
+  const chapters = effectiveChapters(manifest).slice();
+  const idx = chapters.findIndex((c) => c.slug === oldSlug);
+  if (idx === -1) throw new ChapterNotFoundError(oldSlug);
+
+  if (newSlug === oldSlug) {
+    return { slug: oldSlug, path: pathForChapter(oldSlug), moved: [] };
+  }
+  if (chapters.some((c, i) => i !== idx && c.slug === newSlug)) {
+    throw new ChapterOperationError(`A page named "${newSlug}" already exists.`);
+  }
+
+  // Every file family that keys on the chapter slug. Study guide honors the
+  // implicit-chapter default file; concept map and objectives are flat.
+  const moves: Array<{ oldPath: string; newPath: string }> = [
+    { oldPath: pathForChapter(oldSlug), newPath: chapterStudyGuidePath(newSlug) },
+    {
+      oldPath: conceptMapPath("chapter", oldSlug),
+      newPath: conceptMapPath("chapter", newSlug),
+    },
+    {
+      oldPath: objectivesPath("chapter", oldSlug),
+      newPath: objectivesPath("chapter", newSlug),
+    },
+  ];
+
+  const files = await store.listFiles(packageId);
+  const present = new Map(
+    files.filter((f) => f.repo === "public").map((f) => [f.path, f.content]),
+  );
+
+  const toWrite: PackageFile[] = [];
+  const toDelete: { repo: "public"; path: string }[] = [];
+  const moved: { from: string; to: string }[] = [];
+  for (const m of moves) {
+    const content = present.get(m.oldPath);
+    if (content === undefined) continue; // family not used for this chapter
+    assertPathAllowedInRepo(m.newPath, "public");
+    toWrite.push({ repo: "public", path: m.newPath, content });
+    toDelete.push({ repo: "public", path: m.oldPath });
+    moved.push({ from: m.oldPath, to: m.newPath });
+  }
+
+  chapters[idx] = { ...chapters[idx]!, slug: newSlug };
+  const next: PackageManifest = { ...manifest, chapters };
+  assertPathAllowedInRepo(MANIFEST_PATH, "public");
+  toWrite.push({
+    repo: "public",
+    path: MANIFEST_PATH,
+    content: JSON.stringify(next, null, 2) + "\n",
+  });
+
+  await store.putFiles(packageId, toWrite);
+  await store.deleteFiles(packageId, toDelete);
+
+  return { slug: newSlug, path: chapterStudyGuidePath(newSlug), moved };
+}
+
+/**
+ * Set the course's unit term (display wording: chapter / module / lesson / …).
+ * Manifest-only; never touches chapter data. Absent term defaults to "chapter".
+ */
+export async function setUnitTerm(
+  store: PackageStore,
+  packageId: string,
+  term: UnitTerm,
+): Promise<void> {
+  const manifest = await readManifest(store, packageId);
+  await writeManifest(store, packageId, { ...manifest, unitTerm: term });
 }

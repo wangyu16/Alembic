@@ -108,7 +108,11 @@ export function buildCourseSite(input: CourseSiteInput): SiteFile[] {
             .map((p) => `<p>${p}</p>`)
             .join("\n")}\n</nav>`
         : "";
-      const body = `${back}\n${md.render(c.markdown)}${pagerNav}`;
+      // The chapter title is the page h1 (sourced from the manifest, not the
+      // markdown — blocks are h2). Keeps title as the single source of truth.
+      const body = `${back}\n<h1>${escapeHtml(c.title)}</h1>\n${md.render(
+        c.markdown,
+      )}${pagerNav}`;
       files.push({
         path: `chapters/${c.slug}.html`,
         content: themedDocument({ title: c.title, bodyHtml: body }),

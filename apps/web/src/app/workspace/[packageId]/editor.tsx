@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import {
   serializeStudyGuide,
   type StudyGuideBlock,
+  type UnitTerm,
 } from "@alembic/package-contract";
 import { saveStudyGuideAction } from "./actions";
 import {
@@ -59,12 +60,7 @@ import { PlotEditor } from "./plot-editor";
 import { PublishHeader } from "./_components/publish-header";
 import type { AssetInfo } from "@alembic/package-ops";
 import type { A11yReport, Fixable } from "@/lib/a11y";
-import {
-  createChapterAction,
-  deleteChapterAction,
-  renameChapterAction,
-  reorderChaptersAction,
-} from "./chapter-actions";
+import { ChapterNav } from "./chapter-nav";
 
 export interface PackageVersion {
   sha: string;
@@ -132,6 +128,7 @@ export interface ReviewItem {
 export function StudyGuideEditor({
   packageId,
   title,
+  unitTerm,
   initialPath,
   initialPreamble,
   initialBlocks,
@@ -159,6 +156,7 @@ export function StudyGuideEditor({
   reviewQueue: ReviewItem[];
   artifacts: ArtifactSummary[];
   publishing: PublishingState;
+  unitTerm: UnitTerm | undefined;
 }) {
   const router = useRouter();
   const [preamble] = useState(initialPreamble);
@@ -184,10 +182,12 @@ export function StudyGuideEditor({
           /(!\[[^\]]*\]\()(materials\/[^)\s]+)/g,
           (_m, pre: string, p: string) => `${pre}/api/asset/${packageId}/${p}`,
         );
+        // The chapter title is the page h1 (mirrors the published page).
+        const heading = chapters.find((c) => c.slug === activeSlug)?.title ?? title;
         const res = await fetch("/api/preview", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ source: previewSource }),
+          body: JSON.stringify({ source: previewSource, heading }),
         });
         const data = (await res.json()) as { html?: string };
         setHtml(data.html ?? "");
@@ -196,7 +196,7 @@ export function StudyGuideEditor({
       }
     }, 350);
     return () => clearTimeout(id);
-  }, [source, packageId]);
+  }, [source, packageId, chapters, activeSlug, title]);
 
   const dirty = save.kind === "dirty" || save.kind === "error";
   const markDirty = useCallback(() => {
@@ -337,11 +337,12 @@ export function StudyGuideEditor({
           onChanged={() => router.refresh()}
         />
       </header>
-      <ChapterBar
+      <ChapterNav
         packageId={packageId}
         chapters={chapters}
         activeSlug={activeSlug}
         dirty={dirty}
+        unitTerm={unitTerm}
         onChanged={() => router.refresh()}
       />
       <div className="grid flex-1 grid-cols-1 gap-6 lg:grid-cols-2">
@@ -2103,113 +2104,6 @@ function WorksheetPanel({
           ))}
         </ul>
       )}
-    </div>
-  );
-}
-
-function ChapterBar({
-  packageId,
-  chapters,
-  activeSlug,
-  dirty,
-  onChanged,
-}: {
-  packageId: string;
-  chapters: ChapterTab[];
-  activeSlug: string | null;
-  dirty: boolean;
-  onChanged: () => void;
-}) {
-  const router = useRouter();
-  const [pending, start] = useTransition();
-  const [error, setError] = useState<string | null>(null);
-
-  const active = chapters.find((c) => c.slug === activeSlug);
-
-  const run = (
-    fn: () => Promise<{ ok: boolean; error?: string; slug?: string }>,
-    after?: (slug?: string) => void,
-  ) => {
-    setError(null);
-    start(async () => {
-      const r = await fn();
-      if (!r.ok) setError(r.error ?? "Action failed.");
-      else {
-        after?.(r.slug);
-        onChanged();
-      }
-    });
-  };
-
-  const onAdd = () => {
-    const title = window.prompt("New chapter title");
-    if (!title?.trim()) return;
-    run(
-      () => createChapterAction(packageId, title.trim()),
-      (slug) => slug && router.push(`/workspace/${packageId}?chapter=${slug}`),
-    );
-  };
-  const onRename = () => {
-    if (!active) return;
-    const title = window.prompt("Rename chapter", active.title);
-    if (!title?.trim()) return;
-    run(() => renameChapterAction(packageId, active.slug, title.trim()));
-  };
-  const onDelete = () => {
-    if (!active) return;
-    if (!window.confirm(`Delete chapter "${active.title}"? Its page is removed.`)) return;
-    run(
-      () => deleteChapterAction(packageId, active.slug, `study-guide/${active.slug}.md`),
-      () => router.push(`/workspace/${packageId}`),
-    );
-  };
-  const move = (dir: -1 | 1) => {
-    if (!active) return;
-    const i = chapters.findIndex((c) => c.slug === active.slug);
-    const j = i + dir;
-    if (i < 0 || j < 0 || j >= chapters.length) return;
-    const order = chapters.map((c) => c.slug);
-    [order[i], order[j]] = [order[j]!, order[i]!];
-    run(() => reorderChaptersAction(packageId, order));
-  };
-
-  return (
-    <div className="panel flex flex-wrap items-center gap-2 p-2">
-      <span className="px-1 text-xs text-faint">Chapters</span>
-      {chapters.map((c) => (
-        <Link
-          key={c.slug}
-          href={`/workspace/${packageId}?chapter=${c.slug}`}
-          aria-disabled={dirty}
-          onClick={(e) => {
-            if (dirty && !window.confirm("Switch chapter? Unsaved changes will be lost.")) {
-              e.preventDefault();
-            }
-          }}
-          className={`rounded-md px-2.5 py-1 text-sm transition-colors ${
-            c.slug === activeSlug
-              ? "bg-accent text-[var(--accent-ink)]"
-              : "text-muted hover:bg-elevated hover:text-ink"
-          }`}
-        >
-          {c.title}
-        </Link>
-      ))}
-      <span className="mx-1 h-4 w-px bg-[var(--edge)]" />
-      <button onClick={onAdd} disabled={pending} className="btn btn-ghost btn-sm">
-        + Chapter
-      </button>
-      {active && chapters.length > 0 && (
-        <>
-          <button onClick={() => move(-1)} disabled={pending} title="Move chapter left" className="rounded px-1.5 py-1 text-muted hover:bg-elevated">←</button>
-          <button onClick={() => move(1)} disabled={pending} title="Move chapter right" className="rounded px-1.5 py-1 text-muted hover:bg-elevated">→</button>
-          <button onClick={onRename} disabled={pending} className="rounded px-2 py-1 text-xs text-muted hover:bg-elevated hover:text-ink">Rename</button>
-          {chapters.length > 1 && (
-            <button onClick={onDelete} disabled={pending} className="rounded px-2 py-1 text-xs text-danger hover:bg-[var(--elevated)]">Delete</button>
-          )}
-        </>
-      )}
-      {error && <span className="text-xs text-danger">{error}</span>}
     </div>
   );
 }

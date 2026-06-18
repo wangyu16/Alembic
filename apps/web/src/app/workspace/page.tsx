@@ -18,6 +18,9 @@ const LICENSES = [
   "CC0-1.0",
 ] as const;
 
+const UNIT_TERMS = ["chapter", "module", "lesson", "unit", "week"] as const;
+const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
 export default async function WorkspacePage() {
   const supabase = await createSupabaseServerClient();
   const {
@@ -72,6 +75,18 @@ export default async function WorkspacePage() {
             placeholder="e.g. Intro Acid–Base Chemistry"
             className="field flex-1"
           />
+          <select
+            name="unitTerm"
+            defaultValue="chapter"
+            title="What this course calls its units"
+            className="field"
+          >
+            {UNIT_TERMS.map((t) => (
+              <option key={t} value={t}>
+                {cap(t)}s
+              </option>
+            ))}
+          </select>
           <select name="license" defaultValue="CC-BY-4.0" className="field">
             {LICENSES.map((license) => (
               <option key={license} value={license}>

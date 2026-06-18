@@ -10,9 +10,11 @@ import { getRenderTheme } from "@/lib/theme";
  */
 export async function POST(request: Request) {
   let source = "";
+  let heading: string | undefined;
   try {
-    const body = (await request.json()) as { source?: unknown };
+    const body = (await request.json()) as { source?: unknown; heading?: unknown };
     if (typeof body.source === "string") source = body.source;
+    if (typeof body.heading === "string") heading = body.heading;
   } catch {
     return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
   }
@@ -20,5 +22,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Content too large" }, { status: 413 });
   }
   const theme = await getRenderTheme();
-  return NextResponse.json({ html: renderDocument("Preview", source, theme) });
+  return NextResponse.json({
+    html: renderDocument("Preview", source, theme, heading),
+  });
 }

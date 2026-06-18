@@ -41,6 +41,12 @@ describe("buildCourseSite — multi-chapter", () => {
     expect(files.some((f) => f.path === "chapters/acids.html")).toBe(true);
   });
 
+  it("uses the chapter title as the page h1 (sourced from the manifest)", () => {
+    const files = buildCourseSite(multi);
+    const water = files.find((f) => f.path === "chapters/water.html")!;
+    expect(water.content).toContain("<h1>Water</h1>");
+  });
+
   it("wires prev/next nav by array order with relative slug links", () => {
     const files = buildCourseSite(multi);
     const water = files.find((f) => f.path === "chapters/water.html")!;

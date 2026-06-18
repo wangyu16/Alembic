@@ -9,9 +9,17 @@ import {
   deleteChapter,
   listChapters,
   renameChapter,
+  renameChapterPageName,
   reorderChapters,
+  setUnitTerm,
 } from "./chapters";
 import { DEFAULT_STUDY_GUIDE_PATH, chapterStudyGuidePath } from "./study-guide";
+
+function paths(store: MemoryPackageStore, packageId: string) {
+  return store.listFiles(packageId).then((fs) =>
+    fs.filter((f) => f.repo === "public").map((f) => f.path),
+  );
+}
 
 const input = {
   ownerId: "user-1",
@@ -236,5 +244,87 @@ describe("listChapters reflects all changes end-to-end", () => {
         path: chapterStudyGuidePath("alpha"),
       },
     ]);
+  });
+});
+
+describe("renameChapterPageName", () => {
+  it("moves the study-guide file and updates the slug, keeping the title", async () => {
+    const { store, packageId } = await seeded();
+    await createChapter(store, packageId, { title: "Acids and Bases" }); // slug "acids-and-bases"
+
+    const before = await listChapters(store, packageId);
+    const ch = before.find((c) => c.slug === "acids-and-bases")!;
+    expect(ch.title).toBe("Acids and Bases");
+
+    const res = await renameChapterPageName(store, packageId, "acids-and-bases", "ch2");
+    expect(res.slug).toBe("ch2");
+
+    const after = await listChapters(store, packageId);
+    const renamed = after.find((c) => c.slug === "ch2")!;
+    expect(renamed.title).toBe("Acids and Bases"); // title unchanged
+    expect(after.some((c) => c.slug === "acids-and-bases")).toBe(false);
+
+    const all = await paths(store, packageId);
+    expect(all).toContain(chapterStudyGuidePath("ch2"));
+    expect(all).not.toContain(chapterStudyGuidePath("acids-and-bases"));
+  });
+
+  it("moves chapter-scoped concept map and objectives files too", async () => {
+    const { store, packageId } = await seeded();
+    await createChapter(store, packageId, { title: "Kinetics", slug: "kin" });
+    // Seed chapter-scoped planning files by raw path.
+    await store.putFiles(packageId, [
+      { repo: "public", path: "concepts/kin.json", content: '{"scope":"chapter","concepts":[]}' },
+      { repo: "public", path: "objectives/kin.json", content: '{"scope":"chapter","objectives":[]}' },
+    ]);
+
+    await renameChapterPageName(store, packageId, "kin", "kinetics");
+
+    const all = await paths(store, packageId);
+    expect(all).toContain("concepts/kinetics.json");
+    expect(all).toContain("objectives/kinetics.json");
+    expect(all).not.toContain("concepts/kin.json");
+    expect(all).not.toContain("objectives/kin.json");
+  });
+
+  it("renames the implicit chapter off the default file", async () => {
+    const { store, packageId } = await seeded();
+    const res = await renameChapterPageName(store, packageId, IMPLICIT_SLUG, "intro");
+    expect(res.slug).toBe("intro");
+    const all = await paths(store, packageId);
+    expect(all).toContain(chapterStudyGuidePath("intro"));
+    expect(all).not.toContain(DEFAULT_STUDY_GUIDE_PATH);
+  });
+
+  it("rejects a duplicate page name", async () => {
+    const { store, packageId } = await seeded();
+    await createChapter(store, packageId, { title: "Two", slug: "two" });
+    await expect(
+      renameChapterPageName(store, packageId, "two", IMPLICIT_SLUG),
+    ).rejects.toThrow(ChapterOperationError);
+  });
+
+  it("rejects an invalid page name", async () => {
+    const { store, packageId } = await seeded();
+    await expect(
+      renameChapterPageName(store, packageId, IMPLICIT_SLUG, "Not Valid!"),
+    ).rejects.toThrow(ChapterOperationError);
+  });
+
+  it("throws when the chapter doesn't exist", async () => {
+    const { store, packageId } = await seeded();
+    await expect(
+      renameChapterPageName(store, packageId, "nope", "x"),
+    ).rejects.toThrow(ChapterNotFoundError);
+  });
+});
+
+describe("setUnitTerm", () => {
+  it("sets the unit term in the manifest without touching chapters", async () => {
+    const { store, packageId } = await seeded();
+    await setUnitTerm(store, packageId, "module");
+    const m = await readManifest(store, packageId);
+    expect(m.unitTerm).toBe("module");
+    expect(m.chapters).toBeUndefined(); // single implicit chapter untouched
   });
 });

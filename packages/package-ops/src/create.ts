@@ -6,6 +6,7 @@ import {
   parseManifest,
   type License,
   type PackageManifest,
+  type UnitTerm,
 } from "@alembic/package-contract";
 import type { PackageFile, PackageRecord, PackageStore } from "./store";
 
@@ -19,6 +20,8 @@ export interface CreateSandboxPackageInput {
     level?: string;
     institutionType?: string;
   };
+  /** What the course calls its units (display wording). Absent → "chapter". */
+  unitTerm?: UnitTerm;
   /** Injected so the operation stays deterministic in tests. */
   now?: () => Date;
 }
@@ -70,6 +73,7 @@ export async function createSandboxPackage(
     description: input.description ?? "",
     license: input.license,
     courseContext: input.courseContext ?? {},
+    ...(input.unitTerm ? { unitTerm: input.unitTerm } : {}),
     createdAt,
   });
 

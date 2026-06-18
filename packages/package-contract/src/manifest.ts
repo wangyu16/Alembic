@@ -57,6 +57,30 @@ export const ChapterRefSchema = z.object({
 export type ChapterRef = z.infer<typeof ChapterRefSchema>;
 
 /**
+ * What a course calls its ordered units. Display-only: it never changes the
+ * data model (the unit is always a `ChapterRef`), only the educator-facing
+ * wording. Absent → "chapter" (so old packages are unchanged).
+ */
+export const UnitTermSchema = z.enum(["chapter", "module", "lesson", "unit", "week"]);
+export type UnitTerm = z.infer<typeof UnitTermSchema>;
+
+export interface UnitTermForms {
+  singular: string;
+  plural: string;
+  Singular: string;
+  Plural: string;
+}
+
+const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
+/** Display forms (singular/plural, each lower + Capitalized) for a unit term. */
+export function unitTermForms(term: UnitTerm | undefined): UnitTermForms {
+  const singular = term ?? "chapter";
+  const plural = `${singular}s`; // chapter→chapters, module→modules, … (all +s)
+  return { singular, plural, Singular: cap(singular), Plural: cap(plural) };
+}
+
+/**
  * Accessibility status, recorded in the manifest so it travels with the package
  * (repos are the source of truth) and can be projected to the public portal.
  * Additive and optional: absent means "never checked" (treated as unknown).
@@ -95,6 +119,11 @@ export const PackageManifestSchema = z.object({
    * valid with no migration.
    */
   chapters: z.array(ChapterRefSchema).optional(),
+  /**
+   * What this course calls its units (display-only wording). Optional +
+   * additive; absent = "chapter". Never affects the data model.
+   */
+  unitTerm: UnitTermSchema.optional(),
   /** Last accessibility audit result. Optional and additive (absent = unknown). */
   accessibility: AccessibilityStatusSchema.optional(),
   /**

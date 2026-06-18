@@ -104,6 +104,7 @@ export default async function EditorPage({
         key={active?.slug ?? "none"}
         packageId={packageId}
         title={record.title}
+        unitTerm={record.manifest.unitTerm}
         initialPath={doc.path}
         initialPreamble={doc.preamble}
         initialBlocks={doc.blocks}

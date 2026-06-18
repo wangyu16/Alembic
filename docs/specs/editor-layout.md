@@ -79,7 +79,10 @@ Never add a seventh top-level panel — extend an existing category.
 ## 5. Current mapping (implementation)
 
 - **Title header:** `← Workspace` + course title (left) + `PublishHeader`
-  cluster (right). **Action bar:** `ChapterBar` + Save + Download.
+  cluster (right); the header title is the course title. The **chapter title is
+  the h1** on the rendered page (editor preview + published build), injected from
+  the manifest. **Action bar:** `ChapterNav` (switcher + Manage dialog:
+  reorder/rename/page-name/delete/add + unit-term selector) + Save + Download.
 - **Canvas:** block list + "Add section" + **Author** group (`PlanningPanel`
   concept map & objectives — M9.6, `AdaptPanel` adapt blocks + suggest-back +
   pull-updates — Phase 5; `AdaptPanel` also lists portal-registered packages

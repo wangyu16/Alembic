@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { LicenseSchema } from "@alembic/package-contract";
+import { LicenseSchema, UnitTermSchema } from "@alembic/package-contract";
 import { createSandboxPackage } from "@alembic/package-ops";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
@@ -20,6 +20,7 @@ export async function createPackageAction(formData: FormData): Promise<void> {
   if (!title || !licenseResult.success) {
     redirect("/workspace?error=missing-fields");
   }
+  const termResult = UnitTermSchema.safeParse(formData.get("unitTerm"));
 
   const started = Date.now();
   const created = await createSandboxPackage(
@@ -28,6 +29,7 @@ export async function createPackageAction(formData: FormData): Promise<void> {
       ownerId: user.id,
       title,
       license: licenseResult.data,
+      ...(termResult.success ? { unitTerm: termResult.data } : {}),
     },
   );
 

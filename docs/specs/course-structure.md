@@ -95,8 +95,33 @@ None require migrating existing single-chapter packages.
    generators writing to the layers above — these are Roadmap Phase 2–4 work
    (Ketcher/import, snapshots; assessment & question templates), not v0.1.
 
+## Display: unit term, page name, and the chapter h1
+
+Three educator-facing refinements, all additive and display-only — the data
+model is unchanged (a unit is always a `ChapterRef { slug, title }`):
+
+- **Unit term** — a course calls its units "chapters", "modules", "lessons",
+  "units", or "weeks". Stored as `manifest.unitTerm` (optional; absent →
+  "chapter"). Pure wording: `unitTermForms()` derives singular/plural for the
+  UI; it never changes paths or structure. Set at package creation and editable
+  from the editor's **Manage** dialog (`setUnitTerm`).
+- **Page name vs. title.** `slug` is the **page name** — the file name
+  (`study-guide/<slug>.md`) and the public URL segment (`chapters/<slug>.html`);
+  `title` is the display name and the page **h1**. They are independent: set
+  both at creation, rename the title freely, and rename the page name via
+  `renameChapterPageName` — which moves **every** slug-keyed file (study-guide
+  page, chapter `concepts/<slug>.json`, `objectives/<slug>.json`) and updates
+  the manifest. Block IDs are untouched, so derived artifacts stay linked. The
+  page name change alters the public URL, so the UI warns first.
+- **Chapter title as h1.** Each chapter page renders its title as an `<h1>` at
+  the top, injected at render time from the manifest title (single source of
+  truth — not authored in the markdown, where blocks are h2). Applies to the
+  published build (`buildCourseSite`) and the editor preview (`renderDocument`'s
+  `heading`).
+
 ## Compatibility guarantee
 
 A v0.1 single-chapter package stays valid forever: with no `chapters` index it
-is read as a one-chapter course. Adding chapters is an additive, logged change
-under the contract's versioning policy — never a silent rewrite.
+is read as a one-chapter course. Adding chapters — or a `unitTerm` — is an
+additive, logged change under the contract's versioning policy, never a silent
+rewrite. Old packages with no `unitTerm` read as "chapter".
