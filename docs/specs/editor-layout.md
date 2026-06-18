@@ -99,9 +99,12 @@ Never add a seventh top-level panel — extend an existing category.
   on the right of the title, sharing the editor's save/dirty state. The publish
   workflow is two explicit steps — **① Save to GitHub** (create the repo pair +
   commit content; runs the connect→install→auto-resume flow when not connected)
-  and **② Publish web page** (build the static site → GitHub Pages). Once the
-  page exists the public **link is always copyable** (detected on load via the
-  `gh-pages` branch, so it survives reloads). **List publicly**
+  and **② Publish web page** (build the static site → GitHub Pages). ② is
+  **re-runnable**: once the page is live it shows an **Update page** action that
+  rebuilds it with the latest saved content (saving commits source only, so the
+  live page updates when ② runs again). Once the page exists the public **link
+  is always copyable** (detected on load via the `gh-pages` branch, so it
+  survives reloads). **List publicly**
   registers/unregisters on the portal.
 - **Per-chapter History** (`_components/chapter-history.tsx`) sits **next to Save**
   in the study-guide toolbar, not in the publish header — it acts on the current

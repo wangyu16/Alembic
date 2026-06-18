@@ -15,6 +15,7 @@ import {
   clientForInstallation,
   clientForUser,
   githubConfig,
+  recordSyncedSha,
 } from "@/lib/github";
 import { slugForFile } from "@/lib/export";
 
@@ -69,12 +70,11 @@ async function commitFilesWhenReady(
   client: Awaited<ReturnType<typeof clientForInstallation>>,
   coords: { owner: string; repo: string },
   plan: Parameters<typeof commitFiles>[2],
-): Promise<void> {
+): Promise<{ commitSha: string }> {
   const backoff = [500, 1000, 2000, 3000, 4000]; // ~10.5s worst case
   for (let attempt = 0; attempt <= backoff.length; attempt++) {
     try {
-      await commitFiles(client, coords, plan);
-      return;
+      return await commitFiles(client, coords, plan);
     } catch (e) {
       const initializing =
         e instanceof GitHubError && (e.status === 409 || e.status === 404);
@@ -82,6 +82,8 @@ async function commitFilesWhenReady(
       await sleep(backoff[attempt]!);
     }
   }
+  // Unreachable: the loop either returns or throws on the last attempt.
+  throw new Error("commit did not complete");
 }
 
 /** Turn a publish failure into an educator-facing message with a real hint. */
@@ -201,11 +203,13 @@ export async function publishToGitHubAction(
 
     // Each commit re-validates the two-repo invariant before any write.
     // Retry-when-ready absorbs GitHub's async template initialization.
-    await commitFilesWhenReady(
+    const { commitSha: publishedSha } = await commitFilesWhenReady(
       client,
       { owner, repo: publicName },
       { repo: "public", summary: "Publish from Alembic", changes: publicChanges },
     );
+    // Baseline the synced pointer so the publish commit isn't read as foreign.
+    await recordSyncedSha(supabase, packageId, publishedSha);
     if (privateChanges.length > 0) {
       await commitFilesWhenReady(
         client,
@@ -289,11 +293,14 @@ export async function restoreStudyGuideAction(
       preamble: parsed.preamble,
       blocks: parsed.blocks,
     });
-    await commitFiles(gh.client, coords, {
+    const { commitSha: newSha } = await commitFiles(gh.client, coords, {
       repo: "public",
       summary: `Restore ${path} to ${commitSha.slice(0, 7)}`,
       changes: [{ path, content }],
     });
+    // Advance the synced pointer so this restore commit isn't later mistaken
+    // for a foreign (externally-edited) commit and flagged for reconcile.
+    await recordSyncedSha(supabase, packageId, newSha);
     await supabaseEventLogger(supabase).log({
       type: "restore.completed",
       userId: user.id,

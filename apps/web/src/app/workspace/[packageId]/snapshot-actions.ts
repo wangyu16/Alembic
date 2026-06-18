@@ -7,7 +7,7 @@ import { generateCitationCff } from "@alembic/package-ops";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
 import { supabaseEventLogger } from "@/lib/events";
-import { clientForUser } from "@/lib/github";
+import { clientForUser, recordSyncedSha } from "@/lib/github";
 
 async function requireUser() {
   const supabase = await createSupabaseServerClient();
@@ -135,11 +135,13 @@ export async function addCitationAction(
     dateReleased: new Date().toISOString().slice(0, 10),
   });
   try {
-    await commitFiles(
+    const { commitSha } = await commitFiles(
       gh.client,
       { owner: repo.owner, repo: repo.name },
       { repo: "public", summary: "Add CITATION.cff (Alembic)", changes: [{ path: "CITATION.cff", content: cff }] },
     );
+    // Advance the synced pointer so this commit isn't read as foreign.
+    await recordSyncedSha(supabase, packageId, commitSha);
     revalidatePath(`/workspace/${packageId}`);
     return { ok: true };
   } catch {

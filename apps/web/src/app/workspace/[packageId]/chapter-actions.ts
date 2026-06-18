@@ -16,7 +16,7 @@ import { UnitTermSchema } from "@alembic/package-contract";
 import { commitFiles, type FileChange } from "@alembic/github-bridge";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
-import { clientForUser } from "@/lib/github";
+import { clientForUser, recordSyncedSha } from "@/lib/github";
 
 export interface ChapterResult {
   ok: boolean;
@@ -57,11 +57,13 @@ async function syncToGitHub(
   if (!repo) return;
   const gh = await clientForUser(supabase, userId);
   if (!gh) return;
-  await commitFiles(
+  const { commitSha } = await commitFiles(
     gh.client,
     { owner: repo.owner, repo: repo.name },
     { repo: "public", summary: "Update course chapters", changes },
   );
+  // Advance the synced pointer so chapter edits aren't read as foreign commits.
+  await recordSyncedSha(supabase, packageId, commitSha);
 }
 
 async function fileContent(

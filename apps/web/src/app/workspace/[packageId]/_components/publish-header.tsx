@@ -159,14 +159,13 @@ export function PublishHeader({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [publishing.autoPublish, publishing.connected, published, dirty]);
 
-  // ② Publish web page — build the static site → GitHub Pages.
+  // ② Publish web page — build the static site → GitHub Pages. Re-runnable:
+  // saving commits source only, so the live page updates when this runs again.
   const onPublishPage = () => {
-    if (
-      !window.confirm(
-        "Publish the public web page? Anyone with the link will be able to view it.",
-      )
-    )
-      return;
+    const confirmMsg = siteUrl
+      ? "Update the public web page with your latest saved changes?"
+      : "Publish the public web page? Anyone with the link will be able to view it.";
+    if (!window.confirm(confirmMsg)) return;
     clearMessages();
     startSite(async () => {
       const r = await publishSiteAction(packageId);
@@ -246,6 +245,14 @@ export function PublishHeader({
         {siteUrl ? (
           <>
             <Control icon={<CheckIcon />} label="Page live" tone="ok" />
+            <Control
+              icon={<GlobeIcon />}
+              label={siteBusy ? "Updating…" : "Update page"}
+              tone="ghost"
+              onClick={onPublishPage}
+              disabled={siteBusy}
+              title="Rebuild the public page with your latest saved changes"
+            />
             <Control
               icon={<LinkIcon />}
               label={copied ? "Copied!" : "Copy link"}
