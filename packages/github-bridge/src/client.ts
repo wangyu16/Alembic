@@ -243,6 +243,22 @@ export class GitHubClient {
     return data.default_branch;
   }
 
+  /**
+   * Whether the repository still exists. Returns false on a 404 (deleted or
+   * never created); other errors propagate so a transient failure is never
+   * mistaken for a deletion. Used by archive reconciliation: when an educator
+   * deletes a published repo on GitHub, Alembic purges the archived package.
+   */
+  async repoExists(coords: RepoCoords): Promise<boolean> {
+    try {
+      await this.request("GET", `/repos/${coords.owner}/${coords.repo}`);
+      return true;
+    } catch (e) {
+      if (e instanceof GitHubError && e.status === 404) return false;
+      throw e;
+    }
+  }
+
   /** List tags (snapshots), newest-API-order first. */
   async listTags(
     coords: RepoCoords,

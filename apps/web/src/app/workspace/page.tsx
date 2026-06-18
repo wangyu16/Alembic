@@ -2,6 +2,9 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createPackageAction } from "./actions";
+import { reconcileArchivedPackages } from "./lifecycle-actions";
+import { PackageActions } from "./_components/package-actions";
+import { ArchivedPackages } from "./_components/archived-packages";
 
 // Per-user page: never prerendered (and must not require env at build time).
 export const dynamic = "force-dynamic";
@@ -21,10 +24,25 @@ export default async function WorkspacePage() {
   } = await supabase.auth.getUser();
   if (!user) redirect("/signin");
 
-  const { data: packages } = await supabase
+  // Purge any archived packages whose repos the educator deleted on GitHub.
+  // Best-effort: never blocks the page if GitHub is slow or disconnected.
+  let purged: string[] = [];
+  try {
+    purged = await reconcileArchivedPackages();
+  } catch {
+    purged = [];
+  }
+
+  const { data: allPackages } = await supabase
     .from("packages")
-    .select("id, title, storage, created_at")
+    .select("id, title, storage, created_at, archived_at")
     .order("created_at", { ascending: false });
+
+  const visible = (allPackages ?? []).filter((p) => !purged.includes(p.id));
+  const packages = visible.filter((p) => p.archived_at === null);
+  const archived = visible
+    .filter((p) => p.archived_at !== null)
+    .map((p) => ({ id: p.id, title: p.title, archivedAt: p.archived_at as string }));
 
   const name =
     (user.user_metadata?.["full_name"] as string | undefined) ??
@@ -75,22 +93,31 @@ export default async function WorkspacePage() {
         ) : (
           <ul className="panel mt-3 divide-y divide-[var(--edge-soft)]">
             {packages.map((pkg) => (
-              <li key={pkg.id} className="flex items-center justify-between px-4 py-3">
-                <div>
-                  <div className="font-medium text-ink">{pkg.title}</div>
+              <li key={pkg.id} className="flex items-center justify-between gap-3 px-4 py-3">
+                <div className="min-w-0">
+                  <div className="truncate font-medium text-ink">{pkg.title}</div>
                   <div className="text-xs text-faint">
                     {pkg.storage === "sandbox" ? "Trial workspace" : "Published via GitHub"} ·
                     created {new Date(pkg.created_at).toLocaleDateString()}
                   </div>
                 </div>
-                <Link href={`/workspace/${pkg.id}`} className="btn btn-ghost btn-sm">
-                  Open editor
-                </Link>
+                <div className="flex shrink-0 items-center gap-2">
+                  <Link href={`/workspace/${pkg.id}`} className="btn btn-ghost btn-sm">
+                    Open editor
+                  </Link>
+                  <PackageActions
+                    packageId={pkg.id}
+                    title={pkg.title}
+                    storage={pkg.storage}
+                  />
+                </div>
               </li>
             ))}
           </ul>
         )}
       </section>
+
+      <ArchivedPackages packages={archived} />
     </main>
   );
 }

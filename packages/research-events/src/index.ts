@@ -53,6 +53,14 @@ export const EVENT_TYPES = [
   "upstream.update.applied",
   "suggestion.sent",
   "error.surfaced",
+  // Package lifecycle (rename / delete / archive). Sandbox delete is permanent;
+  // GitHub-published "delete" archives (recoverable); purge fires when
+  // reconciliation finds the public repo gone on GitHub.
+  "package.renamed",
+  "package.deleted",
+  "package.archived",
+  "package.restored",
+  "package.purged",
 ] as const;
 
 export type EventType = (typeof EVENT_TYPES)[number];

@@ -137,6 +137,13 @@ html[data-theme="light"] { color-scheme: light; }
   }
   .btn-ghost:not(:disabled):hover { background: var(--elevated); }
 
+  .btn-danger {
+    background: transparent;
+    color: var(--danger);
+    border: 1px solid var(--danger);
+  }
+  .btn-danger:not(:disabled):hover { background: var(--danger); color: var(--bg); }
+
   .btn-sm { padding: 0.3rem 0.6rem; font-size: 0.8rem; border-radius: 0.4rem; }
 
   .chip {

@@ -14,7 +14,7 @@ In the Supabase SQL editor, run every file in
 [`supabase/migrations/`](../supabase/migrations/) in order (if you haven't):
 `0001_init` → `0002_ai_invocations` → `0003_github` → `0004_portal` →
 `0005_changes` → `0006_a11y` → `0007_ai_budget` → `0008_reconcile` →
-`0009_suggestions` → `0010_governance` → `0011_admin`.
+`0009_suggestions` → `0010_governance` → `0011_admin` → `0012_lifecycle`.
 
 You may use your existing dev project, or create a separate production project
 and run all migrations there (recommended for a real pilot).

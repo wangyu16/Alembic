@@ -26,9 +26,10 @@ Base deployment steps (Vercel project, domain, auth/App callbacks) live in
 All of these are **operator actions** (Supabase dashboard / Vercel env) — not
 code. Check each off before the live passes.
 
-- [ ] **Migrations 0005–0011 applied** to the production Supabase project
+- [ ] **Migrations 0005–0012 applied** to the production Supabase project
   (the base guide originally listed only 0001–0004). Confirm `profiles`,
-  `suggestions`, `portal_reports`, and `ai_invocations` exist.
+  `suggestions`, `portal_reports`, and `ai_invocations` exist, and that
+  `packages.archived_at` exists (0012, package archive/restore).
 - [ ] **`SUPABASE_SECRET_KEY`** set in Vercel (Production) — required for
   `/admin` and the research export.
 - [ ] **AI gateway (Portkey)** wired in Vercel: `AI_GATEWAY_URL`,
