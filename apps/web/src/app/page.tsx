@@ -9,24 +9,18 @@ export default function Home() {
         <h1 className="font-serif text-5xl leading-[1.05] tracking-tight text-ink text-balance">
           Turn your teaching materials into open and reusable resources.
         </h1>
-        <p className="max-w-xl text-lg leading-relaxed text-muted text-pretty">
-          Alembic is an authoring studio for STEM educators. Organize the
-          knowledge and shape the pedagogy — it handles structure, versioning,
-          publishing, and provenance, all on infrastructure you own. No Git, no
-          Markdown tooling, no developer workflows.
-        </p>
-        <p className="max-w-xl border-l-2 border-edge-soft pl-4 text-lg leading-relaxed text-ink text-pretty">
+        <p className="max-w-2xl text-lg leading-relaxed text-ink text-pretty">
           Other tools help you write a <span className="text-muted">document</span>.
-          Alembic helps you build a <em className="font-serif">course</em> — a
-          connected map of concepts, objectives, and materials that stays
-          coherent as it grows, keeps your instructor notes and answer keys
-          private, and lets you adapt and remix open work with the credit carried
-          along. Your materials stay yours, forever.
+          Alembic helps you build a <em className="font-serif">course</em> — one
+          connected source of concepts, objectives, and materials that stays
+          coherent as it grows, keeps your answer keys private, and stays yours on
+          infrastructure you own.
         </p>
-        <p className="max-w-xl text-base leading-relaxed text-muted text-pretty">
-          Students and self-learners can open, edit, and annotate Alembic files —
-          a downloaded <code className="text-ink">.md.html</code> study guide or your
-          own notes — right in the browser, no account needed.
+        <p className="max-w-2xl text-base leading-relaxed text-muted text-pretty">
+          Behind every save, it runs the version control, provenance, and
+          publishing that power open-source software — so managing open teaching
+          materials works like managing open software packages, without ever
+          learning Git or a developer workflow.
         </p>
       </div>
 
@@ -44,7 +38,7 @@ export default function Home() {
 
       <dl className="grid gap-x-8 gap-y-5 border-t border-edge-soft pt-8 sm:grid-cols-3">
         {[
-          ["Study-guide centered", "Write in sections; slides and worksheets derive from them."],
+          ["One source, every format", "Write your course content once. Slides, worksheets, and handouts derive from it — and stay traceable to it."],
           ["Every STEM field", "Equations, chemical formulas, and structures render natively as you type."],
           ["Yours to keep", "Published to your own GitHub, usable with or without Alembic."],
         ].map(([term, def]) => (
