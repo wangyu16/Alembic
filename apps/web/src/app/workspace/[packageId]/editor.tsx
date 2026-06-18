@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, useTransition, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -94,6 +94,8 @@ export interface PublishingState {
   installUrl: string | null;
   versions: PackageVersion[];
   registered: boolean;
+  /** Returned from the GitHub-App install (?publish=1): auto-resume publishing. */
+  autoPublish?: boolean;
 }
 
 interface EditorBlock extends StudyGuideBlock {
@@ -505,7 +507,10 @@ export function StudyGuideEditor({
         </ToolSection>
 
         <CategoryLabel>Publish &amp; share</CategoryLabel>
-        <ToolSection title="Publish, website & versions" defaultOpen={publishing.published}>
+        <ToolSection
+          title="Publish, website & versions"
+          defaultOpen={publishing.published || Boolean(publishing.autoPublish)}
+        >
           <PublishingPanel
             packageId={packageId}
             publishing={publishing}
@@ -2216,7 +2221,7 @@ function PublishingPanel({
     publishing.publicRepoUrl,
   );
 
-  const onPublish = () => {
+  const onPublish = useCallback(() => {
     setError(null);
     start(async () => {
       const r = await publishToGitHubAction(packageId);
@@ -2227,7 +2232,38 @@ function PublishingPanel({
         setError(r.error ?? "Publishing failed.");
       }
     });
-  };
+  }, [packageId, onChanged]);
+
+  // Resume publishing after returning from the GitHub-App install
+  // (?publish=1): the connect+publish flow then completes in one pass instead
+  // of stranding the educator back on the workspace with no repos created.
+  const resumed = useRef(false);
+  useEffect(() => {
+    if (
+      publishing.autoPublish &&
+      publishing.connected &&
+      !publishing.published &&
+      !publishedUrl &&
+      !dirty &&
+      !resumed.current
+    ) {
+      resumed.current = true;
+      // Drop the ?publish=1 marker so a manual refresh doesn't re-trigger.
+      if (typeof window !== "undefined") {
+        const url = new URL(window.location.href);
+        url.searchParams.delete("publish");
+        window.history.replaceState(null, "", url.toString());
+      }
+      onPublish();
+    }
+  }, [
+    publishing.autoPublish,
+    publishing.connected,
+    publishing.published,
+    publishedUrl,
+    dirty,
+    onPublish,
+  ]);
 
   // Restore replaces the editor's current content, so reload the page after it
   // succeeds — router.refresh() alone would leave the client editor's in-memory

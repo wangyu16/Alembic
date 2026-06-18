@@ -61,10 +61,13 @@ From the App's page → **Install App** → install on your account, choosing
 access the new repos it creates).
 
 After installing you'll be redirected to
-`http://localhost:3000/api/github/installed?installation_id=…&setup_action=install`,
-which Alembic uses to remember your installation. (If the dev server isn't
-running yet, just install now and click **Connect publishing** in the app
-later — it will reuse the installation.)
+`http://localhost:3000/api/github/installed?installation_id=…&setup_action=install`
+(plus `&state=<packageId>` when you started from a package). Alembic records the
+installation id **and the account the App was installed on** (the authoritative
+repo owner), then returns you to that package and **resumes publishing
+automatically** — so "Connect publishing" and "Publish to GitHub" complete in
+one pass. (If the dev server isn't running yet, just install now and click
+**Connect publishing** in the app later — it will reuse the installation.)
 
 ## 4. Local environment
 

@@ -19,10 +19,10 @@ export default async function EditorPage({
   searchParams,
 }: {
   params: Promise<{ packageId: string }>;
-  searchParams: Promise<{ chapter?: string }>;
+  searchParams: Promise<{ chapter?: string; publish?: string }>;
 }) {
   const { packageId } = await params;
-  const { chapter: chapterParam } = await searchParams;
+  const { chapter: chapterParam, publish: publishParam } = await searchParams;
   const supabase = await createSupabaseServerClient();
   const {
     data: { user },
@@ -87,9 +87,12 @@ export default async function EditorPage({
     connected: Boolean(profile?.github_installation_id),
     published: record.storage === "github",
     publicRepoUrl: pub ? `https://github.com/${pub.owner}/${pub.name}` : null,
-    installUrl: cfg ? installUrl(cfg.appSlug) : null,
+    // Carry the package id through the install so we return here and resume.
+    installUrl: cfg ? installUrl(cfg.appSlug, packageId) : null,
     versions,
     registered: Boolean(registration),
+    // Set by the install callback's redirect (?publish=1): auto-run publish.
+    autoPublish: publishParam === "1",
   };
 
   return (

@@ -65,3 +65,52 @@ export async function getInstallationToken(opts: {
   const data = (await res.json()) as { token: string; expires_at: string };
   return { token: data.token, expiresAt: data.expires_at };
 }
+
+export interface InstallationAccount {
+  /** The account (user or org) the App is installed on — repos are created here. */
+  login: string;
+  /** "User" or "Organization". */
+  type: string;
+}
+
+/**
+ * Look up the account a given installation belongs to, authenticating as the
+ * App (JWT). This is the authoritative owner for repo creation — it always
+ * matches where the App was actually installed, unlike the OAuth username,
+ * which can differ (org installs) or be absent.
+ */
+export async function getInstallationAccount(opts: {
+  appId: string;
+  privateKey: string;
+  installationId: string | number;
+  fetchImpl?: FetchLike;
+  nowMs?: number;
+}): Promise<InstallationAccount> {
+  const jwt = mintAppJwt(opts.appId, opts.privateKey, opts.nowMs);
+  const f = opts.fetchImpl ?? defaultFetch;
+  const res = await f(
+    `https://api.github.com/app/installations/${opts.installationId}`,
+    {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${jwt}`,
+        Accept: "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+      },
+    },
+  );
+  if (!res.ok) {
+    throw new GitHubError(
+      "Could not look up the installation account",
+      res.status,
+      await res.text().catch(() => undefined),
+    );
+  }
+  const data = (await res.json()) as {
+    account: { login: string; type: string } | null;
+  };
+  if (!data.account?.login) {
+    throw new GitHubError("Installation has no account login", res.status);
+  }
+  return { login: data.account.login, type: data.account.type };
+}

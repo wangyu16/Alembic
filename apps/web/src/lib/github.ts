@@ -2,6 +2,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   commitFiles,
+  getInstallationAccount,
   getInstallationToken,
   GitHubClient,
   type FileChange,
@@ -49,9 +50,34 @@ export function githubConfig(): GithubConfig | null {
   };
 }
 
-/** The GitHub URL where an educator installs the App ("Connect publishing"). */
-export function installUrl(slug: string): string {
-  return `https://github.com/apps/${slug}/installations/new`;
+/**
+ * The GitHub URL where an educator installs the App ("Connect publishing").
+ * `state` round-trips through the install: GitHub appends it to the Setup URL,
+ * so we pass the package id and can return the educator to that package (and
+ * resume publishing) instead of dropping them on the generic workspace.
+ */
+export function installUrl(slug: string, state?: string): string {
+  const base = `https://github.com/apps/${slug}/installations/new`;
+  return state ? `${base}?state=${encodeURIComponent(state)}` : base;
+}
+
+/**
+ * The account (user or org) an installation belongs to. This is the
+ * authoritative owner for repo creation — it always matches where the App was
+ * installed, unlike the OAuth username (which can differ for org installs or be
+ * absent). Returns null if publishing isn't configured.
+ */
+export async function installationAccountLogin(
+  installationId: number,
+): Promise<string | null> {
+  const cfg = githubConfig();
+  if (!cfg) return null;
+  const account = await getInstallationAccount({
+    appId: cfg.appId,
+    privateKey: cfg.privateKey,
+    installationId,
+  });
+  return account.login;
 }
 
 /** A GitHub client authenticated as a specific installation. */
