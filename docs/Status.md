@@ -13,7 +13,7 @@ same commit as the work it tracks. Statuses: ✅ done · 🔄 partially shipped 
 
 These are the only things blocking full production parity with the code:
 
-1. **Migration `0012_lifecycle` is pending** (adds `packages.archived_at` for package archive/restore); 0005–0011 are applied. Apply 0012 in the Supabase SQL editor before the workspace rename/delete/archive UI works. Config notes: 0007's budget stays dormant until `AI_TOKEN_BUDGET` is set; portal listing is now open to all educators (the `portal_eligible` gate was removed); to reach `/admin`, **flag yourself `is_admin=true`** (dashboard) and set **`SUPABASE_SECRET_KEY`** (service-role reads) — optionally `RESEARCH_EXPORT_SALT`.
+1. **Migration `0013_drop_portal_eligible` is pending** (drops the now-unused `profiles.portal_eligible` column — optional cleanup, apply anytime after this deploys; no code references it). 0005–0012 are applied. Config notes: 0007's budget stays dormant until `AI_TOKEN_BUDGET` is set; portal listing is now open to all educators (the `portal_eligible` gate + admin toggle were removed); to reach `/admin`, **flag yourself `is_admin=true`** (dashboard) and set **`SUPABASE_SECRET_KEY`** (service-role reads) — optionally `RESEARCH_EXPORT_SALT`.
 2. ✅ **Done** — Vercel build command is `node ../../scripts/fetch-vendor.mjs && next build`; Plotly is vendored and the plot editor (M11b) works live.
 3. **Interactive verification passes** (can't run in CI): slides render (M13), studio File System Access open/save (M17), and the AI/reconcile live runs (M18 coherence agent, M9.6 draft-from-plan, M20 reconcile, M23 question generation, M26–M28 adapt/pull/suggest-back) once Portkey is on Vercel. Ketcher (M11) and plots (M11b) are verified live.
 4. **Set the Portkey env vars in Vercel** (`AI_GATEWAY_URL=https://api.portkey.ai/v1`, `AI_GATEWAY_API_KEY`, `AI_MODEL_DEFAULT/FAST/STRONG` = `@<provider-slug>/<model>`) to verify the **M18 coherence agent** live. Local dev can't reach Portkey from this machine (the dev Mac's security/firewall blocks the `node` binary's outbound — `curl` works, `node` ETIMEDOUTs — not an app issue); Vercel's egress is clean. See [ai-architecture.md](specs/ai-architecture.md).
@@ -598,7 +598,7 @@ then the search UI over it, then governance scaffolding.
 
 | # | Sub-module | Verify by | Status |
 | --- | --- | --- | --- |
-| 33.1 | ~~Registration limited to study participants~~ → **open to all educators** | any signed-in educator with a published, gate-passing package can list | ✅ **gate removed** (pilot UI/UX pass): `registerPackageAction` no longer checks `portal_eligible`; listing requires only GitHub-published + Tier-3 gates. `profiles.portal_eligible` + `/admin` toggle remain but are vestigial |
+| 33.1 | ~~Registration limited to study participants~~ → **open to all educators** | any signed-in educator with a published, gate-passing package can list | ✅ **gate removed** (pilot UI/UX pass): `registerPackageAction` no longer checks eligibility; listing requires only GitHub-published + Tier-3 gates. The `portal_eligible` column + `/admin` toggle + `setPortalEligibleAction` were deleted (migration `0013` drops the column) |
 | 33.2 | Reporting + takedown path | anyone can report a listing; operators review; takedown removes the listing | ✅ `portal_reports` table (RLS: insert by anyone, read by operators only); `reportPackageAction` + a "Report" control on portal cards; takedown = owner unlist or operator removal. Procedure in [specs/portal-governance.md](specs/portal-governance.md). In-app admin UI is Phase 7 |
 
 *Exit:* ✅ during the grant, only participants list; the public can report; a
@@ -636,7 +636,7 @@ managed mode + the FERPA/IRB data-handling review (M16.4).
 | --- | --- | --- | --- |
 | 35.1 | Admin gate (`profiles.is_admin`) + service-role behind it | a non-admin is redirected; an admin reaches `/admin`; cross-user reads use the service role only after the gate | ✅ migration `0011` (`profiles.is_admin`); `lib/admin.requireAdmin` (checks own profile via user client, then hands out a service client); `lib/supabase/service` (service-role, server-only); "Admin" header link for admins |
 | 35.2 | De-identified research export download | admin downloads CSV/JSON of de-identified events | ✅ `GET /admin/export?format=csv\|json` — service-reads `research_events`, applies the M34 `deidentifyEvents` with a salted one-way `exportPseudonymizer` (RESEARCH_EXPORT_SALT) |
-| 35.3 | Status, error monitoring, consent/status flags + report review | admin sees counts + recent errors; toggles `portal_eligible`; resolves `portal_reports` | ✅ `/admin` page: package/registration/event counts, recent `error.surfaced`, participant eligibility toggles (M33), open-report resolve/dismiss (the Phase-6 deferred admin UI). Demo-content management is a follow-up |
+| 35.3 | Status, error monitoring, consent/status flags + report review | admin sees counts + recent errors; resolves `portal_reports` | ✅ `/admin` page: package/registration/event counts, recent `error.surfaced`, open-report resolve/dismiss (the Phase-6 deferred admin UI). Participant eligibility toggle removed (listing is now open to all); demo-content management is a follow-up |
 
 ### M36 — Centrally-managed AI credits & quotas
 
@@ -704,8 +704,8 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
   then hands out a service-role client (`lib/supabase/service`, server-only) for
   the cross-user reads research/admin need — **service-role used ONLY behind the
   gate**. `/admin`: package/registration/event counts, recent `error.surfaced`,
-  participant `portal_eligible` toggles (M33), and open-`portal_reports`
-  resolve/dismiss (the Phase-6 deferred admin UI). De-identified export download
+  and open-`portal_reports` resolve/dismiss (the Phase-6 deferred admin UI; the
+  `portal_eligible` toggle was removed when listing went open). De-identified export download
   `GET /admin/export?format=csv|json` (service-reads `research_events` → M34
   `deidentifyEvents` with a salted `exportPseudonymizer`). "Admin" header link for
   admins. typecheck + web build green. **Migration 0011 + `SUPABASE_SECRET_KEY`
@@ -720,10 +720,10 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
   + `eventsToCsv`/`eventsToJson` (RFC-4180 escaping). 5 tests (9 total); typecheck
   green. The export *download* (admin reads `research_events` via service-role +
   this transformer) lands in M35. Next: M35 admin/ops module (needs `profiles.is_admin`).
-- **M33 — governance scaffolding (completes Phase 6 core).** Registration limited to
-  study participants during the grant: `profiles.portal_eligible` (migration `0010`,
-  default false); `registerPackageAction` gates on it (educator-facing message);
-  operator flags participants in the dashboard. Reporting/takedown: `portal_reports`
+- **M33 — governance scaffolding (completes Phase 6 core).** Registration is **open to
+  all educators** (the grant-period `portal_eligible` gate was removed in the pilot
+  UI/UX pass; column dropped in migration `0013`); `registerPackageAction` requires only
+  GitHub-published + Tier-3 gates. Reporting/takedown: `portal_reports`
   table (RLS — insert by anyone incl. anonymous, read by operators only) +
   `reportPackageAction` + a "Report" control on portal cards; takedown = owner
   unlist or operator removal; procedure in [specs/portal-governance.md](specs/portal-governance.md).

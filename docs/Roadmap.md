@@ -132,7 +132,7 @@ Several deferrals across phases share one prerequisite — a real container work
 
 **Exit criteria:** a stranger finds a package via the portal (or Google), previews it, and starts an adaptation.
 
-> **Realized scope (annotation):** Shipped — M30 LRMI/schema.org `LearningResource` in published pages + portal `ItemList` (consume the standard, no proprietary record); M31 cross-owner adapt (tokenless public GitHub read) + suggest-back (`suggestions` table, RLS, no service-role bypass); M32 searchable portal (text + discipline/license/a11y facets); M33 governance scaffolding (`portal_eligible` gating + `portal_reports` + takedown runbook). Deferred — level/artifact-type/teaching-time facets (need richer registration metadata); one-click portal→adapt-with-preselected-source; GitHub-PR materialization (M31.3, external).
+> **Realized scope (annotation):** Shipped — M30 LRMI/schema.org `LearningResource` in published pages + portal `ItemList` (consume the standard, no proprietary record); M31 cross-owner adapt (tokenless public GitHub read) + suggest-back (`suggestions` table, RLS, no service-role bypass); M32 searchable portal (text + discipline/license/a11y facets); M33 governance scaffolding (`portal_eligible` gating — later removed in the pilot UI/UX pass, listing is open to all — + `portal_reports` + takedown runbook). Deferred — level/artifact-type/teaching-time facets (need richer registration metadata); one-click portal→adapt-with-preselected-source; GitHub-PR materialization (M31.3, external).
 
 ---
 

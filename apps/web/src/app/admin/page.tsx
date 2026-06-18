@@ -1,6 +1,6 @@
 import { summarizeUsage, type InvocationRow } from "@alembic/research-events";
 import { requireAdmin } from "@/lib/admin";
-import { Participants, Reports, type Participant, type ReportItem } from "./admin-client";
+import { Reports, type ReportItem } from "./admin-client";
 
 export const dynamic = "force-dynamic";
 
@@ -39,14 +39,17 @@ export default async function AdminPage() {
     .order("occurred_at", { ascending: false })
     .limit(15);
 
+  // Handle lookup for the AI-usage table (user id → GitHub handle).
   const { data: profileRows } = await service
     .from("profiles")
-    .select("id, github_username, portal_eligible, is_admin")
+    .select("id, github_username")
     .order("created_at", { ascending: false })
     .limit(100);
-  const participants: Participant[] = (
-    (profileRows as { id: string; github_username: string | null; portal_eligible: boolean; is_admin: boolean }[] | null) ?? []
-  ).map((p) => ({ id: p.id, handle: p.github_username ?? "", portal_eligible: p.portal_eligible, is_admin: p.is_admin }));
+  const handleOf = new Map(
+    ((profileRows as { id: string; github_username: string | null }[] | null) ?? []).map(
+      (p) => [p.id, p.github_username ?? ""] as const,
+    ),
+  );
 
   const { data: reportRows } = await service
     .from("portal_reports")
@@ -60,13 +63,12 @@ export default async function AdminPage() {
     .from("ai_invocations")
     .select("user_id, kind, input_tokens, output_tokens");
   const usage = summarizeUsage((usageRows as InvocationRow[] | null) ?? []);
-  const handleOf = new Map(participants.map((p) => [p.id, p.handle]));
 
   return (
     <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-8 px-6 py-12">
       <header>
         <h1 className="font-serif text-3xl tracking-tight text-ink">Admin &amp; operations</h1>
-        <p className="mt-1 text-muted">Study readiness — status, research export, participants, reports.</p>
+        <p className="mt-1 text-muted">Study readiness — status, research export, reports.</p>
       </header>
 
       <section className="grid grid-cols-3 gap-3">
@@ -142,12 +144,6 @@ export default async function AdminPage() {
         ) : (
           <p className="mt-2 text-sm text-muted">No errors logged. ✓</p>
         )}
-      </section>
-
-      <section>
-        <h2 className="font-serif text-xl text-ink">Participants</h2>
-        <p className="mt-1 text-sm text-muted">Toggle portal-listing eligibility for study participants.</p>
-        <div className="mt-2"><Participants participants={participants} /></div>
       </section>
 
       <section>

@@ -11,9 +11,9 @@ original grant-period participant-only gate (`profiles.portal_eligible`) has
 been **removed** from `registerPackageAction`; the only requirements now are
 GitHub-published + passing release gates.
 
-`profiles.portal_eligible` (migration `0010`) and its `/admin` toggle remain in
-the schema/UI but **no longer gate anything** — they are vestigial and may be
-dropped in a later cleanup.
+The `profiles.portal_eligible` column, its `/admin` toggle, and the
+`setPortalEligibleAction` server action have been **removed** (admin UI cleanup;
+column dropped in migration `0013`).
 
 ## Reporting & takedown
 

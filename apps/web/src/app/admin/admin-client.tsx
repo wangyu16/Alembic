@@ -1,57 +1,13 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { setPortalEligibleAction, resolveReportAction } from "./actions";
-
-export interface Participant {
-  id: string;
-  handle: string;
-  portal_eligible: boolean;
-  is_admin: boolean;
-}
+import { resolveReportAction } from "./actions";
 
 export interface ReportItem {
   id: number;
   package_id: string;
   reason: string;
   created_at: string;
-}
-
-/** Participant eligibility toggles (M33/M35). */
-export function Participants({ participants }: { participants: Participant[] }) {
-  const [rows, setRows] = useState(participants);
-  const [pending, start] = useTransition();
-
-  function toggle(id: string, on: boolean) {
-    setRows((rs) => rs.map((r) => (r.id === id ? { ...r, portal_eligible: on } : r)));
-    start(async () => {
-      const res = await setPortalEligibleAction(id, on);
-      if (!res.ok) setRows((rs) => rs.map((r) => (r.id === id ? { ...r, portal_eligible: !on } : r)));
-    });
-  }
-
-  if (rows.length === 0) return <p className="text-sm text-muted">No users yet.</p>;
-  return (
-    <ul className="divide-y divide-[var(--edge-soft)]">
-      {rows.map((p) => (
-        <li key={p.id} className="flex items-center justify-between gap-3 py-2">
-          <span className="min-w-0 truncate text-sm">
-            {p.handle || p.id.slice(0, 8)}
-            {p.is_admin && <span className="chip ml-2">admin</span>}
-          </span>
-          <label className="flex shrink-0 items-center gap-1.5 text-xs text-muted">
-            <input
-              type="checkbox"
-              checked={p.portal_eligible}
-              disabled={pending}
-              onChange={(e) => toggle(p.id, e.target.checked)}
-            />
-            Portal-eligible
-          </label>
-        </li>
-      ))}
-    </ul>
-  );
 }
 
 /** Open report queue with resolve/dismiss (M33/M35). */
