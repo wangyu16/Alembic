@@ -35,7 +35,7 @@ editor entirely.
 | **Author** | constant | insert figures/charts (assets), AI draft a section, adapt blocks from another package + suggest improvements back + pull updates from upstream (the adaptation loop) | at the canvas; compact |
 | **Review** | periodic (before save/publish, after AI edits) | Changes & review (Tier-1/2 queue, undo, policy), Accessibility | collapsed group |
 | **Generate** | occasional | worksheets; *(future)* slides, PDF, other derived artifacts | collapsed group |
-| **Publish & share** | rare / milestone | publish site, list on portal, version history & restore, snapshots; *(future)* citation/DOI | collapsed group |
+| **Publish & share** | rare / milestone | **header cluster** (see below): ① Save to GitHub, ② Publish web page, copy public link, History (versions/restore), List publicly. Side group keeps only snapshots/citation. | header + collapsed group |
 | **App settings** | rare, not per-package | *(future)* model gateway, entitlements/billing, account | **not in the editor** — app-level settings |
 
 ## 3. Where a NEW feature goes (decision rule)
@@ -78,7 +78,8 @@ Never add a seventh top-level panel — extend an existing category.
 
 ## 5. Current mapping (implementation)
 
-- **Action bar:** `ChapterBar` + Save + Download + Publish.
+- **Title header:** `← Workspace` + course title (left) + `PublishHeader`
+  cluster (right). **Action bar:** `ChapterBar` + Save + Download.
 - **Canvas:** block list + "Add section" + **Author** group (`PlanningPanel`
   concept map & objectives — M9.6, `AdaptPanel` adapt blocks + suggest-back +
   pull-updates — Phase 5; `AdaptPanel` also lists portal-registered packages
@@ -91,8 +92,16 @@ Never add a seventh top-level panel — extend an existing category.
   `ReconcilePanel` (changes made outside Alembic / "Scan for leaks" — M20).
 - **Generate** group: `WorksheetPanel`, a Slides & PDF section, and
   `AssessmentsPanel` (assessments & question templates).
-- **Publish & share** group: `PublishingPanel` (publish, portal, versions;
-  + future snapshots/citation).
+- **Publish header** (`_components/publish-header.tsx`): an icon-forward cluster
+  on the right of the title, sharing the editor's save/dirty state. The publish
+  workflow is two explicit steps — **① Save to GitHub** (create the repo pair +
+  commit content; runs the connect→install→auto-resume flow when not connected)
+  and **② Publish web page** (build the static site → GitHub Pages). Once the
+  page exists the public **link is always copyable** (detected on load via the
+  `gh-pages` branch, so it survives reloads). **History** (clock) is a dropdown
+  of saved versions with restore — split out from publishing. **List publicly**
+  registers/unregisters on the portal.
+- **Publish & share** side group: only `SnapshotsPanel` (snapshots/citation).
 - **Preview:** always-on right pane.
 
 When M13 ships slides/PDF, they join **Generate**; M15 snapshots/citation join

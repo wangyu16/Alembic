@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { listArtifacts, listChapters, loadStudyGuide } from "@alembic/package-ops";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -60,19 +59,22 @@ export default async function EditorPage({
   const cfg = githubConfig();
   const pub = record.manifest.publicRepo;
 
-  // For published packages, load the saved-version history (best-effort).
+  // For published packages, load the saved-version history and detect whether
+  // the public website exists (gh-pages branch) so the copy-link stays
+  // available across reloads. Both best-effort — non-essential on failure.
   let versions: Array<{ sha: string; message: string; date: string }> = [];
+  let siteUrl: string | null = null;
   if (record.storage === "github" && pub) {
     try {
       const gh = await clientForUser(supabase, user.id);
       if (gh) {
-        versions = await gh.client.listCommits(
-          { owner: pub.owner, repo: pub.name },
-          { perPage: 15 },
-        );
+        const coords = { owner: pub.owner, repo: pub.name };
+        versions = await gh.client.listCommits(coords, { perPage: 15 });
+        const pagesSha = await gh.client.getRefSha(coords, "heads/gh-pages");
+        if (pagesSha) siteUrl = `https://${pub.owner}.github.io/${pub.name}/`;
       }
     } catch {
-      /* history is non-essential; show none on failure */
+      /* history/site are non-essential; show none on failure */
     }
   }
 
@@ -91,23 +93,17 @@ export default async function EditorPage({
     installUrl: cfg ? installUrl(cfg.appSlug, packageId) : null,
     versions,
     registered: Boolean(registration),
+    siteUrl,
     // Set by the install callback's redirect (?publish=1): auto-run publish.
     autoPublish: publishParam === "1",
   };
 
   return (
     <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-4 px-6 py-8">
-      <header className="flex items-center justify-between">
-        <div>
-          <Link href="/workspace" className="text-sm text-muted hover:text-ink">
-            ← Workspace
-          </Link>
-          <h1 className="font-serif text-2xl tracking-tight text-ink">{record.title}</h1>
-        </div>
-      </header>
       <StudyGuideEditor
         key={active?.slug ?? "none"}
         packageId={packageId}
+        title={record.title}
         initialPath={doc.path}
         initialPreamble={doc.preamble}
         initialBlocks={doc.blocks}

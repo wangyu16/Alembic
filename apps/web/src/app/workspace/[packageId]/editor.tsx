@@ -62,23 +62,15 @@ import {
 } from "./snapshot-actions";
 import { KetcherEditor } from "./ketcher-editor";
 import { PlotEditor } from "./plot-editor";
+import { PublishHeader } from "./_components/publish-header";
 import type { AssetInfo } from "@alembic/package-ops";
 import type { A11yReport, Fixable } from "@/lib/a11y";
-import {
-  publishToGitHubAction,
-  restoreStudyGuideAction,
-} from "./github-actions";
-import { publishSiteAction } from "./site-actions";
 import {
   createChapterAction,
   deleteChapterAction,
   renameChapterAction,
   reorderChaptersAction,
 } from "./chapter-actions";
-import {
-  registerPackageAction,
-  unregisterPackageAction,
-} from "./portal-actions";
 
 export interface PackageVersion {
   sha: string;
@@ -94,6 +86,8 @@ export interface PublishingState {
   installUrl: string | null;
   versions: PackageVersion[];
   registered: boolean;
+  /** The live public page URL once the website exists (gh-pages detected). */
+  siteUrl: string | null;
   /** Returned from the GitHub-App install (?publish=1): auto-resume publishing. */
   autoPublish?: boolean;
 }
@@ -143,6 +137,7 @@ export interface ReviewItem {
 
 export function StudyGuideEditor({
   packageId,
+  title,
   initialPath,
   initialPreamble,
   initialBlocks,
@@ -157,6 +152,7 @@ export function StudyGuideEditor({
   publishing,
 }: {
   packageId: string;
+  title: string;
   initialPath: string;
   initialPreamble: string;
   initialBlocks: StudyGuideBlock[];
@@ -331,6 +327,22 @@ export function StudyGuideEditor({
 
   return (
     <div className="flex flex-1 flex-col gap-4">
+      <header className="flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <Link href="/workspace" className="text-sm text-muted hover:text-ink">
+            ← Workspace
+          </Link>
+          <h1 className="truncate font-serif text-2xl tracking-tight text-ink">
+            {title}
+          </h1>
+        </div>
+        <PublishHeader
+          packageId={packageId}
+          publishing={publishing}
+          dirty={dirty}
+          onChanged={() => router.refresh()}
+        />
+      </header>
       <ChapterBar
         packageId={packageId}
         chapters={chapters}
@@ -507,17 +519,6 @@ export function StudyGuideEditor({
         </ToolSection>
 
         <CategoryLabel>Publish &amp; share</CategoryLabel>
-        <ToolSection
-          title="Publish, website & versions"
-          defaultOpen={publishing.published || Boolean(publishing.autoPublish)}
-        >
-          <PublishingPanel
-            packageId={packageId}
-            publishing={publishing}
-            dirty={dirty}
-            onChanged={() => router.refresh()}
-          />
-        </ToolSection>
         <ToolSection title="Snapshots & citation">
           <SnapshotsPanel packageId={packageId} published={publishing.published} />
         </ToolSection>
@@ -2200,354 +2201,6 @@ function WorksheetPanel({
           ))}
         </ul>
       )}
-    </div>
-  );
-}
-
-function PublishingPanel({
-  packageId,
-  publishing,
-  dirty,
-  onChanged,
-}: {
-  packageId: string;
-  publishing: PublishingState;
-  dirty: boolean;
-  onChanged: () => void;
-}) {
-  const [pending, start] = useTransition();
-  const [error, setError] = useState<string | null>(null);
-  const [publishedUrl, setPublishedUrl] = useState<string | null>(
-    publishing.publicRepoUrl,
-  );
-
-  const onPublish = useCallback(() => {
-    setError(null);
-    start(async () => {
-      const r = await publishToGitHubAction(packageId);
-      if (r.ok) {
-        setPublishedUrl(r.publicRepoUrl ?? null);
-        onChanged();
-      } else {
-        setError(r.error ?? "Publishing failed.");
-      }
-    });
-  }, [packageId, onChanged]);
-
-  // Resume publishing after returning from the GitHub-App install
-  // (?publish=1): the connect+publish flow then completes in one pass instead
-  // of stranding the educator back on the workspace with no repos created.
-  const resumed = useRef(false);
-  useEffect(() => {
-    if (
-      publishing.autoPublish &&
-      publishing.connected &&
-      !publishing.published &&
-      !publishedUrl &&
-      !dirty &&
-      !resumed.current
-    ) {
-      resumed.current = true;
-      // Drop the ?publish=1 marker so a manual refresh doesn't re-trigger.
-      if (typeof window !== "undefined") {
-        const url = new URL(window.location.href);
-        url.searchParams.delete("publish");
-        window.history.replaceState(null, "", url.toString());
-      }
-      onPublish();
-    }
-  }, [
-    publishing.autoPublish,
-    publishing.connected,
-    publishing.published,
-    publishedUrl,
-    dirty,
-    onPublish,
-  ]);
-
-  // Restore replaces the editor's current content, so reload the page after it
-  // succeeds — router.refresh() alone would leave the client editor's in-memory
-  // blocks stale (React keeps client state across server re-renders).
-  const onRestore = (sha: string) => {
-    if (
-      !window.confirm(
-        "Restore this saved version? Any unsaved changes in the editor will be discarded.",
-      )
-    ) {
-      return;
-    }
-    setError(null);
-    start(async () => {
-      const r = await restoreStudyGuideAction(packageId, sha);
-      if (!r.ok) setError(r.error ?? "Restore failed.");
-      else window.location.reload();
-    });
-  };
-
-  return (
-    <div className="panel p-3">
-
-      {!publishing.configured ? (
-        <p className="mt-1 text-xs text-faint">
-          GitHub publishing isn’t set up on this deployment yet.
-        </p>
-      ) : publishing.published || publishedUrl ? (
-        <>
-          <p className="mt-1 text-sm">
-            Published ·{" "}
-            <a
-              href={publishedUrl ?? "#"}
-              target="_blank"
-              rel="noreferrer"
-              className="link"
-            >
-              view repository
-            </a>
-          </p>
-          {publishing.versions.length > 0 && (
-            <div className="mt-3">
-              <div className="text-xs font-medium text-muted">
-                Saved versions
-              </div>
-              <ul className="mt-1 divide-y divide-[var(--edge-soft)]">
-                {publishing.versions.map((v, i) => (
-                  <li key={v.sha} className="flex items-center justify-between gap-2 py-1.5">
-                    <div className="min-w-0">
-                      <div className="truncate text-sm">{v.message}</div>
-                      <div className="text-xs text-faint">
-                        {new Date(v.date).toLocaleString()}
-                      </div>
-                    </div>
-                    {i > 0 && (
-                      <button
-                        onClick={() => onRestore(v.sha)}
-                        disabled={pending}
-                        className="btn btn-ghost btn-sm shrink-0"
-                      >
-                        Restore
-                      </button>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-          <SitePanel packageId={packageId} />
-          <PortalPanel
-            packageId={packageId}
-            registered={publishing.registered}
-            onChanged={onChanged}
-          />
-        </>
-      ) : !publishing.connected ? (
-        <>
-          <p className="mt-1 text-xs text-faint">
-            Connect your GitHub account to publish. Alembic only touches the
-            repositories it creates for you.
-          </p>
-          <a
-            href={publishing.installUrl ?? "#"}
-            className="btn btn-primary btn-sm mt-2 inline-flex"
-          >
-            Connect publishing
-          </a>
-        </>
-      ) : (
-        <>
-          <p className="mt-1 text-xs text-faint">
-            Creates a public + private repository pair and saves your materials
-            there. Private notes never go to the public repository.
-          </p>
-          <button
-            onClick={onPublish}
-            disabled={pending || dirty}
-            title={dirty ? "Save your changes first" : undefined}
-            className="btn btn-primary btn-sm mt-2"
-          >
-            {pending ? "Publishing…" : "Publish to GitHub"}
-          </button>
-          {dirty && (
-            <p className="mt-1 text-xs text-warn">
-              Save your changes before publishing.
-            </p>
-          )}
-        </>
-      )}
-      {error && <p className="mt-2 text-sm text-danger">{error}</p>}
-    </div>
-  );
-}
-
-function SitePanel({ packageId }: { packageId: string }) {
-  const [pending, start] = useTransition();
-  const [siteUrl, setSiteUrl] = useState<string | null>(null);
-  const [pagesPending, setPagesPending] = useState(false);
-  const [warning, setWarning] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [gateFailures, setGateFailures] = useState<
-    Array<{ name: string; message: string }>
-  >([]);
-
-  const onPublishSite = () => {
-    if (
-      !window.confirm(
-        "Publish the public website? Anyone with the link will be able to view it.",
-      )
-    ) {
-      return;
-    }
-    setError(null);
-    setWarning(null);
-    setGateFailures([]);
-    start(async () => {
-      const r = await publishSiteAction(packageId);
-      if (r.ok) {
-        setSiteUrl(r.siteUrl ?? null);
-        setPagesPending(Boolean(r.pagesPending));
-        setWarning(r.warning ?? null);
-      } else if (r.gateFailures?.length) {
-        setGateFailures(r.gateFailures);
-      } else {
-        setError(r.error ?? "Publishing the website failed.");
-      }
-    });
-  };
-
-  return (
-    <div className="mt-3 border-t border-[var(--edge-soft)] pt-3">
-      <div className="text-xs font-medium text-muted">
-        Student website
-      </div>
-      <div className="mt-2 flex items-center gap-3">
-        <Link
-          href={`/workspace/${packageId}/site-preview`}
-          className="btn btn-ghost btn-sm"
-        >
-          Preview student page
-        </Link>
-        <button
-          onClick={onPublishSite}
-          disabled={pending}
-          className="btn btn-primary btn-sm"
-        >
-          {pending ? "Publishing…" : "Publish website"}
-        </button>
-      </div>
-
-      {gateFailures.length > 0 && (
-        <div className="mt-2 rounded border border-amber-300 bg-amber-50 p-2 text-xs dark:border-amber-800 dark:bg-amber-950">
-          <div className="font-medium text-amber-700 dark:text-amber-300">
-            Fix these before publishing:
-          </div>
-          <ul className="mt-1 list-disc pl-4 text-amber-700 dark:text-amber-300">
-            {gateFailures.map((g) => (
-              <li key={g.name}>{g.message}</li>
-            ))}
-          </ul>
-        </div>
-      )}
-      {warning && <p className="mt-2 text-xs text-warn">{warning}</p>}
-      {siteUrl && (
-        <p className="mt-2 text-sm">
-          {pagesPending ? "Site address:" : "Live site:"}{" "}
-          <a
-            href={siteUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="link"
-          >
-            {siteUrl}
-          </a>{" "}
-          <span className="text-xs text-faint">
-            {pagesPending
-              ? "(live once GitHub Pages is enabled)"
-              : "(may take a minute to go live)"}
-          </span>
-        </p>
-      )}
-      {error && <p className="mt-2 text-sm text-danger">{error}</p>}
-    </div>
-  );
-}
-
-function PortalPanel({
-  packageId,
-  registered,
-  onChanged,
-}: {
-  packageId: string;
-  registered: boolean;
-  onChanged: () => void;
-}) {
-  const [pending, start] = useTransition();
-  const [error, setError] = useState<string | null>(null);
-  const [gateFailures, setGateFailures] = useState<
-    Array<{ name: string; message: string }>
-  >([]);
-
-  const run = (fn: () => Promise<{ ok: boolean; error?: string; gateFailures?: Array<{ name: string; message: string }> }>, confirmMsg?: string) => {
-    if (confirmMsg && !window.confirm(confirmMsg)) return;
-    setError(null);
-    setGateFailures([]);
-    start(async () => {
-      const r = await fn();
-      if (r.ok) onChanged();
-      else if (r.gateFailures?.length) setGateFailures(r.gateFailures);
-      else setError(r.error ?? "Action failed.");
-    });
-  };
-
-  return (
-    <div className="mt-3 border-t border-[var(--edge-soft)] pt-3">
-      <div className="text-xs font-medium text-muted">
-        Discovery index
-      </div>
-      {registered ? (
-        <div className="mt-2 flex items-center gap-3">
-          <span className="text-sm text-ok">
-            Listed on the index
-          </span>
-          <button
-            onClick={() =>
-              run(
-                () => unregisterPackageAction(packageId),
-                "Remove this package from the public index?",
-              )
-            }
-            disabled={pending}
-            className="btn btn-ghost btn-sm"
-          >
-            Remove from index
-          </button>
-        </div>
-      ) : (
-        <>
-          <p className="mt-1 text-xs text-faint">
-            List this package on the public discovery index so other educators
-            can find it.
-          </p>
-          <button
-            onClick={() =>
-              run(
-                () => registerPackageAction(packageId),
-                "List this package on the public index?",
-              )
-            }
-            disabled={pending}
-            className="btn btn-primary btn-sm mt-2"
-          >
-            {pending ? "Listing…" : "List on index"}
-          </button>
-        </>
-      )}
-      {gateFailures.length > 0 && (
-        <ul className="mt-2 list-disc pl-4 text-xs text-amber-700 dark:text-amber-300">
-          {gateFailures.map((g) => (
-            <li key={g.name}>{g.message}</li>
-          ))}
-        </ul>
-      )}
-      {error && <p className="mt-2 text-sm text-danger">{error}</p>}
     </div>
   );
 }
