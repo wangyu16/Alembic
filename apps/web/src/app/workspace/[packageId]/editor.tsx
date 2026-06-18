@@ -338,6 +338,15 @@ export function StudyGuideEditor({
           onChanged={() => router.refresh()}
         />
       </header>
+      {!publishing.published && (
+        <p className="rounded-lg border border-[var(--edge-soft)] bg-elevated px-3 py-2 text-xs text-muted">
+          <span className="font-medium text-ink">Trial package.</span> Your work
+          is saved in Alembic but isn’t on your GitHub yet — use{" "}
+          <span className="font-medium">Save to GitHub</span> to keep it in
+          repositories you own (and unlock the public page, version history, and
+          snapshots).
+        </p>
+      )}
       <ChapterNav
         packageId={packageId}
         chapters={chapters}

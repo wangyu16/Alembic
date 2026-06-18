@@ -113,7 +113,9 @@ export default async function WorkspacePage() {
                 <div className="min-w-0">
                   <div className="truncate font-medium text-ink">{pkg.title}</div>
                   <div className="text-xs text-faint">
-                    {pkg.storage === "sandbox" ? "Trial workspace" : "Published via GitHub"} ·
+                    {pkg.storage === "sandbox"
+                      ? "Trial — saved only in Alembic, not yet on your GitHub"
+                      : "Published via GitHub"} ·
                     created {new Date(pkg.created_at).toLocaleDateString()}
                   </div>
                 </div>
