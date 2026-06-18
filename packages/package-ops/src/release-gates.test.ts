@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createSandboxPackage } from "./create";
+import { createChapter } from "./chapters";
 import { MemoryPackageStore } from "./memory-store";
 import { loadStudyGuide, saveStudyGuide } from "./study-guide";
 import { releaseGates } from "./release-gates";
@@ -24,6 +25,32 @@ describe("releaseGates", () => {
     });
     const result = await releaseGates(store, packageId);
     expect(result.ok).toBe(false);
+    expect(result.checks.find((c) => c.name === "Study guide")?.ok).toBe(false);
+  });
+
+  it("passes when content lives in a non-default chapter (multi-chapter)", async () => {
+    const store = new MemoryPackageStore();
+    const { packageId } = await createSandboxPackage(store, input);
+    // Second chapter carries content; empty the first/default chapter.
+    await createChapter(store, packageId, { title: "Acids" });
+    await saveStudyGuide(store, packageId, {
+      path: (await loadStudyGuide(store, packageId)).path,
+      preamble: "",
+      blocks: [],
+    });
+    const result = await releaseGates(store, packageId);
+    expect(result.checks.find((c) => c.name === "Study guide")?.ok).toBe(true);
+    expect(result.ok).toBe(true);
+  });
+
+  it("fails only when EVERY chapter is empty", async () => {
+    const store = new MemoryPackageStore();
+    const { packageId } = await createSandboxPackage(store, input);
+    const ch2 = await createChapter(store, packageId, { title: "Acids" });
+    for (const path of [(await loadStudyGuide(store, packageId)).path, ch2.path]) {
+      await saveStudyGuide(store, packageId, { path, preamble: "", blocks: [] });
+    }
+    const result = await releaseGates(store, packageId);
     expect(result.checks.find((c) => c.name === "Study guide")?.ok).toBe(false);
   });
 

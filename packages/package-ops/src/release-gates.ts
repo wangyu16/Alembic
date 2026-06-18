@@ -4,6 +4,7 @@ import {
   validateBlockIds,
 } from "@alembic/package-contract";
 import type { PackageStore } from "./store";
+import { listChapters } from "./chapters";
 import { loadStudyGuide } from "./study-guide";
 
 export interface GateCheck {
@@ -30,7 +31,13 @@ export async function releaseGates(
   const checks: GateCheck[] = [];
   const record = await store.getPackage(packageId);
   const files = await store.listFiles(packageId);
-  const guide = await loadStudyGuide(store, packageId);
+  // Aggregate across ALL chapters — content may live in any chapter, and the
+  // first chapter may have been renamed off the default study-guide path.
+  const chapters = await listChapters(store, packageId);
+  const guides = await Promise.all(
+    chapters.map((c) => loadStudyGuide(store, packageId, c.path)),
+  );
+  const blocks = guides.flatMap((g) => g.blocks);
 
   // 1. License present.
   const licenseOk =
@@ -41,18 +48,18 @@ export async function releaseGates(
     message: "Choose a license before publishing so others know how they may reuse your work.",
   });
 
-  // 2. Study guide has content.
+  // 2. Study guide has content (in any chapter).
   checks.push({
     name: "Study guide",
-    ok: guide.blocks.length > 0,
+    ok: blocks.length > 0,
     message: "Add at least one study-guide section before publishing.",
   });
 
-  // 3. Section identifiers valid.
+  // 3. Section identifiers valid (across all chapters; IDs are globally unique).
   const ids = validateBlockIds(
-    guide.blocks.filter((b) => b.id).map((b) => ({ id: b.id! })),
+    blocks.filter((b) => b.id).map((b) => ({ id: b.id! })),
   );
-  const allHaveIds = guide.blocks.every((b) => b.id);
+  const allHaveIds = blocks.every((b) => b.id);
   checks.push({
     name: "Section identifiers",
     ok: ids.ok && allHaveIds,
