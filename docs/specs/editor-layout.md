@@ -35,7 +35,7 @@ editor entirely.
 | **Author** | constant | insert figures/charts (assets), AI draft a section, adapt blocks from another package + suggest improvements back + pull updates from upstream (the adaptation loop) | at the canvas; compact |
 | **Review** | periodic (before save/publish, after AI edits) | Changes & review (Tier-1/2 queue, undo, policy), Accessibility | collapsed group |
 | **Generate** | occasional | worksheets; *(future)* slides, PDF, other derived artifacts | collapsed group |
-| **Publish & share** | rare / milestone | **header cluster** (see below): ① Save to GitHub, ② Publish web page, copy public link, History (versions/restore), List publicly. Side group keeps only snapshots/citation. | header + collapsed group |
+| **Publish & share** | rare / milestone | **header cluster** (see below): ① Save to GitHub, ② Publish web page, copy public link, History (versions/restore), List publicly. No side group — whole-package snapshot/citation lives on the **workspace package list**, not the editor. | header only |
 | **App settings** | rare, not per-package | *(future)* model gateway, entitlements/billing, account | **not in the editor** — app-level settings |
 
 ## 3. Where a NEW feature goes (decision rule)
@@ -101,9 +101,14 @@ Never add a seventh top-level panel — extend an existing category.
   `gh-pages` branch, so it survives reloads). **History** (clock) is a dropdown
   of saved versions with restore — split out from publishing. **List publicly**
   registers/unregisters on the portal.
-- **Publish & share** side group: only `SnapshotsPanel` (snapshots/citation).
+- **Whole-package operations live on the workspace list, not the editor.**
+  Rename / delete / archive-restore (lifecycle) and **snapshot + citation**
+  (`_components/package-snapshots.tsx`, published rows only) are package-as-entity
+  actions surfaced from the package list. The editor has no "Publish & share"
+  side group.
 - **Preview:** always-on right pane.
 
-When M13 ships slides/PDF, they join **Generate**; M15 snapshots/citation join
-**Publish & share**; M16/M17 settings go to a future app-level Settings surface,
-not the editor.
+When M13 ships slides/PDF, they join **Generate**; M15 snapshots/citation now
+live on the **workspace package list** (a whole-package operation, not in the
+editor); M16/M17 settings go to a future app-level Settings surface, not the
+editor.

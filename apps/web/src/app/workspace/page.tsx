@@ -4,6 +4,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createPackageAction } from "./actions";
 import { reconcileArchivedPackages } from "./lifecycle-actions";
 import { PackageActions } from "./_components/package-actions";
+import { PackageSnapshots } from "./_components/package-snapshots";
 import { ArchivedPackages } from "./_components/archived-packages";
 
 // Per-user page: never prerendered (and must not require env at build time).
@@ -105,6 +106,9 @@ export default async function WorkspacePage() {
                   <Link href={`/workspace/${pkg.id}`} className="btn btn-ghost btn-sm">
                     Open editor
                   </Link>
+                  {pkg.storage === "github" && (
+                    <PackageSnapshots packageId={pkg.id} />
+                  )}
                   <PackageActions
                     packageId={pkg.id}
                     title={pkg.title}
