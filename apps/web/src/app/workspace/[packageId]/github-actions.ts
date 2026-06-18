@@ -16,6 +16,7 @@ import {
   clientForUser,
   githubConfig,
 } from "@/lib/github";
+import { slugForFile } from "@/lib/export";
 
 /**
  * Create a repo from a template, but tolerate a re-run after a partial publish:
@@ -55,6 +56,34 @@ async function ensureRepoFromTemplate(
   }
 }
 
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Commit to a just-created repo, tolerating GitHub's template-init delay:
+ * `generateFromTemplate` returns before the repo is populated, so the first ref
+ * read can hit an empty repo (409 "Git Repository is empty") or a not-yet-ready
+ * ref (404). Retry with backoff until the branch exists. Existing-repo commit
+ * paths (e.g. study-guide save) never see this, so the retry lives only here.
+ */
+async function commitFilesWhenReady(
+  client: Awaited<ReturnType<typeof clientForInstallation>>,
+  coords: { owner: string; repo: string },
+  plan: Parameters<typeof commitFiles>[2],
+): Promise<void> {
+  const backoff = [500, 1000, 2000, 3000, 4000]; // ~10.5s worst case
+  for (let attempt = 0; attempt <= backoff.length; attempt++) {
+    try {
+      await commitFiles(client, coords, plan);
+      return;
+    } catch (e) {
+      const initializing =
+        e instanceof GitHubError && (e.status === 409 || e.status === 404);
+      if (!initializing || attempt === backoff.length) throw e;
+      await sleep(backoff[attempt]!);
+    }
+  }
+}
+
 /** Turn a publish failure into an educator-facing message with a real hint. */
 function publishErrorMessage(e: unknown): string {
   if (e instanceof GitHubError) {
@@ -66,13 +95,16 @@ function publishErrorMessage(e: unknown): string {
     if (e.status === 403) {
       return "GitHub refused the request (permissions). Reinstall the Alembic GitHub App and grant it access, then try again.";
     }
+    if (e.status === 409) {
+      return "GitHub is still finishing setting up the new repositories. Give it a few seconds and click Publish again.";
+    }
     if (e.status === 422 && /not a template/i.test(e.detail ?? "")) {
       return "A template repository isn't marked as a template. In each template repo's Settings, enable “Template repository”, then try again.";
     }
+    return `Publishing didn't complete (GitHub HTTP ${e.status}). Check that the GitHub App is installed and the template repositories exist.`;
   }
   return "Publishing didn't complete. Check that the GitHub App is installed and the template repositories exist.";
 }
-import { slugForFile } from "@/lib/export";
 
 export interface PublishResult {
   ok: boolean;
@@ -168,13 +200,14 @@ export async function publishToGitHubAction(
       .map((f) => ({ path: f.path, content: f.content }));
 
     // Each commit re-validates the two-repo invariant before any write.
-    await commitFiles(
+    // Retry-when-ready absorbs GitHub's async template initialization.
+    await commitFilesWhenReady(
       client,
       { owner, repo: publicName },
       { repo: "public", summary: "Publish from Alembic", changes: publicChanges },
     );
     if (privateChanges.length > 0) {
-      await commitFiles(
+      await commitFilesWhenReady(
         client,
         { owner, repo: privateName },
         { repo: "private", summary: "Publish from Alembic", changes: privateChanges },
