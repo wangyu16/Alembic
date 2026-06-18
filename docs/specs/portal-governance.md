@@ -3,17 +3,17 @@
 Discovery-hub governance for the grant period. Scaffolding now; the full
 moderation + stewardship handoff is Phase 8 (goal.md §6 "Governance scaffolding").
 
-## Registration eligibility (during the grant)
+## Registration eligibility — open to all educators
 
-Listing a package on the public `/portal` index is **limited to study
-participants**. Gate: `profiles.portal_eligible` (migration `0010`, default
-`false`). `registerPackageAction` checks it and returns an educator-facing
-"limited to study participants" message when not eligible. Unlisting and
-publishing-to-GitHub are unaffected — only public *discovery listing* is gated.
+Listing a package on the public `/portal` index is **open to every signed-in
+educator** (with a published package that passes the Tier-3 release gates). The
+original grant-period participant-only gate (`profiles.portal_eligible`) has
+been **removed** from `registerPackageAction`; the only requirements now are
+GitHub-published + passing release gates.
 
-**Operator action:** flag a participant by setting `profiles.portal_eligible =
-true` for their user (Supabase dashboard) during onboarding. There is no in-app
-admin UI yet (Phase 7 admin module).
+`profiles.portal_eligible` (migration `0010`) and its `/admin` toggle remain in
+the schema/UI but **no longer gate anything** — they are vestigial and may be
+dropped in a later cleanup.
 
 ## Reporting & takedown
 

@@ -13,7 +13,7 @@ same commit as the work it tracks. Statuses: ✅ done · 🔄 partially shipped 
 
 These are the only things blocking full production parity with the code:
 
-1. **Migration `0012_lifecycle` is pending** (adds `packages.archived_at` for package archive/restore); 0005–0011 are applied. Apply 0012 in the Supabase SQL editor before the workspace rename/delete/archive UI works. Config notes: 0007's budget stays dormant until `AI_TOKEN_BUDGET` is set; after 0010 listing requires `portal_eligible=true`; to reach `/admin`, **flag yourself `is_admin=true`** (dashboard) and set **`SUPABASE_SECRET_KEY`** (service-role reads) — optionally `RESEARCH_EXPORT_SALT`.
+1. **Migration `0012_lifecycle` is pending** (adds `packages.archived_at` for package archive/restore); 0005–0011 are applied. Apply 0012 in the Supabase SQL editor before the workspace rename/delete/archive UI works. Config notes: 0007's budget stays dormant until `AI_TOKEN_BUDGET` is set; portal listing is now open to all educators (the `portal_eligible` gate was removed); to reach `/admin`, **flag yourself `is_admin=true`** (dashboard) and set **`SUPABASE_SECRET_KEY`** (service-role reads) — optionally `RESEARCH_EXPORT_SALT`.
 2. ✅ **Done** — Vercel build command is `node ../../scripts/fetch-vendor.mjs && next build`; Plotly is vendored and the plot editor (M11b) works live.
 3. **Interactive verification passes** (can't run in CI): slides render (M13), studio File System Access open/save (M17), and the AI/reconcile live runs (M18 coherence agent, M9.6 draft-from-plan, M20 reconcile, M23 question generation, M26–M28 adapt/pull/suggest-back) once Portkey is on Vercel. Ketcher (M11) and plots (M11b) are verified live.
 4. **Set the Portkey env vars in Vercel** (`AI_GATEWAY_URL=https://api.portkey.ai/v1`, `AI_GATEWAY_API_KEY`, `AI_MODEL_DEFAULT/FAST/STRONG` = `@<provider-slug>/<model>`) to verify the **M18 coherence agent** live. Local dev can't reach Portkey from this machine (the dev Mac's security/firewall blocks the `node` binary's outbound — `curl` works, `node` ETIMEDOUTs — not an app issue); Vercel's egress is clean. See [ai-architecture.md](specs/ai-architecture.md).
@@ -598,7 +598,7 @@ then the search UI over it, then governance scaffolding.
 
 | # | Sub-module | Verify by | Status |
 | --- | --- | --- | --- |
-| 33.1 | Registration limited to study participants during the grant | a non-participant can't list on the index; a flagged participant can | ✅ `profiles.portal_eligible` (migration `0010`, default false); `registerPackageAction` gates on it with an educator-facing message. Operator flags participants (dashboard) |
+| 33.1 | ~~Registration limited to study participants~~ → **open to all educators** | any signed-in educator with a published, gate-passing package can list | ✅ **gate removed** (pilot UI/UX pass): `registerPackageAction` no longer checks `portal_eligible`; listing requires only GitHub-published + Tier-3 gates. `profiles.portal_eligible` + `/admin` toggle remain but are vestigial |
 | 33.2 | Reporting + takedown path | anyone can report a listing; operators review; takedown removes the listing | ✅ `portal_reports` table (RLS: insert by anyone, read by operators only); `reportPackageAction` + a "Report" control on portal cards; takedown = owner unlist or operator removal. Procedure in [specs/portal-governance.md](specs/portal-governance.md). In-app admin UI is Phase 7 |
 
 *Exit:* ✅ during the grant, only participants list; the public can report; a

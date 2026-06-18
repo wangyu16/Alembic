@@ -26,19 +26,7 @@ export async function registerPackageAction(
   } = await supabase.auth.getUser();
   if (!user) redirect("/signin");
 
-  // Governance (M33): during the grant, listing is limited to study participants.
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("portal_eligible")
-    .eq("id", user.id)
-    .maybeSingle();
-  if (!(profile as { portal_eligible?: boolean } | null)?.portal_eligible) {
-    return {
-      ok: false,
-      error: "Listing on the public index is limited to study participants during the grant.",
-    };
-  }
-
+  // Listing on the public index is open to every signed-in educator.
   const store = new SupabaseSandboxStore(supabase);
   const record = await store.getPackage(packageId);
   const repo = record?.storage === "github" ? record.manifest.publicRepo : null;
