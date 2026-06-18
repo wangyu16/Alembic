@@ -248,6 +248,24 @@ exactly that, so they belong there and require no contract change.
   only by top-level directory): `materials/structures/`, `materials/plots/`,
   `materials/figures/`.
 
+### Trial-storage policy — binary uploads gated to published packages (decision)
+
+Trial (sandbox) package content lives in Postgres (`sandbox_files.content`, a
+`text` column). Text carriers — Ketcher structures and plots are SVG/HTML — are
+small and fine to hold there, so **basic authoring works on trial packages with
+no GitHub account**. But raw **binary** uploads (image / PDF / audio) base64'd
+into a `text` column would bloat the database and need a second storage tier.
+
+Decision: **binary asset upload is unavailable until the package is published to
+GitHub.** Once published, binaries are committed straight to the educator's
+public repo (their own infrastructure) and never sit in Postgres as base64. This
+keeps the trial DB footprint bounded — no Supabase Storage / object-store tier
+needed — while still letting educators start and do basic editing in a trial.
+
+Implementation note (when binary upload ships): the upload affordance should be
+disabled for sandbox packages with a one-line reminder ("Save to GitHub to add
+images, PDFs, or audio"), and enabled only when `storage === "github"`.
+
 ### Identity & provenance
 
 Each asset has a stable id and a content hash (reuse the M3 block-hashing
