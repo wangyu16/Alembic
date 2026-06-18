@@ -7,7 +7,7 @@ import {
   DEFAULT_STUDY_GUIDE_PATH,
   saveStudyGuide,
 } from "@alembic/package-ops";
-import { commitFiles } from "@alembic/github-bridge";
+import { commitFiles, GitHubError } from "@alembic/github-bridge";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
 import { supabaseEventLogger } from "@/lib/events";
@@ -16,6 +16,62 @@ import {
   clientForUser,
   githubConfig,
 } from "@/lib/github";
+
+/**
+ * Create a repo from a template, but tolerate a re-run after a partial publish:
+ * if the name already exists (422 "already exists"), the repo is from a prior
+ * attempt — reuse it instead of dead-ending. Other 422s (e.g. "not a template
+ * repository") still surface.
+ */
+async function ensureRepoFromTemplate(
+  client: Awaited<ReturnType<typeof clientForInstallation>>,
+  cfg: NonNullable<ReturnType<typeof githubConfig>>,
+  input: {
+    templateRepo: string;
+    owner: string;
+    name: string;
+    private: boolean;
+    description: string;
+  },
+): Promise<void> {
+  try {
+    await client.generateFromTemplate({
+      templateOwner: cfg.templateOwner,
+      templateRepo: input.templateRepo,
+      owner: input.owner,
+      name: input.name,
+      private: input.private,
+      description: input.description,
+    });
+  } catch (e) {
+    if (
+      e instanceof GitHubError &&
+      e.status === 422 &&
+      /already exists/i.test(e.detail ?? "")
+    ) {
+      return; // repo exists from an earlier attempt — reuse it
+    }
+    throw e;
+  }
+}
+
+/** Turn a publish failure into an educator-facing message with a real hint. */
+function publishErrorMessage(e: unknown): string {
+  if (e instanceof GitHubError) {
+    if (e.status === 404) {
+      // The common case: a template repo can't be read by this installation —
+      // typically the PRIVATE template is itself private (the public one worked).
+      return "Publishing couldn't read a template repository. Make sure both template repos exist and are marked as templates, and that the private template is public (the generated private repo is still private) so your account can use it.";
+    }
+    if (e.status === 403) {
+      return "GitHub refused the request (permissions). Reinstall the Alembic GitHub App and grant it access, then try again.";
+    }
+    if (e.status === 422 && /not a template/i.test(e.detail ?? "")) {
+      return "A template repository isn't marked as a template. In each template repo's Settings, enable “Template repository”, then try again.";
+    }
+  }
+  return "Publishing didn't complete. Check that the GitHub App is installed and the template repositories exist.";
+}
 import { slugForFile } from "@/lib/export";
 
 export interface PublishResult {
@@ -78,16 +134,14 @@ export async function publishToGitHubAction(
     const publicName = `${base}-${frag}-oer`;
     const privateName = `${base}-${frag}-private`;
 
-    await client.generateFromTemplate({
-      templateOwner: cfg.templateOwner,
+    await ensureRepoFromTemplate(client, cfg, {
       templateRepo: cfg.publicTemplate,
       owner,
       name: publicName,
       private: false,
       description: record.title,
     });
-    await client.generateFromTemplate({
-      templateOwner: cfg.templateOwner,
+    await ensureRepoFromTemplate(client, cfg, {
       templateRepo: cfg.privateTemplate,
       owner,
       name: privateName,
@@ -155,11 +209,7 @@ export async function publishToGitHubAction(
       detail: { reason: e instanceof Error ? e.message : "unknown" },
       occurredAt: new Date().toISOString(),
     });
-    return {
-      ok: false,
-      error:
-        "Publishing didn't complete. Check that the GitHub App is installed and the template repositories exist.",
-    };
+    return { ok: false, error: publishErrorMessage(e) };
   }
 }
 
