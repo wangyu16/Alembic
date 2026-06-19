@@ -353,7 +353,7 @@ Deliverables:
   Agent Skill the consolidation plan flags;
 - **bulk upload = lossless re-import over a whole tree.**
 
-### Per-format authoring skills (cross-platform round-trip) — planned side task
+### Per-format authoring skills (cross-platform round-trip) — ✅ shipped in [`skills/`](../../skills/)
 
 To guarantee that a file exported from Alembic can be **opened, edited in
 another app, and re-imported losslessly**, ship **one Agent Skill per
