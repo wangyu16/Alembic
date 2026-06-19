@@ -20,6 +20,7 @@ import { PlotEditor } from "../plot-editor";
 import { readAssetAction } from "../asset-actions";
 import { generateSlidesAction } from "../slides-actions";
 import { generateWorksheetAction } from "../ai-actions";
+import { ManageDialog } from "../chapter-nav";
 
 interface AssetItem {
   path: string;
@@ -100,6 +101,8 @@ export function StudioShell({
   chapterBlockIds: string[];
 }) {
   const forms = unitTermForms(unitTerm);
+  const router = useRouter();
+  const [manageOpen, setManageOpen] = useState(false);
 
   const href = (next: { chapter?: string | null; cat?: string }) => {
     const c = next.chapter !== undefined ? next.chapter : activeSlug;
@@ -135,7 +138,16 @@ export function StudioShell({
           >
             ⊙ Course
           </Link>
-          <div className="mt-2 px-2 text-xs text-faint">{forms.Plural}</div>
+          <div className="mt-2 flex items-center justify-between px-2">
+            <span className="text-xs text-faint">{forms.Plural}</span>
+            <button
+              onClick={() => setManageOpen(true)}
+              className="text-xs text-muted hover:text-ink"
+              title={`Add, reorder, rename ${forms.plural}`}
+            >
+              ⚙
+            </button>
+          </div>
           {chapters.map((c, i) => (
             <Link
               key={c.slug}
@@ -221,6 +233,18 @@ export function StudioShell({
           )}
         </section>
       </div>
+
+      {manageOpen && (
+        <ManageDialog
+          packageId={packageId}
+          chapters={chapters}
+          activeSlug={activeSlug}
+          unitTerm={unitTerm}
+          forms={forms}
+          onClose={() => setManageOpen(false)}
+          onChanged={() => router.refresh()}
+        />
+      )}
     </main>
   );
 }

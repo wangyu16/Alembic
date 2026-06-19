@@ -85,7 +85,7 @@ export function ChapterNav({
   );
 }
 
-function ManageDialog({
+export function ManageDialog({
   packageId,
   chapters,
   activeSlug,
