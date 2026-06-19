@@ -120,7 +120,7 @@ export default async function WorkspacePage() {
                   </div>
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
-                  <Link href={`/workspace/${pkg.id}`} className="btn btn-ghost btn-sm">
+                  <Link href={`/workspace/${pkg.id}/edit`} className="btn btn-ghost btn-sm">
                     Open editor
                   </Link>
                   {pkg.storage === "github" && (

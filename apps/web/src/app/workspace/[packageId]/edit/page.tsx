@@ -68,7 +68,9 @@ export default async function EditShellPage({
       ? { path: `assessment-support/${activeChapter.slug}.md`, repo: "public" as const }
       : category === "private" && activeChapter
         ? { path: `private-instructor/notes/${activeChapter.slug}.md`, repo: "private" as const }
-        : null;
+        : category === "concept-map" && activeChapter
+          ? { path: `concepts/${activeChapter.slug}.md`, repo: "public" as const }
+          : null;
   if (single) {
     const files = await store.listFiles(packageId);
     const f = files.find((x) => x.repo === single.repo && x.path === single.path);

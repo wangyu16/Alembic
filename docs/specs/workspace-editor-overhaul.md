@@ -1,15 +1,19 @@
 # Workspace Editor Overhaul (v2) — design spec
 
-**Status:** **largely implemented** (Phases 0–3), conflict-audited. Authoritative
-for the post-v1.0 editor overhaul. All eight guardrails (G1–G8) are landed +
-tested; Phase 1 AI seam-extensions + Phase 3 three-pane shell (all 7 categories,
-in-editor AI, assembled preview, chapter management) are built and statically
-verified (typecheck/test/build); the per-format Agent Skills shipped. **Remaining
-(needs interactive + live-AI verification on the deployed app):** editor-module
-extraction of the Ketcher/Plotly editors, the concept-map rich planning editor in
-the new shell, and the Phase-4 swap-at-parity. The classic editor stays the
-default; the new shell is the opt-in "New editor (beta)" at
-`/workspace/[packageId]/edit`. Phase/guardrail status in §9/§10.
+**Status:** **implemented** (Phases 0–4), conflict-audited; statically verified
+(typecheck/test/build/AI-seam-guard). Authoritative for the post-v1.0 editor
+overhaul. All eight guardrails (G1–G8) landed + tested; Phase 1 AI
+seam-extensions; Phase 2 editor-kit interface **+ ketcher/plot extracted into
+modules** + per-format Agent Skills; Phase 3 three-pane shell with **all 7
+categories** (concept-map/assessment/private as validated markdown; assets via
+the editor modules; slides/practice generate-then-own; course description + AI),
+in-editor AI (propose → diff → approve), assembled preview, chapter management;
+Phase 4 **swap-at-parity** — the new shell is now the **default** "Open editor"
+(`/workspace/[packageId]/edit`), the classic editor reachable via its "Classic
+editor" link. **Operator verification (deployed app):** the live AI flows need
+Portkey on Vercel; the Ketcher/Plotly canvases need the vendored builds + a
+browser (as the original editors already noted). Bulk `.docx`/`.pptx` import
+stays the reserved worker-tier seam. Phase/guardrail status in §9/§10.
 
 Related: [goal.md](../goal.md) · [package-contract-v1.md](package-contract-v1.md) ·
 [carriers-and-assets.md](carriers-and-assets.md) · [course-structure.md](course-structure.md) ·
@@ -234,9 +238,11 @@ structures+plots), Slides + Practice (generate-then-own); **in-editor AI**
 the rail. *concept-map* routes to the classic planning editor for now (the rich
 planning UI). Interactive verification is the operator/user step.
 
-**Phase 4 — swap at parity** — make the new shell the default once concept-map +
-the module-based carrier editors are interactively verified; `.docx`/`.pptx`
-bulk import lands on the reserved worker-tier seam (designed-for, not built).
+**Phase 4 — swap at parity — ✅ DONE (statically).** The new shell is the default
+"Open editor" from the workspace list; the classic editor remains reachable via
+the shell's "Classic editor" link as a fallback until the operator confirms the
+live AI flows + Ketcher/Plotly canvases on the deployed app. `.docx`/`.pptx`
+bulk import remains the reserved worker-tier seam (designed-for, not built).
 
 ## 10. Conflict register & required guardrails (from the pre-implementation audit)
 

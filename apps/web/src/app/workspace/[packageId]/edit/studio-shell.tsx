@@ -205,7 +205,9 @@ export function StudioShell({
               help={
                 category === "private"
                   ? "Private notes for this chapter — never published. Assignments, quizzes, exams, and answer keys live in the private repository."
-                  : "How each concept/topic should be assessed across homework, discussion, quiz, and exam — instructions, not a question bank. Markdown."
+                  : category === "concept-map"
+                    ? "The chapter's concept map + learning objectives (markdown). Public-repo but not shown on the student site; the coherence agent checks content against it."
+                    : "How each concept/topic should be assessed across homework, discussion, quiz, and exam — instructions, not a question bank. Markdown."
               }
               file={categoryFile}
             />
