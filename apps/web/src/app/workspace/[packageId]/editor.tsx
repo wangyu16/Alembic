@@ -364,8 +364,8 @@ export function StudyGuideEditor({
           <div className="flex items-center gap-3">
             <SaveBadge state={save} />
             <a
-              href={`/workspace/${packageId}/export/study-guide`}
-              title={dirty ? "Exports your last saved version" : "Download a self-contained .md.html"}
+              href={`/workspace/${packageId}/export/study-guide${activeSlug ? `?chapter=${activeSlug}` : ""}`}
+              title={dirty ? "Exports your last saved version" : "Download this chapter as a self-contained .md.html"}
               className="btn btn-ghost btn-sm"
             >
               Download .md.html
