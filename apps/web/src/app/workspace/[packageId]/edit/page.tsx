@@ -55,6 +55,20 @@ export default async function EditShellPage({
   const courseDescription =
     category === "course" ? await loadCourseDescription(store, packageId) : null;
 
+  // Single-file-per-chapter markdown categories (read the file's current content).
+  let categoryFile: { path: string; repo: "public" | "private"; content: string } | null = null;
+  const single =
+    category === "assessment-guide" && activeChapter
+      ? { path: `assessment-support/${activeChapter.slug}.md`, repo: "public" as const }
+      : category === "private" && activeChapter
+        ? { path: `private-instructor/notes/${activeChapter.slug}.md`, repo: "private" as const }
+        : null;
+  if (single) {
+    const files = await store.listFiles(packageId);
+    const f = files.find((x) => x.repo === single.repo && x.path === single.path);
+    categoryFile = { path: single.path, repo: single.repo, content: f?.content ?? "" };
+  }
+
   return (
     <StudioShell
       packageId={packageId}
@@ -69,6 +83,7 @@ export default async function EditShellPage({
         doc ? { preamble: doc.preamble, blocks: doc.blocks } : null
       }
       courseDescription={courseDescription}
+      categoryFile={categoryFile}
     />
   );
 }

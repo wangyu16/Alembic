@@ -12,6 +12,7 @@ import {
   generateCourseDescriptionAction,
   saveCourseDescriptionAction,
 } from "../metadata-actions";
+import { saveFileAction } from "./edit-actions";
 
 export type StudioCategory =
   | "concept-map"
@@ -58,6 +59,7 @@ export function StudioShell({
   category,
   content,
   courseDescription,
+  categoryFile,
 }: {
   packageId: string;
   title: string;
@@ -69,6 +71,7 @@ export function StudioShell({
   category: StudioCategory | "course";
   content: { preamble: string; blocks: StudyGuideBlock[] } | null;
   courseDescription: string | null;
+  categoryFile: { path: string; repo: "public" | "private"; content: string } | null;
 }) {
   const forms = unitTermForms(unitTerm);
 
@@ -148,6 +151,17 @@ export function StudioShell({
             <CourseHome packageId={packageId} initial={courseDescription} published={published} />
           ) : category === "content" && activePath && content ? (
             <ContentEditor packageId={packageId} path={activePath} initial={content} />
+          ) : categoryFile ? (
+            <FileEditor
+              packageId={packageId}
+              label={CATEGORY_LABELS[category as StudioCategory]}
+              help={
+                category === "private"
+                  ? "Private notes for this chapter — never published. Assignments, quizzes, exams, and answer keys live in the private repository."
+                  : "How each concept/topic should be assessed across homework, discussion, quiz, and exam — instructions, not a question bank. Markdown."
+              }
+              file={categoryFile}
+            />
           ) : (
             <CategoryPlaceholder
               packageId={packageId}
@@ -312,6 +326,58 @@ function ContentEditor({
       <button onClick={add} className="w-full rounded-lg border border-dashed border-edge px-3 py-2 text-sm text-muted hover:bg-elevated hover:text-ink">
         + Add section
       </button>
+      {error && <p className="text-sm text-danger">{error}</p>}
+    </div>
+  );
+}
+
+/* ── Generic single-file markdown editor (assessment guide, …) ───────────── */
+function FileEditor({
+  packageId,
+  label,
+  help,
+  file,
+}: {
+  packageId: string;
+  label: string;
+  help: string;
+  file: { path: string; repo: "public" | "private"; content: string };
+}) {
+  const [text, setText] = useState(file.content);
+  const [dirty, setDirty] = useState(false);
+  const [pending, start] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+
+  const save = () => {
+    setError(null);
+    start(async () => {
+      const r = await saveFileAction(packageId, file.path, file.repo, text);
+      if (!r.ok) setError(r.error ?? "Save failed.");
+      else setDirty(false);
+    });
+  };
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex items-center justify-between">
+        <h2 className="font-serif text-lg text-ink">{label}</h2>
+        <div className="flex items-center gap-2">
+          {dirty && <span className="text-xs text-warn">Unsaved</span>}
+          <button onClick={save} disabled={pending || !dirty} className="btn btn-primary btn-sm">
+            {pending ? "Saving…" : "Save"}
+          </button>
+        </div>
+      </div>
+      <p className="max-w-prose text-xs text-faint">{help}</p>
+      <textarea
+        value={text}
+        onChange={(e) => {
+          setText(e.target.value);
+          setDirty(true);
+        }}
+        placeholder={`# ${label}\n\nWrite in Markdown…`}
+        className="field min-h-[55vh] w-full resize-y font-mono text-sm"
+      />
       {error && <p className="text-sm text-danger">{error}</p>}
     </div>
   );
