@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import {
+  serializeStudyGuide,
   unitTermForms,
   type StudyGuideBlock,
   type UnitTerm,
@@ -150,7 +151,12 @@ export function StudioShell({
           {category === "course" ? (
             <CourseHome packageId={packageId} initial={courseDescription} published={published} />
           ) : category === "content" && activePath && content ? (
-            <ContentEditor packageId={packageId} path={activePath} initial={content} />
+            <ContentEditor
+              packageId={packageId}
+              path={activePath}
+              chapterTitle={chapters.find((c) => c.slug === activeSlug)?.title ?? title}
+              initial={content}
+            />
           ) : categoryFile ? (
             <FileEditor
               packageId={packageId}
@@ -250,10 +256,12 @@ interface EditBlock extends StudyGuideBlock {
 function ContentEditor({
   packageId,
   path,
+  chapterTitle,
   initial,
 }: {
   packageId: string;
   path: string;
+  chapterTitle: string;
   initial: { preamble: string; blocks: StudyGuideBlock[] };
 }) {
   const [blocks, setBlocks] = useState<EditBlock[]>(
@@ -262,6 +270,33 @@ function ContentEditor({
   const [dirty, setDirty] = useState(false);
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
+
+  // Assembled chapter preview (mirrors the published page: title as h1).
+  const assembled = useMemo(
+    () => serializeStudyGuide(initial.preamble, blocks.map((b) => ({ id: b.id, title: b.title, body: b.body }))),
+    [initial.preamble, blocks],
+  );
+  const [html, setHtml] = useState("");
+  useEffect(() => {
+    const id = setTimeout(async () => {
+      try {
+        const previewSource = assembled.replace(
+          /(!\[[^\]]*\]\()(materials\/[^)\s]+)/g,
+          (_m, pre: string, p: string) => `${pre}/api/asset/${packageId}/${p}`,
+        );
+        const res = await fetch("/api/preview", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ source: previewSource, heading: chapterTitle }),
+        });
+        const data = (await res.json()) as { html?: string };
+        setHtml(data.html ?? "");
+      } catch {
+        /* best-effort */
+      }
+    }, 350);
+    return () => clearTimeout(id);
+  }, [assembled, packageId, chapterTitle]);
 
   const update = (key: string, field: "title" | "body", value: string) => {
     setBlocks((bs) => bs.map((b) => (b.key === key ? { ...b, [field]: value } : b)));
@@ -289,7 +324,7 @@ function ContentEditor({
   };
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex h-full flex-col gap-3">
       <div className="flex items-center justify-between">
         <h2 className="text-sm text-muted">Course content — edit by section</h2>
         <div className="flex items-center gap-2">
@@ -305,28 +340,42 @@ function ContentEditor({
           </button>
         </div>
       </div>
-      {blocks.map((b) => (
-        <div key={b.key} className="panel p-3">
-          <input
-            value={b.title}
-            onChange={(e) => update(b.key, "title", e.target.value)}
-            placeholder="Section heading"
-            className="field w-full font-medium"
-          />
-          <textarea
-            value={b.body}
-            onChange={(e) => update(b.key, "body", e.target.value)}
-            placeholder="Write in Markdown — chemistry (H~2~O) and math ($E=mc^2$) supported."
-            rows={Math.max(3, b.body.split("\n").length + 1)}
-            className="field mt-2 w-full resize-y font-mono text-sm"
-          />
-          <p className="mt-1 text-xs text-faint">{b.id ? `id ${b.id}` : "new — id assigned on save"}</p>
+      <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 lg:grid-cols-2">
+        {/* source */}
+        <div className="flex min-h-0 flex-col gap-3 overflow-y-auto pr-1">
+          {blocks.map((b) => (
+            <div key={b.key} className="panel p-3">
+              <input
+                value={b.title}
+                onChange={(e) => update(b.key, "title", e.target.value)}
+                placeholder="Section heading"
+                className="field w-full font-medium"
+              />
+              <textarea
+                value={b.body}
+                onChange={(e) => update(b.key, "body", e.target.value)}
+                placeholder="Write in Markdown — chemistry (H~2~O) and math ($E=mc^2$) supported."
+                rows={Math.max(3, b.body.split("\n").length + 1)}
+                className="field mt-2 w-full resize-y font-mono text-sm"
+              />
+              <p className="mt-1 text-xs text-faint">{b.id ? `id ${b.id}` : "new — id assigned on save"}</p>
+            </div>
+          ))}
+          <button onClick={add} className="w-full rounded-lg border border-dashed border-edge px-3 py-2 text-sm text-muted hover:bg-elevated hover:text-ink">
+            + Add section
+          </button>
+          {error && <p className="text-sm text-danger">{error}</p>}
         </div>
-      ))}
-      <button onClick={add} className="w-full rounded-lg border border-dashed border-edge px-3 py-2 text-sm text-muted hover:bg-elevated hover:text-ink">
-        + Add section
-      </button>
-      {error && <p className="text-sm text-danger">{error}</p>}
+        {/* assembled preview */}
+        <div className="flex min-h-0 flex-col gap-1">
+          <span className="text-xs text-faint">Assembled preview</span>
+          <iframe
+            title="Chapter preview"
+            srcDoc={html}
+            className="min-h-0 flex-1 rounded-xl border border-[var(--border)] bg-[var(--bg)]"
+          />
+        </div>
+      </div>
     </div>
   );
 }
