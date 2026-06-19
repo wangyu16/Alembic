@@ -42,7 +42,7 @@ export interface BuildMdHtmlInput {
    * Currently unused.
    */
   sourceHash?: string;
-  /** Rendered theme — dark-elegant (default) or light-neat. */
+  /** Rendered theme — dark-elegant (default) or light-academic. */
   theme?: RenderTheme;
 }
 

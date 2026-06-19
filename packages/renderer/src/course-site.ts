@@ -23,6 +23,7 @@ import { rendererVersion } from "./index";
 import { escapeHtml, themedDocument } from "./document";
 import { learningResourceJsonLd, type LearningResourceMeta } from "./learning-resource";
 import type { SiteFile, SiteWorksheet } from "./site";
+import type { RenderTheme } from "./theme-css";
 
 export interface CourseChapter {
   /** URL-safe slug; becomes chapters/<slug>.html. */
@@ -39,6 +40,8 @@ export interface CourseSiteInput {
   builtAt: string;
   /** LRMI/schema.org metadata; when present, emitted as JSON-LD on the index (M30). */
   meta?: LearningResourceMeta;
+  /** Render theme — matches the educator's editor selection (default dark). */
+  theme?: RenderTheme;
 }
 
 /**
@@ -81,7 +84,7 @@ export function buildCourseSite(input: CourseSiteInput): SiteFile[] {
     )}</h1>\n<ul>\n${toc}\n</ul>${wsNav ? `\n${wsNav}` : ""}`;
     files.push({
       path: "index.html",
-      content: themedDocument({ title: input.title, bodyHtml: indexBody, headHtml: indexHead }),
+      content: themedDocument({ title: input.title, bodyHtml: indexBody, headHtml: indexHead, theme: input.theme }),
     });
 
     chapters.forEach((c, i) => {
@@ -115,7 +118,7 @@ export function buildCourseSite(input: CourseSiteInput): SiteFile[] {
       )}${pagerNav}`;
       files.push({
         path: `chapters/${c.slug}.html`,
-        content: themedDocument({ title: c.title, bodyHtml: body }),
+        content: themedDocument({ title: c.title, bodyHtml: body, theme: input.theme }),
       });
     });
   } else {
@@ -130,7 +133,7 @@ export function buildCourseSite(input: CourseSiteInput): SiteFile[] {
     }`;
     files.push({
       path: "index.html",
-      content: themedDocument({ title: input.title, bodyHtml: indexBody, headHtml: indexHead }),
+      content: themedDocument({ title: input.title, bodyHtml: indexBody, headHtml: indexHead, theme: input.theme }),
     });
   }
 
@@ -141,7 +144,7 @@ export function buildCourseSite(input: CourseSiteInput): SiteFile[] {
     )}</a></p>\n<h1>${escapeHtml(w.title)}</h1>\n${md.render(w.markdown)}`;
     files.push({
       path: `worksheets/${w.slug}.html`,
-      content: themedDocument({ title: w.title, bodyHtml: body }),
+      content: themedDocument({ title: w.title, bodyHtml: body, theme: input.theme }),
     });
   }
 

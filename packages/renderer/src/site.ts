@@ -9,6 +9,7 @@
 import { md } from "orz-markdown";
 import { rendererVersion } from "./index";
 import { escapeHtml, themedDocument } from "./document";
+import type { RenderTheme } from "./theme-css";
 
 export interface SiteWorksheet {
   title: string;
@@ -23,6 +24,8 @@ export interface SiteInput {
   worksheets: SiteWorksheet[];
   /** ISO timestamp, passed in for deterministic builds. */
   builtAt: string;
+  /** Render theme — matches the educator's editor selection (default dark). */
+  theme?: RenderTheme;
 }
 
 export interface SiteFile {
@@ -45,7 +48,7 @@ export function buildSite(input: SiteInput): SiteFile[] {
   )}${worksheetNav ? `\n${worksheetNav}` : ""}`;
   files.push({
     path: "index.html",
-    content: themedDocument({ title: input.title, bodyHtml: indexBody }),
+    content: themedDocument({ title: input.title, bodyHtml: indexBody, theme: input.theme }),
   });
 
   for (const w of input.worksheets) {
@@ -54,7 +57,7 @@ export function buildSite(input: SiteInput): SiteFile[] {
     )}</h1>\n${md.render(w.markdown)}`;
     files.push({
       path: `worksheets/${w.slug}.html`,
-      content: themedDocument({ title: w.title, bodyHtml: body }),
+      content: themedDocument({ title: w.title, bodyHtml: body, theme: input.theme }),
     });
   }
 

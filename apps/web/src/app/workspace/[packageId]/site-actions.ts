@@ -19,6 +19,7 @@ import { SupabaseSandboxStore } from "@/lib/sandbox-store";
 import { supabaseEventLogger } from "@/lib/events";
 import { clientForUser } from "@/lib/github";
 import { slugForFile } from "@/lib/export";
+import { getRenderTheme } from "@/lib/theme";
 
 const PAGES_BRANCH = "gh-pages";
 
@@ -106,6 +107,8 @@ export async function publishSiteAction(
       chapters,
       worksheets,
       builtAt: new Date().toISOString(),
+      // The published site matches the educator's selected render theme.
+      theme: await getRenderTheme(),
       // LRMI/schema.org LearningResource metadata for the published index (M30).
       meta: {
         name: record!.title,

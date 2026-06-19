@@ -8,7 +8,7 @@ export const THEME_COOKIE = "alembic-theme";
 /**
  * The selected render theme, read from the cookie (server-side). Drives both
  * the app chrome (`<html data-theme>`) and orz-markdown rendered output
- * (dark-elegant by default, light-neat when "light"). Anything but "light"
+ * (dark-elegant by default, light-academic when "light"). Anything but "light"
  * resolves to "dark" so a missing/garbage cookie is safe.
  */
 export async function getRenderTheme(): Promise<RenderTheme> {

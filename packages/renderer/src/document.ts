@@ -2,7 +2,7 @@
  * Shared themed HTML document. All rendered output — in-app preview, the
  * worksheet viewer, the published site, and `.md.html` exports — uses this so
  * they look identical. The theme is selectable: orz-markdown's `dark-elegant-1`
- * (default) or `light-neat-1` when the educator picks the light theme. Content
+ * (default) or `light-academic-1` when the educator picks the light theme. Content
  * is wrapped in `.markdown-body` (the class the themes target).
  */
 
@@ -29,7 +29,7 @@ export interface ThemedDocOptions {
   trailingHtml?: string;
   /** Raw HTML injected into <head> (e.g. a JSON-LD LearningResource script). */
   headHtml?: string;
-  /** Rendered theme — dark-elegant (default) or light-neat. */
+  /** Rendered theme — dark-elegant (default) or light-academic. */
   theme?: RenderTheme;
 }
 

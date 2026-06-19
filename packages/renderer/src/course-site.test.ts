@@ -31,6 +31,19 @@ describe("buildCourseSite — multi-chapter", () => {
     expect(index.content).not.toContain("Matter is made of atoms");
   });
 
+  it("threads the selected render theme into every page (default dark)", () => {
+    const dark = buildCourseSite(multi); // no theme → dark
+    expect(dark.find((f) => f.path === "index.html")!.content).toContain("Cinzel"); // dark-elegant
+    expect(dark.find((f) => f.path === "chapters/atoms.html")!.content).toContain("Cinzel");
+
+    const light = buildCourseSite({ ...multi, theme: "light" });
+    for (const f of light.filter((f) => f.path.endsWith(".html"))) {
+      // Every emitted page carries the light-academic theme, not the dark one.
+      expect(f.content, f.path).toContain("Alegreya"); // light-academic
+      expect(f.content, f.path).not.toContain("Cinzel");
+    }
+  });
+
   it("emits one page per chapter that renders content and links back to the index", () => {
     const files = buildCourseSite(multi);
     const water = files.find((f) => f.path === "chapters/water.html")!;

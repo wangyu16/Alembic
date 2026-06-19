@@ -349,6 +349,7 @@ function CourseHome({
 /* ── Content editor: per-section, saves via the validated path ───────────── */
 interface EditBlock extends StudyGuideBlock {
   key: string;
+  collapsed?: boolean;
 }
 
 function ContentEditor({
@@ -363,11 +364,18 @@ function ContentEditor({
   initial: { preamble: string; blocks: StudyGuideBlock[] };
 }) {
   const [blocks, setBlocks] = useState<EditBlock[]>(
-    initial.blocks.map((b, i) => ({ ...b, key: `b${i}` })),
+    // All sections start collapsed on open — expand the ones you're editing.
+    initial.blocks.map((b, i) => ({ ...b, key: `b${i}`, collapsed: true })),
   );
   const [dirty, setDirty] = useState(false);
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
+
+  const toggle = (key: string) =>
+    setBlocks((bs) => bs.map((b) => (b.key === key ? { ...b, collapsed: !b.collapsed } : b)));
+  const setAllCollapsed = (collapsed: boolean) =>
+    setBlocks((bs) => bs.map((b) => ({ ...b, collapsed })));
+  const allCollapsed = blocks.every((b) => b.collapsed);
 
   // Assembled chapter preview (mirrors the published page: title as h1).
   const assembled = useMemo(
@@ -427,6 +435,11 @@ function ContentEditor({
         <h2 className="text-sm text-muted">Course content — edit by section</h2>
         <div className="flex items-center gap-2">
           {dirty && <span className="text-xs text-warn">Unsaved</span>}
+          {blocks.length > 1 && (
+            <button onClick={() => setAllCollapsed(!allCollapsed)} className="btn btn-ghost btn-sm">
+              {allCollapsed ? "Expand all" : "Collapse all"}
+            </button>
+          )}
           <AskAI packageId={packageId} path={path} repo="public" current={assembled} />
           <a
             href={`/workspace/${packageId}/export/study-guide?chapter=${path.replace(/^.*\//, "").replace(/\.md$/, "")}`}
@@ -444,20 +457,41 @@ function ContentEditor({
         <div className="flex min-h-0 flex-col gap-3 overflow-y-auto pr-1">
           {blocks.map((b) => (
             <div key={b.key} className="panel p-3">
-              <input
-                value={b.title}
-                onChange={(e) => update(b.key, "title", e.target.value)}
-                placeholder="Section heading"
-                className="field w-full font-medium"
-              />
-              <textarea
-                value={b.body}
-                onChange={(e) => update(b.key, "body", e.target.value)}
-                placeholder="Write in Markdown — chemistry (H~2~O) and math ($E=mc^2$) supported."
-                rows={Math.max(3, b.body.split("\n").length + 1)}
-                className="field mt-2 w-full resize-y font-mono text-sm"
-              />
-              <p className="mt-1 text-xs text-faint">{b.id ? `id ${b.id}` : "new — id assigned on save"}</p>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => toggle(b.key)}
+                  title={b.collapsed ? "Expand section" : "Collapse section"}
+                  aria-expanded={!b.collapsed}
+                  className="rounded px-1 text-muted hover:text-ink"
+                >
+                  {b.collapsed ? "▸" : "▾"}
+                </button>
+                <input
+                  value={b.title}
+                  onChange={(e) => update(b.key, "title", e.target.value)}
+                  placeholder="Section heading"
+                  className="field w-full font-medium"
+                />
+              </div>
+              {b.collapsed ? (
+                <button
+                  onClick={() => toggle(b.key)}
+                  className="mt-1 block w-full truncate pl-7 text-left text-xs text-faint"
+                >
+                  {b.body.trim().split("\n")[0] || "Empty section — click to edit"}
+                </button>
+              ) : (
+                <>
+                  <textarea
+                    value={b.body}
+                    onChange={(e) => update(b.key, "body", e.target.value)}
+                    placeholder="Write in Markdown — chemistry (H~2~O) and math ($E=mc^2$) supported."
+                    rows={Math.max(3, b.body.split("\n").length + 1)}
+                    className="field mt-2 w-full resize-y font-mono text-sm"
+                  />
+                  <p className="mt-1 text-xs text-faint">{b.id ? `id ${b.id}` : "new — id assigned on save"}</p>
+                </>
+              )}
             </div>
           ))}
           <button onClick={add} className="w-full rounded-lg border border-dashed border-edge px-3 py-2 text-sm text-muted hover:bg-elevated hover:text-ink">

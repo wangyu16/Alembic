@@ -15,6 +15,7 @@ import {
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
 import { slugForFile } from "@/lib/export";
+import { getRenderTheme } from "@/lib/theme";
 
 export const dynamic = "force-dynamic";
 
@@ -63,6 +64,7 @@ export default async function SitePreviewPage({
     chapters,
     worksheets,
     builtAt: new Date().toISOString(),
+    theme: await getRenderTheme(),
   });
   const indexHtml = files.find((f) => f.path === "index.html")?.content ?? "";
 
