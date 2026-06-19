@@ -31,6 +31,10 @@ export const CHANGE_KINDS = [
   "suggest-example",
   "a11y-fix",
   "coherence-edit",
+  // Generic in-editor AI edit of the active file's carrier source (any
+  // category). Carrier-opaque source replacement; the path's repo + layer
+  // decide validation + public/private routing on apply.
+  "editor-ai-edit",
   // Tier 3 — trust boundary, itemized review, never lowered
   "publish",
   "register",
@@ -55,6 +59,7 @@ export const BASE_TIER: Record<ChangeKind, Tier> = {
   "suggest-example": 2,
   "a11y-fix": 2,
   "coherence-edit": 2,
+  "editor-ai-edit": 2,
   publish: 3,
   register: 3,
   "license-change": 3,

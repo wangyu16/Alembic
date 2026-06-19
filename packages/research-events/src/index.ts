@@ -61,6 +61,9 @@ export const EVENT_TYPES = [
   "package.archived",
   "package.restored",
   "package.purged",
+  // Phase 9 editor overhaul — in-editor AI edit of the active file's carrier
+  // source (the accept/reject reuse ai.suggestion.* with surface:"editor-inline").
+  "ai.edit.requested",
 ] as const;
 
 export type EventType = (typeof EVENT_TYPES)[number];

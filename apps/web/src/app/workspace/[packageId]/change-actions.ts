@@ -15,6 +15,7 @@ import {
   type AnswerKey,
 } from "@alembic/package-contract";
 import {
+  applyEditorEdit,
   applyProposedChangeSet,
   loadStudyGuide,
   saveStudyGuide,
@@ -199,6 +200,7 @@ async function applyAccepted(
     suggestBlockId?: string;
     suggestedTitle?: string;
     suggestedBody?: string;
+    repo?: "public" | "private";
   };
   let committed: { path: string; content: string } | null = null;
 
@@ -312,6 +314,28 @@ async function applyAccepted(
   } else if (change.kind === "formatting-tidy" && detail.content) {
     await store.putFiles(packageId, [{ repo: "public", path: detail.path, content: detail.content }]);
     committed = { path: detail.path, content: detail.content };
+  } else if (
+    change.kind === "editor-ai-edit" &&
+    detail.content != null &&
+    (detail.repo === "public" || detail.repo === "private")
+  ) {
+    // Generic in-editor AI edit (G3): carrier-agnostic source replacement,
+    // routed by layer through the validated write path. Public files sync via
+    // `committed`; private files sync here so they never touch the public commit.
+    await applyEditorEdit(store, packageId, {
+      path: detail.path,
+      repo: detail.repo,
+      source: detail.content,
+    });
+    if (detail.repo === "public") {
+      committed = { path: detail.path, content: detail.content };
+    } else {
+      await syncPrivateFilesToGitHub(
+        supabase, store, userId, packageId,
+        [{ path: detail.path, content: detail.content }],
+        "Edit (Alembic)",
+      );
+    }
   }
 
   await setChangeStatus(supabase, change.id, "accepted");
