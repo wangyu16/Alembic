@@ -218,7 +218,10 @@ generation; coherence lenses (terminology/symbols/drift); spelling/grammar
 
 **Phase 2 — editor-module interface** — unify the two editor interfaces (G7),
 define the module API, extract `ketcher`/`plot` then `slides`/`pdf` into
-orz-stack packages consumed by Alembic.
+orz-stack packages consumed by Alembic. **Side task (here):** ship **one Agent
+Skill per dual-extension format** (+ a shared basics skill) so a file exported
+from Alembic round-trips through other apps losslessly — modules + skills are the
+two halves of cross-platform interop. See [carriers-and-assets.md §7](carriers-and-assets.md).
 
 **Phase 3 — new three-pane shell** — parallel route; the AI-in-editor
 diff/approve flow; the 7-category rail; assembled preview + exports; whole-package

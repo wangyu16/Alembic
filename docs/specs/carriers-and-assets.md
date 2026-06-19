@@ -352,6 +352,35 @@ Deliverables:
   Agent Skill the consolidation plan flags;
 - **bulk upload = lossless re-import over a whole tree.**
 
+### Per-format authoring skills (cross-platform round-trip) — planned side task
+
+To guarantee that a file exported from Alembic can be **opened, edited in
+another app, and re-imported losslessly**, ship **one Agent Skill per
+dual-extension format** (plus one shared basics skill). A skill is the
+human/AI-readable half of the "validator == skill" principle above, scoped to a
+single carrier kind, so any agent — in Alembic, orz-editor, a VS Code extension,
+or a third-party tool — authors a conformant file without reading source.
+
+- **`carrier-format-basics`** (shared) — the embed/extract island, the `kind` +
+  `format` markers, the `</`→`<\/` escape, `formatVersion` gating, and the
+  round-trip conformance test: **extract → re-embed → byte-identical**, and
+  re-import preserves block IDs (`{{attrs[#…]}}`).
+- **`authoring-md-html`**, **`authoring-slides-html`**, **`authoring-md-pdf`**,
+  **`authoring-ketcher-svg`**, **`authoring-plot-svg`**, … — one per kind. Each
+  states: the extension + payload (svg/html/pdf) + current `formatVersion`; the
+  exact byte structure (renderable payload + embedded-source island); the
+  authoring rules and what must round-trip; a minimal conformant example; and the
+  validation snippet (`extractSource` round-trips, `validate()` passes).
+
+Constraints (so the skills can't drift): each skill's per-kind facts are
+**generated from the kind registry + schema** (single source), and "conforms to
+the skill" must mean exactly "passes `validate()`". New kinds get a skill the
+same way they get a registry line — additive. Skills are portable prose +
+examples (not Alembic-only), so the orz-stack tools share them. Tracked as a
+side task on the [editor overhaul](workspace-editor-overhaul.md) path; build
+alongside the editor-module extraction (Phase 2), since modules + skills are the
+two halves of cross-platform interop.
+
 ### Two import paths
 
 - **Lossless carrier re-import** (deterministic, no AI): any registered carrier
