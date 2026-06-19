@@ -107,6 +107,10 @@ export function StudioShell({
   const forms = unitTermForms(unitTerm);
   const router = useRouter();
   const [manageOpen, setManageOpen] = useState(false);
+  // Left panes are collapsible to give the editor the full width. The chapter
+  // list starts collapsed; the category rail starts open.
+  const [showChapters, setShowChapters] = useState(false);
+  const [showRail, setShowRail] = useState(true);
 
   const href = (next: { chapter?: string | null; cat?: string }) => {
     const c = next.chapter !== undefined ? next.chapter : activeSlug;
@@ -118,22 +122,39 @@ export function StudioShell({
   };
 
   return (
-    <main className="mx-auto flex h-[calc(100vh-3.5rem)] w-full max-w-7xl flex-col gap-3 px-4 py-4">
+    <main className="flex h-[calc(100vh-3.5rem)] w-full flex-col gap-3 px-3 py-3">
       <header className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Link href="/workspace" className="text-sm text-muted hover:text-ink">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowChapters((v) => !v)}
+            className={`btn btn-ghost btn-sm ${showChapters ? "text-ink" : "text-muted"}`}
+            title={`${showChapters ? "Hide" : "Show"} ${forms.plural}`}
+            aria-pressed={showChapters}
+          >
+            ☰ {forms.Plural}
+          </button>
+          <button
+            onClick={() => setShowRail((v) => !v)}
+            className={`btn btn-ghost btn-sm ${showRail ? "text-ink" : "text-muted"}`}
+            title={`${showRail ? "Hide" : "Show"} categories`}
+            aria-pressed={showRail}
+          >
+            ▤ Categories
+          </button>
+          <Link href="/workspace" className="ml-1 text-sm text-muted hover:text-ink">
             ← Workspace
           </Link>
-          <h1 className="font-serif text-xl tracking-tight text-ink">{title}</h1>
+          <h1 className="truncate font-serif text-xl tracking-tight text-ink">{title}</h1>
         </div>
         <Link href={`/workspace/${packageId}`} className="btn btn-ghost btn-sm" title="The current editor">
           Classic editor
         </Link>
       </header>
 
-      <div className="grid min-h-0 flex-1 grid-cols-[180px_200px_1fr] gap-3">
-        {/* Pane 1 — chapters */}
-        <nav className="panel min-h-0 overflow-y-auto p-2">
+      <div className="flex min-h-0 flex-1 gap-3">
+        {/* Pane 1 — chapters (collapsible) */}
+        {showChapters && (
+        <nav className="panel min-h-0 w-44 shrink-0 overflow-y-auto p-2">
           <Link
             href={href({ chapter: null, cat: "course" })}
             className={`block rounded-md px-2 py-1.5 text-sm ${
@@ -166,9 +187,11 @@ export function StudioShell({
             </Link>
           ))}
         </nav>
+        )}
 
-        {/* Pane 2 — category rail */}
-        <nav className="panel min-h-0 overflow-y-auto p-2">
+        {/* Pane 2 — category rail (collapsible) */}
+        {showRail && (
+        <nav className="panel min-h-0 w-52 shrink-0 overflow-y-auto p-2">
           <div className="px-2 pb-1 text-xs text-faint">
             {category === "course" ? "Course" : activeSlug ? `${forms.Singular}` : ""}
           </div>
@@ -186,9 +209,10 @@ export function StudioShell({
             </Link>
           ))}
         </nav>
+        )}
 
-        {/* Pane 3 — editor */}
-        <section className="panel min-h-0 overflow-y-auto p-4">
+        {/* Pane 3 — editor (fills remaining width) */}
+        <section className="panel min-h-0 min-w-0 flex-1 overflow-y-auto p-4">
           {category === "course" ? (
             <CourseHome packageId={packageId} initial={courseDescription} published={published} />
           ) : category === "content" && activePath && content ? (
