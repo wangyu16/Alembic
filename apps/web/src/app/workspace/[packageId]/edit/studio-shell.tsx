@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, useTransition } from "react";
 import {
   serializeStudyGuide,
@@ -14,6 +15,24 @@ import {
   saveCourseDescriptionAction,
 } from "../metadata-actions";
 import { saveFileAction } from "./edit-actions";
+import { KetcherEditor } from "../ketcher-editor";
+import { PlotEditor } from "../plot-editor";
+import { readAssetAction } from "../asset-actions";
+import { generateSlidesAction } from "../slides-actions";
+import { generateWorksheetAction } from "../ai-actions";
+
+interface AssetItem {
+  path: string;
+  kind: string;
+  altText?: string;
+}
+interface ArtifactItem {
+  artifactId: string;
+  kind: "worksheet" | "slides";
+  title: string;
+  path: string;
+  stale: boolean;
+}
 
 export type StudioCategory =
   | "concept-map"
@@ -61,6 +80,9 @@ export function StudioShell({
   content,
   courseDescription,
   categoryFile,
+  assets,
+  artifacts,
+  chapterBlockIds,
 }: {
   packageId: string;
   title: string;
@@ -73,6 +95,9 @@ export function StudioShell({
   content: { preamble: string; blocks: StudyGuideBlock[] } | null;
   courseDescription: string | null;
   categoryFile: { path: string; repo: "public" | "private"; content: string } | null;
+  assets: AssetItem[];
+  artifacts: ArtifactItem[];
+  chapterBlockIds: string[];
 }) {
   const forms = unitTermForms(unitTerm);
 
@@ -167,6 +192,25 @@ export function StudioShell({
                   : "How each concept/topic should be assessed across homework, discussion, quiz, and exam — instructions, not a question bank. Markdown."
               }
               file={categoryFile}
+            />
+          ) : category === "assets" ? (
+            <AssetsView packageId={packageId} activePath={activePath} assets={assets} />
+          ) : category === "slides" ? (
+            <ArtifactView
+              packageId={packageId}
+              activePath={activePath}
+              kind="slides"
+              label="Slides"
+              items={artifacts.filter((a) => a.kind === "slides")}
+            />
+          ) : category === "practice" ? (
+            <ArtifactView
+              packageId={packageId}
+              activePath={activePath}
+              kind="worksheet"
+              label="Practice questions"
+              items={artifacts.filter((a) => a.kind === "worksheet")}
+              blockIds={chapterBlockIds}
             />
           ) : (
             <CategoryPlaceholder
@@ -427,6 +471,186 @@ function FileEditor({
         placeholder={`# ${label}\n\nWrite in Markdown…`}
         className="field min-h-[55vh] w-full resize-y font-mono text-sm"
       />
+      {error && <p className="text-sm text-danger">{error}</p>}
+    </div>
+  );
+}
+
+/* ── Assets: list + create/edit structures & plots (reuses the editors) ──── */
+function AssetsView({
+  packageId,
+  activePath,
+  assets,
+}: {
+  packageId: string;
+  activePath: string | null;
+  assets: AssetItem[];
+}) {
+  const router = useRouter();
+  const [editing, setEditing] = useState<
+    { kind: "ketcher" | "plot"; path?: string; source?: string } | null
+  >(null);
+  const [pending, start] = useTransition();
+
+  const openEdit = (path: string, kind: string) => {
+    if (kind !== "ketcher" && kind !== "plot") return;
+    start(async () => {
+      const r = await readAssetAction(packageId, path);
+      setEditing({ kind, path, source: r.ok ? r.source : undefined });
+    });
+  };
+  const onSaved = () => {
+    setEditing(null);
+    router.refresh();
+  };
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex items-center justify-between">
+        <h2 className="font-serif text-lg text-ink">Assets</h2>
+        <div className="flex items-center gap-2">
+          <button onClick={() => setEditing({ kind: "ketcher" })} className="btn btn-ghost btn-sm">
+            + Structure
+          </button>
+          <button onClick={() => setEditing({ kind: "plot" })} className="btn btn-ghost btn-sm">
+            + Plot
+          </button>
+        </div>
+      </div>
+      <p className="text-xs text-faint">
+        Reusable non-text objects (structures, plots, figures) under <code>materials/</code> —
+        insert them into any document by permalink. {pending ? "Opening…" : ""}
+      </p>
+      {assets.length === 0 ? (
+        <p className="text-sm text-muted">No assets yet — draw a structure or plot above.</p>
+      ) : (
+        <ul className="panel divide-y divide-[var(--edge-soft)]">
+          {assets.map((a) => (
+            <li key={a.path} className="flex items-center justify-between gap-2 px-3 py-2">
+              <span className="min-w-0 truncate text-sm">
+                <span className="chip mr-2">{a.kind}</span>
+                {a.path.replace(/^materials\//, "")}
+              </span>
+              <div className="flex shrink-0 items-center gap-2">
+                <a
+                  href={`/api/asset/${packageId}/${a.path}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="link text-xs"
+                >
+                  View
+                </a>
+                {(a.kind === "ketcher" || a.kind === "plot") && (
+                  <button onClick={() => openEdit(a.path, a.kind)} className="btn btn-ghost btn-sm">
+                    Edit
+                  </button>
+                )}
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {editing?.kind === "ketcher" && (
+        <KetcherEditor
+          packageId={packageId}
+          activePath={activePath ?? ""}
+          initialPath={editing.path}
+          initialSource={editing.source}
+          onClose={() => setEditing(null)}
+          onSaved={onSaved}
+        />
+      )}
+      {editing?.kind === "plot" && (
+        <PlotEditor
+          packageId={packageId}
+          initialPath={editing.path}
+          initialSource={editing.source}
+          onClose={() => setEditing(null)}
+          onSaved={onSaved}
+        />
+      )}
+    </div>
+  );
+}
+
+/* ── Slides / Practice: generate-then-own derived artifacts ──────────────── */
+function ArtifactView({
+  packageId,
+  activePath,
+  kind,
+  label,
+  items,
+  blockIds,
+}: {
+  packageId: string;
+  activePath: string | null;
+  kind: "slides" | "worksheet";
+  label: string;
+  items: ArtifactItem[];
+  blockIds?: string[];
+}) {
+  const router = useRouter();
+  const [pending, start] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+
+  const generate = () => {
+    setError(null);
+    start(async () => {
+      const r =
+        kind === "slides"
+          ? await generateSlidesAction(packageId, activePath ?? undefined)
+          : await generateWorksheetAction(packageId, blockIds ?? []);
+      if (!r.ok) setError(r.error ?? "Generation failed.");
+      else router.refresh();
+    });
+  };
+
+  const canGenerate = kind === "slides" || (blockIds?.length ?? 0) > 0;
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex items-center justify-between">
+        <h2 className="font-serif text-lg text-ink">{label}</h2>
+        <button
+          onClick={generate}
+          disabled={pending || !canGenerate}
+          title={canGenerate ? undefined : "Add sections to this chapter first"}
+          className="btn btn-primary btn-sm"
+        >
+          {pending ? "Generating…" : `Generate from this ${kind === "slides" ? "chapter" : "chapter"}`}
+        </button>
+      </div>
+      <p className="text-xs text-faint">
+        {kind === "slides"
+          ? "A slide deck generated from the chapter content — concise bullets per slide. Owned and editable after generation (drift from the source is tracked)."
+          : "Practice/example questions generated from the chapter's sections. Owned and editable after generation."}
+      </p>
+      {items.length === 0 ? (
+        <p className="text-sm text-muted">None yet — generate one above.</p>
+      ) : (
+        <ul className="panel divide-y divide-[var(--edge-soft)]">
+          {items.map((a) => (
+            <li key={a.artifactId} className="flex items-center justify-between gap-2 px-3 py-2">
+              <span className="min-w-0 truncate text-sm">
+                {a.title}
+                {a.stale && <span className="chip ml-2 text-warn">source changed</span>}
+              </span>
+              <div className="flex shrink-0 items-center gap-2">
+                <Link href={`/workspace/${packageId}/artifact/${a.artifactId}`} className="link text-xs">
+                  Open
+                </Link>
+                <a
+                  href={`/workspace/${packageId}/artifact/${a.artifactId}/export`}
+                  className="btn btn-ghost btn-sm"
+                >
+                  Download
+                </a>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
       {error && <p className="text-sm text-danger">{error}</p>}
     </div>
   );

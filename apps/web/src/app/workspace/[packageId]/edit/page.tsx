@@ -1,5 +1,11 @@
 import { notFound, redirect } from "next/navigation";
-import { listChapters, loadStudyGuide, loadCourseDescription } from "@alembic/package-ops";
+import {
+  listArtifacts,
+  listAssets,
+  listChapters,
+  loadStudyGuide,
+  loadCourseDescription,
+} from "@alembic/package-ops";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
 import { StudioShell, type StudioCategory } from "./studio-shell";
@@ -69,6 +75,26 @@ export default async function EditShellPage({
     categoryFile = { path: single.path, repo: single.repo, content: f?.content ?? "" };
   }
 
+  // Carrier categories: assets list, and slides/worksheet artifacts.
+  const assets = category === "assets" ? await listAssets(store, packageId) : [];
+  const artifacts =
+    category === "slides" || category === "practice"
+      ? (await listArtifacts(store, packageId)).map((a) => ({
+          artifactId: a.record.artifactId,
+          kind: a.record.kind,
+          title: a.record.title,
+          path: a.record.path,
+          stale: a.stale,
+        }))
+      : [];
+  // Worksheet generation needs the chapter's block ids.
+  const chapterBlockIds =
+    category === "practice" && activeChapter
+      ? (await loadStudyGuide(store, packageId, activeChapter.path)).blocks
+          .map((b) => b.id)
+          .filter((id): id is string => Boolean(id))
+      : [];
+
   return (
     <StudioShell
       packageId={packageId}
@@ -84,6 +110,9 @@ export default async function EditShellPage({
       }
       courseDescription={courseDescription}
       categoryFile={categoryFile}
+      assets={assets.map((a) => ({ path: a.path, kind: a.kind }))}
+      artifacts={artifacts}
+      chapterBlockIds={chapterBlockIds}
     />
   );
 }
