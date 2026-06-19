@@ -6,6 +6,7 @@ import {
   classifyImport,
   loadStudyGuide,
   parseImportedMarkdown,
+  reconcileImportedBlocks,
   saveStudyGuide,
 } from "@alembic/package-ops";
 import { restructureToBlocks } from "@alembic/ai-assist";
@@ -74,24 +75,32 @@ export async function importFileAction(
       return { ok: true, message: `Imported ${base}${ext}.`, assetPath: path };
     }
 
-    // document carrier or plain markdown → append blocks to the active chapter
-    const markdown = c.type === "document" ? c.markdown : c.markdown;
+    // document carrier or plain markdown → reconcile blocks into the active
+    // chapter BY BLOCK ID (lossless round-trip): re-imported sections replace
+    // their originals in place (IDs preserved); new sections are added. Never
+    // append-with-null, which would duplicate a re-uploaded chapter.
+    const markdown = c.markdown;
     const incoming = parseImportedMarkdown(markdown);
     if (incoming.length === 0) return { ok: false, error: "No sections found to import." };
     const doc = await loadStudyGuide(store, packageId, activePath);
+    const reconciled = reconcileImportedBlocks(doc.blocks, incoming);
     const { blocks } = await saveStudyGuide(store, packageId, {
       path: activePath,
       preamble: doc.preamble,
-      blocks: [...doc.blocks, ...incoming.map((b) => ({ id: null, title: b.title, body: b.body }))],
+      blocks: reconciled.blocks,
     });
     await syncFilesToGitHub(
       supabase, store, user.id, packageId,
       [{ path: activePath, content: serializeStudyGuide(doc.preamble, blocks) }],
       "Import content (Alembic)",
     );
-    await events.log({ type: "import.completed", userId: user.id, packageId, detail: { mode: c.type, filename, sections: incoming.length }, occurredAt: new Date().toISOString() });
+    await events.log({ type: "import.completed", userId: user.id, packageId, detail: { mode: c.type, filename, updated: reconciled.updated, added: reconciled.added }, occurredAt: new Date().toISOString() });
     revalidatePath(`/workspace/${packageId}`);
-    return { ok: true, message: `Imported ${incoming.length} section${incoming.length === 1 ? "" : "s"}.` };
+    const parts = [
+      reconciled.updated ? `${reconciled.updated} updated` : "",
+      reconciled.added ? `${reconciled.added} new` : "",
+    ].filter(Boolean);
+    return { ok: true, message: `Imported${parts.length ? ` (${parts.join(", ")})` : ""}.` };
   } catch {
     return { ok: false, error: "Couldn't import that file. Please try again." };
   }

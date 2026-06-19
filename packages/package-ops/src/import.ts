@@ -52,7 +52,59 @@ export function classifyImport(filename: string, content: string): ImportClassif
   };
 }
 
-/** Parse imported markdown into study-guide blocks (IDs minted later on save). */
+/**
+ * Parse imported markdown into study-guide blocks. Block IDs embedded in the
+ * source as `{{attrs[#blk-…]}}` markers are **recovered** here (a re-imported
+ * Alembic/orz file carries them); blocks authored fresh outside arrive with
+ * `id: null` and are minted on save. Use `reconcileImportedBlocks` to merge
+ * these into an existing chapter without losing or duplicating IDs.
+ */
 export function parseImportedMarkdown(markdown: string): StudyGuideBlock[] {
   return parseStudyGuide(markdown).blocks;
+}
+
+export interface ReconcileImportResult {
+  blocks: StudyGuideBlock[];
+  /** Existing blocks whose content was replaced by a same-ID incoming block. */
+  updated: number;
+  /** Incoming blocks that became new sections (new ID or no ID). */
+  added: number;
+}
+
+/**
+ * Reconcile imported blocks into an existing study guide **by block ID** — the
+ * lossless re-import path (the "edit outside Alembic → upload back" round-trip).
+ * Block IDs are immutable, so:
+ * - an incoming block whose recovered ID matches an existing block **replaces**
+ *   that block's content in place (ID and position preserved) — no duplication;
+ * - an incoming block with a new ID is appended, **keeping** its ID;
+ * - an incoming block with no ID is appended for minting on save.
+ * Existing blocks absent from the import are **kept** — import is
+ * non-destructive; deletions stay an explicit editor action. Pure; no IO.
+ */
+export function reconcileImportedBlocks(
+  existing: StudyGuideBlock[],
+  incoming: StudyGuideBlock[],
+): ReconcileImportResult {
+  const incomingById = new Map<string, StudyGuideBlock>();
+  for (const b of incoming) if (b.id) incomingById.set(b.id, b);
+
+  let updated = 0;
+  const merged = existing.map((b) => {
+    if (b.id && incomingById.has(b.id)) {
+      updated++;
+      const inc = incomingById.get(b.id)!;
+      return { ...b, title: inc.title, body: inc.body };
+    }
+    return b;
+  });
+
+  const existingIds = new Set(existing.map((b) => b.id).filter(Boolean));
+  const appended: StudyGuideBlock[] = [];
+  for (const b of incoming) {
+    if (b.id && existingIds.has(b.id)) continue; // already replaced in place
+    appended.push(b.id ? { id: b.id, title: b.title, body: b.body } : { id: null, title: b.title, body: b.body });
+  }
+
+  return { blocks: [...merged, ...appended], updated, added: appended.length };
 }
