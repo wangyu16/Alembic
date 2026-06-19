@@ -89,6 +89,8 @@ export type ProposalOp = z.infer<typeof ProposalOpSchema>;
  */
 export const COHERENCE_FINDING_KINDS = [
   "terminology", // same concept named inconsistently across modules
+  "symbols", // a symbol/notation/unit used inconsistently (e.g. ΔH vs dH, mol vs mole)
+  "narrative-drift", // content has drifted from the planned concept-map/objective structure
   "objective-coverage", // an objective with no supporting content (or vice versa)
   "cross-reference", // a reference to a missing/renamed section
   "stale-artifact", // a derived artifact out of sync with its source blocks

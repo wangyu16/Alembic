@@ -40,6 +40,8 @@ export const DEFAULT_ROUTING: ModelRouting = {
     // High-frequency, low-stakes → cheap/fast.
     "a11y-fix": "gemini-2.5-flash",
     "formatting-tidy": "gemini-2.5-flash",
+    "course-metadata": "gemini-2.5-flash",
+    "spelling-grammar": "gemini-2.5-flash",
     // Content generation → stronger model.
     "draft-section": "gemini-2.5-pro",
     worksheet: "gemini-2.5-pro",
