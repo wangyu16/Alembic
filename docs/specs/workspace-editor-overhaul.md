@@ -1,11 +1,15 @@
 # Workspace Editor Overhaul (v2) — design spec
 
-**Status:** design spec (planning), **conflict-audited**. Authoritative for the
-post-v1.0 editor overhaul. Captures the vision, the decisions locked in the
-design discussion, and the guardrails (§10) from a six-seam pre-implementation
-audit. **Not yet implemented** — the current editor keeps working until the new
-shell reaches parity. Build order in §9 (Phase 0 closes the audit's must-fixes
-first).
+**Status:** **largely implemented** (Phases 0–3), conflict-audited. Authoritative
+for the post-v1.0 editor overhaul. All eight guardrails (G1–G8) are landed +
+tested; Phase 1 AI seam-extensions + Phase 3 three-pane shell (all 7 categories,
+in-editor AI, assembled preview, chapter management) are built and statically
+verified (typecheck/test/build); the per-format Agent Skills shipped. **Remaining
+(needs interactive + live-AI verification on the deployed app):** editor-module
+extraction of the Ketcher/Plotly editors, the concept-map rich planning editor in
+the new shell, and the Phase-4 swap-at-parity. The classic editor stays the
+default; the new shell is the opt-in "New editor (beta)" at
+`/workspace/[packageId]/edit`. Phase/guardrail status in §9/§10.
 
 Related: [goal.md](../goal.md) · [package-contract-v1.md](package-contract-v1.md) ·
 [carriers-and-assets.md](carriers-and-assets.md) · [course-structure.md](course-structure.md) ·
@@ -203,39 +207,36 @@ generation; nothing bypasses the validated write path.
 
 ## 9. Phased plan
 
-**Phase 0 — foundation fixes & guardrails (do first; several are latent bugs in
-today's code that the overhaul would amplify).** Land on the *current* editor:
-- **G1** wire `assertPublicReference` into public writes + publish gate + `resolveAsset` (security).
-- **G5(export)** make `export/study-guide/route.ts` chapter-aware (real multi-chapter bug now).
-- **G2** `.md.html` re-import: merge/replace by recovered block ID, set-diff vs prior (no append-with-null).
-- **G3-prep** add the `editor-ai-edit` CHANGE_KIND + `ai.edit.requested` event; generalize `applyAccepted` to one carrier-agnostic, repo-aware branch through `packageOps`.
-- **G6** make `metadata/course.md` the canonical description; derive `manifest.description`/LRMI/portal from it; `stale-artifact` drift check.
-- **G8** enforce the `ai` entitlement at AI entry points; add the "no direct provider outside `lib/ai.ts`" guard test.
+**Phase 0 — foundation fixes & guardrails — ✅ COMPLETE** (G1–G8, all tested; see §10).
 
-**Phase 1 — seam extensions on the current editor** — metadata/description
-generation; coherence lenses (terminology/symbols/drift); spelling/grammar
-(fast-tier, debounced); permalinks ([carriers §6](carriers-and-assets.md)).
+**Phase 1 — seam extensions — ✅ COMPLETE (durable + actions; live-AI verify on Vercel).**
+metadata/description generation (`generateCourseDescription` + actions, G6);
+coherence lenses (terminology/symbols/narrative-drift); spelling/grammar
+(`proofread`, fast-tier); the in-editor AI edit (`editFile` + `proposeEditAction`).
+Permalink builders exist (`livePermalink`/`pinnedPermalink`); the copy-link
+surface lands with the shell's asset UI.
 
-**Phase 2 — editor-module interface** — unify the two editor interfaces (G7),
-define the module API, extract `ketcher`/`plot` then `slides`/`pdf` into
-orz-stack packages consumed by Alembic. **Side task (here):** ship **one Agent
-Skill per dual-extension format** (+ a shared basics skill) so a file exported
-from Alembic round-trips through other apps losslessly — modules + skills are the
-two halves of cross-platform interop. See [carriers-and-assets.md §7](carriers-and-assets.md).
+**Phase 2 — editor-module interface — ✅ interface COMPLETE; module extraction
+pending interactive verification.** `@alembic/editor-kit` (G7) unifies the
+contract. The per-format **Agent Skills** side task is **✅ shipped** in
+[`skills/`](../../skills/). Extracting the existing `ketcher`/`plot` (and
+`slides`/`pdf`) editors into mountable modules is the one piece that needs the
+live Ketcher/Plotly surface to verify; the new shell uses the existing working
+editors meanwhile.
 
-**Phase 3 — new three-pane shell** — parallel route; the AI-in-editor
-diff/approve flow; the 7-category rail; assembled preview + exports; whole-package
-adaptation clone (G4). **Scaffold landed** at `/workspace/[packageId]/edit`
-(opt-in "New editor (beta)" link from the classic editor): three panes
-(chapters | 7-category rail | editor), Course-home description (G6 generate/save),
-per-section content editor (validated save). Remaining: per-category editors
-(slides/assessment/practice/private/assets via the editor-module registry), the
-in-editor AI diff/approve UI, assembled preview, and chapter management in the
-rail — built iteratively until parity, then swap (Phase 4).
+**Phase 3 — new three-pane shell — ✅ functionally COMPLETE** at
+`/workspace/[packageId]/edit` (opt-in "New editor (beta)" link). Three panes
+(chapters | 7-category rail | editor); **all 7 categories**: Course description
+(AI generate/save), Course content (per-section + **assembled preview**),
+Assessment guide + Private (validated markdown), Assets (create/edit
+structures+plots), Slides + Practice (generate-then-own); **in-editor AI**
+(propose → before/after → approve → validated save); **chapter management** in
+the rail. *concept-map* routes to the classic planning editor for now (the rich
+planning UI). Interactive verification is the operator/user step.
 
-**Phase 4 — swap at parity** — retire the current editor once the new shell
-matches it; `.docx`/`.pptx` import (G5) lands on the reserved seam when
-worker-tier is ready.
+**Phase 4 — swap at parity** — make the new shell the default once concept-map +
+the module-based carrier editors are interactively verified; `.docx`/`.pptx`
+bulk import lands on the reserved worker-tier seam (designed-for, not built).
 
 ## 10. Conflict register & required guardrails (from the pre-implementation audit)
 
