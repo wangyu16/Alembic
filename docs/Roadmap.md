@@ -152,6 +152,13 @@ Several deferrals across phases share one prerequisite — a real container work
 
 ---
 
+## Phase 9 — Workspace Editor Overhaul (post-v1.0)
+
+**Goal: rebuild the editing surface as the replaceable client over existing durable logic** (the editor was always the disposable layer — rule 9). Full design + decisions + a six-seam conflict audit are in
+[workspace-editor-overhaul.md](specs/workspace-editor-overhaul.md). Locked: `.md` source + `.md.html` portable export; shared editor-module packages keyed to carrier kind (orz-stack); fixed 7-category rail; three-pane shell (chapters | rail | editor); in-editor AI = active-file Tier-2 diff/approve + the M18 coherence agent for cross-file. The 7 educator categories map onto the existing 9 closed layers — no contract change.
+
+> **Phase 0 of the overhaul runs now / opportunistically**, ahead of the shell: it closes guardrails the audit surfaced as latent bugs in the *current* code (G1 two-repo reference enforcement, G5 chapter-aware export, G2 `.md.html` re-import ID reconciliation, …). These land on the current editor and harden the live pilot. See the spec's §9 (phased plan) + §10 (conflict register / guardrails G1–G8).
+
 ## Phase 8 — Hardening & Sustainability (v1.0 and beyond)
 
 **Goal: survive beyond the grant.**
