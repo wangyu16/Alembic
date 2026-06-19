@@ -14,7 +14,7 @@ import {
   generateCourseDescriptionAction,
   saveCourseDescriptionAction,
 } from "../metadata-actions";
-import { saveFileAction } from "./edit-actions";
+import { saveFileAction, proposeEditAction } from "./edit-actions";
 import { KetcherEditor } from "../ketcher-editor";
 import { PlotEditor } from "../plot-editor";
 import { readAssetAction } from "../asset-actions";
@@ -373,6 +373,7 @@ function ContentEditor({
         <h2 className="text-sm text-muted">Course content — edit by section</h2>
         <div className="flex items-center gap-2">
           {dirty && <span className="text-xs text-warn">Unsaved</span>}
+          <AskAI packageId={packageId} path={path} repo="public" current={assembled} />
           <a
             href={`/workspace/${packageId}/export/study-guide?chapter=${path.replace(/^.*\//, "").replace(/\.md$/, "")}`}
             className="btn btn-ghost btn-sm"
@@ -456,6 +457,7 @@ function FileEditor({
         <h2 className="font-serif text-lg text-ink">{label}</h2>
         <div className="flex items-center gap-2">
           {dirty && <span className="text-xs text-warn">Unsaved</span>}
+          <AskAI packageId={packageId} path={file.path} repo={file.repo} current={text} />
           <button onClick={save} disabled={pending || !dirty} className="btn btn-primary btn-sm">
             {pending ? "Saving…" : "Save"}
           </button>
@@ -471,6 +473,102 @@ function FileEditor({
         placeholder={`# ${label}\n\nWrite in Markdown…`}
         className="field min-h-[55vh] w-full resize-y font-mono text-sm"
       />
+      {error && <p className="text-sm text-danger">{error}</p>}
+    </div>
+  );
+}
+
+/* ── In-editor AI: propose → diff (before/after) → approve ───────────────── */
+function AskAI({
+  packageId,
+  path,
+  repo,
+  current,
+}: {
+  packageId: string;
+  path: string;
+  repo: "public" | "private";
+  current: string;
+}) {
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [instruction, setInstruction] = useState("");
+  const [proposed, setProposed] = useState<string | null>(null);
+  const [pending, start] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+
+  const ask = () => {
+    setError(null);
+    start(async () => {
+      const r = await proposeEditAction(packageId, current, instruction);
+      if (!r.ok) setError(r.error ?? "Couldn't get a suggestion.");
+      else setProposed(r.proposed ?? "");
+    });
+  };
+  const apply = () => {
+    if (proposed == null) return;
+    setError(null);
+    start(async () => {
+      const r = await saveFileAction(packageId, path, repo, proposed);
+      if (!r.ok) setError(r.error ?? "Couldn't apply.");
+      else {
+        setProposed(null);
+        setInstruction("");
+        setOpen(false);
+        router.refresh();
+      }
+    });
+  };
+
+  if (!open) {
+    return (
+      <button onClick={() => setOpen(true)} className="btn btn-ghost btn-sm" title="Ask AI to edit this file">
+        ✦ Ask AI
+      </button>
+    );
+  }
+
+  return (
+    <div className="panel flex flex-col gap-2 p-3">
+      <div className="flex items-center gap-2">
+        <input
+          value={instruction}
+          onChange={(e) => setInstruction(e.target.value)}
+          placeholder="e.g. make this section more concise; fix the terminology"
+          className="field flex-1 text-sm"
+          onKeyDown={(e) => e.key === "Enter" && !pending && ask()}
+        />
+        <button onClick={ask} disabled={pending || !instruction.trim()} className="btn btn-primary btn-sm">
+          {pending && proposed == null ? "Thinking…" : "Suggest"}
+        </button>
+        <button onClick={() => { setOpen(false); setProposed(null); }} className="btn btn-ghost btn-sm">
+          Close
+        </button>
+      </div>
+      {proposed != null && (
+        <>
+          <div className="grid grid-cols-2 gap-2">
+            <div className="flex flex-col gap-1">
+              <span className="text-xs text-faint">Before</span>
+              <textarea readOnly value={current} className="field h-48 w-full resize-none font-mono text-xs opacity-70" />
+            </div>
+            <div className="flex flex-col gap-1">
+              <span className="text-xs text-[var(--accent)]">After (AI — edit before applying)</span>
+              <textarea
+                value={proposed}
+                onChange={(e) => setProposed(e.target.value)}
+                className="field h-48 w-full resize-none font-mono text-xs"
+              />
+            </div>
+          </div>
+          <div className="flex items-center justify-end gap-2">
+            <button onClick={() => setProposed(null)} className="btn btn-ghost btn-sm">Discard</button>
+            <button onClick={apply} disabled={pending} className="btn btn-primary btn-sm">
+              {pending ? "Applying…" : "Apply"}
+            </button>
+          </div>
+        </>
+      )}
       {error && <p className="text-sm text-danger">{error}</p>}
     </div>
   );

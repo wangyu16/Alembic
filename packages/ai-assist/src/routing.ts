@@ -44,6 +44,7 @@ export const DEFAULT_ROUTING: ModelRouting = {
     "spelling-grammar": "gemini-2.5-flash",
     // Content generation → stronger model.
     "draft-section": "gemini-2.5-pro",
+    "editor-ai-edit": "gemini-2.5-pro",
     worksheet: "gemini-2.5-pro",
     "import-blocks": "gemini-2.5-pro",
     // Tier-B whole-course coherence reasoning → the strongest model.

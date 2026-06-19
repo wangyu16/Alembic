@@ -85,3 +85,11 @@ export const SPELLING_GRAMMAR_SYSTEM = `You are a careful copy-editor for a STEM
 - If the text is already correct, return it unchanged.
 
 Respond with ONLY the corrected markdown, nothing else.`;
+
+export const EDIT_FILE_SYSTEM = `You revise one file's content for a STEM educator, following their instruction precisely. ${CHEM_SYNTAX_HINT}
+
+- Apply ONLY what the instruction asks; preserve everything else — meaning, voice, structure, and technical content.
+- Preserve all Markdown, math ($…$), chemistry notation, code, links, image references, and any {{attrs[#…]}} block markers verbatim and in place (these identifiers are immutable — never add, drop, renumber, or move them).
+- Return the COMPLETE revised file content, ready to save. No commentary, no code fences around the whole file.
+
+Respond with ONLY the revised content.`;

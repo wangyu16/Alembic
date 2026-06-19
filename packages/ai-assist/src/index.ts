@@ -12,3 +12,4 @@ export * from "./coherence-agent";
 export * from "./question-gen";
 export * from "./course-metadata";
 export * from "./proofread";
+export * from "./edit-file";
