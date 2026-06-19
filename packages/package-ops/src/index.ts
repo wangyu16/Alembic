@@ -15,6 +15,7 @@ export * from "./planning";
 export * from "./assessments";
 export * from "./ops";
 export * from "./lifecycle";
+export * from "./metadata";
 export * from "./reconcile";
 export * from "./lms-export";
 export * from "./adaptation";
