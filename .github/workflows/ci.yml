@@ -21,6 +21,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: AI provider seam (G8)
+        run: node scripts/check-ai-provider-seam.mjs
+
       - name: Typecheck
         run: pnpm typecheck
 

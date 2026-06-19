@@ -10,6 +10,7 @@ import {
   type GenerateResult,
   type ModelRouting,
 } from "@alembic/ai-assist";
+import { can } from "./entitlements";
 
 /** Per-user cap on model calls within the window (dev-generous). */
 const RATE_LIMIT = 30;
@@ -33,6 +34,13 @@ export class AINotConfiguredError extends Error {
   constructor() {
     super("AI is not configured on this deployment (set a gateway or GEMINI_API_KEY).");
     this.name = "AINotConfiguredError";
+  }
+}
+
+export class AINotEntitledError extends Error {
+  constructor() {
+    super("AI assist isn't available on your account.");
+    this.name = "AINotEntitledError";
   }
 }
 
@@ -197,6 +205,13 @@ export function governedProvider(
   supabase: SupabaseClient,
   ctx: { userId: string; packageId: string; kind: string },
 ): AIProvider {
+  // Enforce the `ai` entitlement at the single seam (G8): every AI entry point
+  // funnels through here, so the declared capability is now actually checked.
+  // Signed-in users get `ai` today; plan-based gating lands in the resolver
+  // with no change here. A userId means an authenticated identity.
+  if (!can({ kind: "user", userId: ctx.userId }, "ai")) {
+    throw new AINotEntitledError();
+  }
   const selected = selectProvider();
   if (!selected) throw new AINotConfiguredError();
   return new GovernedProvider(selected.provider, supabase, ctx, selected.routing);
