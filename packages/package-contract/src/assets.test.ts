@@ -4,6 +4,7 @@ import {
   ASSET_ID_PATTERN,
   AssetRecordSchema,
   AssetReferenceError,
+  assertPublicMarkdownReferences,
   assertPublicReference,
   assetRecordPath,
   classifyReference,
@@ -84,6 +85,55 @@ describe("assertPublicReference", () => {
 
   it("allows an allowlisted root file", () => {
     expect(() => assertPublicReference("README.md")).not.toThrow();
+  });
+});
+
+describe("assertPublicMarkdownReferences (two-repo boundary — adversarial)", () => {
+  it("allows public materials references (image and link form)", () => {
+    expect(() =>
+      assertPublicMarkdownReferences("![s](materials/structures/x.ketcher.svg)"),
+    ).not.toThrow();
+    expect(() =>
+      assertPublicMarkdownReferences("[see](materials/figures/p.plot.svg)"),
+    ).not.toThrow();
+  });
+
+  it("skips external URLs, anchors, bare filenames, and chapter links", () => {
+    expect(() =>
+      assertPublicMarkdownReferences(
+        "![x](https://example.com/a.png) [y](#sec) [z](02-acids.html) [t](mailto:a@b.c)",
+      ),
+    ).not.toThrow();
+  });
+
+  it("rejects a private-instructor reference in an image", () => {
+    expect(() =>
+      assertPublicMarkdownReferences("![key](private-instructor/answer-key.md)"),
+    ).toThrow(AssetReferenceError);
+  });
+
+  it("rejects a private-instructor reference in a link", () => {
+    expect(() =>
+      assertPublicMarkdownReferences("Here is the [key](private-instructor/exam.md)."),
+    ).toThrow(AssetReferenceError);
+  });
+
+  it("rejects a traversal reference into the private layer", () => {
+    expect(() =>
+      assertPublicMarkdownReferences("![k](../private-instructor/key.md)"),
+    ).toThrow();
+  });
+
+  it("rejects when a private reference hides among valid public ones", () => {
+    const md =
+      "![ok](materials/a.ketcher.svg)\n\ntext\n\n![leak](private-instructor/k.md)\n";
+    expect(() => assertPublicMarkdownReferences(md)).toThrow(AssetReferenceError);
+  });
+
+  it("allows a title-annotated public reference", () => {
+    expect(() =>
+      assertPublicMarkdownReferences('![s](materials/x.ketcher.svg "A structure")'),
+    ).not.toThrow();
   });
 });
 

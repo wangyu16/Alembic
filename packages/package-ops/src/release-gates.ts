@@ -1,5 +1,6 @@
 import {
   assertPathAllowedInRepo,
+  assertPublicMarkdownReferences,
   LicenseSchema,
   validateBlockIds,
 } from "@alembic/package-contract";
@@ -101,6 +102,26 @@ export async function releaseGates(
     name: "Answer keys & embargo",
     ok: answerKeysSafe,
     message: "Answer keys must stay private and were found staged for publication.",
+  });
+
+  // 6. References — no public text file references a private file (belt-and-
+  // suspenders to the save-time check; covers worksheets/assessment too).
+  let referencesSafe = true;
+  for (const f of files) {
+    if (f.repo !== "public") continue;
+    if (!/\.(md|md\.html|html|svg)$/.test(f.path)) continue;
+    try {
+      assertPublicMarkdownReferences(f.content);
+    } catch {
+      referencesSafe = false;
+      break;
+    }
+  }
+  checks.push({
+    name: "References",
+    ok: referencesSafe,
+    message:
+      "Public content references a private file. Move reusable media to materials/ before publishing.",
   });
 
   return { ok: checks.every((c) => c.ok), checks };

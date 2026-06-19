@@ -63,6 +63,23 @@ describe("saveStudyGuide", () => {
     expect(reloaded.blocks[0]!.id).toBe(doc.blocks[0]!.id); // ID survived
   });
 
+  it("rejects a save whose content references a private file (two-repo boundary)", async () => {
+    const { store, packageId } = await seeded();
+    const doc = await loadStudyGuide(store, packageId);
+    doc.blocks[0]!.body = "See the key ![key](private-instructor/answer-key.md).";
+    await expect(saveStudyGuide(store, packageId, doc)).rejects.toThrow();
+    // And nothing was persisted (fail-closed before putFiles).
+    const reloaded = await loadStudyGuide(store, packageId);
+    expect(reloaded.blocks[0]!.body).not.toContain("private-instructor");
+  });
+
+  it("allows a save that references a public materials file", async () => {
+    const { store, packageId } = await seeded();
+    const doc = await loadStudyGuide(store, packageId);
+    doc.blocks[0]!.body = "Structure ![benzene](materials/structures/benzene.ketcher.svg).";
+    await expect(saveStudyGuide(store, packageId, doc)).resolves.toBeDefined();
+  });
+
   it("rejects a save that would create duplicate IDs", async () => {
     const { store, packageId } = await seeded();
     const doc = await loadStudyGuide(store, packageId);

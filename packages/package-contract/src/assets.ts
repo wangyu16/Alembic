@@ -14,7 +14,7 @@
  */
 
 import { z } from "zod";
-import { LAYER_REPO, layerForPath } from "./layers";
+import { LAYER_DIR, LAYER_REPO, PACKAGE_LAYERS, layerForPath } from "./layers";
 
 export const ASSET_ID_PATTERN = /^ast-[a-z0-9]{8,}$/;
 
@@ -137,6 +137,32 @@ export function assertPublicReference(repoRelativePath: string): void {
       `Cannot reference a private file from public content: "${repoRelativePath}" lives in the "${layer}" layer (private repository). Move reusable media to materials/.`,
       repoRelativePath,
     );
+  }
+}
+
+/** Markdown image/link target capture: `![alt](target …)` and `[text](target …)`. */
+const MD_REFERENCE_RE = /!?\[[^\]]*\]\(\s*<?([^)>\s]+)>?(?:\s+["'][^)]*["'])?\s*\)/g;
+const LAYER_DIRS = new Set(PACKAGE_LAYERS.map((l) => LAYER_DIR[l]));
+
+/**
+ * Scan a markdown body and fail closed if any **repo-relative reference** points
+ * at a private file (CLAUDE.md rule 1). Only references whose first path segment
+ * is a known layer directory — or that traverse with `..` — are checked; bare
+ * filenames, chapter `*.html` links, in-page `#anchors`, and `scheme:` URLs are
+ * not layer references and are skipped. The single chokepoint for human edits,
+ * AI edits, and the coherence agent (they all funnel through the public save).
+ */
+export function assertPublicMarkdownReferences(markdown: string): void {
+  for (const match of markdown.matchAll(MD_REFERENCE_RE)) {
+    const raw = match[1];
+    if (!raw) continue;
+    if (/^[a-z][a-z0-9+.-]*:/i.test(raw)) continue; // scheme: http:, mailto:, data:
+    if (raw.startsWith("#")) continue; // in-page anchor
+    const path = raw.replace(/^\.\//, "").replace(/^\/+/, "");
+    const first = path.split("/")[0] ?? "";
+    // Only enforce on references INTO the repo layer tree (or traversal).
+    if (!LAYER_DIRS.has(first) && !path.includes("..")) continue;
+    assertPublicReference(path); // throws on private layer / traversal (fail-closed)
   }
 }
 

@@ -1,5 +1,6 @@
 import {
   assertPathAllowedInRepo,
+  assertPublicMarkdownReferences,
   newBlockId,
   parseStudyGuide,
   serializeStudyGuide,
@@ -76,6 +77,9 @@ export async function saveStudyGuide(
   assertPathAllowedInRepo(doc.path, "public");
 
   const content = serializeStudyGuide(doc.preamble, blocks);
+  // Fail closed if the content references a private file (two-repo invariant).
+  // This is the chokepoint for human edits, AI edits, and the coherence agent.
+  assertPublicMarkdownReferences(content);
   await store.putFiles(packageId, [
     { repo: "public", path: doc.path, content },
   ]);
