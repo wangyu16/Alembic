@@ -126,18 +126,19 @@ reusable outside Alembic.
 Each carrier kind has its **own dedicated editor**, so a kind can be added,
 removed, or rewritten with no blast radius. The decoupling comes not from
 "separate editors" alone but from every editor implementing the **same small
-interface the host calls** — the host never knows Ketcher or Plotly internals:
+interface the host calls** — the host never knows Ketcher or Plotly internals.
 
-```ts
-interface CarrierEditor {
-  kind: string;                                 // "ketcher"
-  mount(el: HTMLElement, opts: { source: string; readOnly: boolean }): void;
-  getSource(): string;                          // current editable source
-  renderPayload(source: string): string | Uint8Array;  // the SVG/HTML the file shows
-  deriveAltText?(source: string): string;       // accessibility (§5)
-  unmount(): void;
-}
-```
+> **Implemented** as the **`@alembic/editor-kit`** package (guardrail G7). The
+> earlier `CarrierEditor` sketch and the overhaul §5 `EditorModule` sketch are
+> now unified into one `EditorModule`/`EditorContext`/`EditorHandle` contract:
+> pull (`getSource`/`renderPayload`) **and** push (`onChange`), plus host hooks
+> `requestAI` / `resolveAsset` and the optional `deriveAltText` capability, with
+> an `EditorRegistry` (kind → module). Framework-agnostic (`mount(el, ctx)`), so
+> the same module embeds in Alembic, orz-editor, and a VS Code extension. The
+> Alembic host's `onChange`/`requestAI`/`resolveAsset` enforce packageOps + the
+> risk tiers + the two-repo invariant; other hosts plug in a filesystem host.
+> The current `ketcher`/`plot` editors are *references to rewrite* into modules
+> (they are host-coupled today), starting in Phase 2.
 
 The registry maps `kind → CarrierEditor`. **Add** = one editor module + one
 registry line; **delete** = remove both; **modify** = edit one module. The host,

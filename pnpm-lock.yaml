@@ -111,6 +111,8 @@ importers:
 
   packages/carriers: {}
 
+  packages/editor-kit: {}
+
   packages/github-bridge:
     dependencies:
       '@alembic/package-contract':

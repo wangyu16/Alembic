@@ -1,0 +1,14 @@
+{
+  "name": "@alembic/editor-kit",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The host-agnostic editor-module interface: one EditorModule contract keyed to carrier kind, so heavy editors (slides/pdf/ketcher/plot) are written once and embedded in Alembic, orz-editor, and VS Code. Pure TypeScript, framework-agnostic (mount into an HTMLElement). Future orz-stack package.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  }
+}
