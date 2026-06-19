@@ -10,17 +10,20 @@ export default function Home() {
           Turn your teaching materials into open and reusable resources.
         </h1>
         <p className="max-w-2xl text-lg leading-relaxed text-ink text-pretty">
-          Other tools help you write a <span className="text-muted">document</span>.
-          Alembic helps you build a <em className="font-serif">course</em> — one
-          connected source of concepts, objectives, and materials that stays
-          coherent as it grows, keeps your answer keys private, and stays yours on
-          infrastructure you own.
+          Manage your teaching materials the way developers manage{" "}
+          <em className="font-serif">open-source software</em> — versioned,
+          provenance-tracked, and published to GitHub —{" "}
+          <span className="text-muted">
+            without ever learning Git or a developer workflow.
+          </span>
         </p>
-        <p className="max-w-2xl text-base leading-relaxed text-muted text-pretty">
-          Behind every save, it runs the version control, provenance, and
-          publishing that power open-source software — so managing open teaching
-          materials works like managing open software packages, without ever
-          learning Git or a developer workflow.
+        <p className="max-w-2xl text-lg leading-relaxed text-ink text-pretty">
+          You stay on the high ground —{" "}
+          <em className="font-serif">structure, concepts, and pedagogy</em> —
+          while AI agents do the heavy lifting:{" "}
+          <span className="text-muted">
+            editing, formatting, grammar, and accessibility.
+          </span>
         </p>
       </div>
 
