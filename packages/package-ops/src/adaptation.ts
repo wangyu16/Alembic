@@ -16,10 +16,16 @@ import {
   canAdapt,
   assertPathAllowedInRepo,
   hashContent,
+  newBlockId,
+  newPackageId,
+  parseManifest,
+  parseStudyGuide,
+  serializeStudyGuide,
   type AdaptationSource,
   type License,
+  type PackageManifest,
 } from "@alembic/package-contract";
-import type { PackageStore } from "./store";
+import type { PackageFile, PackageStore } from "./store";
 import { loadStudyGuide, saveStudyGuide } from "./study-guide";
 
 /** Stable content hash of a source block (title + body) — drives M27 drift detection. */
@@ -186,4 +192,125 @@ export async function adaptGivenBlocksInto(
   ]);
 
   return { newBlockIds: appended.map((b) => b.id!), lineage };
+}
+
+export interface ForkPackageInput {
+  source: {
+    packageId: string;
+    manifest: PackageManifest;
+    /** The source's PUBLIC files (private content never travels in a fork). */
+    publicFiles: PackageFile[];
+  };
+  target: { ownerId: string; title?: string; license: License };
+  /** Required attribution string for the lineage (e.g. "Title by Author, CC-BY"). */
+  attribution: string;
+  snapshot?: string;
+  url?: string;
+  /** Injected for deterministic tests. */
+  now?: () => Date;
+  newBlockId?: () => string;
+}
+
+export interface ForkedPackage {
+  packageId: string;
+  manifest: PackageManifest;
+  files: PackageFile[];
+  lineage: AdaptedBlockRef[];
+}
+
+const STUDY_GUIDE_PREFIX = "study-guide/";
+
+/**
+ * Whole-package fork (guardrail G4): clone a source package's PUBLIC content
+ * into a new package the educator can edit directly. Block ids are **re-minted**
+ * (never reused — rule 7); references to them in concepts/objectives/etc. are
+ * remapped to the new ids; `manifest.adaptedFrom` is set and per-block lineage
+ * is recorded in `provenance/adaptations.json`. Private content does not travel
+ * (the source author's `private-instructor/` stays theirs). License-gated. Pure
+ * (no IO) — the caller reads the source files and persists the result via
+ * `store.createPackage`.
+ */
+export function forkPackage(input: ForkPackageInput): ForkedPackage {
+  const compat = canAdapt(input.source.manifest.license, input.target.license);
+  if (!compat.ok) {
+    throw new AdaptationNotAllowedError(compat.reason ?? "Licenses are not compatible.");
+  }
+  const createdAt = (input.now?.() ?? new Date()).toISOString();
+  const title = input.target.title ?? input.source.manifest.title;
+  const packageId = newPackageId(title);
+  const mint = input.newBlockId ?? newBlockId;
+
+  // 1. Re-mint study-guide block ids; build old→new map + lineage.
+  const idMap = new Map<string, string>();
+  const lineage: AdaptedBlockRef[] = [];
+  const cloned: PackageFile[] = [];
+  for (const f of input.source.publicFiles) {
+    if (f.repo !== "public") continue; // public layers only
+    if (f.path === "alembic.json" || f.path === ADAPTATIONS_PROVENANCE_PATH) continue; // regenerated
+    if (f.path.startsWith(STUDY_GUIDE_PREFIX)) {
+      const parsed = parseStudyGuide(f.content);
+      const reminted = parsed.blocks.map((b) => {
+        if (!b.id) return b;
+        const nid = mint();
+        idMap.set(b.id, nid);
+        lineage.push({
+          targetBlockId: nid,
+          sourcePackageId: input.source.packageId,
+          sourceBlockId: b.id,
+          sourcePath: f.path,
+          sourceContentHash: hashAdaptedBlock(b),
+          ...(input.snapshot ? { snapshot: input.snapshot } : {}),
+        });
+        return { ...b, id: nid };
+      });
+      cloned.push({ repo: "public", path: f.path, content: serializeStudyGuide(parsed.preamble, reminted) });
+    } else {
+      cloned.push({ repo: "public", path: f.path, content: f.content }); // remap below
+    }
+  }
+
+  // 2. Remap block-id references in non-study-guide files (concepts/objectives).
+  const remap = (s: string) => {
+    let out = s;
+    for (const [oldId, nid] of idMap) out = out.split(oldId).join(nid);
+    return out;
+  };
+  const finalCloned = cloned.map((f) =>
+    f.path.startsWith(STUDY_GUIDE_PREFIX) ? f : { ...f, content: remap(f.content) },
+  );
+
+  // 3. New manifest — drop the source's repo bindings; set lineage.
+  const { publicRepo: _pub, privateRepo: _priv, ...base } = input.source.manifest;
+  void _pub;
+  void _priv;
+  const manifest = parseManifest({
+    ...base,
+    packageId,
+    title,
+    license: input.target.license,
+    adaptedFrom: {
+      packageId: input.source.packageId,
+      title: input.source.manifest.title,
+      license: input.source.manifest.license,
+      attribution: input.attribution,
+      ...(input.snapshot ? { snapshot: input.snapshot } : {}),
+      ...(input.url ? { url: input.url } : {}),
+    },
+    createdAt,
+  });
+
+  // 4. Assemble files: manifest + cloned public + fresh lineage + a private seed.
+  const files: PackageFile[] = [
+    { repo: "public", path: "alembic.json", content: JSON.stringify(manifest, null, 2) + "\n" },
+    ...finalCloned,
+    { repo: "public", path: ADAPTATIONS_PROVENANCE_PATH, content: JSON.stringify(lineage, null, 2) },
+    {
+      repo: "private",
+      path: "private-instructor/notes/getting-started.md",
+      content: `## Private notes\n\nNotes here are **never published**. (Adapted from ${input.source.manifest.title}.)\n`,
+    },
+  ];
+  for (const f of files) assertPathAllowedInRepo(f.path, f.repo);
+
+  return { packageId, manifest, files, lineage };
 }

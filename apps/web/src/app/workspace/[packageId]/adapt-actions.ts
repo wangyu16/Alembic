@@ -10,6 +10,7 @@ import {
 import {
   adaptBlocksInto,
   adaptGivenBlocksInto,
+  forkPackage,
   loadStudyGuide,
   saveStudyGuide,
   detectUpstreamUpdates,
@@ -42,6 +43,64 @@ async function requireUser() {
   } = await supabase.auth.getUser();
   if (!user) redirect("/signin");
   return { supabase, user };
+}
+
+export interface ForkResult {
+  ok: boolean;
+  packageId?: string;
+  error?: string;
+}
+
+/**
+ * Whole-package fork (G4): create a NEW package from one of the educator's own
+ * packages — cloned public content with re-minted block ids, `adaptedFrom`
+ * lineage, and a fresh private partition. The "Adapted from another project"
+ * new-course entry point. (Cross-owner fork from a published source reads the
+ * public repo tree; same shape, different read — a follow-up.)
+ */
+export async function forkOwnPackageAction(
+  sourcePackageId: string,
+  title?: string,
+): Promise<ForkResult> {
+  const { supabase, user } = await requireUser();
+  const store = new SupabaseSandboxStore(supabase);
+  try {
+    const record = await store.getPackage(sourcePackageId);
+    if (!record) return { ok: false, error: "Source package not found." };
+    const publicFiles = (await store.listFiles(sourcePackageId)).filter(
+      (f) => f.repo === "public",
+    );
+
+    const forked = forkPackage({
+      source: { packageId: sourcePackageId, manifest: record.manifest, publicFiles },
+      target: { ownerId: user.id, title: title?.trim() || undefined, license: record.manifest.license },
+      attribution: `${record.manifest.title} (adapted within Alembic)`,
+    });
+
+    await store.createPackage(
+      {
+        packageId: forked.packageId,
+        ownerId: user.id,
+        title: forked.manifest.title,
+        manifest: forked.manifest,
+        storage: "sandbox",
+      },
+      forked.files,
+    );
+
+    await supabaseEventLogger(supabase).log({
+      type: "adaptation.completed",
+      userId: user.id,
+      packageId: forked.packageId,
+      detail: { mode: "fork", source: sourcePackageId, blocks: forked.lineage.length },
+      occurredAt: new Date().toISOString(),
+    });
+    revalidatePath("/workspace");
+    return { ok: true, packageId: forked.packageId };
+  } catch (e) {
+    if (e instanceof AdaptationNotAllowedError) return { ok: false, error: e.reason };
+    return { ok: false, error: "Couldn't create the adapted package. Please try again." };
+  }
 }
 
 export interface AdaptSource {
