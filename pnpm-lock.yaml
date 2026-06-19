@@ -29,6 +29,9 @@ importers:
       '@alembic/carriers':
         specifier: workspace:*
         version: link:../../packages/carriers
+      '@alembic/editor-kit':
+        specifier: workspace:*
+        version: link:../../packages/editor-kit
       '@alembic/github-bridge':
         specifier: workspace:*
         version: link:../../packages/github-bridge

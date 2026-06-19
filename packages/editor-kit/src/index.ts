@@ -45,8 +45,9 @@ export interface EditorContext {
 
 /** The live handle to a mounted module. */
 export interface EditorHandle {
-  /** Current carrier source (pull — for hosts that read on demand). */
-  getSource(): string;
+  /** Current carrier source (pull — for hosts that read on demand). May be async
+   *  (e.g. a same-origin editor whose API resolves the source asynchronously). */
+  getSource(): string | Promise<string>;
   /** Re-render the payload (HTML/SVG/PDF) from the current source — export/preview. */
   renderPayload?(): string | Promise<string>;
   /** Derive accessibility alt text from the source (assets that need it). */

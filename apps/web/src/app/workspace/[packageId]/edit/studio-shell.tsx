@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import {
   serializeStudyGuide,
   unitTermForms,
@@ -15,9 +15,13 @@ import {
   saveCourseDescriptionAction,
 } from "../metadata-actions";
 import { saveFileAction, proposeEditAction } from "./edit-actions";
-import { KetcherEditor } from "../ketcher-editor";
-import { PlotEditor } from "../plot-editor";
-import { readAssetAction } from "../asset-actions";
+import type { EditorHandle } from "@alembic/editor-kit";
+import { ModuleMount } from "@/lib/editor-modules/module-mount";
+import {
+  readAssetAction,
+  saveAssetAction,
+  suggestStructureAltTextAction,
+} from "../asset-actions";
 import { generateSlidesAction } from "../slides-actions";
 import { generateWorksheetAction } from "../ai-actions";
 import { ManageDialog } from "../chapter-nav";
@@ -626,6 +630,20 @@ function AssetsView({
     router.refresh();
   };
 
+  if (editing) {
+    return (
+      <AssetEditor
+        packageId={packageId}
+        activePath={activePath}
+        kind={editing.kind}
+        initialPath={editing.path}
+        initialSource={editing.source}
+        onDone={onSaved}
+        onCancel={() => setEditing(null)}
+      />
+    );
+  }
+
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-center justify-between">
@@ -672,26 +690,114 @@ function AssetsView({
           ))}
         </ul>
       )}
+    </div>
+  );
+}
 
-      {editing?.kind === "ketcher" && (
-        <KetcherEditor
-          packageId={packageId}
-          activePath={activePath ?? ""}
-          initialPath={editing.path}
-          initialSource={editing.source}
-          onClose={() => setEditing(null)}
-          onSaved={onSaved}
+/* ── Inline asset editor: mounts the editor MODULE (ketcher/plot) ─────────── */
+function AssetEditor({
+  packageId,
+  activePath,
+  kind,
+  initialPath,
+  initialSource,
+  onDone,
+  onCancel,
+}: {
+  packageId: string;
+  activePath: string | null;
+  kind: "ketcher" | "plot";
+  initialPath?: string;
+  initialSource?: string;
+  onDone: () => void;
+  onCancel: () => void;
+}) {
+  const handleRef = useRef<EditorHandle | null>(null);
+  const [name, setName] = useState("");
+  const [altText, setAltText] = useState("");
+  const [busy, setBusy] = useState<null | "describe" | "save">(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const describe = () => {
+    if (kind !== "ketcher" || !handleRef.current) return;
+    setError(null);
+    setBusy("describe");
+    void (async () => {
+      try {
+        const source = await handleRef.current!.getSource();
+        const r = await suggestStructureAltTextAction(packageId, source, activePath ?? "");
+        if (r.ok && r.altText) setAltText(r.altText);
+        else setError(r.error ?? "Couldn't generate a description.");
+      } finally {
+        setBusy(null);
+      }
+    })();
+  };
+
+  const save = () => {
+    setError(null);
+    if (!altText.trim()) return setError("Add a short description (alt text).");
+    if (!initialPath && !name.trim()) return setError("Name this asset so it can be reused.");
+    if (!handleRef.current) return;
+    setBusy("save");
+    void (async () => {
+      try {
+        const source = await handleRef.current!.getSource();
+        const svg = (await handleRef.current!.renderPayload?.()) ?? "";
+        const res = await saveAssetAction(packageId, {
+          kind,
+          path: initialPath,
+          name,
+          source,
+          svg,
+          altText: altText.trim(),
+        });
+        if (res.ok) onDone();
+        else setError(res.error ?? "Couldn't save the asset.");
+      } catch {
+        setError("Couldn't save the asset.");
+      } finally {
+        setBusy(null);
+      }
+    })();
+  };
+
+  return (
+    <div className="flex h-full flex-col gap-3">
+      <div className="flex items-center justify-between">
+        <h2 className="font-serif text-lg text-ink">
+          {initialPath ? "Edit" : "New"} {kind === "ketcher" ? "structure" : "plot"}
+        </h2>
+        <button onClick={onCancel} className="btn btn-ghost btn-sm">Cancel</button>
+      </div>
+      <div className="min-h-0 flex-1 overflow-hidden rounded-lg border border-edge">
+        <ModuleMount
+          kind={kind}
+          source={initialSource ?? ""}
+          onReady={(h) => (handleRef.current = h)}
         />
-      )}
-      {editing?.kind === "plot" && (
-        <PlotEditor
-          packageId={packageId}
-          initialPath={editing.path}
-          initialSource={editing.source}
-          onClose={() => setEditing(null)}
-          onSaved={onSaved}
-        />
-      )}
+      </div>
+      <div className="flex flex-wrap items-end gap-3">
+        {!initialPath && (
+          <label className="text-sm">
+            <span className="mb-1 block text-xs text-muted">Name</span>
+            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="benzene" className="field" />
+          </label>
+        )}
+        <label className="flex-1 text-sm">
+          <span className="mb-1 block text-xs text-muted">Description (alt text)</span>
+          <input value={altText} onChange={(e) => setAltText(e.target.value)} placeholder="A six-membered aromatic ring…" className="field w-full" />
+        </label>
+        {kind === "ketcher" && (
+          <button onClick={describe} disabled={busy !== null} className="btn btn-ghost btn-sm">
+            {busy === "describe" ? "Describing…" : "Describe with AI"}
+          </button>
+        )}
+        <button onClick={save} disabled={busy !== null} className="btn btn-primary btn-sm">
+          {busy === "save" ? "Saving…" : "Save"}
+        </button>
+      </div>
+      {error && <p className="text-sm text-danger">{error}</p>}
     </div>
   );
 }
