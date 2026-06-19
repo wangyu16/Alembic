@@ -225,7 +225,13 @@ two halves of cross-platform interop. See [carriers-and-assets.md §7](carriers-
 
 **Phase 3 — new three-pane shell** — parallel route; the AI-in-editor
 diff/approve flow; the 7-category rail; assembled preview + exports; whole-package
-adaptation clone (G4).
+adaptation clone (G4). **Scaffold landed** at `/workspace/[packageId]/edit`
+(opt-in "New editor (beta)" link from the classic editor): three panes
+(chapters | 7-category rail | editor), Course-home description (G6 generate/save),
+per-section content editor (validated save). Remaining: per-category editors
+(slides/assessment/practice/private/assets via the editor-module registry), the
+in-editor AI diff/approve UI, assembled preview, and chapter management in the
+rail — built iteratively until parity, then swap (Phase 4).
 
 **Phase 4 — swap at parity** — retire the current editor once the new shell
 matches it; `.docx`/`.pptx` import (G5) lands on the reserved seam when

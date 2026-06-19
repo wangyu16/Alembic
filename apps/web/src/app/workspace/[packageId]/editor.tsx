@@ -324,9 +324,18 @@ export function StudyGuideEditor({
     <div className="flex flex-1 flex-col gap-4">
       <header className="flex items-start justify-between gap-4">
         <div className="min-w-0">
-          <Link href="/workspace" className="text-sm text-muted hover:text-ink">
-            ← Workspace
-          </Link>
+          <div className="flex items-center gap-3">
+            <Link href="/workspace" className="text-sm text-muted hover:text-ink">
+              ← Workspace
+            </Link>
+            <Link
+              href={`/workspace/${packageId}/edit`}
+              className="text-xs text-[var(--accent)] hover:underline"
+              title="Preview the new three-pane editor (in progress)"
+            >
+              New editor (beta) ▸
+            </Link>
+          </div>
           <h1 className="truncate font-serif text-2xl tracking-tight text-ink">
             {title}
           </h1>
