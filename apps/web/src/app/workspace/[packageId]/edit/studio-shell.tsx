@@ -15,6 +15,7 @@ import {
   saveCourseDescriptionAction,
 } from "../metadata-actions";
 import { saveFileAction, proposeEditAction } from "./edit-actions";
+import { useUnsavedGuard } from "@/lib/use-unsaved-guard";
 import type { EditorHandle } from "@alembic/editor-kit";
 import { ModuleMount } from "@/lib/editor-modules/module-mount";
 import {
@@ -290,9 +291,11 @@ function CourseHome({
   published: boolean;
 }) {
   const [md, setMd] = useState(initial ?? "");
+  const [dirty, setDirty] = useState(false);
   const [pending, start] = useTransition();
   const [note, setNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  useUnsavedGuard(dirty);
 
   const run = (fn: () => Promise<{ ok: boolean; markdown?: string; error?: string }>, label: string) => {
     setNote(null);
@@ -301,7 +304,13 @@ function CourseHome({
       const r = await fn();
       if (!r.ok) setError(r.error ?? "That didn't complete.");
       else {
-        if (r.markdown !== undefined) setMd(r.markdown);
+        // Generate returns fresh markdown (now unsaved); save returns none.
+        if (r.markdown !== undefined) {
+          setMd(r.markdown);
+          setDirty(true);
+        } else {
+          setDirty(false);
+        }
         setNote(label);
       }
     });
@@ -312,6 +321,7 @@ function CourseHome({
       <div className="flex items-center justify-between">
         <h2 className="font-serif text-lg text-ink">Course description</h2>
         <div className="flex items-center gap-2">
+          {dirty && <span className="text-xs text-warn">Unsaved</span>}
           <button
             onClick={() => run(() => generateCourseDescriptionAction(packageId), "Generated with AI.")}
             disabled={pending}
@@ -336,7 +346,10 @@ function CourseHome({
       </p>
       <textarea
         value={md}
-        onChange={(e) => setMd(e.target.value)}
+        onChange={(e) => {
+          setMd(e.target.value);
+          setDirty(true);
+        }}
         placeholder="A general chemistry course covering…&#10;&#10;## Topics&#10;- …"
         className="field min-h-[50vh] w-full resize-y font-mono text-sm"
       />
@@ -370,6 +383,7 @@ function ContentEditor({
   const [dirty, setDirty] = useState(false);
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  useUnsavedGuard(dirty);
 
   const toggle = (key: string) =>
     setBlocks((bs) => bs.map((b) => (b.key === key ? { ...b, collapsed: !b.collapsed } : b)));
@@ -529,6 +543,7 @@ function FileEditor({
   const [dirty, setDirty] = useState(false);
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  useUnsavedGuard(dirty);
 
   const save = () => {
     setError(null);
@@ -775,8 +790,10 @@ function AssetEditor({
   const handleRef = useRef<EditorHandle | null>(null);
   const [name, setName] = useState("");
   const [altText, setAltText] = useState("");
+  const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState<null | "describe" | "save">(null);
   const [error, setError] = useState<string | null>(null);
+  useUnsavedGuard(dirty);
 
   const describe = () => {
     if (kind !== "ketcher" || !handleRef.current) return;
@@ -786,8 +803,10 @@ function AssetEditor({
       try {
         const source = await handleRef.current!.getSource();
         const r = await suggestStructureAltTextAction(packageId, source, activePath ?? "");
-        if (r.ok && r.altText) setAltText(r.altText);
-        else setError(r.error ?? "Couldn't generate a description.");
+        if (r.ok && r.altText) {
+          setAltText(r.altText);
+          setDirty(true);
+        } else setError(r.error ?? "Couldn't generate a description.");
       } finally {
         setBusy(null);
       }
@@ -812,8 +831,10 @@ function AssetEditor({
           svg,
           altText: altText.trim(),
         });
-        if (res.ok) onDone();
-        else setError(res.error ?? "Couldn't save the asset.");
+        if (res.ok) {
+          setDirty(false);
+          onDone();
+        } else setError(res.error ?? "Couldn't save the asset.");
       } catch {
         setError("Couldn't save the asset.");
       } finally {
@@ -828,12 +849,16 @@ function AssetEditor({
         <h2 className="font-serif text-lg text-ink">
           {initialPath ? "Edit" : "New"} {kind === "ketcher" ? "structure" : "plot"}
         </h2>
-        <button onClick={onCancel} className="btn btn-ghost btn-sm">Cancel</button>
+        <div className="flex items-center gap-2">
+          {dirty && <span className="text-xs text-warn">Unsaved</span>}
+          <button onClick={onCancel} className="btn btn-ghost btn-sm">Cancel</button>
+        </div>
       </div>
       <div className="min-h-0 flex-1 overflow-hidden rounded-lg border border-edge">
         <ModuleMount
           kind={kind}
           source={initialSource ?? ""}
+          onChange={() => setDirty(true)}
           onReady={(h) => (handleRef.current = h)}
         />
       </div>
@@ -841,12 +866,12 @@ function AssetEditor({
         {!initialPath && (
           <label className="text-sm">
             <span className="mb-1 block text-xs text-muted">Name</span>
-            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="benzene" className="field" />
+            <input value={name} onChange={(e) => { setName(e.target.value); setDirty(true); }} placeholder="benzene" className="field" />
           </label>
         )}
         <label className="flex-1 text-sm">
           <span className="mb-1 block text-xs text-muted">Description (alt text)</span>
-          <input value={altText} onChange={(e) => setAltText(e.target.value)} placeholder="A six-membered aromatic ring…" className="field w-full" />
+          <input value={altText} onChange={(e) => { setAltText(e.target.value); setDirty(true); }} placeholder="A six-membered aromatic ring…" className="field w-full" />
         </label>
         {kind === "ketcher" && (
           <button onClick={describe} disabled={busy !== null} className="btn btn-ghost btn-sm">
