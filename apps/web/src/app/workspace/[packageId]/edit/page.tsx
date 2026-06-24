@@ -8,6 +8,7 @@ import {
 } from "@alembic/package-ops";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
+import { clientForUser, githubConfig, installUrl } from "@/lib/github";
 import { StudioShell, type StudioCategory } from "./studio-shell";
 
 export const dynamic = "force-dynamic";
@@ -32,10 +33,10 @@ export default async function EditShellPage({
   searchParams,
 }: {
   params: Promise<{ packageId: string }>;
-  searchParams: Promise<{ chapter?: string; cat?: string }>;
+  searchParams: Promise<{ chapter?: string; cat?: string; publish?: string }>;
 }) {
   const { packageId } = await params;
-  const { chapter, cat } = await searchParams;
+  const { chapter, cat, publish: publishParam } = await searchParams;
   const supabase = await createSupabaseServerClient();
   const {
     data: { user },
@@ -97,6 +98,51 @@ export default async function EditShellPage({
           .filter((id): id is string => Boolean(id))
       : [];
 
+  // Publishing state for the header (Save to GitHub / Publish page / List
+  // publicly) — mirrors the classic editor's page. `versions` isn't needed here
+  // (history is per-chapter elsewhere), so we skip the commit listing.
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("github_installation_id")
+    .eq("id", user.id)
+    .maybeSingle();
+  const cfg = githubConfig();
+  const pub = record.manifest.publicRepo;
+
+  let siteUrl: string | null = null;
+  if (record.storage === "github" && pub) {
+    try {
+      const gh = await clientForUser(supabase, user.id);
+      if (gh) {
+        const pagesSha = await gh.client.getRefSha(
+          { owner: pub.owner, repo: pub.name },
+          "heads/gh-pages",
+        );
+        if (pagesSha) siteUrl = `https://${pub.owner}.github.io/${pub.name}/`;
+      }
+    } catch {
+      /* site detection is non-essential */
+    }
+  }
+
+  const { data: registration } = await supabase
+    .from("portal_registrations")
+    .select("package_id")
+    .eq("package_id", packageId)
+    .maybeSingle();
+
+  const publishing = {
+    configured: Boolean(cfg),
+    connected: Boolean(profile?.github_installation_id),
+    published: record.storage === "github",
+    publicRepoUrl: pub ? `https://github.com/${pub.owner}/${pub.name}` : null,
+    installUrl: cfg ? installUrl(cfg.appSlug, packageId) : null,
+    versions: [],
+    registered: Boolean(registration),
+    siteUrl,
+    autoPublish: publishParam === "1",
+  };
+
   return (
     <StudioShell
       packageId={packageId}
@@ -115,6 +161,7 @@ export default async function EditShellPage({
       assets={assets.map((a) => ({ path: a.path, kind: a.kind }))}
       artifacts={artifacts}
       chapterBlockIds={chapterBlockIds}
+      publishing={publishing}
     />
   );
 }

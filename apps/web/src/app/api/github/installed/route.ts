@@ -40,9 +40,11 @@ export async function GET(request: Request) {
   }
 
   // Return to the package and auto-resume publishing when we know which one.
+  // Land on the new editor (the default "Open editor"); its publish header runs
+  // the same auto-resume on ?publish=1.
   const target =
     state && /^pkg-/.test(state)
-      ? `${origin}/workspace/${state}?publish=1`
+      ? `${origin}/workspace/${state}/edit?publish=1`
       : `${origin}/workspace?connected=1`;
   return NextResponse.redirect(target);
 }

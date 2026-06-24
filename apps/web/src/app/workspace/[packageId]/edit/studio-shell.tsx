@@ -26,6 +26,8 @@ import {
 import { generateSlidesAction } from "../slides-actions";
 import { generateWorksheetAction } from "../ai-actions";
 import { ManageDialog } from "../chapter-nav";
+import { PublishHeader } from "../_components/publish-header";
+import type { PublishingState } from "../editor";
 
 interface AssetItem {
   path: string;
@@ -89,6 +91,7 @@ export function StudioShell({
   assets,
   artifacts,
   chapterBlockIds,
+  publishing,
 }: {
   packageId: string;
   title: string;
@@ -104,10 +107,14 @@ export function StudioShell({
   assets: AssetItem[];
   artifacts: ArtifactItem[];
   chapterBlockIds: string[];
+  publishing: PublishingState;
 }) {
   const forms = unitTermForms(unitTerm);
   const router = useRouter();
   const [manageOpen, setManageOpen] = useState(false);
+  // Lifted from the active editing pane so the publish header can block "Save to
+  // GitHub" while there are unsaved edits (you must save to the package first).
+  const [dirty, setDirty] = useState(false);
   // Left panes are collapsible to give the editor the full width. The chapter
   // list starts collapsed; the category rail starts open.
   const [showChapters, setShowChapters] = useState(false);
@@ -146,10 +153,20 @@ export function StudioShell({
             ← Workspace
           </Link>
           <h1 className="truncate font-serif text-xl tracking-tight text-ink">{title}</h1>
+          <Link
+            href={`/workspace/${packageId}`}
+            className="ml-1 text-xs text-faint hover:text-ink"
+            title="The current editor"
+          >
+            Classic editor
+          </Link>
         </div>
-        <Link href={`/workspace/${packageId}`} className="btn btn-ghost btn-sm" title="The current editor">
-          Classic editor
-        </Link>
+        <PublishHeader
+          packageId={packageId}
+          publishing={publishing}
+          dirty={dirty}
+          onChanged={() => router.refresh()}
+        />
       </header>
 
       <div className="flex min-h-0 flex-1 gap-3">
@@ -215,16 +232,25 @@ export function StudioShell({
         {/* Pane 3 — editor (fills remaining width) */}
         <section className="panel min-h-0 min-w-0 flex-1 overflow-y-auto p-4">
           {category === "course" ? (
-            <CourseHome packageId={packageId} initial={courseDescription} published={published} />
+            <CourseHome
+              key="course"
+              packageId={packageId}
+              initial={courseDescription}
+              published={published}
+              onDirty={setDirty}
+            />
           ) : category === "content" && activePath && content ? (
             <ContentEditor
+              key={`content:${activePath}`}
               packageId={packageId}
               path={activePath}
               chapterTitle={chapters.find((c) => c.slug === activeSlug)?.title ?? title}
               initial={content}
+              onDirty={setDirty}
             />
           ) : categoryFile ? (
             <FileEditor
+              key={`${category}:${categoryFile.path}`}
               packageId={packageId}
               label={CATEGORY_LABELS[category as StudioCategory]}
               help={
@@ -235,9 +261,10 @@ export function StudioShell({
                     : "How each concept/topic should be assessed across homework, discussion, quiz, and exam — instructions, not a question bank. Markdown."
               }
               file={categoryFile}
+              onDirty={setDirty}
             />
           ) : category === "assets" ? (
-            <AssetsView packageId={packageId} activePath={activePath} assets={assets} />
+            <AssetsView key="assets" packageId={packageId} activePath={activePath} assets={assets} onDirty={setDirty} />
           ) : category === "slides" ? (
             <ArtifactView
               packageId={packageId}
@@ -280,15 +307,26 @@ export function StudioShell({
   );
 }
 
+/* ── Report a pane's unsaved state up to the shell (for the publish header) ── */
+function useReportDirty(dirty: boolean, onDirty?: (d: boolean) => void) {
+  useEffect(() => {
+    onDirty?.(dirty);
+  }, [dirty, onDirty]);
+  // Reset on unmount (switching pane/file) so stale dirtiness can't linger.
+  useEffect(() => () => onDirty?.(false), [onDirty]);
+}
+
 /* ── Course home: the canonical description (G6) ─────────────────────────── */
 function CourseHome({
   packageId,
   initial,
   published,
+  onDirty,
 }: {
   packageId: string;
   initial: string | null;
   published: boolean;
+  onDirty?: (d: boolean) => void;
 }) {
   const [md, setMd] = useState(initial ?? "");
   const [dirty, setDirty] = useState(false);
@@ -296,6 +334,7 @@ function CourseHome({
   const [note, setNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   useUnsavedGuard(dirty);
+  useReportDirty(dirty, onDirty);
 
   const run = (fn: () => Promise<{ ok: boolean; markdown?: string; error?: string }>, label: string) => {
     setNote(null);
@@ -370,11 +409,13 @@ function ContentEditor({
   path,
   chapterTitle,
   initial,
+  onDirty,
 }: {
   packageId: string;
   path: string;
   chapterTitle: string;
   initial: { preamble: string; blocks: StudyGuideBlock[] };
+  onDirty?: (d: boolean) => void;
 }) {
   const [blocks, setBlocks] = useState<EditBlock[]>(
     // All sections start collapsed on open — expand the ones you're editing.
@@ -384,6 +425,7 @@ function ContentEditor({
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
   useUnsavedGuard(dirty);
+  useReportDirty(dirty, onDirty);
 
   const toggle = (key: string) =>
     setBlocks((bs) => bs.map((b) => (b.key === key ? { ...b, collapsed: !b.collapsed } : b)));
@@ -533,17 +575,20 @@ function FileEditor({
   label,
   help,
   file,
+  onDirty,
 }: {
   packageId: string;
   label: string;
   help: string;
   file: { path: string; repo: "public" | "private"; content: string };
+  onDirty?: (d: boolean) => void;
 }) {
   const [text, setText] = useState(file.content);
   const [dirty, setDirty] = useState(false);
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
   useUnsavedGuard(dirty);
+  useReportDirty(dirty, onDirty);
 
   const save = () => {
     setError(null);
@@ -682,10 +727,12 @@ function AssetsView({
   packageId,
   activePath,
   assets,
+  onDirty,
 }: {
   packageId: string;
   activePath: string | null;
   assets: AssetItem[];
+  onDirty?: (d: boolean) => void;
 }) {
   const router = useRouter();
   const [editing, setEditing] = useState<
@@ -713,6 +760,7 @@ function AssetsView({
         kind={editing.kind}
         initialPath={editing.path}
         initialSource={editing.source}
+        onDirty={onDirty}
         onDone={onSaved}
         onCancel={() => setEditing(null)}
       />
@@ -776,6 +824,7 @@ function AssetEditor({
   kind,
   initialPath,
   initialSource,
+  onDirty,
   onDone,
   onCancel,
 }: {
@@ -784,6 +833,7 @@ function AssetEditor({
   kind: "ketcher" | "plot";
   initialPath?: string;
   initialSource?: string;
+  onDirty?: (d: boolean) => void;
   onDone: () => void;
   onCancel: () => void;
 }) {
@@ -794,6 +844,7 @@ function AssetEditor({
   const [busy, setBusy] = useState<null | "describe" | "save">(null);
   const [error, setError] = useState<string | null>(null);
   useUnsavedGuard(dirty);
+  useReportDirty(dirty, onDirty);
 
   const describe = () => {
     if (kind !== "ketcher" || !handleRef.current) return;
