@@ -687,6 +687,25 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
 ## Log
 
 ### 2026-07-03
+- **Design direction locked (owner decision):
+  [self-contained-editing.md](specs/self-contained-editing.md).** Core idea
+  (goal.md) unchanged; editing offloads from the platform to the
+  self-contained dual-extension files built by the sibling orz-family
+  projects — `.md.html` (orz-mdhtml), `.slides.html` (orz-slides),
+  `.paged.html` (orz-paged) — each carrying its own in-file editor. The
+  workspace **plugs these editors in and builds none of its own**;
+  **Studio (`/studio`) is slated for removal** (a self-contained file *is*
+  the local anonymous editor; supersedes local-mode.md). A **document
+  contract** (package-contract extension) gives origin parity — documents
+  created in the workspace, uploaded to it, or committed directly to the
+  GitHub repos all *register* identically (kind, format version, source
+  hash, provenance, block IDs, layer) with the two-repo invariant enforced
+  on every door. **Every file gets a permalink** for citation and insertion
+  (generalizing the carriers-and-assets asset-permalink model). Open
+  questions tracked in the spec §6 (study-guide source of record, fate of
+  the studio-shell block editor, `.md.pdf` vs `.paged.html`, upload policy
+  vs trial storage). CLAUDE.md updated (key-docs pointer + rule 3 note).
+  Implementation not started.
 - **UI/UX audit + responsive & accent pass (impeccable).** Full audit of the web
   app with the impeccable design skill (installed at `.claude/skills/impeccable`;
   design context captured in `apps/web/PRODUCT.md` + `apps/web/DESIGN.md`).

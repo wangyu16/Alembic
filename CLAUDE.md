@@ -14,6 +14,14 @@ adapt, cite, share).
 - [docs/InitialReleasePlan.md](docs/InitialReleasePlan.md) — v0.1 scope, milestones M0–M8
 - [docs/Status.md](docs/Status.md) — sub-module status tracker. **Update it whenever a sub-module's status changes.**
 - docs/specs/ — written specs (package contract, etc.)
+- [docs/specs/self-contained-editing.md](docs/specs/self-contained-editing.md) —
+  **2026-07 design direction:** editing offloads to self-contained files
+  (`.md.html` / `.slides.html` / `.paged.html` from the sibling orz-family
+  projects); the workspace plugs in their in-file editors and builds no
+  editors of its own; Studio (`/studio`) is slated for removal; a **document
+  contract** gives origin parity (created in workspace / uploaded / committed
+  directly to GitHub all register equally); **every file gets a permalink**
+  (cite + insert).
 
 ## Commands
 
@@ -41,8 +49,12 @@ All three must pass before any push.
 3. **The editor UI is a replaceable client.** UI code calls package operations
    via `packageOps(store, packageId)` (`packages/package-ops`); it never touches
    files, Git, or schema internals directly. Every writer — UI server actions,
-   the agent/worker, the local studio — goes through `packageOps` (the one
-   validated write path); never add a route around it.
+   the agent/worker, plugged-in self-contained editors — goes through
+   `packageOps` (the one validated write path); never add a route around it.
+   (Per the 2026-07 direction, the end-state "editor UI" is the in-file
+   editors of `.md.html`/`.slides.html`/`.paged.html`, hosted by the
+   workspace — see self-contained-editing.md; the local studio is being
+   retired.)
 4. **Repos are the source of truth.** App-side DB state must always be a
    rebuildable projection of repository content.
 5. **`packages/github-bridge` is the only code that talks to GitHub.**
