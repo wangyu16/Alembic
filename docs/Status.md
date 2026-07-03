@@ -687,6 +687,15 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
 ## Log
 
 ### 2026-07-03
+- **⭐ Reminder (owner request): next design session = the document
+  taxonomy** — what document types a course package should have, their
+  formats and functions, in detail. Blocks the document-contract schema;
+  tracked at the top of
+  [self-contained-editing.md §6](specs/self-contained-editing.md). A
+  **permalink mechanism proposal** (ID-based indirection; 302→GitHub Pages
+  for public, platform-served for private/trial; block-fragment inserts;
+  `@snapshot` pinning; raw-GitHub links rejected) is written up in the same
+  spec §7, pending owner approval.
 - **Design direction locked (owner decision):
   [self-contained-editing.md](specs/self-contained-editing.md).** Core idea
   (goal.md) unchanged; editing offloads from the platform to the

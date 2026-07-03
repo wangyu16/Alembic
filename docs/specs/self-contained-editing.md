@@ -84,6 +84,11 @@ mechanism generalizes; permalinks are no longer an asset-only feature.
 
 ## 6. Open questions (not yet decided)
 
+- **⭐ NEXT DESIGN SESSION (owner, 2026-07-03): the document taxonomy.**
+  What types of documents a course package should have, in what formats,
+  with what functions — the detailed per-type descriptions. This is the
+  next most important set of questions and blocks the document contract's
+  schema. The owner asked to be reminded to continue with these.
 - Study-guide source of record: does the chapter stay a `.md` file with
   `.md.html` generated from it, or become `.md.html`-native with the source
   extracted on registration?
@@ -94,3 +99,40 @@ mechanism generalizes; permalinks are no longer an asset-only feature.
 - Upload policy vs the trial-storage decision (trial packages are text-only
   in Postgres; binary upload gated to published packages) — how uploads of
   self-contained HTML files (text, but potentially large) are classified.
+
+## 7. Permalink mechanism (proposal — recommended, pending owner approval)
+
+Raw GitHub links (`raw.githubusercontent.com`) are rejected: they serve
+`text/plain` + `nosniff` (self-contained HTML shows as source, never a
+page), embed username/branch/path (break on rename, move, or transfer),
+can't serve private files, and pin only via commit SHAs (Git-speak).
+
+**Proposal: ID-based permalink indirection owned by Alembic, with GitHub
+doing the serving wherever possible.**
+
+- **Shape:** `alembic.orz.how/d/{docId}` (live) ·
+  `/d/{docId}@{snapshot-name}` (pinned, for citation) ·
+  `/d/{docId}/blocks/{blockId}` (markdown-fragment insert — block IDs
+  already exist in source). The `docId` is minted by the document
+  contract's registration record; the ID→current-path mapping is updated on
+  rename/move/transfer while the ID never changes. This is a primary reason
+  registration must be origin-agnostic (§3).
+- **Resolution, layered:** public + published files → **302 redirect to the
+  educator's GitHub Pages site** (correct MIME, renders the self-contained
+  formats, educator-owned, survives without Alembic — keeps the no-lock-in
+  promise honest). Private / trial-sandbox / owner-only files → served
+  through the platform (github-bridge App token or Supabase) with access
+  checks and correct content-type — the existing `/api/asset/{pkg}/{path}`
+  pattern generalized.
+- **One link, three uses:** share (browser renders the file; its built-in
+  viewer/editor come along — "editor and viewer always available" is
+  satisfied by the file itself), insert (`<img src>` / markdown reference
+  by ID keeps working after renames), cite (`@snapshot` pins to the tag).
+  Optional `?edit` opens the file hosted in the workspace so saves return
+  through `packageOps`.
+- **Self-describing files:** stamp the canonical permalink into each
+  generated file's carrier metadata, so downloaded copies know their home.
+- **Trade-off:** the resolver is platform infrastructure with a
+  sustainability obligation (same class as the portal). Mitigation: for
+  public content the resolver only adds stability (redirect), it is not a
+  dependency; IDs recorded in provenance keep links reconstructible.
