@@ -36,8 +36,8 @@ export async function SiteHeader() {
 
   return (
     <header className="border-b border-edge/70 backdrop-blur supports-[backdrop-filter]:bg-canvas/70 sticky top-0 z-10">
-      <nav className="mx-auto flex w-full max-w-5xl items-center justify-between px-6 py-3.5">
-        <Link href="/" className="flex items-center gap-2.5" title="Alembic — part of the orz family">
+      <nav className="mx-auto flex w-full max-w-5xl items-center justify-between gap-3 px-4 py-3.5 sm:px-6">
+        <Link href="/" className="flex shrink-0 items-center gap-2.5" title="Alembic — part of the orz family">
           {/* orz family logo (static SVG asset) */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/orz.svg" alt="orz" className="h-6 w-auto" />
@@ -45,33 +45,68 @@ export async function SiteHeader() {
             Alembic
           </span>
         </Link>
-        <div className="flex items-center gap-5 text-sm text-muted">
+        <div className="flex items-center gap-3 text-sm whitespace-nowrap text-muted sm:gap-5">
           <ThemeToggle initial={theme} />
-          <Link href="/portal" className="transition-colors hover:text-ink">
-            Discover
-          </Link>
           {user ? (
             <>
-              <Link href="/workspace" className="transition-colors hover:text-ink">
-                Workspace
-              </Link>
-              <Link href="/studio" className="transition-colors hover:text-ink">
-                Studio
-              </Link>
-              {isAdmin && (
-                <Link href="/admin" className="transition-colors hover:text-ink">
-                  Admin
+              {/* Full link set from sm: up; a CSS-only menu below it. */}
+              <div className="hidden items-center gap-5 sm:flex">
+                <Link href="/portal" className="transition-colors hover:text-ink">
+                  Discover
                 </Link>
-              )}
-              {handle && <span className="text-faint">{handle}</span>}
-              <form action="/auth/signout" method="post">
-                <button type="submit" className="btn btn-ghost btn-sm">
-                  Sign out
-                </button>
-              </form>
+                <Link href="/workspace" className="transition-colors hover:text-ink">
+                  Workspace
+                </Link>
+                <Link href="/studio" className="transition-colors hover:text-ink">
+                  Studio
+                </Link>
+                {isAdmin && (
+                  <Link href="/admin" className="transition-colors hover:text-ink">
+                    Admin
+                  </Link>
+                )}
+                {handle && <span className="hidden text-faint md:inline">{handle}</span>}
+                <form action="/auth/signout" method="post">
+                  <button type="submit" className="btn btn-ghost btn-sm">
+                    Sign out
+                  </button>
+                </form>
+              </div>
+              <details className="relative sm:hidden">
+                <summary className="btn btn-ghost btn-sm cursor-pointer list-none [&::-webkit-details-marker]:hidden">
+                  Menu
+                </summary>
+                <div className="panel absolute right-0 z-20 mt-2 flex w-44 flex-col gap-0.5 p-2 shadow-lg">
+                  <Link href="/portal" className="rounded-md px-2 py-1.5 transition-colors hover:bg-elevated hover:text-ink">
+                    Discover
+                  </Link>
+                  <Link href="/workspace" className="rounded-md px-2 py-1.5 transition-colors hover:bg-elevated hover:text-ink">
+                    Workspace
+                  </Link>
+                  <Link href="/studio" className="rounded-md px-2 py-1.5 transition-colors hover:bg-elevated hover:text-ink">
+                    Studio
+                  </Link>
+                  {isAdmin && (
+                    <Link href="/admin" className="rounded-md px-2 py-1.5 transition-colors hover:bg-elevated hover:text-ink">
+                      Admin
+                    </Link>
+                  )}
+                  <form action="/auth/signout" method="post" className="border-t border-edge-soft pt-1">
+                    <button
+                      type="submit"
+                      className="w-full rounded-md px-2 py-1.5 text-left transition-colors hover:bg-elevated hover:text-ink"
+                    >
+                      Sign out{handle ? ` (${handle})` : ""}
+                    </button>
+                  </form>
+                </div>
+              </details>
             </>
           ) : (
             <>
+              <Link href="/portal" className="transition-colors hover:text-ink">
+                Discover
+              </Link>
               <Link href="/studio" className="transition-colors hover:text-ink">
                 Studio
               </Link>

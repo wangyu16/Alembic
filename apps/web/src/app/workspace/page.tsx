@@ -109,8 +109,8 @@ export default async function WorkspacePage() {
         ) : (
           <ul className="panel mt-3 divide-y divide-[var(--edge-soft)]">
             {packages.map((pkg) => (
-              <li key={pkg.id} className="flex items-center justify-between gap-3 px-4 py-3">
-                <div className="min-w-0">
+              <li key={pkg.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+                <div className="min-w-0 flex-1 basis-48">
                   <div className="truncate font-medium text-ink">{pkg.title}</div>
                   <div className="text-xs text-faint">
                     {pkg.storage === "sandbox"

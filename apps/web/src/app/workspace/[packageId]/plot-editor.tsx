@@ -153,7 +153,7 @@ export function PlotEditor({
         <button onClick={onClose} className="btn btn-ghost btn-sm">Close</button>
       </div>
 
-      <div className="grid flex-1 grid-cols-2 gap-4 overflow-hidden">
+      <div className="grid flex-1 grid-cols-1 grid-rows-2 gap-4 overflow-hidden md:grid-cols-2 md:grid-rows-1">
         <textarea
           value={spec}
           onChange={(e) => setSpec(e.target.value)}

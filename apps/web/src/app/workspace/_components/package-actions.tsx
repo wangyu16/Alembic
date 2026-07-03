@@ -42,7 +42,7 @@ export function PackageActions({
   if (mode === "rename") {
     return (
       <form
-        className="flex items-center gap-2"
+        className="flex flex-wrap items-center gap-2"
         onSubmit={(e) => {
           e.preventDefault();
           run(() => renamePackageAction(packageId, draft));
@@ -52,7 +52,7 @@ export function PackageActions({
           autoFocus
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
-          className="field h-8 w-48 text-sm"
+          className="field h-8 w-36 min-w-0 text-sm sm:w-48"
           aria-label="New name"
         />
         <button type="submit" disabled={pending} className="btn btn-primary btn-sm">

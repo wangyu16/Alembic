@@ -4,9 +4,9 @@ import { rendererVersion } from "@alembic/renderer";
 
 export default function Home() {
   return (
-    <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col justify-center gap-10 px-6 py-24">
+    <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col justify-center gap-10 px-6 py-16 sm:py-24">
       <div className="flex flex-col gap-6">
-        <h1 className="font-serif text-5xl leading-[1.05] tracking-tight text-ink text-balance">
+        <h1 className="font-serif text-4xl leading-[1.05] tracking-tight text-ink text-balance sm:text-5xl">
           Turn your teaching materials into open and reusable resources.
         </h1>
         <p className="max-w-2xl text-lg leading-relaxed text-ink text-pretty">

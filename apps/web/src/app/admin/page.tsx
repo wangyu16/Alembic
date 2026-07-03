@@ -71,7 +71,7 @@ export default async function AdminPage() {
         <p className="mt-1 text-muted">Study readiness — status, research export, reports.</p>
       </header>
 
-      <section className="grid grid-cols-3 gap-3">
+      <section className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         {[
           { label: "Packages", value: packages },
           { label: "Listed (portal)", value: registrations },

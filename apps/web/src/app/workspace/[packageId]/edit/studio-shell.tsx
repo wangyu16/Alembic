@@ -116,9 +116,32 @@ export function StudioShell({
   // GitHub" while there are unsaved edits (you must save to the package first).
   const [dirty, setDirty] = useState(false);
   // Left panes are collapsible to give the editor the full width. The chapter
-  // list starts collapsed; the category rail starts open.
+  // list starts collapsed; the category rail starts open. Below md the panes
+  // render as overlay drawers, so on small screens they start closed, only
+  // one opens at a time, and picking an item closes them.
   const [showChapters, setShowChapters] = useState(false);
   const [showRail, setShowRail] = useState(true);
+  const isNarrow = () =>
+    typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches;
+  useEffect(() => {
+    if (isNarrow()) setShowRail(false);
+  }, []);
+  const toggleChapters = () =>
+    setShowChapters((v) => {
+      if (!v && isNarrow()) setShowRail(false);
+      return !v;
+    });
+  const toggleRail = () =>
+    setShowRail((v) => {
+      if (!v && isNarrow()) setShowChapters(false);
+      return !v;
+    });
+  const closeDrawers = () => {
+    if (isNarrow()) {
+      setShowChapters(false);
+      setShowRail(false);
+    }
+  };
 
   const href = (next: { chapter?: string | null; cat?: string }) => {
     const c = next.chapter !== undefined ? next.chapter : activeSlug;
@@ -131,10 +154,10 @@ export function StudioShell({
 
   return (
     <main className="flex h-[calc(100vh-3.5rem)] w-full flex-col gap-3 px-3 py-3">
-      <header className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
+      <header className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
           <button
-            onClick={() => setShowChapters((v) => !v)}
+            onClick={toggleChapters}
             className={`btn btn-ghost btn-sm ${showChapters ? "text-ink" : "text-muted"}`}
             title={`${showChapters ? "Hide" : "Show"} ${forms.plural}`}
             aria-pressed={showChapters}
@@ -142,7 +165,7 @@ export function StudioShell({
             ☰ {forms.Plural}
           </button>
           <button
-            onClick={() => setShowRail((v) => !v)}
+            onClick={toggleRail}
             className={`btn btn-ghost btn-sm ${showRail ? "text-ink" : "text-muted"}`}
             title={`${showRail ? "Hide" : "Show"} categories`}
             aria-pressed={showRail}
@@ -152,7 +175,7 @@ export function StudioShell({
           <Link href="/workspace" className="ml-1 text-sm text-muted hover:text-ink">
             ← Workspace
           </Link>
-          <h1 className="truncate font-serif text-xl tracking-tight text-ink">{title}</h1>
+          <h1 className="min-w-0 truncate font-serif text-xl tracking-tight text-ink">{title}</h1>
           <Link
             href={`/workspace/${packageId}`}
             className="ml-1 text-xs text-faint hover:text-ink"
@@ -169,12 +192,23 @@ export function StudioShell({
         />
       </header>
 
-      <div className="flex min-h-0 flex-1 gap-3">
+      <div className="relative flex min-h-0 flex-1 gap-3">
+        {/* Below md an open pane overlays the editor as a drawer; dismiss by
+            picking an item, re-tapping its toggle, or tapping the backdrop. */}
+        {(showChapters || showRail) && (
+          <button
+            type="button"
+            aria-label="Close navigation"
+            onClick={closeDrawers}
+            className="absolute inset-0 z-10 bg-black/40 md:hidden"
+          />
+        )}
         {/* Pane 1 — chapters (collapsible) */}
         {showChapters && (
-        <nav className="panel min-h-0 w-44 shrink-0 overflow-y-auto p-2">
+        <nav className="panel min-h-0 w-44 shrink-0 overflow-y-auto p-2 max-md:absolute max-md:inset-y-0 max-md:left-0 max-md:z-20 max-md:w-64 max-md:shadow-xl">
           <Link
             href={href({ chapter: null, cat: "course" })}
+            onClick={closeDrawers}
             className={`block rounded-md px-2 py-1.5 text-sm ${
               category === "course" ? "bg-accent text-[var(--accent-ink)]" : "text-muted hover:bg-elevated hover:text-ink"
             }`}
@@ -195,6 +229,7 @@ export function StudioShell({
             <Link
               key={c.slug}
               href={href({ chapter: c.slug, cat: category === "course" ? "content" : category })}
+              onClick={closeDrawers}
               className={`mt-0.5 block truncate rounded-md px-2 py-1.5 text-sm ${
                 c.slug === activeSlug && category !== "course"
                   ? "bg-elevated text-ink"
@@ -209,7 +244,7 @@ export function StudioShell({
 
         {/* Pane 2 — category rail (collapsible) */}
         {showRail && (
-        <nav className="panel min-h-0 w-52 shrink-0 overflow-y-auto p-2">
+        <nav className="panel min-h-0 w-52 shrink-0 overflow-y-auto p-2 max-md:absolute max-md:inset-y-0 max-md:left-0 max-md:z-20 max-md:w-64 max-md:shadow-xl">
           <div className="px-2 pb-1 text-xs text-faint">
             {category === "course" ? "Course" : activeSlug ? `${forms.Singular}` : ""}
           </div>
@@ -217,6 +252,7 @@ export function StudioShell({
             <Link
               key={cat}
               href={href({ cat })}
+              onClick={closeDrawers}
               className={`mt-0.5 block rounded-md px-2 py-1.5 text-sm ${
                 cat === category
                   ? "bg-accent text-[var(--accent-ink)]"
@@ -357,9 +393,9 @@ function CourseHome({
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="font-serif text-lg text-ink">Course description</h2>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {dirty && <span className="text-xs text-warn">Unsaved</span>}
           <button
             onClick={() => run(() => generateCourseDescriptionAction(packageId), "Generated with AI.")}
@@ -487,9 +523,9 @@ function ContentEditor({
 
   return (
     <div className="flex h-full flex-col gap-3">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-sm text-muted">Course content — edit by section</h2>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {dirty && <span className="text-xs text-warn">Unsaved</span>}
           {blocks.length > 1 && (
             <button onClick={() => setAllCollapsed(!allCollapsed)} className="btn btn-ghost btn-sm">
@@ -601,9 +637,9 @@ function FileEditor({
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="font-serif text-lg text-ink">{label}</h2>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {dirty && <span className="text-xs text-warn">Unsaved</span>}
           <AskAI packageId={packageId} path={file.path} repo={file.repo} current={text} />
           <button onClick={save} disabled={pending || !dirty} className="btn btn-primary btn-sm">
@@ -695,7 +731,7 @@ function AskAI({
       </div>
       {proposed != null && (
         <>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             <div className="flex flex-col gap-1">
               <span className="text-xs text-faint">Before</span>
               <textarea readOnly value={current} className="field h-48 w-full resize-none font-mono text-xs opacity-70" />
@@ -974,7 +1010,7 @@ function ArtifactView({
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="font-serif text-lg text-ink">{label}</h2>
         <button
           onClick={generate}

@@ -79,7 +79,7 @@ export function PackageSnapshots({ packageId }: { packageId: string }) {
       </button>
 
       {open && (
-        <div className="absolute right-0 z-20 mt-1 w-80 rounded-lg border border-[var(--edge)] bg-[var(--bg)] p-3 text-left shadow-lg">
+        <div className="absolute right-0 z-20 mt-1 w-80 max-w-[calc(100vw-2rem)] rounded-lg border border-[var(--edge)] bg-[var(--bg)] p-3 text-left shadow-lg">
           <div className="flex items-end gap-2">
             <label className="flex-1 text-sm">
               <span className="mb-1 block text-xs text-muted">Snapshot name</span>

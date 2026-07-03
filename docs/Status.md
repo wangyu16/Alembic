@@ -686,7 +686,24 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
 
 ## Log
 
-### 2026-06-17
+### 2026-07-03
+- **UI/UX audit + responsive & accent pass (impeccable).** Full audit of the web
+  app with the impeccable design skill (installed at `.claude/skills/impeccable`;
+  design context captured in `apps/web/PRODUCT.md` + `apps/web/DESIGN.md`).
+  **Responsive (narrow screens now work):** site header no longer wraps at 375px
+  (compact spacing; signed-in nav collapses into a CSS-only Menu below `sm:`);
+  studio-shell chapter/category panes become overlay drawers below `md:`
+  (auto-closed on mobile, one at a time, backdrop + close-on-pick); shell/editor
+  toolbars wrap; Ask-AI before/after diff stacks; plot editor stacks below `md:`;
+  snapshots popover clamps to viewport; workspace list rows + rename form wrap;
+  admin stats grid stacks; homepage hero scales (`text-4xl sm:text-5xl`); touch
+  targets grow under `pointer: coarse`. **One decoration color — copper** (the
+  alembic still), replacing the generic blue accent in both themes with computed
+  WCAG-verified values (dark `#d99a6c` 8.1:1 on canvas; light `#a4551e` 5.4:1 on
+  white; accent-ink pairs ≥5.4:1): primary buttons, links, focus rings, active
+  nav, selection. Neutrals unchanged (still harmonize with orz-markdown rendered
+  themes; document previews keep their bookish palette by design). Verified in
+  the browser at 375/1280 in both themes; typecheck + 242 tests + web build green.
 - **M37 deferred post-pilot (user decision).** Institution/workshop-managed mode
   (org-installed GitHub App, bot-as-educator commits) is heavy/external and best
   shaped by pilot needs; uniform managed AI for a cohort is already covered by the

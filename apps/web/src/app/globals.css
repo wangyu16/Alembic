@@ -1,8 +1,12 @@
 @import "tailwindcss";
 
 /* ── Dark-elegant app theme ──────────────────────────────────────────────
-   Tuned to harmonize with orz-markdown's dark-elegant rendered output
-   (deep blue-black canvas, blue-violet accent, soft ink). Contrast checked:
+   Neutrals harmonize with orz-markdown's dark-elegant rendered output
+   (deep blue-black canvas, soft ink). The accent is Alembic's own: copper,
+   the material of the distillation vessel — one warm decoration color on a
+   cool ground, reserved for actions, links, selection, and focus. Rendered
+   document previews keep their own bookish palette by design.
+   Contrast (computed, WCAG): accent/canvas 8.1:1, accent-ink/accent 7.8:1,
    ink/canvas and muted/canvas clear 4.5:1. */
 :root {
   --canvas:        #0c0e16;
@@ -15,10 +19,10 @@
   --muted:         #9aa3b8;
   --faint:         #717a91;
 
-  --accent:        #6f97ff;
-  --accent-hover:  #89aaff;
-  --accent-ink:    #0a0c14;
-  --accent-soft:   rgba(111, 151, 255, 0.14);
+  --accent:        #d99a6c;
+  --accent-hover:  #e5ad84;
+  --accent-ink:    #1c1108;
+  --accent-soft:   rgba(217, 154, 108, 0.14);
 
   --danger:        #f08a8a;
   --warn:          #e9b766;
@@ -30,10 +34,12 @@
 }
 
 /* ── Light-neat app theme ────────────────────────────────────────────────
-   Harmonizes with orz-markdown's light-neat-1 rendered output (clean white
-   surface, ink-on-light, blue accent). Selected via the header toggle, which
-   sets the alembic-theme cookie; the root layout reads it into data-theme.
-   Contrast checked: ink/canvas and muted/canvas clear 4.5:1. */
+   Neutrals harmonize with orz-markdown's light-neat-1 rendered output (clean
+   white surface, ink-on-light). Same copper accent as the dark theme, darkened
+   for light ground. Selected via the header toggle, which sets the
+   alembic-theme cookie; the root layout reads it into data-theme.
+   Contrast (computed, WCAG): accent/white 5.4:1, white/accent 5.4:1,
+   ink/canvas and muted/canvas clear 4.5:1. */
 [data-theme="light"] {
   --canvas:        #fbfbfd;
   --surface:       #ffffff;
@@ -45,10 +51,10 @@
   --muted:         #5a6276;
   --faint:         #868da0;
 
-  --accent:        #3a5ccc;
-  --accent-hover:  #2e4cb0;
+  --accent:        #a4551e;
+  --accent-hover:  #8a4a1c;
   --accent-ink:    #ffffff;
-  --accent-soft:   rgba(58, 92, 204, 0.12);
+  --accent-soft:   rgba(164, 85, 30, 0.10);
 
   --danger:        #c2382b;
   --warn:          #98660a;
@@ -157,6 +163,14 @@ html[data-theme="light"] { color-scheme: light; }
 
   .link { color: var(--accent); }
   .link:hover { color: var(--accent-hover); text-decoration: underline; }
+}
+
+/* Touch devices: grow interactive targets toward 44px without changing the
+   desktop-dense layout (pointer, not width, is what predicts touch). */
+@media (pointer: coarse) {
+  .btn { padding: 0.65rem 1rem; }
+  .btn-sm { padding: 0.5rem 0.75rem; }
+  .field { padding: 0.65rem 0.8rem; }
 }
 
 @media (prefers-reduced-motion: reduce) {
