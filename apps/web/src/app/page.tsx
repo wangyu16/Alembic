@@ -40,6 +40,9 @@ export default function Home() {
     <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col justify-center gap-10 px-6 py-16 sm:py-24">
       <div className="flex flex-col gap-6">
         <h1 className="font-serif text-4xl leading-[1.05] tracking-tight text-ink text-balance sm:text-5xl">
+          <span aria-hidden className="mr-3 font-mono text-[0.7em] text-faint select-none">
+            #
+          </span>
           Turn your teaching materials into{" "}
           <mark className="rounded-[0.18em] bg-[var(--accent-soft)] px-[0.12em] text-inherit">
             open and reusable
