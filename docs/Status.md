@@ -695,7 +695,12 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
   **permalink mechanism proposal** (ID-based indirection; 302→GitHub Pages
   for public, platform-served for private/trial; block-fragment inserts;
   `@snapshot` pinning; raw-GitHub links rejected) is written up in the same
-  spec §7, pending owner approval.
+  spec §7, pending owner approval. **Owner clarification (same day): two
+  permalink classes** — dual-extension files are *final views* (share /
+  cite / always-findable; never inserted anywhere), while *objects*
+  (images, audio, raw markdown fragments, …) have permalinks used directly
+  as `src` to embed; `<iframe>` for HTML units is a tolerated fallback,
+  not preferred (spec §4/§7 updated).
 - **Design direction locked (owner decision):
   [self-contained-editing.md](specs/self-contained-editing.md).** Core idea
   (goal.md) unchanged; editing offloads from the platform to the

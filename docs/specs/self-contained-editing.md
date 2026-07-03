@@ -60,15 +60,25 @@ the direct-to-GitHub origin; upload and in-app creation route through
 `packageOps` as today. Same validation, same registration record, whichever
 door a file comes through.
 
-## 4. Every file gets a permalink
+## 4. Every file gets a permalink — in one of two classes
 
-Each file in Alembic carries a **permalink** usable for two purposes:
+Each registered file carries a **permalink**, but files split into two
+classes with different contracts (owner clarification, 2026-07-03):
 
-- **cite** — a stable reference for attribution/citation (snapshot-pinned
-  when citing a version, per the snapshot/citation model);
-- **insert** — paste/click-insert into any page or document (the
-  carriers-and-assets live-permalink + pin-at-publish model, extended from
-  assets to *all* registered files).
+- **Documents (final views).** The dual-extension files — `.md.html`,
+  `.slides.html`, `.paged.html` — are *final user-facing views*. They are
+  **never inserted/transcluded into anything**. Their permalink is a
+  **promise of findability**: share it, cite it (snapshot-pinned), and
+  always be able to locate that specific file — with its built-in viewer
+  and editor coming along in the file itself.
+- **Objects (insertable sources).** Images, audio, raw markdown fragments,
+  data files, structures/plots, …. Their permalink is used **directly as a
+  `src`** to embed into a page (`<img src>`, `<audio src>`, markdown
+  include/reference). This extends the carriers-and-assets asset-permalink
+  model to all insertable objects.
+- **HTML units:** an `<iframe>` *may* embed an HTML page/unit when nothing
+  else works, but it is **not a preferred solution** — prefer inserting the
+  underlying objects/markdown and rendering in place.
 
 See [carriers-and-assets.md](carriers-and-assets.md) §asset permalinks — that
 mechanism generalizes; permalinks are no longer an asset-only feature.
@@ -124,12 +134,23 @@ doing the serving wherever possible.**
   through the platform (github-bridge App token or Supabase) with access
   checks and correct content-type — the existing `/api/asset/{pkg}/{path}`
   pattern generalized.
-- **One link, three uses:** share (browser renders the file; its built-in
-  viewer/editor come along — "editor and viewer always available" is
-  satisfied by the file itself), insert (`<img src>` / markdown reference
-  by ID keeps working after renames), cite (`@snapshot` pins to the tag).
-  Optional `?edit` opens the file hosted in the workspace so saves return
-  through `packageOps`.
+- **Per-class behavior (see §4):**
+  - *Document permalinks* (final views; never embedded): share → browser
+    renders the file, whose built-in viewer/editor satisfy "editor and
+    viewer always available"; cite → `@snapshot` pins to the tag; find →
+    the ID promise survives rename/move/transfer. Optional `?edit` opens
+    the file hosted in the workspace so saves return through `packageOps`.
+  - *Object permalinks* (insertable sources): the URL is the `src`. It must
+    therefore serve the **raw bytes** with the correct `Content-Type`,
+    permissive CORS for public objects, and cache headers split by form
+    (live link: short cache; `@snapshot`: immutable). Raw markdown
+    fragments (`/blocks/{blockId}`) serve `text/markdown` for
+    include-style insertion. GitHub Pages provides MIME+CORS for the
+    public-redirect path; the platform proxy provides them for
+    private/trial.
+  - *Not supported:* transcluding a rendered dual-extension document into
+    another document. `<iframe>` embedding of an HTML unit stays a
+    tolerated fallback, never the recommended insert path.
 - **Self-describing files:** stamp the canonical permalink into each
   generated file's carrier metadata, so downloaded copies know their home.
 - **Trade-off:** the resolver is platform infrastructure with a
