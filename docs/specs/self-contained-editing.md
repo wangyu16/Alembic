@@ -1,6 +1,9 @@
 # Design update: self-contained editing, document contract, universal permalinks
 
 **Date:** 2026-07-03 · **Status:** direction locked (owner decision), implementation not started.
+**Companion:** [../SteeringNote.md](../SteeringNote.md) — the owner's living
+steering note for this direction; it is refined ahead of this spec, so treat
+it as newer thinking where the two disagree.
 **Relation to [goal.md](../goal.md):** the core idea is unchanged — educators
 organize knowledge; the platform handles structure, versioning, GitHub
 publication, provenance, and reuse. What changes is *where editing happens*.

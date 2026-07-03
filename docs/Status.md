@@ -687,6 +687,11 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
 ## Log
 
 ### 2026-07-03
+- **[SteeringNote.md](SteeringNote.md) added (owner request)** — the living
+  steering note consolidating the day's direction (self-contained editing,
+  Studio removal, document contract, two-class permalinks, taxonomy next);
+  the owner refines it before implementation. When it and the spec disagree,
+  the note is newer thinking.
 - **⭐ Reminder (owner request): next design session = the document
   taxonomy** — what document types a course package should have, their
   formats and functions, in detail. Blocks the document-contract schema;

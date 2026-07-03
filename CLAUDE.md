@@ -14,6 +14,9 @@ adapt, cite, share).
 - [docs/InitialReleasePlan.md](docs/InitialReleasePlan.md) — v0.1 scope, milestones M0–M8
 - [docs/Status.md](docs/Status.md) — sub-module status tracker. **Update it whenever a sub-module's status changes.**
 - docs/specs/ — written specs (package contract, etc.)
+- [docs/SteeringNote.md](docs/SteeringNote.md) — **owner's living steering
+  note** (2026-07 direction; refined ahead of the specs — newer thinking wins
+  until folded back). Read it before any design/architecture work.
 - [docs/specs/self-contained-editing.md](docs/specs/self-contained-editing.md) —
   **2026-07 design direction:** editing offloads to self-contained files
   (`.md.html` / `.slides.html` / `.paged.html` from the sibling orz-family
