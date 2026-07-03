@@ -163,6 +163,26 @@ html[data-theme="light"] { color-scheme: light; }
 
   .link { color: var(--accent); }
   .link:hover { color: var(--accent-hover); text-decoration: underline; }
+
+  /* Editor-style blinking caret (homepage hero: "still being written"). */
+  .caret-blink {
+    display: inline-block;
+    width: 3px;
+    height: 0.82em;
+    margin-left: 0.14em;
+    border-radius: 1px;
+    background: var(--accent);
+    animation: caret-blink 1.15s step-end infinite;
+  }
+}
+
+@keyframes caret-blink {
+  0%, 55% { opacity: 1; }
+  56%, 100% { opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .caret-blink { animation: none; }
 }
 
 /* Touch devices: grow interactive targets toward 44px without changing the
