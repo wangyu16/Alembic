@@ -687,6 +687,21 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
 ## Log
 
 ### 2026-07-04
+- **Sprint 1 (Modules R+E) landed.** **R1 core primitives** (subagent,
+  purely additive to v1): `package-contract` gains the v2 spaces module
+  (space=layer; `spaceForPath`, `assertPathAllowedInRepoV2`, v1→v2
+  mapping), registration-record schema + `newDocId()` + invariants
+  (current/private locked non-discoverable), optional manifest
+  `currentTerm`; `carriers` gains the `paged` kind and plain-media kinds
+  (`binary` payload; embed/extract fail clearly; `.ketcher.svg` still
+  beats plain `.svg`) — so plain media now classifies on import instead of
+  failing. 151+27 package tests; typecheck/tests/build green.
+  **E1 strategy decided** (workspace-framework §3): the orz-family
+  runtimes gain a versioned `orz-host-save` postMessage protocol upstream;
+  Alembic mounts each file in a sandboxed iframe via editor-kit modules —
+  next E1 step is the upstream protocol in orz-mdhtml, then the md module.
+  **E2 shipped:** the minimal `.md` editor (concept maps, assessment
+  guide, private notes) has a Source ⇄ Preview toggle via `/api/preview`.
 - **Roadmap review pass (owner request): two adversarial audits, 25
   coherence findings + 9 code-gap areas, all resolved.** Roadmap gains:
   explicit R1 code-touchpoint list (layers.ts, validate.ts,
