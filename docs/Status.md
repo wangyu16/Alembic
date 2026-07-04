@@ -686,6 +686,21 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
 
 ## Log
 
+### 2026-07-04
+- **Docs rebuild started (owner-approved process):** recreate the docs with a
+  clearer structure; once an old file's content is covered, move the original
+  to `docs/archive/`. **goal.md recreated** — vision unchanged, revisions:
+  workspace hosts plugged-in in-file editors and builds none (§1 renamed
+  "Workspace (hosting, not editing)"; core idea #4); orz-markdown **v1.3.1**
+  (built-in editor, copy-as-source, themes) + orz-mdhtml/orz-slides/orz-paged
+  named as canonical format implementations (VS Code extensions demoted to
+  history); `.paged.html` replaces `.md.pdf` (print-to-PDF from paged);
+  document contract + two-class permalinks added to the Package Model; module
+  map gains Document Registry + Editor Hosting rows; "not an editor project"
+  added to non-goals. Original archived verbatim at
+  [archive/goal-2026-06.md](archive/goal-2026-06.md). Next: specs (bigger
+  revisions expected), then the new roadmap.
+
 ### 2026-07-03
 - **[SteeringNote.md](SteeringNote.md) added (owner request)** — the living
   steering note consolidating the day's direction (self-contained editing,
