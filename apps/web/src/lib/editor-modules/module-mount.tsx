@@ -15,6 +15,8 @@ export function ModuleMount({
   readOnly,
   theme,
   onChange,
+  hostSave,
+  onDirty,
   onReady,
   className,
 }: {
@@ -23,13 +25,17 @@ export function ModuleMount({
   readOnly?: boolean;
   theme?: EditorTheme;
   onChange?: (next: { source: string; rendered: string }) => void;
+  /** Persist a file-initiated save (orz-host-save); the result becomes the
+   *  in-file ack. Route through the validated write path. */
+  hostSave?: (payload: { source: string; rendered: string }) => Promise<{ ok: boolean; error?: string }>;
+  onDirty?: (dirty: boolean) => void;
   onReady?: (handle: EditorHandle) => void;
   className?: string;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   // Keep the latest callbacks without forcing a remount.
-  const cbs = useRef({ onChange, onReady });
-  cbs.current = { onChange, onReady };
+  const cbs = useRef({ onChange, onReady, hostSave, onDirty });
+  cbs.current = { onChange, onReady, hostSave, onDirty };
 
   useEffect(() => {
     const el = ref.current;
@@ -40,6 +46,11 @@ export function ModuleMount({
       readOnly,
       theme,
       onChange: (next) => cbs.current.onChange?.(next),
+      hostSave: (payload) =>
+        cbs.current.hostSave
+          ? cbs.current.hostSave(payload)
+          : Promise.resolve({ ok: true }),
+      onDirty: (dirty) => cbs.current.onDirty?.(dirty),
     });
     cbs.current.onReady?.(handle);
     return () => handle.destroy();

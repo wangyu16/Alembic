@@ -687,6 +687,21 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
 ## Log
 
 ### 2026-07-04
+- **E1 host side landed: the generic hosted-carrier editor.**
+  `@alembic/editor-kit` gains the pure `createHostSaveClient` (hello retry →
+  ready → save relay → `orz-host-saved` ack → dirty; 8 tests, fake-timer
+  verified) plus additive `EditorContext.hostSave` / `onDirty` hooks. ONE
+  `hostedCarrierModule(kind)` (apps/web `lib/editor-modules/hosted-carrier.ts`)
+  registered for `md` / `slides` / `paged`: sandboxed-iframe mount
+  (`allow-scripts`, opaque origin), source = the full self-contained file,
+  saves persist the re-serialized document via the host's validated write
+  path; pre-protocol files time out gracefully (stay viewers). ModuleMount
+  passes the new hooks through. All suites + build green. **Gap to close
+  next (E1→E3):** Alembic's renderer still generates its own
+  `.md.html`/`.slides.html` without the orz in-file runtimes, so
+  Alembic-generated files can't answer the hello yet — adopt the orz-family
+  generators (upstream library entries or worker-tier CLI) so generated
+  files carry their editors. Hosted-chrome logo hide is in flight upstream.
 - **`orz-host-save@1` implemented upstream (all three sibling repos, one
   pass) and browser-verified** — canonical PROTOCOL.md + runtime hook in
   orz-mdhtml (`efd6d4b`), orz-slides (`37459cc`), orz-paged (`c5f25e9`).

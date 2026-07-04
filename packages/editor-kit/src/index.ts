@@ -15,6 +15,15 @@
  * hooks `requestAI` / `resolveAsset` and the optional `deriveAltText` capability.
  */
 
+export {
+  HOST_SAVE_PROTOCOL,
+  HOST_SAVE_VERSION,
+  createHostSaveClient,
+  type HostSaveClient,
+  type HostSaveClientOptions,
+  type HostSavePayload,
+} from "./host-save-client";
+
 /** A proposed AI edit the host diffs and the educator approves (a Tier-2 change). */
 export interface AIProposal {
   /** The proposed new carrier source (full replacement). */
@@ -38,6 +47,16 @@ export interface EditorContext {
   /** Persist an edit. The Alembic host routes this through the validated write
    *  path (packageOps + risk tiers); other hosts may write a file directly. */
   onChange(next: { source: string; rendered: string }): void;
+  /** Persist a save the FILE itself requested (a hosted self-contained
+   *  document's own Save button — the orz-host-save protocol). Resolves with
+   *  the outcome so the module can acknowledge back into the file
+   *  (`orz-host-saved`); on `ok: false` the file keeps the document dirty.
+   *  When absent, hosted-carrier modules fall back to `onChange` and
+   *  acknowledge ok. */
+  hostSave?(payload: { source: string; rendered: string }): Promise<{ ok: boolean; error?: string }>;
+  /** The file's unsaved-changes signal (`orz-host-dirty`), so the host can
+   *  arm its own unsaved guard without owning the editing surface. */
+  onDirty?(dirty: boolean): void;
   /** Run AI on the active file and return a proposal for the host to diff +
    *  approve. The Alembic host runs it through the governed provider + tiers. */
   requestAI?(prompt: string, selection?: unknown): Promise<AIProposal>;
