@@ -1,0 +1,39 @@
+# Alembic worker tier on Fly.io. Deploy from the repo root:
+#   fly deploy --config apps/worker/fly.toml
+# The web app (Vercel) calls this over HTTPS at https://<app>.fly.dev, gated by
+# WORKER_TOKEN. Region `iad` matches Vercel's default US-East so web→worker
+# latency is low; change to taste.
+
+app = "alembic-worker"
+primary_region = "iad"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  # Keep one machine warm so the export/generate request path never pays a cold
+  # start (a cold boot could approach Vercel's function timeout). Flip
+  # auto_stop_machines = "stop" + min_machines_running = 0 later to scale to zero
+  # for cost, accepting a ~few-second first-request boot.
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [http_service.concurrency]
+    type = "requests"
+    soft_limit = 20
+    hard_limit = 40
+
+  # Cheap liveness check against the worker's own endpoint.
+  [[http_service.checks]]
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "10s"
+    method = "GET"
+    path = "/health"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

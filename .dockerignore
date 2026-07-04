@@ -1,0 +1,16 @@
+# Keep the Docker build context lean and reproducible (installs happen in-image).
+**/node_modules
+**/.next
+**/dist
+**/.turbo
+.git
+.github
+.vercel
+.claude
+skills
+supabase
+templates
+docs
+apps/web/.env.local
+**/.DS_Store
+**/*.log
