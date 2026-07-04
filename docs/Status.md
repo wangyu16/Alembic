@@ -712,9 +712,15 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
   working with no worker); wired both `.md.html` export routes
   (`mdHtmlResponse` async) + slides generation (injected into `package-ops`
   so it stays free of the worker/Node-only dep). `.env.example` documents
-  the vars; `pnpm dev:worker` runs it. **Remaining (d): operator** — deploy
-  the worker container (Fly.io/Railway-class) + set `WORKER_URL` on Vercel;
-  until then the app runs on the fallback. `.md.pdf` retirement is a no-op.
+  the vars; `pnpm dev:worker` runs it. **(d) DEPLOYED to Fly.io.**
+  Worker live at `https://alembic-worker.fly.dev` (app `alembic-worker`,
+  region `iad`, 1× shared-cpu-1x/512MB, `/health` check green); Dockerfile +
+  fly.toml at `apps/worker/`. `WORKER_TOKEN` set as a Fly secret; verified
+  end to end (health, 401 without token, authorized `/generate` → live
+  823KB `.md.html`). **Last operator step: set `WORKER_URL=https://alembic-worker.fly.dev`
+  + the matching `WORKER_TOKEN` in Vercel env, then redeploy the web app** —
+  after that, generated files are live-editable instead of the fallback.
+  `.md.pdf` retirement is a no-op.
 - **Generator adoption — Step 2 BLOCKED ON A DECISION (owner).**  ~~superseded above~~ Swapping
   `renderer/mdhtml.ts` + `renderer/slides.ts` to call `buildMdHtml` /
   `buildSlidesHtml` / `buildPagedHtml` surfaced two real issues: (a) the
