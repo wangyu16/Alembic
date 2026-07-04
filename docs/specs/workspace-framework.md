@@ -51,6 +51,20 @@ The review queue and reconcile banner are the highest-priority re-lands
 
 ## 3. Deep alignment (next, with the document contract)
 
+**E1 mounting strategy (investigated 2026-07-04):** the orz-family
+packages are CLI-first (no library exports) — correctly so, because *the
+file carries the editor*. Their in-file runtimes currently save via the
+File System Access API (Chromium) with a download fallback; **no host
+hook exists yet**. Decision: define a tiny versioned **host-save
+postMessage protocol** implemented upstream in the three runtimes (the
+owner controls orz-mdhtml/orz-slides/orz-paged): when the file detects a
+host (`window.parent` handshake), its Save action posts
+`{ type: "orz-host-save", source, html }` to the parent instead of
+hitting the filesystem. Alembic's `EditorModule` per format then simply
+mounts the file in a sandboxed iframe and listens — saves return through
+`applyEditorEdit`. Upstream work item for the sibling repos; the Alembic
+side is a thin editor-kit wrapper.
+
 - Study guide becomes one `.md.html` file per chapter with its **in-file
   editor hosted** in the editor pane (orz-mdhtml via the `editor-kit`
   seam); the block editor is the interim surface until then.

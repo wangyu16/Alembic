@@ -653,8 +653,29 @@ function FileEditor({
   const [dirty, setDirty] = useState(false);
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  // The minimal .md editor (document-model.md §5): source with a
+  // rendered-view toggle. Preview renders on switch, not per keystroke.
+  const [mode, setMode] = useState<"source" | "preview">("source");
+  const [previewHtml, setPreviewHtml] = useState("");
   useUnsavedGuard(dirty);
   useReportDirty(dirty, onDirty);
+
+  const showPreview = () => {
+    setMode("preview");
+    void (async () => {
+      try {
+        const res = await fetch("/api/preview", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ source: text, heading: label }),
+        });
+        const data = (await res.json()) as { html?: string };
+        setPreviewHtml(data.html ?? "");
+      } catch {
+        setPreviewHtml("");
+      }
+    })();
+  };
 
   const save = () => {
     setError(null);
@@ -666,11 +687,27 @@ function FileEditor({
   };
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex h-full flex-col gap-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="font-serif text-lg text-ink">{label}</h2>
         <div className="flex flex-wrap items-center gap-2">
           {dirty && <span className="text-xs text-warn">Unsaved</span>}
+          <div className="flex items-center rounded-lg border border-edge p-0.5 text-xs">
+            <button
+              onClick={() => setMode("source")}
+              aria-pressed={mode === "source"}
+              className={`rounded-md px-2 py-1 ${mode === "source" ? "bg-elevated text-ink" : "text-muted hover:text-ink"}`}
+            >
+              Source
+            </button>
+            <button
+              onClick={showPreview}
+              aria-pressed={mode === "preview"}
+              className={`rounded-md px-2 py-1 ${mode === "preview" ? "bg-elevated text-ink" : "text-muted hover:text-ink"}`}
+            >
+              Preview
+            </button>
+          </div>
           <AskAI packageId={packageId} path={file.path} repo={file.repo} current={text} />
           <button onClick={save} disabled={pending || !dirty} className="btn btn-primary btn-sm">
             {pending ? "Saving…" : "Save"}
@@ -678,15 +715,23 @@ function FileEditor({
         </div>
       </div>
       <p className="max-w-prose text-xs text-faint">{help}</p>
-      <textarea
-        value={text}
-        onChange={(e) => {
-          setText(e.target.value);
-          setDirty(true);
-        }}
-        placeholder={`# ${label}\n\nWrite in Markdown…`}
-        className="field min-h-[55vh] w-full resize-y font-mono text-sm"
-      />
+      {mode === "source" ? (
+        <textarea
+          value={text}
+          onChange={(e) => {
+            setText(e.target.value);
+            setDirty(true);
+          }}
+          placeholder={`# ${label}\n\nWrite in Markdown…`}
+          className="field min-h-[55vh] w-full flex-1 resize-y font-mono text-sm"
+        />
+      ) : (
+        <iframe
+          title={`${label} preview`}
+          srcDoc={previewHtml}
+          className="min-h-[55vh] w-full flex-1 rounded-xl border border-[var(--border)] bg-[var(--bg)]"
+        />
+      )}
       {error && <p className="text-sm text-danger">{error}</p>}
     </div>
   );
