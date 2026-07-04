@@ -687,6 +687,21 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
 ## Log
 
 ### 2026-07-04
+- **Upstream library entries DONE (pushed, NOT published).** Each orz-family
+  package now exports an in-process generator so Alembic can build files
+  without shelling to the CLI: `buildMdHtml` (orz-mdhtml `98835ef`),
+  `buildSlidesHtml` (orz-slides `a7c9978`), `buildPagedHtml` (orz-paged
+  `79566ab`). All: single shared inline-composition path (CLI `--inline`
+  output byte-identical; CDN path unchanged), `exports`+`types`, assets
+  resolved via `import.meta.url` (npm-installable), builds + suites green
+  (slides 54, paged 132). **Pending operator action: bump + publish** (no
+  version bumps made) before Alembic can consume from npm. **Adoption note
+  — source-island markers differ per format** (mdhtml/paged
+  `<script type="text/markdown" id="orz-src">`, slides
+  `<script type="text/orz-slides" id="orz-deck">`); verify
+  `@alembic/carriers` `extractSource` handles all three as the first
+  adoption step. paged output is fully deterministic (no per-doc id);
+  mdhtml/slides carry a random docId (IndexedDB save handle).
 - **Hosted-chrome logo-hide REVERTED (owner).** The upstream attempt to
   hide the orz brand on host handshake (orz-mdhtml/slides/paged) was
   reverted and pushed (revert commits `9d495d1` / `050cfbd` / `d2a5e9d`);
