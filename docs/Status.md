@@ -694,7 +694,23 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
   `#orz-carrier` and legacy `#md-source` (`9ca4897`; +4 tests incl. the
   literal-backslash edge case). Alembic can now round-trip source out of
   upstream-generated files.
-- **Generator adoption — Step 2 BLOCKED ON A DECISION (owner).** Swapping
+- **Generator adoption — Step 2 UNDERWAY (worker tier, owner-chosen).**
+  Durable core landed: **`@alembic/generators`** (`db33db6`) —
+  `generateSelfContained({kind, markdown, title, theme})` wraps the
+  published upstream libs, returns a live-editable file (in-file editor +
+  host-save); Node-only (reads package assets), so it runs in the worker,
+  never Vercel serverless. Verified installed library entries resolve
+  assets from `node_modules`; source round-trips out via `@alembic/carriers`
+  (Step 1) modulo the tools' `\n` padding (slides/paged pad, md doesn't —
+  consumers `.trim()` before hashing; a future upstream consistency fix
+  would make it byte-exact). **Remaining:** (a) worker HTTP endpoint
+  (`POST /generate` → `@alembic/generators`) + a `generate-file` job
+  contract; (b) web worker-client seam (`WORKER_URL` + inline dead-doc
+  builder as fallback so nothing breaks when the worker is down); (c) wire
+  `export.ts` + inject the slides generator into `package-ops/slides.ts`;
+  (d) operator: deploy the worker + set `WORKER_URL`. `.md.pdf` retirement
+  is a no-op (no such code exists).
+- **Generator adoption — Step 2 BLOCKED ON A DECISION (owner).**  ~~superseded above~~ Swapping
   `renderer/mdhtml.ts` + `renderer/slides.ts` to call `buildMdHtml` /
   `buildSlidesHtml` / `buildPagedHtml` surfaced two real issues: (a) the
   upstream libs are **Node-only and read package assets at runtime**
