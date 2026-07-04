@@ -50,15 +50,39 @@ export default async function PortalPage() {
       {itemListLd && (
         <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: itemListLd }} />
       )}
-      <header>
-        <h1 className="font-serif text-3xl tracking-tight text-ink">Discover</h1>
-        <p className="mt-1 text-muted">
-          Open educational resources shared by educators on Alembic.
+      <header className="flex flex-col gap-3">
+        <h1 className="font-serif text-4xl leading-[1.1] tracking-tight text-ink">
+          <span aria-hidden className="mr-3 font-mono text-[0.7em] text-faint select-none">
+            #
+          </span>
+          Discover.
+        </h1>
+        <p className="max-w-2xl text-lg leading-relaxed text-muted text-pretty">
+          Open educational resources shared by educators — visit them, adapt
+          them, make them fit your students.
         </p>
       </header>
 
+      {/* Two search scopes (document-model.md): whole courses today; element
+          search (individual figures, plots, explanations) arrives with the
+          registration index. */}
+      <div className="flex items-center gap-2 text-sm">
+        <span className="rounded-full bg-[var(--accent-soft)] px-3 py-1 font-medium text-[var(--accent)]">
+          Courses
+        </span>
+        <span
+          className="rounded-full border border-edge px-3 py-1 text-faint"
+          title="Search individual shared elements — figures, plots, explanations — coming soon"
+        >
+          Elements <span className="text-[0.7rem]">· soon</span>
+        </span>
+      </div>
+
       {registrations.length === 0 ? (
-        <p className="text-muted">No packages have been listed yet.</p>
+        <p className="text-muted">
+          No courses have been listed yet — be the first: publish a package,
+          then choose <span className="text-ink">List publicly</span>.
+        </p>
       ) : (
         <PortalBrowser registrations={registrations} />
       )}

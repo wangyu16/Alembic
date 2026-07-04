@@ -76,7 +76,7 @@ export default function Home() {
           Read the guide
         </Link>
         <Link href="/portal" className="btn btn-ghost">
-          Browse the index
+          Browse Discover
         </Link>
       </div>
 

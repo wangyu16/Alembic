@@ -55,9 +55,14 @@ export default async function WorkspacePage() {
 
   return (
     <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-10 px-6 py-12">
-      <header>
-        <h1 className="font-serif text-3xl tracking-tight text-ink">Workspace</h1>
-        <p className="mt-1 text-muted">
+      <header className="flex flex-col gap-3">
+        <h1 className="font-serif text-4xl leading-[1.1] tracking-tight text-ink">
+          <span aria-hidden className="mr-3 font-mono text-[0.7em] text-faint select-none">
+            #
+          </span>
+          Workspace.
+        </h1>
+        <p className="max-w-2xl text-lg leading-relaxed text-muted">
           Hi {name} — your course packages live here.
         </p>
       </header>

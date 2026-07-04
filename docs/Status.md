@@ -687,6 +687,15 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
 ## Log
 
 ### 2026-07-04
+- **orz-markdown upgraded 1.0.0 → 1.3.1** (built-in editor, copy-as-source,
+  themes) — all 9 test suites green. `rendererVersion()` no longer
+  hardcoded: derived from the renderer's dependency declaration, so the
+  homepage footer and generated-artifact stamps update with future bumps.
+  **Discover + Workspace aligned to the homepage/guide identity** (`#`
+  serif headline, copper accents); Discover gains the **two-scope framing**
+  from document-model.md — Courses (live) · Elements (disabled "soon"
+  chip) — plus a better empty state; homepage button renamed "Browse
+  Discover". Next: the workspace overhaul (the big one).
 - **Studio removed; `/guide` added (owner decision).** `/studio` and its
   studio-only `/api/render/md-html` route are deleted — a self-contained
   file is itself the local anonymous editor. In its place, **`/guide`**: a
