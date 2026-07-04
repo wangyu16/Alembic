@@ -687,6 +687,25 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
 ## Log
 
 ### 2026-07-04
+- **Roadmap review pass (owner request): two adversarial audits, 25
+  coherence findings + 9 code-gap areas, all resolved.** Roadmap gains:
+  explicit R1 code-touchpoint list (layers.ts, validate.ts,
+  reconcile/editor-edit carrier extraction, `paged` kind + plain-media
+  fallback, hardcoded-path cleanup), an **E3-gated-on-R1-in-code** rule
+  (no `.md.html` study guides before schema v2), a T1 notice taxonomy,
+  **Flexibility guarantees** for modules T/I/S (interface-committed,
+  implementation-open; dependencies one-way), and **Approval semantics**
+  (registration=Tier-1 auto; "share this"=the Tier-3 act; `current/`
+  locked non-discoverable at registration). Spec fixes: registration field
+  renamed **`space`** (v2: space=layer; kills the terminology collision);
+  reference-vs-copy lineage rule; block-anchor forms disambiguated
+  (`#blk-` view vs `/blocks/` raw); assessment guide marked public-safe
+  by definition (keys always `private`) with adapt-preview exclusion;
+  migration additions (additive `unitTerm`/`currentTerm`; `privateRepo`
+  nullable, created on demand); stale open questions in
+  self-contained-editing §6 closed as DECIDED; **supersession banners** on
+  package-contract-v1 and carriers-and-assets. Package-layout §8 ruled
+  (all four per recommendation) same day.
 - **New module-based [Roadmap.md](Roadmap.md) (owner-directed).** The four
   owner-named elements → modules with one-owner seams: **R** registry/
   document contract v2, **E** editing experience (**first**), **P**

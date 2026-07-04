@@ -1,13 +1,15 @@
 # Package layout — what a full course package looks like on disk
 
-**Status: DRAFT for owner review (2026-07-04).** The on-disk companion to
-contract v2 (Roadmap **R1**): folder structure, naming rules, and metadata,
-specified precisely enough that a package **created entirely outside
-Alembic** — by hand, by an AI agent, or by another tool — and pushed to
-GitHub **registers automatically and completely**. Grounded in
-[document-model.md](document-model.md) (locked) and the v1 layout
+**Status: direction locked (owner-reviewed 2026-07-04).** The on-disk
+companion to contract v2 (Roadmap **R0/R1**): folder structure, naming
+rules, and metadata, specified precisely enough that a package **created
+entirely outside Alembic** — by hand, by an AI agent, or by another tool —
+and pushed to GitHub **registers automatically and completely**. Grounded
+in [document-model.md](document-model.md) and the v1 layout
 ([package-contract-v1.md](package-contract-v1.md)); v1 packages remain
-readable, migration is explicit. Open items marked **[open]**.
+readable, migration is explicit. The four §8 items were ruled by the owner
+same-day (all per recommendation: `assets/`, `private/`,
+`current/archive/<term>/` + `currentTerm`, template repository ships).
 
 ## 1. The repositories
 
@@ -33,7 +35,7 @@ assessment-support/
   <chapter>.md                      # assessment guide (methods, plain md)
 practice/
   <chapter>.md.html                 # example & practice questions
-assets/                             # the shared-elements space [open: name]
+assets/                             # the shared-elements space (decided)
   **/*                              # any depth; kind by extension
 current/                            # this-term space
   **/*                              # newest set, shown on the site
@@ -55,8 +57,8 @@ private/                            # the whole repo is the Private space
 ```
 
 Nothing in the private repository is ever registered as discoverable,
-served publicly, or included in adaptation. **[open]** v1 used a
-`private-instructor/` root — keep that name or simplify to `private/`?
+served publicly, or included in adaptation. (Decided: `private/`; v1's
+`private-instructor/` maps to it in migration.)
 
 ## 4. Naming rules
 
@@ -118,22 +120,29 @@ manifest stays small enough to write by hand.
 
 v1 packages (`schemaVersion: 1`, block-based `study-guide/<chapter>.md`,
 `materials/` assets, `objectives/`) remain readable forever. Migration to
-v2 is an explicit, logged operation: chapter `.md` → `.md.html` (source
-embedded), `materials/` → the assets space, `objectives/` content folds
-into concept maps. **[open]** whether Alembic offers one-click migration at
-first open or a manual "Upgrade package" action (recommended: manual with
-preview — a Tier-3-style deliberate act).
+v2 is an explicit, logged operation — a manual "Upgrade package" action
+with preview (a Tier-3-style deliberate act, per recommendation):
 
-## 8. Open items (owner)
+- chapter `.md` → `.md.html` (source embedded);
+- `materials/` → `assets/`; `private-instructor/` → `private/` (private
+  repo root); `objectives/` content folds into concept maps;
+- **additive manifest fields**: `unitTerm` (absent → `"chapter"`) and
+  `currentTerm` (absent → no active cycle; an empty `current/` space is
+  created on migration);
+- **`privateRepo` stays nullable**: a public-only package is permanently
+  valid. The companion private repo is created *on demand* — at the first
+  save of private content (guided step), never as an empty repo at
+  graduation. Private-shaped content appearing in the *public* repo is a
+  quarantine, exactly as in v1.
 
-1. **Space folder name:** `assets/` (clear for external creators) vs
-   keeping v1's `materials/` (no rename in migration). Recommendation:
-   `assets/` — the spec's audience is now people writing packages by hand.
-2. **Private repo root:** `private/` vs v1's `private-instructor/`.
-   Recommendation: `private/`.
-3. **`current/` archiving convention:** `current/archive/<term>/` as above,
-   with `currentTerm` in the manifest labeling the active cycle — confirm.
-4. **Template repository:** ship a `create-alembic-package` template repo
-   (README + skeleton + one example chapter) so external creation starts
-   from a working example — recommended, cheap, doubles as the spec's
-   executable documentation.
+## 8. Decisions (owner-ruled 2026-07-04, all per recommendation)
+
+1. **Space folder name: `assets/`** — the spec's audience is people writing
+   packages by hand; v1's `materials/` maps to it in migration.
+2. **Private repo root: `private/`** (v1's `private-instructor/` maps in
+   migration).
+3. **`current/` archiving: `current/archive/<term>/`**, with `currentTerm`
+   in the manifest labeling the active cycle.
+4. **Template repository ships** (`create-alembic-package`: README +
+   skeleton + one example chapter) — the spec's executable documentation;
+   an R0 deliverable.

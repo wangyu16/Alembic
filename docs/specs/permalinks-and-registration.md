@@ -20,7 +20,7 @@ record is a **rebuildable projection** (repos stay the source of truth):
 |---|---|
 | `docId` | minted at first registration; immutable; survives rename/move/repo transfer |
 | package, repo, path | current location (updated on rename/move) |
-| layer / space | study-guide · slides · concept-map · assessment-guide · practice · assets · current · private |
+| `space` | study-guide · slides · concepts · assessment-support · practice · assets · current · metadata · provenance · private — in contract v2 the space IS the layer (one term, one meaning; the v1 layer names map in migration: `materials`→`assets`, `private-instructor`→`private`) |
 | kind + format version | from the carrier kind registry (`md`, `slides`, `paged`, `ketcher`, `plot`, image, audio, plain md, …) |
 | permalink class | **document** (final view) or **object** (insertable) |
 | source hash | for carrier formats: hash of embedded markdown source |
@@ -49,8 +49,16 @@ alembic.orz.how/p/{packageId}@{snapshot}  package at a named snapshot
 - `{snapshot}` is the package-level named version ("fall-2026", a Git tag).
   A file permalink may also pin via snapshot: `/d/{docId}@{snapshot}` —
   "this figure, as taught in Fall 2026."
-- Block anchors (optional, documents only): `/d/{docId}#blk-…` for
-  fine-grained citation into a rendered document.
+- Block anchors, two distinct forms (optional, documents only):
+  `/d/{docId}#blk-…` — a *view* anchor (scrolls the rendered document;
+  client-side); `/d/{docId}/blocks/{blockId}` — a *raw fragment* endpoint
+  (serves the block's markdown source, `text/markdown`, for includes).
+- **Version vocabulary (one sentence each):** every save that changes
+  content adds a *dated history entry*; the entry's identity is its
+  *content hash* (the `@{version}` pin; identical content never
+  duplicates); a `changeKind` tag + note attaches to a history entry when
+  the file is shared/referenced; *named* versions exist only at package
+  level (snapshots).
 
 ## 3. Resolution (layered; no platform lock-in)
 
@@ -116,6 +124,11 @@ report→correct→notify and revise→fork→choose loops:
 - Fork lineage: a revision by a non-owner creates a new file (new docId)
   with `adapted-from` provenance; both versions coexist and are separately
   discoverable.
+- **Reference vs copy (review resolution):** inserting by permalink is a
+  *reference* — no new docId, recorded only in the insertion registry.
+  Copying a file into one's own package is an *adaptation* — new docId +
+  file-level `adapted-from`. Whole-package forks set package-level lineage
+  which files inherit.
 
 ## 6. Element search (Discover, second scope)
 

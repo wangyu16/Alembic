@@ -106,16 +106,19 @@ mechanism generalizes; permalinks are no longer an asset-only feature.
   with what functions — the detailed per-type descriptions. This is the
   next most important set of questions and blocks the document contract's
   schema. The owner asked to be reminded to continue with these.
-- Study-guide source of record: does the chapter stay a `.md` file with
-  `.md.html` generated from it, or become `.md.html`-native with the source
-  extracted on registration?
-- Fate of the current studio-shell block editor (`/workspace/[id]/edit`):
-  transitional until the plug-in editors land, or retired with Studio?
-- `.md.pdf` vs `.paged.html`: does `.paged.html` (+ browser print-to-PDF)
-  replace the `.md.pdf` export target?
+- ~~Study-guide source of record~~ **DECIDED (2026-07-04,
+  [document-model.md](document-model.md))**: `.md.html`-native — the
+  chapter study guide IS one `.md.html` file; registration extracts and
+  hashes the embedded source.
+- ~~Fate of the studio-shell block editor~~ **DECIDED**: it is the interim
+  surface; retires at parity when the hosted in-file editor lands
+  (Roadmap E3).
+- ~~`.md.pdf` vs `.paged.html`~~ **DECIDED**: `.paged.html` (+ browser
+  print-to-PDF) replaces the `.md.pdf` export target (see goal.md).
 - Upload policy vs the trial-storage decision (trial packages are text-only
   in Postgres; binary upload gated to published packages) — how uploads of
   self-contained HTML files (text, but potentially large) are classified.
+  *(Still open; owner to rule when Module E4 reaches upload limits.)*
 
 ## 7. Permalink mechanism (proposal — recommended, pending owner approval)
 

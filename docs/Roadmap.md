@@ -54,13 +54,28 @@ workspace, or upload to GitHub source, all registered correctly."*
   naming rules, manifest, so a package authored entirely outside Alembic
   registers automatically on adoption (+ a template repository as
   executable documentation).
-- **R1. Contract v2** (`package-contract`): registration record
-  (docId, path/layer/space, kind, format version, source hash, provenance
-  origin, license, description/alt-text, `discoverable`, permalink class);
-  the three spaces (`assets` / `current` / `private`) and per-chapter file
-  set; **chapter study guide = one `.md.html` file** (source embedded);
-  block IDs demoted to optional anchors. Explicit v1→v2 migration; v1
-  packages stay readable.
+- **R1. Contract v2** (`package-contract` + write paths): registration
+  record (docId, path, **space**, kind, format version, source hash,
+  provenance origin, license, description/alt-text, `discoverable`,
+  permalink class, per-version `changeKind`); the v2 **layer set** — in v2,
+  layers and spaces converge: `study-guide` / `slides` / `practice` /
+  `concepts` / `assessment-support` / `assets` (renames `materials`) /
+  `current` / `metadata` / `provenance` public, `private` (renames
+  `private-instructor`, becomes the private-repo root); **chapter study
+  guide = one `.md.html` file** (source embedded). Block IDs: *malformed or
+  duplicate* IDs still reject a save; *missing* IDs are now legal (anchors
+  are optional). Adaptation lineage: whole-package fork sets package-level
+  `adaptedFrom` (files inherit); copying an individual file sets file-level
+  lineage; permalink *reference* inserts set none (no new ID).
+  **Known code touchpoints** (from the 2026-07-04 code audit): `layers.ts`
+  allowlist + repo split; `validate.ts` carrier check (`materials/` →
+  `assets/`); `reconcile.ts` + `editor-edit.ts` must extract carrier source
+  for `.md.html` (today they only parse `study-guide/*.md`); carriers
+  registry gains the `paged` kind **and a plain-media fallback** (`.png`,
+  `.jpg`, `.pdf`, `.mp3`, … register as generic media assets instead of
+  failing classification); hardcoded `private-instructor/` paths in
+  adaptation/assessments. Explicit v1→v2 migration; v1 packages stay
+  readable.
 - **R2. Registry projection**: `documents` table (RLS), rebuildable from
   repos; registration hooks in all three doors — packageOps create/save
   (in place), the upload path, and `reconcilePublicRepo` (direct GitHub
@@ -125,15 +140,20 @@ port the old panels.*
 - **T1. The Inbox** (one surface, rule 5): Tier-2 AI proposals,
   element notices (P3), suggest-backs, and "changed outside Alembic"
   reconcile reports — each an item with preview/diff + educator-language
-  actions. Undoable Tier-1 log lives here too.
+  actions. Undoable Tier-1 log lives here too. **Notice taxonomy for
+  external changes:** content change to a discoverable/referenced file →
+  Inbox item; invariant violation → publish-blocking quarantine notice;
+  valid rename/move → silent re-registration; delete → tombstone (silent
+  unless referenced).
 - **T2. File history**: per-file dated version list + restore, in the
   file's context (replaces the old per-chapter history panel).
 - **T3. Checks as status, not panels**: accessibility/reference/ID checks
   run at registration and publish gates; surfaced as per-file badges +
   fix-with-AI Inbox items (replaces the a11y panel).
-- **T4. Assessments & planning surfaces**: re-designed homes — assessment
-  guide is already a category; blueprints/templates and concept-map
-  planning return as category-scoped tools, not side panels.
+- **T4. Assessments & planning surfaces**: re-designed homes — the
+  assessment-guide *file* is already editable in its category (that stays
+  the interim); richer blueprint/template and concept-map planning tools
+  return later as category-scoped surfaces, not side panels.
 - *Definition of done:* every parked feature from workspace-framework.md
   §2 is reachable again, through Inbox/badges/categories — zero legacy
   panel layouts.
@@ -189,7 +209,48 @@ now →   E1 E2 ──────────── E3 E4 E5        (editing ex
 - **Start together:** E1/E2 (pure seam work against existing files) and
   R1/R2 (contract v2) — E3 needs R1, so the contract slice is pulled
   forward rather than blocking editing.
+- **E3 waits for R1 in code, not just on paper** (code-audit flag): until
+  contract v2 is deployed, the editor must not write `.md.html` into
+  `study-guide/` — v1 validation would reject or, worse, skip it. Gate the
+  format switchover on `PACKAGE_SCHEMA_VERSION >= 2`.
 - P needs R2; T1 needs P3's item shapes (design them together); S can
-  start its IA/design anytime, ships after P1.
+  start its IA/design anytime, ships after P1 (note: `course-site.ts`
+  types carry no slides/practice/current yet — that extension is S1
+  work).
 - Each lands with tests + Status.md updates; durable logic first, thin
   client last (unchanged discipline).
+
+## Flexibility guarantees (modules without final plans)
+
+T, I, and S are **interface-committed, implementation-open** — they can be
+redesigned wholesale without touching R/E/P:
+
+- **T** commits only to the *Inbox item contract* (kind + summary +
+  preview + actions; versioned and additive per forward-compatibility).
+  Producers (AI, P3 notices, reconcile, suggest-back) target that contract
+  and never a UI; the Inbox UI owns nothing else.
+- **I** commits only to the seams (`AIProvider`, change tiers,
+  entitlements, worker boundary). No module may call a model directly or
+  assume any particular AI surface exists.
+- **S** commits only to *reading the registry* (what is public + file
+  metadata). No module may depend on site structure; the site may be
+  rebuilt at any time from registry + repos alone.
+- Corollary: nothing in R/E/P may import from, or special-case, T/I/S
+  internals. Dependencies point one way — flexible modules consume stable
+  ones, never the reverse.
+
+## Approval semantics (registration vs sharing — review resolution)
+
+- **Registration is Tier-1**: automatic on any door, undoable, mints the
+  docId. It changes nothing public.
+- **"Share this" (discoverability) is the Tier-3 act itself**: one click
+  *is* the explicit educator decision (Tier 3 means a deliberate human
+  choice, not a heavyweight form). It stays disabled until required
+  metadata (description/alt text) exists.
+- **Publishing to the student site** remains Tier-3 at package scope
+  (existing publish flow). `current/` files register with
+  `discoverable: false` **locked at registration time** (policy, not a
+  search-time filter) — moving a file to `assets/` and choosing "share
+  this" is the only route to element discovery.
+- `changeKind` tags are educator-supplied only; Tier-1 auto-applies never
+  mint public version entries.

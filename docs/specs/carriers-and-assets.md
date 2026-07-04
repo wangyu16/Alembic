@@ -1,5 +1,15 @@
 # Carriers & Assets
 
+> **Supersession note (2026-07-04):** the carrier *codec* and *kind
+> registry* here remain authoritative. Superseded by newer specs: asset
+> **permalinks** (§5–6 raw-GitHub link forms, pin-at-publish) →
+> [permalinks-and-registration.md](permalinks-and-registration.md)
+> (ID-based `/d/{docId}`, **pin-at-insert** for object references); the
+> `materials/` layer name → `assets/` in contract v2
+> ([package-layout.md](package-layout.md)); per-kind *editors* are hosted
+> in-file editors per [self-contained-editing.md](self-contained-editing.md),
+> registered kinds — not Alembic-built surfaces.
+
 **Status:** design spec (authoritative for M11–M13). Aligns with
 [goal.md](../goal.md), the [package contract](package-contract-v1.md),
 [course structure](course-structure.md), and the

@@ -1,5 +1,15 @@
 # Alembic Package Contract — v1
 
+> **Supersession note (2026-07-04):** v1 remains the contract the *code
+> implements today*, and this document stays normative for it. The **v2
+> direction** is locked at the design level — see
+> [package-layout.md](package-layout.md) (on-disk layout: `assets/`,
+> `current/`, `private/`, `.md.html` study guides),
+> [document-model.md](document-model.md), and Roadmap **R1** (layer-set
+> changes, registration records, optional block IDs). Where this document
+> and those disagree, they describe v2; nothing here changes until the
+> explicit v1→v2 migration ships.
+
 **Status:** Normative for v0.1 and later, until superseded by an explicit migration.
 **Audience:** Contributors. This is an engineering spec, not educator-facing text.
 **Source of truth for implementation:** [`packages/package-contract/src/`](../../packages/package-contract/src/) (pure TypeScript + Zod, no IO) and [`packages/github-bridge/src/`](../../packages/github-bridge/src/). Where this document and the code disagree, the code is current truth and the divergence is flagged here as a **Spec note**.
