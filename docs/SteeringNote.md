@@ -128,7 +128,7 @@ document taxonomy, §4).
 ## 4. Document taxonomy (delivered 2026-07-04 → specs/document-model.md)
 
 The owner delivered the taxonomy in
-[userinputs/userguide.md](userinputs/userguide.md); it is structured in
+[UserInputs/userguide.md](UserInputs/userguide.md); it is structured in
 [specs/document-model.md](specs/document-model.md) (DRAFT, open questions
 marked). Highlights: course concept map + per-chapter {concept map, study
 guide `.md.html` (source of truth), slides, assessment guide, practice

@@ -1,7 +1,7 @@
 # Document model — package structure, taxonomy, versioning, discovery
 
 **Status: direction locked (owner-reviewed 2026-07-04).** Synthesized from
-the owner's [userinputs/userguide.md](../userinputs/userguide.md),
+the owner's [UserInputs/userguide.md](../UserInputs/userguide.md),
 [SteeringNote.md §3b](../SteeringNote.md), and the 2026-07 direction
 ([self-contained-editing.md](self-contained-editing.md)); the four open
 questions were ruled by the owner same-day (assessment guide public +
