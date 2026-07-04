@@ -188,6 +188,11 @@ export default function GuidePage() {
           documents. Each one opens in any browser — to read, present, or
           print — and has an editor built into the file itself. Download a
           study guide, and it stays editable forever, with nothing to install.
+          These formats come from the orz-markdown family — see{" "}
+          <a href="https://markdown.orz.how" target="_blank" rel="noreferrer" className="link">
+            markdown.orz.how
+          </a>{" "}
+          for the features and the idea behind self-contained files.
         </>
       ),
     },
@@ -211,10 +216,12 @@ export default function GuidePage() {
         <>
           Each chapter centers on one study guide — a concise companion when
           you teach with a textbook, or textbook-grade detail when you
-          don&rsquo;t. Slides and practice questions derive from it and stay
-          traceable to it, so when the study guide changes, Alembic flags
-          what&rsquo;s out of date and you choose: regenerate, merge, or keep
-          your version.
+          don&rsquo;t. Call it what you like — lecture notes, handout, course
+          pages — the name doesn&rsquo;t matter: it&rsquo;s your course
+          content in one well-organized page with clear visual elements.
+          Slides and practice questions derive from it and stay traceable to
+          it, so when the study guide changes, Alembic flags what&rsquo;s out
+          of date and you choose: regenerate, merge, or keep your version.
         </>
       ),
     },
@@ -309,8 +316,12 @@ export default function GuidePage() {
             One last bit of magic: copy as source
           </h2>
           <p className="text-[0.95rem] leading-relaxed text-muted">
-            Every Alembic document is rendered by orz-markdown, which comes
-            with a unique trick: when you copy from someone&rsquo;s page, you
+            Every Alembic document is rendered by{" "}
+            <a href="https://markdown.orz.how" target="_blank" rel="noreferrer" className="link">
+              orz-markdown
+            </a>
+            , which comes with a unique trick: when you copy from
+            someone&rsquo;s page, you
             can copy the <em>markdown source</em> — not just the text but the
             rich formatting, equations, tables, and chemical structures —
             ready to paste straight into your own materials, with attribution
