@@ -19,14 +19,15 @@ const CATEGORIES: StudioCategory[] = [
   "slides",
   "assessment-guide",
   "practice",
-  "private",
   "assets",
+  "current",
+  "private",
 ];
 
 /**
- * New workspace editor shell (Phase 3) — parallel route to the classic editor at
- * /workspace/[packageId]. Three panes: chapters | 7-category rail | editor.
- * Built incrementally; the classic editor stays the default until parity.
+ * The workspace editor (2026-07 framework): three panes — chapters |
+ * category rail (document-model.md order) | editor. The classic editor is
+ * retired; /workspace/[packageId] redirects here.
  */
 export default async function EditShellPage({
   params,

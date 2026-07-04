@@ -687,6 +687,21 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
 ## Log
 
 ### 2026-07-04
+- **Workspace framework pass (owner brief):
+  [specs/workspace-framework.md](specs/workspace-framework.md).** The
+  three-pane shell is now *the* editor: **classic editor removed** (~2.2k
+  lines; `/workspace/[id]` redirects to `./edit`; `PublishingState` moved
+  into publish-header). Site header full width. **Categories = the document
+  model** (Concept map · Study guide · Slides · Assessment guide · Practice
+  · Assets · Current (new space, explanatory view) · Private). **Uploads
+  accepted** in Study guide (`.md`/`.md.html`, block-ID reconciling merge)
+  and Assets (carrier files) via the existing lossless import pipeline —
+  origin-parity door #2 in the UI. Classic-only side panels (review queue,
+  a11y, assessments, adapt, planning, history, reconcile banner) are
+  **consciously parked** — durable actions untouched; re-land per the new
+  design (review queue + reconcile banner first). Deep alignment (hosted
+  in-file editors, real file spaces, registration) comes with the document
+  contract.
 - **orz-markdown upgraded 1.0.0 → 1.3.1** (built-in editor, copy-as-source,
   themes) — all 9 test suites green. `rendererVersion()` no longer
   hardcoded: derived from the renderer's dependency declaration, so the

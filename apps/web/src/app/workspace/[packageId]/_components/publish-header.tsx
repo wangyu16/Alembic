@@ -2,8 +2,27 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState, useTransition } from "react";
-import type { PublishingState } from "../editor";
 import { publishToGitHubAction } from "../github-actions";
+
+export interface PackageVersion {
+  sha: string;
+  message: string;
+  date: string;
+}
+
+export interface PublishingState {
+  configured: boolean;
+  connected: boolean;
+  published: boolean;
+  publicRepoUrl: string | null;
+  installUrl: string | null;
+  versions: PackageVersion[];
+  registered: boolean;
+  /** The live public page URL once the website exists (gh-pages detected). */
+  siteUrl: string | null;
+  /** Returned from the GitHub-App install (?publish=1): auto-resume publishing. */
+  autoPublish?: boolean;
+}
 import { publishSiteAction } from "../site-actions";
 import { registerPackageAction, unregisterPackageAction } from "../portal-actions";
 

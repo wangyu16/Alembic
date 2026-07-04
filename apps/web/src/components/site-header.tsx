@@ -48,7 +48,7 @@ export async function SiteHeader() {
 
   return (
     <header className="border-b border-edge/70 backdrop-blur supports-[backdrop-filter]:bg-canvas/70 sticky top-0 z-10">
-      <nav className="mx-auto flex w-full max-w-5xl items-center justify-between gap-3 px-4 py-3.5 sm:px-6">
+      <nav className="flex w-full items-center justify-between gap-3 px-4 py-3.5 sm:px-6">
         <Link href="/" className="flex shrink-0 items-center gap-2.5" title="Alembic — part of the orz family">
           {/* orz family logo (static SVG asset) */}
           {/* eslint-disable-next-line @next/next/no-img-element */}

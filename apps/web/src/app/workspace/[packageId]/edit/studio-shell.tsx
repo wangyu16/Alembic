@@ -15,6 +15,7 @@ import {
   saveCourseDescriptionAction,
 } from "../metadata-actions";
 import { saveFileAction, proposeEditAction } from "./edit-actions";
+import { importFileAction } from "../import-actions";
 import { useUnsavedGuard } from "@/lib/use-unsaved-guard";
 import type { EditorHandle } from "@alembic/editor-kit";
 import { ModuleMount } from "@/lib/editor-modules/module-mount";
@@ -26,8 +27,7 @@ import {
 import { generateSlidesAction } from "../slides-actions";
 import { generateWorksheetAction } from "../ai-actions";
 import { ManageDialog } from "../chapter-nav";
-import { PublishHeader } from "../_components/publish-header";
-import type { PublishingState } from "../editor";
+import { PublishHeader, type PublishingState } from "../_components/publish-header";
 
 interface AssetItem {
   path: string;
@@ -42,23 +42,27 @@ interface ArtifactItem {
   stale: boolean;
 }
 
+/* Categories follow the document model (docs/specs/document-model.md):
+   per-chapter files 1–5, then the three file spaces. */
 export type StudioCategory =
   | "concept-map"
   | "content"
   | "slides"
   | "assessment-guide"
   | "practice"
-  | "private"
-  | "assets";
+  | "assets"
+  | "current"
+  | "private";
 
 const CATEGORY_LABELS: Record<StudioCategory, string> = {
-  "concept-map": "Concept map & objectives",
-  content: "Course content",
+  "concept-map": "Concept map",
+  content: "Study guide",
   slides: "Slides",
   "assessment-guide": "Assessment guide",
   practice: "Practice questions",
-  private: "Private materials",
   assets: "Assets",
+  current: "Current (this term)",
+  private: "Private",
 };
 
 const CATEGORY_ORDER: StudioCategory[] = [
@@ -67,8 +71,9 @@ const CATEGORY_ORDER: StudioCategory[] = [
   "slides",
   "assessment-guide",
   "practice",
-  "private",
   "assets",
+  "current",
+  "private",
 ];
 
 interface Chapter {
@@ -176,13 +181,6 @@ export function StudioShell({
             ← Workspace
           </Link>
           <h1 className="min-w-0 truncate font-serif text-xl tracking-tight text-ink">{title}</h1>
-          <Link
-            href={`/workspace/${packageId}`}
-            className="ml-1 text-xs text-faint hover:text-ink"
-            title="The current editor"
-          >
-            Classic editor
-          </Link>
         </div>
         <PublishHeader
           packageId={packageId}
@@ -259,7 +257,7 @@ export function StudioShell({
                   : "text-muted hover:bg-elevated hover:text-ink"
               }`}
             >
-              {cat === "content" ? forms.Singular + " content" : CATEGORY_LABELS[cat]}
+              {CATEGORY_LABELS[cat]}
             </Link>
           ))}
         </nav>
@@ -318,10 +316,10 @@ export function StudioShell({
               items={artifacts.filter((a) => a.kind === "worksheet")}
               blockIds={chapterBlockIds}
             />
+          ) : category === "current" ? (
+            <CurrentSpace />
           ) : (
             <CategoryPlaceholder
-              packageId={packageId}
-              category={category}
               label={CATEGORY_LABELS[category as StudioCategory]}
             />
           )}
@@ -524,9 +522,16 @@ function ContentEditor({
   return (
     <div className="flex h-full flex-col gap-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-sm text-muted">Course content — edit by section</h2>
+        <h2 className="text-sm text-muted">Study guide — edit by section</h2>
         <div className="flex flex-wrap items-center gap-2">
           {dirty && <span className="text-xs text-warn">Unsaved</span>}
+          <UploadControl
+            packageId={packageId}
+            activePath={path}
+            accept=".md,.md.html,.markdown,text/markdown,text/html"
+            label="Upload"
+            title="Upload a .md or .md.html file — sections merge into this chapter by ID (re-uploads update in place)"
+          />
           {blocks.length > 1 && (
             <button onClick={() => setAllCollapsed(!allCollapsed)} className="btn btn-ghost btn-sm">
               {allCollapsed ? "Expand all" : "Collapse all"}
@@ -807,13 +812,20 @@ function AssetsView({
     <div className="flex flex-col gap-3">
       <div className="flex items-center justify-between">
         <h2 className="font-serif text-lg text-ink">Assets</h2>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <button onClick={() => setEditing({ kind: "ketcher" })} className="btn btn-ghost btn-sm">
             + Structure
           </button>
           <button onClick={() => setEditing({ kind: "plot" })} className="btn btn-ghost btn-sm">
             + Plot
           </button>
+          <UploadControl
+            packageId={packageId}
+            activePath={activePath ?? ""}
+            accept=".ketcher.svg,.plot.svg,.svg,.md,.md.html"
+            label="Upload"
+            title="Upload a file Alembic (or an orz tool) wrote — structures and plots land in Assets"
+          />
         </div>
       </div>
       <p className="text-xs text-faint">
@@ -1056,25 +1068,101 @@ function ArtifactView({
   );
 }
 
-/* ── Other categories: route to the classic editor for now ───────────────── */
-function CategoryPlaceholder({
+/* ── Upload (origin parity): created, uploaded, or committed — all equal ──── */
+function UploadControl({
   packageId,
+  activePath,
+  accept,
   label,
+  title,
 }: {
   packageId: string;
-  category: StudioCategory;
+  activePath: string;
+  accept: string;
   label: string;
+  title: string;
 }) {
+  const router = useRouter();
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const onFile = async (file: File) => {
+    setBusy(true);
+    setNote(null);
+    setError(null);
+    try {
+      const content = await file.text();
+      const r = await importFileAction(packageId, file.name, content, activePath);
+      if (r.ok) {
+        setNote(r.message ?? "Uploaded.");
+        router.refresh();
+      } else setError(r.error ?? "Couldn't upload that file.");
+    } catch {
+      setError("Couldn't read that file.");
+    } finally {
+      setBusy(false);
+      if (inputRef.current) inputRef.current.value = "";
+    }
+  };
+
+  return (
+    <span className="inline-flex items-center gap-2">
+      <input
+        ref={inputRef}
+        type="file"
+        accept={accept}
+        className="hidden"
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f) void onFile(f);
+        }}
+      />
+      <button
+        type="button"
+        onClick={() => inputRef.current?.click()}
+        disabled={busy}
+        className="btn btn-ghost btn-sm"
+        title={title}
+      >
+        {busy ? "Uploading…" : `⇪ ${label}`}
+      </button>
+      {note && <span className="text-xs text-ok">{note}</span>}
+      {error && <span className="text-xs text-danger">{error}</span>}
+    </span>
+  );
+}
+
+/* ── The "Current" space: this teaching cycle (document-model.md row 7) ───── */
+function CurrentSpace() {
+  return (
+    <div className="flex h-full flex-col items-start gap-3">
+      <h2 className="font-serif text-lg text-ink">Current (this term)</h2>
+      <p className="max-w-prose text-sm text-muted">
+        A space for the current teaching cycle — this semester&rsquo;s
+        assignment list, completed exams with keys for student review, and
+        similar. The newest set appears on the course website; when a new
+        semester starts, the old set is archived. Not included when others
+        adapt your course.
+      </p>
+      <p className="max-w-prose text-xs text-faint">
+        Arrives with the document contract (file uploads and semester
+        archiving) — being built now.
+      </p>
+    </div>
+  );
+}
+
+/* ── Fallback for a category with nothing to show yet ─────────────────────── */
+function CategoryPlaceholder({ label }: { label: string }) {
   return (
     <div className="flex h-full flex-col items-start gap-3">
       <h2 className="font-serif text-lg text-ink">{label}</h2>
       <p className="max-w-prose text-sm text-muted">
-        This category is being migrated into the new editor. For now, manage it in
-        the classic editor — your content and actions are unchanged.
+        Nothing here yet — pick a chapter on the left, or create content in
+        this category to get started.
       </p>
-      <Link href={`/workspace/${packageId}`} className="btn btn-primary btn-sm">
-        Open in classic editor
-      </Link>
     </div>
   );
 }
