@@ -20,6 +20,15 @@ export function newBlockId(): string {
   return `blk-${randomBase36(12)}`;
 }
 
+/**
+ * New document ID: `doc-` + 12 base36 chars (~62 bits — collision-negligible).
+ * Minted at first registration (contract v2); immutable; never reused, even
+ * after deletion (tombstones keep the ID forever).
+ */
+export function newDocId(): string {
+  return `doc-${randomBase36(12)}`;
+}
+
 /** New platform-wide package ID: `pkg-<slug>-<8 base36 chars>`. */
 export function newPackageId(titleSlug: string): string {
   const slug = titleSlug

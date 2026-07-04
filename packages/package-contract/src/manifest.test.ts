@@ -62,4 +62,14 @@ describe("parseManifest", () => {
     const { schemaVersion: _omitted, ...rest } = valid;
     expect(() => parseManifest(rest)).toThrow();
   });
+
+  it("parses a v1 manifest without currentTerm unchanged (additive)", () => {
+    expect(parseManifest(valid).currentTerm).toBeUndefined();
+  });
+
+  it("parses currentTerm when present", () => {
+    expect(parseManifest({ ...valid, currentTerm: "2026-fall" }).currentTerm).toBe(
+      "2026-fall",
+    );
+  });
 });

@@ -1,4 +1,6 @@
 export * from "./layers";
+export * from "./spaces";
+export * from "./registration";
 export * from "./blocks";
 export * from "./block-source";
 export * from "./artifacts";

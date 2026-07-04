@@ -25,6 +25,8 @@ export { CarrierError };
 
 export {
   BUILTIN_KINDS,
+  MEDIA_KINDS,
+  PAGED_KIND,
   getKind,
   getKindByExtension,
   listKinds,
@@ -42,6 +44,11 @@ export function embedSource(input: EmbedInput): string {
       return embedSvg(input);
     case "html":
       return embedHtml(input);
+    case "binary":
+      // Plain-media kinds are not carriers: opaque bytes, nothing to embed.
+      throw new CarrierError(
+        `embedSource: "${input.kind}" is a plain-media (binary) kind with no carrier envelope — there is no source to embed`,
+      );
     default:
       throw new CarrierError(`embedSource: unsupported payload "${input.payload as string}"`);
   }

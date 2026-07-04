@@ -127,6 +127,13 @@ export const PackageManifestSchema = z.object({
   /** Last accessibility audit result. Optional and additive (absent = unknown). */
   accessibility: AccessibilityStatusSchema.optional(),
   /**
+   * Labels the active teaching cycle of the `current/` space (contract v2,
+   * package-layout.md §8: `current/archive/<term>/`). Optional + additive;
+   * absent = no active cycle. Free-form ("2026-fall") — it names a folder,
+   * so keep it URL-safe by convention; never affects the v1 data model.
+   */
+  currentTerm: z.string().min(1).optional(),
+  /**
    * Package-level adaptation lineage: set when this package was forked/adapted
    * from another (goal.md §5). Optional + additive; absent = an original work.
    * Typed loosely here (the full record lives in adaptation.ts) to keep the

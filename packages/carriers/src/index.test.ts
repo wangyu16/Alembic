@@ -9,6 +9,8 @@ import {
   getKindByExtension,
   hasCarrier,
   listKinds,
+  MEDIA_KINDS,
+  PAGED_KIND,
   registerKind,
   type CarrierKind,
 } from "./index";
@@ -219,5 +221,74 @@ describe("error handling", () => {
   it("extractSource throws CarrierError when no island is present", () => {
     expect(() => extractSource(SVG)).toThrow(CarrierError);
     expect(() => extractSource(HTML)).toThrow(CarrierError);
+  });
+});
+
+describe("contract v2: paged kind", () => {
+  it("is registered and resolvable by extension", () => {
+    expect(PAGED_KIND.id).toBe("paged");
+    expect(getKind("paged")?.extension).toBe(".paged.html");
+    expect(getKindByExtension("study-guide/acids.paged.html")?.id).toBe("paged");
+  });
+
+  it("does not shadow the md (.md.html) kind", () => {
+    expect(getKindByExtension("study-guide/acids.md.html")?.id).toBe("md");
+  });
+
+  it("round-trips as an HTML carrier like md/slides", () => {
+    const file = embedSource({
+      kind: "paged",
+      format: 1,
+      payload: "html",
+      rendered: HTML,
+      source: "# Print layout",
+    });
+    const out = extractSource(file);
+    expect(out.kind).toBe("paged");
+    expect(out.source).toBe("# Print layout");
+  });
+});
+
+describe("contract v2: plain-media fallback kinds", () => {
+  it("resolves plain media extensions to binary asset kinds", () => {
+    for (const [file, id] of [
+      ["assets/figures/titration.png", "png"],
+      ["assets/photo.JPG", "jpg"],
+      ["assets/audio/lecture.mp3", "mp3"],
+      ["assets/handout.pdf", "pdf"],
+    ] as const) {
+      const kind = getKindByExtension(file);
+      expect(kind?.id).toBe(id);
+      expect(kind?.role).toBe("asset");
+      expect(kind?.payload).toBe("binary");
+      expect(kind?.formatVersion).toBe(0);
+    }
+  });
+
+  // The load-bearing longest-suffix case: dual-extension carriers must keep
+  // winning over the plain ".svg" media kind.
+  it("carriers still win longest-suffix over the plain .svg media kind", () => {
+    expect(getKindByExtension("assets/mol.ketcher.svg")?.id).toBe("ketcher");
+    expect(getKindByExtension("assets/fig.plot.svg")?.id).toBe("plot");
+    expect(getKindByExtension("assets/logo.svg")?.id).toBe("svg");
+  });
+
+  it("BUILTIN_KINDS is unchanged; listKinds includes the v2 additions", () => {
+    expect(BUILTIN_KINDS.map((k) => k.id)).toEqual(["ketcher", "plot", "md", "slides"]);
+    const ids = listKinds().map((k) => k.id);
+    expect(ids).toEqual(expect.arrayContaining(["paged", ...MEDIA_KINDS.map((k) => k.id)]));
+  });
+
+  it("embedSource on a binary kind throws a clear CarrierError", () => {
+    expect(() =>
+      embedSource({ kind: "png", format: 0, payload: "binary", rendered: "", source: "x" }),
+    ).toThrow(CarrierError);
+    expect(() =>
+      embedSource({ kind: "png", format: 0, payload: "binary", rendered: "", source: "x" }),
+    ).toThrow(/plain-media/);
+  });
+
+  it("extractSource on plain media bytes throws CarrierError (no island)", () => {
+    expect(() => extractSource("\x89PNG\r\n\x1a\n…binary bytes…")).toThrow(CarrierError);
   });
 });

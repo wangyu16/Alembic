@@ -5,8 +5,13 @@
 // HTML wrapper) and the embedded source island — it NEVER parses or interprets
 // the source itself (and never parses markdown).
 
-/** How a carrier renders. "pdf" is reserved for v2 and not implemented here. */
-export type CarrierPayload = "svg" | "html";
+/**
+ * How a carrier renders. "binary" marks plain-media kinds (png, pdf, mp3, …):
+ * NOT carriers at all — opaque bytes served as-is, with no envelope and no
+ * embed/extract. They live in the registry so extension classification has a
+ * fallback (contract v2 / Roadmap R1) instead of failing on ordinary media.
+ */
+export type CarrierPayload = "svg" | "html" | "binary";
 
 /** Source-of-truth role. Assets are authored once and reused; documents are
  * derived from blocks. The codec mechanics are identical for both. */
