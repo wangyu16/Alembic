@@ -57,8 +57,8 @@ export async function SiteHeader() {
                 <Link href="/workspace" className="transition-colors hover:text-ink">
                   Workspace
                 </Link>
-                <Link href="/studio" className="transition-colors hover:text-ink">
-                  Studio
+                <Link href="/guide" className="transition-colors hover:text-ink">
+                  Guide
                 </Link>
                 {isAdmin && (
                   <Link href="/admin" className="transition-colors hover:text-ink">
@@ -83,8 +83,8 @@ export async function SiteHeader() {
                   <Link href="/workspace" className="rounded-md px-2 py-1.5 transition-colors hover:bg-elevated hover:text-ink">
                     Workspace
                   </Link>
-                  <Link href="/studio" className="rounded-md px-2 py-1.5 transition-colors hover:bg-elevated hover:text-ink">
-                    Studio
+                  <Link href="/guide" className="rounded-md px-2 py-1.5 transition-colors hover:bg-elevated hover:text-ink">
+                    Guide
                   </Link>
                   {isAdmin && (
                     <Link href="/admin" className="rounded-md px-2 py-1.5 transition-colors hover:bg-elevated hover:text-ink">
@@ -107,8 +107,8 @@ export async function SiteHeader() {
               <Link href="/portal" className="transition-colors hover:text-ink">
                 Discover
               </Link>
-              <Link href="/studio" className="transition-colors hover:text-ink">
-                Studio
+              <Link href="/guide" className="transition-colors hover:text-ink">
+                Guide
               </Link>
               <Link href="/signin" className="transition-colors hover:text-ink">
                 Sign in

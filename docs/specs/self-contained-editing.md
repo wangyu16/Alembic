@@ -32,9 +32,13 @@ file's own editor.)
 
 The local Studio page (`/studio`, the anonymous in-browser markdown editor)
 is superseded: a self-contained file *is* the local, anonymous, no-account
-editor — open it in a browser, click the pencil. Remove the Studio page and
-its supporting code when this direction is implemented; don't extend it in
-the meantime. ([local-mode.md](local-mode.md) is superseded accordingly.)
+editor — open it in a browser, click the pencil.
+([local-mode.md](local-mode.md) is superseded accordingly.)
+
+**Done 2026-07-04:** `/studio` (and its studio-only `/api/render/md-html`
+route) removed; replaced by **`/guide`** — a brief educator-facing
+orientation page (owner decision). Header nav and homepage now point to the
+guide.
 
 ## 3. Document contract: origin parity
 

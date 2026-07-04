@@ -72,8 +72,8 @@ export default function Home() {
         <Link href="/workspace" className="btn btn-primary">
           Open your workspace
         </Link>
-        <Link href="/studio" className="btn btn-ghost">
-          Open the studio
+        <Link href="/guide" className="btn btn-ghost">
+          Read the guide
         </Link>
         <Link href="/portal" className="btn btn-ghost">
           Browse the index

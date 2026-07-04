@@ -26,6 +26,8 @@ Consequences:
   versioning, GitHub publication, provenance, permalinks, reuse.
 - **Studio (`/studio`) is removed.** A self-contained file *is* the local,
   anonymous, nothing-to-install editor — open in a browser, click the pencil.
+  *(Done 2026-07-04: `/studio` deleted and replaced by a `/guide` page — a
+  brief orientation to the most important concepts.)*
 
 ## 2. Document contract — origin parity (decided)
 

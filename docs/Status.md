@@ -687,6 +687,21 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
 ## Log
 
 ### 2026-07-04
+- **Studio removed; `/guide` added (owner decision).** `/studio` and its
+  studio-only `/api/render/md-html` route are deleted — a self-contained
+  file is itself the local anonymous editor. In its place, **`/guide`**: a
+  brief educator-facing orientation ("the five things worth knowing" —
+  packages & two-repo ownership, self-contained documents with built-in
+  editors, study guide as source of truth, publish/snapshot/cite on your
+  own GitHub, adapt & suggest-back). Header nav (all three variants) and
+  the homepage button now point to Guide.
+- **Design sessions locked:** [specs/document-model.md](specs/document-model.md)
+  (taxonomy from the owner's userguide + 4 rulings) and
+  [specs/permalinks-and-registration.md](specs/permalinks-and-registration.md)
+  (registration record, `/d/{docId}[@version]` + `/p/{packageId}[@snapshot]`,
+  layered resolution, content-hash pins, platform-served pinned versions,
+  pinned inserts + in-app-inbox notifications, per-file "share this"
+  discovery; current space excluded from element search).
 - **Docs rebuild started (owner-approved process):** recreate the docs with a
   clearer structure; once an old file's content is covered, move the original
   to `docs/archive/`. **goal.md recreated** — vision unchanged, revisions:

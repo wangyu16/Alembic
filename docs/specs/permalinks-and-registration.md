@@ -1,12 +1,13 @@
 # Permalinks & registration — the document contract in practice
 
-**Status: DRAFT for owner review (2026-07-04).** Consolidates the permalink
-mechanism ([self-contained-editing.md §7](self-contained-editing.md), owner
-direction) with the file-as-atom / two-level-sharing decisions
-([document-model.md](document-model.md), locked) into one implementable
-spec. Open items marked **[open]**. Supersedes the permalink portions of
-[carriers-and-assets.md](carriers-and-assets.md) §5–6 when approved (raw
-GitHub URLs are demoted to an internal transport, never the shared form).
+**Status: direction locked (owner-reviewed 2026-07-04).** Consolidates the
+permalink mechanism ([self-contained-editing.md §7](self-contained-editing.md))
+with the file-as-atom / two-level-sharing decisions
+([document-model.md](document-model.md)). The three open items were ruled
+same-day (content-hash pins; platform-served pinned resolution; in-app
+inbox notifications). Supersedes the permalink portions of
+[carriers-and-assets.md](carriers-and-assets.md) §5–6 (raw GitHub URLs are
+demoted to an internal transport, never the shared form).
 
 ## 1. Registration record (the document contract)
 
@@ -42,9 +43,9 @@ alembic.orz.how/p/{packageId}@{snapshot}  package at a named snapshot
 ```
 
 - `{version}` for files is a **short content hash** of the file version
-  (educators see it as a dated entry in the file's history, never type it) —
-  **[open]** confirm content-hash over commit SHA; content-hash survives
-  history rewrites (leakage remediation) where commit SHAs die.
+  (decided; educators see it as a dated entry in the file's history, never
+  type it). Content hashes survive history rewrites (leakage remediation)
+  where commit SHAs die.
 - `{snapshot}` is the package-level named version ("fall-2026", a Git tag).
   A file permalink may also pin via snapshot: `/d/{docId}@{snapshot}` —
   "this figure, as taught in Fall 2026."
@@ -56,7 +57,7 @@ alembic.orz.how/p/{packageId}@{snapshot}  package at a named snapshot
 | File state | Resolution |
 |---|---|
 | public + published | **302 redirect** to the file on the educator's GitHub Pages site (correct MIME + CORS; renders self-contained formats; survives without Alembic) |
-| public + pinned | 302 to the pinned copy — **[open]** Pages keeps only the current build, so pinned resolution serves through the platform from the Git object store (correct MIME), or snapshot builds are retained under `/{snapshot}/` paths on Pages. Recommendation: platform-serve pinned versions (no Pages bloat). |
+| public + pinned | served **through the platform** from the Git object store with correct MIME (decided) — Pages keeps only the current build, and retaining snapshot builds on Pages would bloat repos |
 | private / trial / unpublished | served through the platform (GitHub-App token or Supabase) with owner/access checks — the `/api/asset/…` pattern generalized |
 | deleted | tombstone page (provenance, successor pointer if forked/renamed) |
 
@@ -90,8 +91,8 @@ report→correct→notify and revise→fork→choose loops:
   gets an educator-language notice with **update / keep** (and, for forks,
   **switch to fork**) — one click rewrites the pinned reference through the
   validated write path; "keep" records the choice so the notice doesn't
-  repeat. **[open]** delivery = in-app inbox on the workspace (recommended
-  start); email digest later.
+  repeat. Delivery (decided): **in-app inbox on the workspace** first;
+  email digest later.
 - Fork lineage: a revision by a non-owner creates a new file (new docId)
   with `adapted-from` provenance; both versions coexist and are separately
   discoverable.
