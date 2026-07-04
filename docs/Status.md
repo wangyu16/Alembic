@@ -687,6 +687,19 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
 ## Log
 
 ### 2026-07-04
+- **New module-based [Roadmap.md](Roadmap.md) (owner-directed).** The four
+  owner-named elements → modules with one-owner seams: **R** registry/
+  document contract v2, **E** editing experience (**first**), **P**
+  permalinks/sharing/adaptation, **T** trust surfaces (Inbox — complete
+  UI/UX redesign of the parked review/a11y/adapt/history/reconcile
+  features), **I** AI (deliberately open; seams preserved), **S** student
+  site, **W** worker enabler. Seven conflict-avoidance rules (one schema
+  owner, one write path, one metadata source, one editor seam, one Inbox,
+  AI behind AIProvider, site = renderer concern). **Old roadmap + 3
+  superseded specs archived** to docs/archive/ (editor-layout,
+  workspace-editor-overhaul, local-mode) with supersession notes; their
+  built history stands. Next: Module E kickoff (E1 editor hosting + E2
+  minimal .md editor), with R1 contract-v2 slice pulled forward for E3.
 - **Workspace framework pass (owner brief):
   [specs/workspace-framework.md](specs/workspace-framework.md).** The
   three-pane shell is now *the* editor: **classic editor removed** (~2.2k

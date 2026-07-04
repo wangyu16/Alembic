@@ -1,203 +1,190 @@
-# Alembic Development Roadmap
-
-This roadmap breaks the full product vision ([goal.md](goal.md)) into sequential phases. Each phase delivers a usable increment, and each later phase builds on contracts established earlier — most importantly the **package contract** (schema, block identity, two-repo split, operation API), which is deliberately frozen early so that editors, AI layers, and the portal can evolve independently around it.
-
-Guiding rule for sequencing: **the package contract and publishing thesis come first; intelligence and ecosystem features come after.** A wrong package contract poisons every later phase; a missing AI feature is just a gap.
-
----
-
-## Phase 0 — Foundations & Contracts (pre-release groundwork)
-
-**Goal: freeze the things that must not churn before writing feature code.**
-
-- Package contract v1 (written spec, versioned): file/folder layout, manifest schema linking public + private repos, block-identity rules (orz-markdown native IDs), provenance/metadata/license record formats, schema-version field and migration policy.
-- Two-repo storage model defined as a path-level invariant spec (what may never be staged in the public repo).
-- orz-markdown integration spike: confirm block-ID syntax, ID-preservation Agent Skill rules, dual-extension embed/extract versioned format. Feed required changes back into orz-markdown itself.
-- Monorepo scaffolding (TypeScript throughout): apps (web, worker), packages (package-contract, renderer, github-bridge), CI, lint/test conventions.
-- Hosting skeleton: Vercel project, Supabase project, one minimal container worker behind a job queue (vendor decision can stay loose; the queue interface is the contract).
-
-**Exit criteria:** a package can be created, validated, and round-tripped (parse → edit → serialize → re-validate) entirely in code, with block IDs surviving, before any UI exists.
-
----
-
-## Phase 1 — Initial Release: the end-to-end loop (v0.1)
-
-**Goal: one coherent workflow, end to end, honestly labeled.** This is the validation target from goal.md: *"if this loop feels magical to one non-developer chemist, the product thesis holds."*
-
-Scope (see [InitialReleasePlan.md](InitialReleasePlan.md) for the detailed plan):
-
-1. GitHub OAuth sign-in (identity only) + no-GitHub trial sandbox.
-2. Create a small chemistry module; outline concepts + study guide as a structured list (data model includes `concepts`; visual concept-map editor deferred).
-3. Edit study-guide blocks in the browser with live orz-markdown preview.
-4. AI drafting via direct model calls: draft sections, generate one derived artifact type (worksheet or slides) with generate-then-own + stale flagging.
-5. One dual-extension artifact export (`.md.html`).
-6. Public-safe student-facing page preview.
-7. Two-repo GitHub flow via GitHub App: create paired repos from templates, save/commit, app-side build in the worker tier, publish to GitHub Pages. Path-level public/private invariant enforced from the first commit.
-8. Minimal generated portal index page, registered only after release-gate checks.
-9. Basic research event logging to Supabase.
-10. Educator-facing verbs only: save, preview, publish, restore.
-
-Deliberately included (the thesis): GitHub publishing, dual-extension artifact, two-repo invariant, research events.
-Deliberately deferred: agent harness, Ketcher, question templates, adaptation, searchable portal, snapshots/DOI, LMS export, batch AI review queues.
-
-**Exit criteria:** one real chemistry module authored by a non-developer, published to a live GitHub Pages site, with private notes provably absent from the public repo.
-
----
-
-## Phase 2 — Authoring Depth & Chemistry-First (v0.2–v0.3)
-
-**Goal: make the workspace genuinely good for a chemist, not just functional.**
-
-- **Concepts/objectives planning layer** — the hidden pedagogical planning layer: concept map + learning objectives, stored in the public repo but hidden from the published student site, with map→study-guide drafting and map→coherence-agent checks (aligns with [goal.md](goal.md) Principle 2 + §8).
-- **Multi-chapter courses** — a course as one site with an index and many chapters (each: study-guide page + concept map + objectives + slides + question templates). The target model and additive evolution path from v0.1's single-chapter case are specified in [specs/course-structure.md](specs/course-structure.md).
-- **Carriers & assets** — one primitive: a self-contained dual-extension file (renderable payload + embedded editable source + `kind`/`format` markers) with a **kind registry** + per-kind editors as the single extension point. Unifies chemical structures (`.ketcher.svg`), plots/charts (`.plot.svg`), and the document formats (`.md.html`/`.slides.html`/`.md.pdf`). Reusable media are standalone files in the public `materials` layer, inserted by permalink (intra-package = searchable click-insert; inter-package = paste the universal link). Specified in [specs/carriers-and-assets.md](specs/carriers-and-assets.md); codecs live in `orz-artifacts` (orz-stack Phase B). **This foundation gates structures/plots/slides/PDF/import.**
-- Ketcher integration for chemical-structure editing → `.ketcher.svg` assets; plots/charts → `.plot.svg` assets (a second kind by registration alone).
-- Remaining document carriers: `.slides.html`, `.md.pdf` (worker-side PDF generation), generated from blocks; derived-artifact lifecycle completed (regenerate / AI-assisted merge / keep-mine on stale flags).
-- Import & local-first authoring: lossless re-import of any carrier; lossy foreign import (Word/PDF/PowerPoint/images → AI restructuring, Tier-2 queue); **bulk upload of a complete locally-authored project** validated by one shared contract (validator == Agent Skill).
-- Risk-tiered approval system implemented as policy (Tier 1 auto-apply + changelog/undo, Tier 2 batch queue, Tier 3 itemized — Tier 3 gates existed in v0.1 for publish; this phase generalizes the machinery).
-- AI accessibility checks (WCAG 2.1 AA), alt text for structures/plots from their carrier source.
-- Snapshots (named immutable versions via tags): list, restore, compare; snapshots pin asset permalinks to fixed commits (whole-repo tagging freezes content + assets together).
-- **Model gateway & cost controls**: provider-swappable gateway (OpenRouter/Portkey) + per-task model routing + per-user budgets behind the `AIProvider` seam, operationalizing the [§11 sustainability model](goal.md) — see [specs/ai-architecture.md](specs/ai-architecture.md).
-- **Local mode (anonymous studio)**: open/edit/save Alembic files on your own machine, no account — the student/self-learner surface and the **entitlement seam** future paid tiers attach to. See [specs/local-mode.md](specs/local-mode.md).
-
-**Exit criteria:** an educator can go from a messy Word/PDF dump — or a complete local project — to a polished published chemistry package (with reusable structures and plots) without leaving the app; a student can edit an exported file locally with no account.
-
----
-
-## Phase 3 — Agent Harness & Repository Intelligence (v0.4)
-
-**Goal: move multi-file, repository-aware work from hand-rolled code to sandboxed agent workers.**
-
-> **Execution & model-access design:** the mixed approach — direct single-call AI for the common local edits vs. a bounded, app-orchestrated agent for whole-course coherence (Alembic's differentiator) — plus a model gateway (Portkey/OpenRouter) with task→model routing, is analyzed in [specs/ai-architecture.md](specs/ai-architecture.md). Teaching docs need coherence + educator review, not software-style verification gates.
-
-- Container worker tier matured: job queue, isolated sandboxes, ephemeral repo checkouts, patch + explanation output, platform validation gates before any commit.
-- Claude Code SDK (or equivalent; harness-swappable boundary) driving: package reorganization, study-guide + derived-artifact co-editing, metadata/provenance updates, link/schema checks, readable commits, diff explanations.
-- External-edit reconciliation completed: detect foreign commits, rebuild projections, re-validate invariants, quarantine on violation, concurrent-edit safety (no force-push, reconcile-first saves).
-- Leakage remediation procedure (history rewrite + forced re-publication + incident provenance note) implemented and documented.
-
-> **Realized scope split (annotation):** the bullets above describe the full vision. In the actual build the scope split in two. **Shipped:** a bounded, app-orchestrated agent over the single-call `AIProvider` that produces reviewed `ProposedChangeSet`s through `packageOps` + the tier system; external-edit reconciliation; the leakage audit plus a documented remediation runbook. **Deferred to the worker tier:** the full container/CLI coding-agent harness, worker-side agent execution, and the one-click history-rewrite remediation mechanism. (See the Worker tier infra note below.)
-
-**Exit criteria:** an advanced user can edit the repo in VS Code, and Alembic absorbs it cleanly; an educator can request a package-wide restructuring and review it as a teaching-material change.
-
----
-
-## Phase 3.5 — Worker tier (cross-cutting infra)
-
-**Goal: stand up the container worker tier that owns the deferred worker-side work.**
-
-Several deferrals across phases share one prerequisite — a real container worker tier — and are discharged together once it exists: `.md.pdf` generation (M13.3), foreign-format import parsers (M12.2), worker-side agent execution (M19.1), moving the static-site build job off in-process (M6.1), and the one-click leakage-remediation / history-rewrite mechanism (M21.3). This note gives those deferrals an explicit owner. **Phase 4's assessment layer and its LMS export (QTI / Common Cartridge) were built WITHOUT the worker tier** — the verified build (see Status) shows LMS export is a pure XML transformer + in-process zip — so the worker tier is needed only for the five items listed above. **Reframe:** since no upcoming phase (5 adaptation, 6 portal) forces the worker tier, it is now a "capability-completion track" — schedulable opportunistically rather than a blocker.
-
----
-
-## Phase 4 — Assessment & Question Templates (v0.5)
-
-**Goal: the assessment-support layer, with hard public/private boundaries.**
-
-- Assessment blueprints and question-template rules (concept/objective alignment, context, difficulty, representations, parameters, misconception targets). (The concept/objective alignment substrate is already wired in Phase 2 — M9.6 — so this phase builds on it rather than introducing it. The deferred Tier-3 *assessment* itemized-review flow — M10.3 — belongs here.)
-- AI question generation from templates; generated items respect instructor-defined design.
-- Private-repo workflows: answer keys, embargoed assessments (auto-release dates, owner-only early lift), answer-key leakage checks in release gates.
-- One-way LMS export (QTI / Common Cartridge) so question sets reach Canvas/Moodle.
-
-**Exit criteria:** an instructor runs a quiz cycle — template → generated questions → export to LMS — with keys never touching the public repo.
-
-> **Realized scope (annotation):** the bullets above describe the full vision; here is what shipped. **Shipped:** the assessment/template/blueprint/item + answer-key contract (M22); single-call AI question generation routed through the Tier-3 itemized review queue (M23); private-repo answer keys + embargo metadata + a release-gate leakage check (M24.1/24.3); QTI 1.2 + Common Cartridge export as a pure transformer + dependency-free in-process zip (M25) — **confirmed: no worker tier needed.** **Deferred (follow-ups):** the blueprint/embargo editor UI, the owner early-lift action, and per-blueprint embargo gating at export.
-
----
-
-## Phase 5 — Adaptation Ecosystem (v0.6–v0.7)
-
-**Goal: make reuse a two-way street; this is where "open ecosystem" becomes real.**
-
-- Adapt/fork at every scale: block, artifact, module, whole course, multi-package remix — with new IDs + `adapted-from` lineage, attribution and license-compatibility preservation.
-- Pull updates (upstream → adapter): change notifications in teaching terms, one-click take-update, AI-assisted merge, recorded divergence.
-- Suggest back (adapter → author): platform-mediated block-level suggestions through normal validation gates; optional materialization as GitHub PRs.
-- Citation: stable snapshot URLs, opt-in DOI minting (Zenodo), auto-generated `CITATION.cff`.
-
-**Exit criteria:** two educators exchange improvements on a shared package lineage without either touching Git concepts.
-
-> **Prerequisites / sequencing (note):** Phase-5 prerequisites are satisfied — block identity (Phase 0), publishing (Phase 1), reconciliation (M20), and snapshots (M15) are all in place. `adaptedFrom.snapshot` (M15.5) was deliberately deferred to land as the LEADING sub-module of Phase 5. Note that M20 reconciliation still needs its live pass + migration `0008` applied before suggest-back / pull-updates can run against real repos.
-
-> **Realized scope (annotation):** Shipped — adapt block/chapter with new IDs + `adapted-from` lineage + attribution + pure CC-4.0 license-compatibility gating (`canAdapt`, M26); pull-updates take/keep with recorded divergence over hash-drift detection (M27); platform-mediated block-level suggest-back through the Tier-3 gate (M28) — **all scoped to the educator's own packages (same store/owner)**. Deferred — Zenodo DOI (M29, external); GitHub-PR materialization of suggestions (28.3, external); **cross-owner adaptation + suggest-back** (the real two-way ecosystem — needs a service-mediated, RLS-crossing path); AI-assisted merge for diverged blocks (27.3); whole-package fork.
-
----
-
-## Phase 6 — Portal & Discovery (v0.8)
-
-**Goal: from a generated index page to a real discovery hub.** Deferred until multiple real packages exist to discover.
-
-- Searchable portal: topic, level, discipline, license, accessibility status, artifact type, teaching time.
-- Package previews, links to Pages sites and source repos, adaptation entry points, quality/status indicators.
-- LRMI/schema.org `LearningResource` markup embedded in published pages; portal consumes the same standard metadata (no proprietary record format).
-- Governance scaffolding: registration limited to study participants during the grant; reporting/takedown path designed.
-
-**Exit criteria:** a stranger finds a package via the portal (or Google), previews it, and starts an adaptation.
-
-> **Realized scope (annotation):** Shipped — M30 LRMI/schema.org `LearningResource` in published pages + portal `ItemList` (consume the standard, no proprietary record); M31 cross-owner adapt (tokenless public GitHub read) + suggest-back (`suggestions` table, RLS, no service-role bypass); M32 searchable portal (text + discipline/license/a11y facets); M33 governance scaffolding (`portal_eligible` gating — later removed in the pilot UI/UX pass, listing is open to all — + `portal_reports` + takedown runbook). Deferred — level/artifact-type/teaching-time facets (need richer registration metadata); one-click portal→adapt-with-preselected-source; GitHub-PR materialization (M31.3, external).
-
----
-
-## Phase 7 — Research Operations & Study Readiness (v0.9)
-
-**Goal: the platform as a credible IUSE research instrument.**
-
-- Full research event taxonomy (authoring steps, AI accept/reject/edit with Tier-1 logged separately, reuse events, completeness, workload indicators). (Already partly built: the event taxonomy — including the Tier-1-vs-human categories — and per-user AI credit/budget enforcement are substantially in place from Phases 1–3. The remainder of this phase is institution-level quotas/dashboards, FERPA/IRB third-party-data review, the admin/ops module, and institution-managed mode.)
-- De-identified CSV/JSON export for the evaluator team; data-governance boundaries (research logs separate from both repos).
-- Centrally managed AI credits: project-funded quotas, consistent model access, rate limits, usage visibility.
-- Admin/operations module: component status, error monitoring, demo content management, consent/status flags.
-- Institution/workshop-managed mode: org-installed GitHub App, bot commits authored as the educator.
-
-**Exit criteria:** the study can onboard a participant cohort with uniform AI access and produce clean exportable research data.
-
-> **Realized scope (annotation):** Shipped — M34 de-identified CSV/JSON export (salted one-way pseudonym, raw ids dropped); M35 admin module (`is_admin` gate + service-role used ONLY behind it; counts/errors/eligibility/report-resolve); M36 usage dashboard + centrally-managed credits (uniform per-user `AI_TOKEN_BUDGET` + gateway) + FERPA/IRB data-handling review spec. Deferred — **M37 institution/workshop-managed mode (⏸ post-pilot)**; per-institution quotas/dashboards (needs an institution model); demo-content management (admin follow-up).
-
----
-
-## Phase 9 — Workspace Editor Overhaul (post-v1.0)
-
-**Goal: rebuild the editing surface as the replaceable client over existing durable logic** (the editor was always the disposable layer — rule 9). Full design + decisions + a six-seam conflict audit are in
-[workspace-editor-overhaul.md](specs/workspace-editor-overhaul.md). Locked: `.md` source + `.md.html` portable export; shared editor-module packages keyed to carrier kind (orz-stack); fixed 7-category rail; three-pane shell (chapters | rail | editor); in-editor AI = active-file Tier-2 diff/approve + the M18 coherence agent for cross-file. The 7 educator categories map onto the existing 9 closed layers — no contract change.
-
-> **Phase 0 of the overhaul runs now / opportunistically**, ahead of the shell: it closes guardrails the audit surfaced as latent bugs in the *current* code (G1 two-repo reference enforcement ✅, G5 chapter-aware export ✅, G2 `.md.html` re-import ID reconciliation ✅). These land on the current editor and harden the live pilot. See the spec's §9 (phased plan) + §10 (conflict register / guardrails G1–G8).
->
-> **Side task on this path:** **one Agent Skill per dual-extension format** (`.md.html`, `.slides.html`, `.md.pdf`, `.ketcher.svg`, `.plot.svg`, …) + a shared basics skill, so files round-trip across apps (export → edit elsewhere → re-import) losslessly. Validator-backed, registry-generated. Build alongside the Phase-2 editor-module extraction. See [carriers-and-assets.md §7](specs/carriers-and-assets.md).
-
-## Phase 8 — Hardening & Sustainability (v1.0 and beyond)
-
-**Goal: survive beyond the grant.**
-
-- Pluggable AI billing: institution-managed keys, BYO keys, hosted tiers, community credits, open-weight model options.
-- Portal governance handoff: named stewardship, open registration with moderation.
-- Account lifecycle: repository transfer on institution exit; verified "usable as plain Git repo without Alembic" guarantee. (The no-lock-in build config is already verified for *new* repos — v0.1 release criterion #3; the remaining work is backfilling it into pre-existing repos plus repository-transfer-on-exit.)
-- Multi-author groundwork promotion (roles, per-layer permissions, shared review queues) as demand proves out — explicitly post-v1.
-- Performance, accessibility audit of Alembic itself, documentation, open-source release hygiene.
-
-> **Carried-over deferrals (explicit ownership):** mirroring how Phase 3.5 was given an explicit owner, Phase 8 absorbs the remaining carried-over deferrals: the **worker tier** (`.md.pdf` M13.3, foreign-format import M12.2, worker-side agent execution M19.1, one-click leakage remediation M21.3); **M37** institution/workshop-managed mode + per-institution quotas; and **M29** Zenodo DOI. Several Phase-8 items are already partially in place: the billing seams (the entitlement resolver + the `AIProvider` gateway) and the no-lock-in build config for *new* repos (v0.1 release criterion #3).
-
-> **Pilot-readiness gate (precedes Phase 8):** the v0.1 pilot (M8.3) plus the outstanding live-verification passes are the real validation gate and should precede / gate Phase 8. A "pilot-readiness pass": set Portkey on Vercel + `SUPABASE_SECRET_KEY` + flag an admin (`is_admin`); run the live passes for M18, M9.6, M20, M23, M26–M28, M31 + the M30 structured-data check; finish the M8.1 demo content; then run M8.3.
-
----
-
-## Cross-cutting constraints (every phase)
-
-- **Modularity:** the editing workspace stays a replaceable client of package operations; no module owns another's schema.
-- **Repos are source of truth:** all platform DB state must be a rebuildable projection.
-- **Public/private separation is physical**, enforced at commit time, from Phase 1 onward — never retrofitted.
-- **AI is provider-swappable**; prompts/outputs logged only under data-governance rules.
-- **Backward compatibility:** package schema versioned, old packages always readable, migrations explicit; dual-extension extraction never breaks.
-
-## Dependency picture (why this order)
+# Alembic Roadmap — the 2026-07 module plan
+
+**Status:** direction locked with the owner (2026-07-04). Supersedes the
+phase-based 2026-06 roadmap ([archive/Roadmap-2026-06.md](archive/Roadmap-2026-06.md));
+everything that plan built (phases 0–7, v0.1 deployed) stands and is
+tracked in [Status.md](Status.md). This plan organizes the **next era**
+around the self-contained-editing direction: the four owner-named elements
+become five modules plus one cross-cutting enabler, with explicit seams so
+they can be built independently without future conflict.
+
+Governing specs: [SteeringNote.md](SteeringNote.md) ·
+[specs/self-contained-editing.md](specs/self-contained-editing.md) ·
+[specs/document-model.md](specs/document-model.md) ·
+[specs/permalinks-and-registration.md](specs/permalinks-and-registration.md) ·
+[specs/workspace-framework.md](specs/workspace-framework.md).
+
+## The conflict-avoidance rules (read first)
+
+Modules stay independent because each concern has exactly one owner:
+
+1. **One schema owner.** All contract changes (registration record, spaces,
+   `.md.html` as chapter source of record) land as **package-contract v2**
+   in Module R — once, with an explicit versioned migration. No other
+   module touches the schema; they consume it.
+2. **One write path.** Every write — in-place edit, upload, AI edit,
+   reconcile absorb — goes through `packageOps` validation. Editors,
+   inboxes, and AI never gain a side door.
+3. **One metadata source.** The registration record (a rebuildable
+   Supabase projection of repo content) is the *only* place file metadata
+   lives. Permalinks, discovery, notifications, version lists, and the
+   student site index all read it; none keeps a private index.
+4. **One editor seam.** Editing surfaces mount only through
+   `@alembic/editor-kit` (`EditorModule`/`EditorHandle`). Adding a format =
+   registering a module; the shell never special-cases a format.
+5. **One inbox.** Everything that asks the educator for a decision —
+   Tier-2 AI review, element update/keep notices, suggest-backs, external
+   change reports — is an item in a single workspace Inbox with one item
+   contract (kind, summary, diff/preview, actions). New decision types add
+   a kind, not a surface.
+6. **AI stays behind `AIProvider`** + the change-tier queue. AI features
+   are verbs on files through the same write path — never a parallel
+   document model. (Keeps Module I deliberately flexible.)
+7. **The student site is a renderer concern.** Site structure/UX lives in
+   `@alembic/renderer` (`course-site`) + worker builds; the workspace only
+   decides *what is public*, never how the site looks.
+
+## Module R — Registry: the document contract in code
+
+*Owner element: "file contract of all types — create in place, upload to
+workspace, or upload to GitHub source, all registered correctly."*
+
+- **R1. Contract v2** (`package-contract`): registration record
+  (docId, path/layer/space, kind, format version, source hash, provenance
+  origin, license, description/alt-text, `discoverable`, permalink class);
+  the three spaces (`assets` / `current` / `private`) and per-chapter file
+  set; **chapter study guide = one `.md.html` file** (source embedded);
+  block IDs demoted to optional anchors. Explicit v1→v2 migration; v1
+  packages stay readable.
+- **R2. Registry projection**: `documents` table (RLS), rebuildable from
+  repos; registration hooks in all three doors — packageOps create/save
+  (in place), the upload path, and `reconcilePublicRepo` (direct GitHub
+  commits). Tombstones for deletions.
+- **R3. Version listing**: per-file dated history (from Git / sandbox
+  saves) + content-hash version ids; package snapshots unchanged.
+- *Definition of done:* the same file uploaded, created, or committed
+  externally produces byte-identical registration records; deleting and
+  recreating never reuses a docId.
+
+## Module E — Editing experience (FIRST)
+
+*Owner element: the editing UX; also workspace-framework.md §3.*
+
+- **E1. Editor hosting**: mount the orz-family in-file editors through
+  `editor-kit` — orz-mdhtml (`.md.html`), orz-slides (`.slides.html`),
+  orz-paged (`.paged.html`) — in the shell's editor pane; saves return
+  through `applyEditorEdit`. (Ketcher/plot modules already prove the seam.)
+- **E2. The minimal text editor**: plain `.md` files (concept maps,
+  assessment guide) get a simple source editor with a rendered-view toggle
+  — the one editing surface Alembic itself provides.
+- **E3. Study-guide switchover**: chapter study guide becomes one
+  `.md.html` file edited in-file (needs R1's source-of-record change);
+  the interim block editor retires at parity. Practice questions follow
+  (same format).
+- **E4. Spaces UI**: Assets / Current / Private become real file managers
+  (list, upload, organize, per-file actions); Current gains semester
+  archiving when R1 lands.
+- **E5. Full-height, distraction-free pass** (impeccable) over the shell
+  once E1–E4 settle.
+- *Definition of done:* an educator edits every file type in its own
+  editor inside the shell; no block-level save path remains.
+
+## Module P — Permalinks, sharing, adaptation
+
+*Owner element: "version control, sharing, adapting mechanism."*
+
+- **P1. Resolver**: `/d/{docId}` (live → 302 to Pages for public;
+  platform-served for private/trial/pinned), `/d/{docId}@{version}`
+  (content-hash pins), `/p/{packageId}[@snapshot]`; permalink stamped into
+  generated files; `livePermalink()`/`pinnedPermalink()` re-emit `/d/`
+  forms.
+- **P2. Share this**: per-file opt-in discoverability (Tier-3 spirit);
+  element index feeds Discover's Elements scope (excludes `current`,
+  never `private`).
+- **P3. Insertion registry + notices**: pinned-at-insert references
+  extracted on save/reconcile; correction/fork notices with
+  update / keep / switch-to-fork — delivered as Inbox items (Module T).
+- **P4. File-level adaptation**: adapt/pull-updates/suggest-back
+  re-anchored from blocks to files (block anchors assist AI merges);
+  fork lineage via `adapted-from`.
+- *Definition of done:* the owner's illustration story works end to end —
+  publish small → discover → insert → correct → notify → fork → choose.
+
+## Module T — Trust surfaces: Inbox + versions (complete UI/UX redesign)
+
+*Owner ruling: review queue, accessibility, assessments, adaptation,
+planning, per-chapter history, reconcile banner are **good features whose
+UI/UX must be redesigned completely** — re-land per the new design, never
+port the old panels.*
+
+- **T1. The Inbox** (one surface, rule 5): Tier-2 AI proposals,
+  element notices (P3), suggest-backs, and "changed outside Alembic"
+  reconcile reports — each an item with preview/diff + educator-language
+  actions. Undoable Tier-1 log lives here too.
+- **T2. File history**: per-file dated version list + restore, in the
+  file's context (replaces the old per-chapter history panel).
+- **T3. Checks as status, not panels**: accessibility/reference/ID checks
+  run at registration and publish gates; surfaced as per-file badges +
+  fix-with-AI Inbox items (replaces the a11y panel).
+- **T4. Assessments & planning surfaces**: re-designed homes — assessment
+  guide is already a category; blueprints/templates and concept-map
+  planning return as category-scoped tools, not side panels.
+- *Definition of done:* every parked feature from workspace-framework.md
+  §2 is reachable again, through Inbox/badges/categories — zero legacy
+  panel layouts.
+
+## Module I — AI incorporation (deliberately open)
+
+*Owner element: "no clear idea yet — keep future design flexible."*
+
+- **I1. Preserve the seams** (rule 6): `AIProvider`, change tiers,
+  entitlements, the worker/agent-harness boundary. No new AI surface
+  commitments now.
+- **I2. Single affordance interim**: the existing "Ask AI"
+  propose→diff→approve per pane stays as the only AI UI; its approvals
+  route through the Inbox once T1 exists.
+- **I3. Design session later**: when the owner's picture firms up, AI UX
+  gets its own spec — everything it will need (validated writes, tiers,
+  Inbox, registry) exists by then. Explicitly out of scope until called.
+
+## Module S — Student site (public static website)
+
+*Owner element: "well organized, intuitive to find what a student needs."*
+
+- **S1. Information architecture**: course index organized per the
+  document model — study guide central; per chapter: study guide, slides,
+  practice; downloads offered as the self-contained files themselves;
+  Current-term section shown/hidden per instructor.
+- **S2. Design pass** (impeccable, brand register): typography/navigation
+  for reading, not authoring; orz-markdown 1.3.1 themes; LRMI markup
+  stays; copy-as-source works on every page.
+- **S3. Build pipeline**: stays in renderer + worker (rule 7); permalink
+  stamps + pinned assets from P1.
+- *Definition of done:* a student finds any public resource in ≤2 clicks
+  from the course home, on a phone.
+
+## Module W — Worker tier (cross-cutting enabler, build as needed)
+
+Job queue + container workers: site builds, paged/print generation,
+periodic reconciliation (door #3 without user action), agent-harness runs.
+Pulled in by the first module that needs it (likely P1 pinned serving or
+S3 builds).
+
+## Sequencing
 
 ```
-Phase 0 (contracts) ──► Phase 1 (publish loop) ──► Phase 2 (authoring depth)
-                                   │                        │
-                                   ▼                        ▼
-                           Phase 3 (agent harness) ──► Phase 4 (assessment)
-                                   │
-                                   ▼
-                           Phase 5 (adaptation) ──► Phase 6 (portal)
-                                                         │
-                                                         ▼
-                                  Phase 7 (research ops) ──► Phase 8 (sustainability)
+now →   E1 E2 ──────────── E3 E4 E5        (editing experience first)
+        R1 R2 (v2 core) ── R3
+                  P1 P2 ── P3 P4
+                       T1 ── T2 T3 T4
+                              S1 S2 S3
+                              I2 (interim)          W: on demand
 ```
 
-Adaptation (5) needs block identity (0), publishing (1), and reconciliation (3). The portal (6) is pointless before adaptation makes an ecosystem. Research ops (7) instruments everything before it, but *basic* events exist from Phase 1 because instrumentation-from-the-beginning is a study commitment.
+- **Start together:** E1/E2 (pure seam work against existing files) and
+  R1/R2 (contract v2) — E3 needs R1, so the contract slice is pulled
+  forward rather than blocking editing.
+- P needs R2; T1 needs P3's item shapes (design them together); S can
+  start its IA/design anytime, ships after P1.
+- Each lands with tests + Status.md updates; durable logic first, thin
+  client last (unchanged discipline).
