@@ -123,12 +123,18 @@ search scope = public layer of registered packages. (Owner to confirm.)
 Next: the owner defines **what a whole OER package should have** (the
 document taxonomy, §4).
 
-## 4. Next design session (owner reminder — most important open work)
+## 4. Document taxonomy (delivered 2026-07-04 → specs/document-model.md)
 
-**The document taxonomy:** what types of documents a course package should
-have, in what formats, and what each one's function is — detailed per-type
-descriptions. This blocks the document-contract schema. Each type will also
-declare its permalink class (final view / insertable object / source).
+The owner delivered the taxonomy in
+[userinputs/userguide.md](userinputs/userguide.md); it is structured in
+[specs/document-model.md](specs/document-model.md) (DRAFT, open questions
+marked). Highlights: course concept map + per-chapter {concept map, study
+guide `.md.html` (source of truth), slides, assessment guide, practice
+questions} + three file spaces {assets, current, private}; start-small
+element publishing with report→correct→notify and revise→fork loops;
+element discovery is **per-file**, not gated on whole-package portal
+listing. Confirmed same day: block IDs demote to optional anchors; file
+versions are a dated history, named versions exist only at package level.
 
 Other open questions (tracked in the spec §6): study-guide source of record
 (`.md` source vs `.md.html`-native); fate of the current studio-shell block
