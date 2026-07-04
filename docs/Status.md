@@ -717,10 +717,14 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
   region `iad`, 1× shared-cpu-1x/512MB, `/health` check green); Dockerfile +
   fly.toml at `apps/worker/`. `WORKER_TOKEN` set as a Fly secret; verified
   end to end (health, 401 without token, authorized `/generate` → live
-  823KB `.md.html`). **Last operator step: set `WORKER_URL=https://alembic-worker.fly.dev`
-  + the matching `WORKER_TOKEN` in Vercel env, then redeploy the web app** —
-  after that, generated files are live-editable instead of the fallback.
-  `.md.pdf` retirement is a no-op.
+  823KB `.md.html`). **Vercel wired + redeployed:** `WORKER_URL` + `WORKER_TOKEN`
+  set on the `alembic` project (Production, encrypted); production
+  redeployed and healthy (`alembic.orz.how` 200). The generator adoption is
+  now **live end to end** — exports and generated slides route through the
+  Fly worker and produce live-editable files (in-file editor + host-save),
+  with the in-process fallback still there if the worker is unreachable.
+  Final human check: sign in, download a study guide, confirm it opens with
+  the pencil editor. `.md.pdf` retirement is a no-op.
 - **Generator adoption — Step 2 BLOCKED ON A DECISION (owner).**  ~~superseded above~~ Swapping
   `renderer/mdhtml.ts` + `renderer/slides.ts` to call `buildMdHtml` /
   `buildSlidesHtml` / `buildPagedHtml` surfaced two real issues: (a) the
