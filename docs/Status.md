@@ -693,9 +693,13 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
   Handshake (parent-only trust, origin pinning, version negotiation),
   hosted Save `{source, html}` with ack + 10s watchdog, dirty signal,
   unhosted behavior unchanged; slides 47/47 + paged 125/125 tests green.
-  **Pending operator action: push the three repos and publish releases**
-  (no version bumps made). Alembic host side must retry the hello.
-  Unblocks E1's generic hosted-carrier EditorModule.
+  ~~Pending operator action~~ **RELEASED same day (owner-authorized):**
+  pushed and published in lockstep pairs — `orz-mdhtml@0.3.0` +
+  `orz-mdhtml-browser@0.3.0`, `orz-slides@0.2.0` + `orz-slides-browser@0.2.0`,
+  `orz-paged@0.2.0` + `orz-paged-browser@0.2.0` (browser pairs are
+  mandatory: generated files pin `browser@<selfVersion>` CDN URLs). All
+  versions verified on the registry. Alembic host side must retry the
+  hello. E1's generic hosted-carrier EditorModule is fully unblocked.
 - **Sprint 1 (Modules R+E) landed.** **R1 core primitives** (subagent,
   purely additive to v1): `package-contract` gains the v2 spaces module
   (space=layer; `spaceForPath`, `assertPathAllowedInRepoV2`, v1→v2
