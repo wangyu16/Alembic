@@ -121,11 +121,13 @@ export function StudioShell({
   // GitHub" while there are unsaved edits (you must save to the package first).
   const [dirty, setDirty] = useState(false);
   // Left panes are collapsible to give the editor the full width. The chapter
-  // list starts collapsed; the category rail starts open. Below md the panes
-  // render as overlay drawers, so on small screens they start closed, only
-  // one opens at a time, and picking an item closes them.
+  // list starts collapsed; the category rail starts open — except at course
+  // level, where categories don't apply (only the course description/concept
+  // map), so the rail auto-collapses. Below md the panes render as overlay
+  // drawers, so on small screens they start closed, only one opens at a
+  // time, and picking an item closes them.
   const [showChapters, setShowChapters] = useState(false);
-  const [showRail, setShowRail] = useState(true);
+  const [showRail, setShowRail] = useState(category !== "course");
   const isNarrow = () =>
     typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches;
   useEffect(() => {
@@ -206,7 +208,11 @@ export function StudioShell({
         <nav className="panel min-h-0 w-44 shrink-0 overflow-y-auto p-2 max-md:absolute max-md:inset-y-0 max-md:left-0 max-md:z-20 max-md:w-64 max-md:shadow-xl">
           <Link
             href={href({ chapter: null, cat: "course" })}
-            onClick={closeDrawers}
+            onClick={() => {
+              // Course level has no per-chapter categories — collapse the rail.
+              setShowRail(false);
+              closeDrawers();
+            }}
             className={`block rounded-md px-2 py-1.5 text-sm ${
               category === "course" ? "bg-accent text-[var(--accent-ink)]" : "text-muted hover:bg-elevated hover:text-ink"
             }`}
@@ -217,17 +223,36 @@ export function StudioShell({
             <span className="text-xs text-faint">{forms.Plural}</span>
             <button
               onClick={() => setManageOpen(true)}
-              className="text-xs text-muted hover:text-ink"
+              className="rounded-md p-1 text-[var(--accent)] transition-colors hover:bg-elevated hover:text-[var(--accent-hover)]"
               title={`Add, reorder, rename ${forms.plural}`}
+              aria-label={`Manage ${forms.plural}`}
             >
-              ⚙
+              {/* gear: ring + hub + 8 teeth (currentColor, 20px) */}
+              <svg
+                viewBox="0 0 24 24"
+                className="h-5 w-5"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                aria-hidden
+              >
+                <circle cx="12" cy="12" r="6.2" />
+                <circle cx="12" cy="12" r="2.2" />
+                <path d="M12 3.2v2.6M12 18.2v2.6M3.2 12h2.6M18.2 12h2.6M5.8 5.8l1.8 1.8M16.4 16.4l1.8 1.8M18.2 5.8l-1.8 1.8M7.6 16.4l-1.8 1.8" />
+              </svg>
             </button>
           </div>
           {chapters.map((c, i) => (
             <Link
               key={c.slug}
               href={href({ chapter: c.slug, cat: category === "course" ? "content" : category })}
-              onClick={closeDrawers}
+              onClick={() => {
+                // A chapter has categories — bring the rail back (drawers
+                // still close on narrow screens).
+                if (!isNarrow()) setShowRail(true);
+                closeDrawers();
+              }}
               className={`mt-0.5 block truncate rounded-md px-2 py-1.5 text-sm ${
                 c.slug === activeSlug && category !== "course"
                   ? "bg-elevated text-ink"
