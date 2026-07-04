@@ -694,8 +694,10 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
   `79566ab`). All: single shared inline-composition path (CLI `--inline`
   output byte-identical; CDN path unchanged), `exports`+`types`, assets
   resolved via `import.meta.url` (npm-installable), builds + suites green
-  (slides 54, paged 132). **Pending operator action: bump + publish** (no
-  version bumps made) before Alembic can consume from npm. **Adoption note
+  (slides 54, paged 132). **RELEASED (owner-authorized):**
+  `orz-mdhtml@0.4.0`, `orz-slides@0.3.0`, `orz-paged@0.3.0` (each + its
+  lockstep `-browser`), registry-verified — Alembic can consume from npm
+  now. **Adoption note
   — source-island markers differ per format** (mdhtml/paged
   `<script type="text/markdown" id="orz-src">`, slides
   `<script type="text/orz-slides" id="orz-deck">`); verify
