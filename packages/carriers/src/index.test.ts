@@ -18,6 +18,14 @@ import {
 const SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10"/></svg>`;
 const HTML = `<!doctype html><html><head><title>t</title></head><body><h1>hi</h1></body></html>`;
 
+/** Build an orz-family self-contained file's island exactly as the upstream
+ * runtimes do: escape ONLY `</script>` → `<\/script>`, leave other `</` raw. */
+function orzSelfFile(id: string, type: string, source: string): string {
+  const body = source.replace(/<\/script>/gi, "<\\/script>");
+  return `<!doctype html><html><body><main>doc</main>` +
+    `<script type="${type}" id="${id}">${body}</script></body></html>`;
+}
+
 describe("round-trip embed → extract", () => {
   it("recovers an SVG (ketcher) carrier byte-identical", () => {
     const source = `{"mol":"benzene","atoms":[1,2,3]}`;
@@ -290,5 +298,42 @@ describe("contract v2: plain-media fallback kinds", () => {
 
   it("extractSource on plain media bytes throws CarrierError (no island)", () => {
     expect(() => extractSource("\x89PNG\r\n\x1a\n…binary bytes…")).toThrow(CarrierError);
+  });
+});
+
+describe("orz-family self-contained file islands (orz-src / orz-deck)", () => {
+  it("extracts markdown source from an orz-src island (kind md)", () => {
+    const source = "# Title\n\nBody with **bold**.\n";
+    const file = orzSelfFile("orz-src", "text/markdown", source);
+    const out = extractSource(file);
+    expect(out.kind).toBe("md");
+    expect(out.format).toBe(0);
+    expect(out.source).toBe(source);
+    expect(hasCarrier(file)).toBe(true);
+    expect(detectFormatVersion(file)).toBe(0);
+  });
+
+  it("extracts deck source from an orz-deck island (kind slides)", () => {
+    const source = "# Slide 1\n\n---\n\n# Slide 2\n";
+    const file = orzSelfFile("orz-deck", "text/orz-slides", source);
+    const out = extractSource(file);
+    expect(out.kind).toBe("slides");
+    expect(out.source).toBe(source);
+  });
+
+  it("recovers </script> while leaving other </ raw (script-only escaping)", () => {
+    const source = "A </script> here, a </div> there, code `</p>`.\n";
+    const file = orzSelfFile("orz-src", "text/markdown", source);
+    // The stored island escaped only </script>.
+    expect(file).toContain("<\\/script>");
+    expect(file).toContain("</div>");
+    expect(extractSource(file).source).toBe(source);
+  });
+
+  it("does NOT corrupt a literal backslash-slash in the source", () => {
+    // A regex like /<\// in a code block: the bytes < \ / must survive.
+    const source = "Regex: `/<\\//g` matches a close tag.\n";
+    const file = orzSelfFile("orz-src", "text/markdown", source);
+    expect(extractSource(file).source).toBe(source);
   });
 });

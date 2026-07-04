@@ -61,3 +61,17 @@ export const HTML_SCRIPT_TYPE = "application/orz-carrier+json";
 
 /** Legacy (format 0) markers from the old orz-plot VS Code extension. */
 export const LEGACY_SVG_METADATA_ID = "orz-chart-meta";
+
+/**
+ * Source-island ids of the orz-family self-contained files (orz-mdhtml /
+ * orz-slides / orz-paged). These files embed their own editable source under
+ * their own marker — `<script type="text/markdown" id="orz-src">` for
+ * `.md.html` / `.paged.html`, `<script type="text/orz-slides" id="orz-deck">`
+ * for `.slides.html` — and escape only `</script>` (not every `</`). Alembic
+ * generates files with these tools (docs/specs/self-contained-editing.md), so
+ * the codec extracts source from them, not just its own `orz-carrier` island.
+ * `orz-src` may be `md` or `paged` (the island can't distinguish; the file
+ * extension does), so extraction reports kind `md` for it.
+ */
+export const ORZ_SELF_SRC_ID = "orz-src";
+export const ORZ_SELF_DECK_ID = "orz-deck";

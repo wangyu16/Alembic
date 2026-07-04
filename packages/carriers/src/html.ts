@@ -19,6 +19,8 @@ import {
   CARRIER_ELEMENT_ID,
   CarrierError,
   HTML_SCRIPT_TYPE,
+  ORZ_SELF_DECK_ID,
+  ORZ_SELF_SRC_ID,
   type EmbedInput,
   type ExtractResult,
 } from "./types";
@@ -28,9 +30,20 @@ function escapeForScript(source: string): string {
   return source.split("</").join("<\\/");
 }
 
-/** Reverse of {@link escapeForScript}. */
+/** Reverse of {@link escapeForScript} (the `orz-carrier` island). */
 function unescapeFromScript(source: string): string {
   return source.split("<\\/").join("</");
+}
+
+/**
+ * Reverse of the `</script>`-only escaping used by the legacy `md-source`
+ * island AND the orz-family self-contained files (`orz-src` / `orz-deck`),
+ * which escape only the dangerous `</script>` sequence, leaving other `</`
+ * (e.g. `</div>`) raw. Restoring only `<\/script>` avoids corrupting a
+ * literal backslash-slash in the source.
+ */
+function unescapeScriptOnly(source: string): string {
+  return source.replace(/<\\\/script>/gi, "</script>");
 }
 
 export function embedHtml(input: EmbedInput): string {
@@ -85,9 +98,12 @@ function matchScriptById(file: string, id: string): { openTag: string; body: str
 }
 
 /**
- * Extract the source from an HTML carrier. Tries the current `orz-carrier`
- * island, then the legacy `md-source` island (format 0, kind "md"). Returns
- * null if neither is present.
+ * Extract the source from an HTML carrier. Tries, in order: the current
+ * `orz-carrier` island (native, reverse-all unescape); the legacy `md-source`
+ * island; and the orz-family self-contained files' own islands `orz-src`
+ * (kind "md" — may be `.md.html` or `.paged.html`; the extension decides) and
+ * `orz-deck` (kind "slides"). The latter three use `</script>`-only escaping.
+ * Returns null if no island is present.
  */
 export function extractHtml(file: string): ExtractResult | null {
   const current = matchScriptById(file, CARRIER_ELEMENT_ID);
@@ -100,15 +116,24 @@ export function extractHtml(file: string): ExtractResult | null {
       source: unescapeFromScript(current.body),
     };
   }
-  const legacy = matchScriptById(file, LEGACY_MD_HTML_ID);
-  if (legacy) {
-    const formatRaw = readAttr(legacy.openTag, ATTR_FORMAT);
-    const format = formatRaw !== null ? Number.parseInt(formatRaw, 10) : 0;
-    return {
-      kind: "md",
-      format: Number.isFinite(format) ? format : 0,
-      source: unescapeFromScript(legacy.body),
-    };
+  // Script-only-escaped islands: legacy Alembic (`md-source`) + the orz-family
+  // self-contained files. Format 0 (they carry no `data-orz-format` marker).
+  const scriptOnly: Array<[id: string, kind: string]> = [
+    [LEGACY_MD_HTML_ID, "md"],
+    [ORZ_SELF_SRC_ID, "md"],
+    [ORZ_SELF_DECK_ID, "slides"],
+  ];
+  for (const [id, kind] of scriptOnly) {
+    const found = matchScriptById(file, id);
+    if (found) {
+      const formatRaw = readAttr(found.openTag, ATTR_FORMAT);
+      const format = formatRaw !== null ? Number.parseInt(formatRaw, 10) : 0;
+      return {
+        kind,
+        format: Number.isFinite(format) ? format : 0,
+        source: unescapeScriptOnly(found.body),
+      };
+    }
   }
   return null;
 }
@@ -116,11 +141,16 @@ export function extractHtml(file: string): ExtractResult | null {
 /**
  * Detect the carrier format version of an HTML file.
  * - `orz-carrier` <script> with data-orz-format → that integer (>= 1)
- * - `orz-carrier`/legacy `md-source` <script> without the marker → 0
+ * - any recognized island without the marker (`orz-carrier`, legacy
+ *   `md-source`, orz-family `orz-src` / `orz-deck`) → 0
  * - no island → null
  */
 export function detectHtmlVersion(file: string): number | null {
-  const found = matchScriptById(file, CARRIER_ELEMENT_ID) ?? matchScriptById(file, LEGACY_MD_HTML_ID);
+  const found =
+    matchScriptById(file, CARRIER_ELEMENT_ID) ??
+    matchScriptById(file, LEGACY_MD_HTML_ID) ??
+    matchScriptById(file, ORZ_SELF_SRC_ID) ??
+    matchScriptById(file, ORZ_SELF_DECK_ID);
   if (!found) return null;
   const formatRaw = readAttr(found.openTag, ATTR_FORMAT);
   if (formatRaw !== null) {
