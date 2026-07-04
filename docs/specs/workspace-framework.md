@@ -65,6 +65,20 @@ mounts the file in a sandboxed iframe and listens — saves return through
 `applyEditorEdit`. Upstream work item for the sibling repos; the Alembic
 side is a thin editor-kit wrapper.
 
+**Protocol scope (owner-confirmed 2026-07-04): all three runtimes, one
+pass.** The protocol is format-agnostic and lands in orz-mdhtml,
+orz-slides, and orz-paged together (~40 lines each) so one version, one
+review, one test harness — and Alembic ships a single generic
+hosted-carrier `EditorModule` parameterized by kind, not three wrappers.
+The spec lives **upstream in the orz-family** (a versioned `PROTOCOL.md`,
+`orz-host-save@1`) because it's a property of the files, usable by any
+host. It must pin two things: **origin discipline** (host-save enables
+only after a verified handshake from the parent; replies target that
+origin only — these files are executable HTML) and **capability
+negotiation** (host announces the protocol; an unhosted file keeps its
+normal File-System-Access/download save). Alembic consumes md first (E3);
+slides/paged panes activate later with no upstream work left.
+
 - Study guide becomes one `.md.html` file per chapter with its **in-file
   editor hosted** in the editor pane (orz-mdhtml via the `editor-kit`
   seam); the block editor is the interim surface until then.
