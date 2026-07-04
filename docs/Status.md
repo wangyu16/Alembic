@@ -687,6 +687,27 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
 ## Log
 
 ### 2026-07-04
+- **Generator adoption — Step 1 DONE (carrier codec).** `@alembic/carriers`
+  `extractSource`/`hasCarrier`/`detectFormatVersion` now read the upstream
+  self-contained-file source islands (`#orz-src` → md/paged, `#orz-deck` →
+  slides) with their `</script>`-only escaping, alongside the native
+  `#orz-carrier` and legacy `#md-source` (`9ca4897`; +4 tests incl. the
+  literal-backslash edge case). Alembic can now round-trip source out of
+  upstream-generated files.
+- **Generator adoption — Step 2 BLOCKED ON A DECISION (owner).** Swapping
+  `renderer/mdhtml.ts` + `renderer/slides.ts` to call `buildMdHtml` /
+  `buildSlidesHtml` / `buildPagedHtml` surfaced two real issues: (a) the
+  upstream libs are **Node-only and read package assets at runtime**
+  (`readFileSync` via `import.meta.url`) → in Next.js/Vercel serverless the
+  asset files aren't traced by default (works locally, 404s on deploy)
+  unless forced via `outputFileTracingIncludes` **or** generation moves to
+  the **worker tier** (Module W) which has a real filesystem — the
+  architecturally cleaner home for heavy asset-reading generators; (b) the
+  library entry is **inline-only** (~800KB self-contained) — right for
+  *downloadable* `.md.html` exports, but heavy for *repo-committed* study
+  guides (E3), which may want a CDN mode (smaller) that the upstream lib
+  doesn't yet expose. Decision needed before wiring. Theme mapping
+  (Alembic `RenderTheme` → orz theme id) is trivial by comparison.
 - **Upstream library entries DONE (pushed, NOT published).** Each orz-family
   package now exports an in-process generator so Alembic can build files
   without shelling to the CLI: `buildMdHtml` (orz-mdhtml `98835ef`),
