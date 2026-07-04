@@ -49,6 +49,11 @@ Modules stay independent because each concern has exactly one owner:
 *Owner element: "file contract of all types — create in place, upload to
 workspace, or upload to GitHub source, all registered correctly."*
 
+- **R0. Package layout spec** — the on-disk contract
+  ([specs/package-layout.md](specs/package-layout.md)): folder structure,
+  naming rules, manifest, so a package authored entirely outside Alembic
+  registers automatically on adoption (+ a template repository as
+  executable documentation).
 - **R1. Contract v2** (`package-contract`): registration record
   (docId, path/layer/space, kind, format version, source hash, provenance
   origin, license, description/alt-text, `discoverable`, permalink class);
