@@ -703,13 +703,18 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
   assets from `node_modules`; source round-trips out via `@alembic/carriers`
   (Step 1) modulo the tools' `\n` padding (slides/paged pad, md doesn't —
   consumers `.trim()` before hashing; a future upstream consistency fix
-  would make it byte-exact). **Remaining:** (a) worker HTTP endpoint
-  (`POST /generate` → `@alembic/generators`) + a `generate-file` job
-  contract; (b) web worker-client seam (`WORKER_URL` + inline dead-doc
-  builder as fallback so nothing breaks when the worker is down); (c) wire
-  `export.ts` + inject the slides generator into `package-ops/slides.ts`;
-  (d) operator: deploy the worker + set `WORKER_URL`. `.md.pdf` retirement
-  is a no-op (no such code exists).
+  would make it byte-exact). **(a)–(c) DONE** (`0074212`): worker is a
+  long-running HTTP service (`POST /generate` → `@alembic/generators`,
+  `GET /health`, optional `WORKER_TOKEN`; `generate-file` job contract) —
+  smoke-tested end to end; web seam `lib/worker-client.ts` (`server-only`)
+  calls the worker when `WORKER_URL` is set (LIVE in-file-editable files),
+  else falls back to the renderer's in-process builders (exports keep
+  working with no worker); wired both `.md.html` export routes
+  (`mdHtmlResponse` async) + slides generation (injected into `package-ops`
+  so it stays free of the worker/Node-only dep). `.env.example` documents
+  the vars; `pnpm dev:worker` runs it. **Remaining (d): operator** — deploy
+  the worker container (Fly.io/Railway-class) + set `WORKER_URL` on Vercel;
+  until then the app runs on the fallback. `.md.pdf` retirement is a no-op.
 - **Generator adoption — Step 2 BLOCKED ON A DECISION (owner).**  ~~superseded above~~ Swapping
   `renderer/mdhtml.ts` + `renderer/slides.ts` to call `buildMdHtml` /
   `buildSlidesHtml` / `buildPagedHtml` surfaced two real issues: (a) the
