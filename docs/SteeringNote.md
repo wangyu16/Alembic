@@ -83,6 +83,46 @@ means commit SHAs. Instead:
 - Trade-off acknowledged: the resolver is platform infrastructure with a
   sustainability obligation (same class as the portal).
 
+## 3b. Package structure: file as the unit, sharing at two levels (owner decision, 2026-07-04)
+
+The basic content unit changes. Previously: a *section* of a chapter's study
+guide (heading-bounded block). Now: **the whole study guide of a chapter is
+the unit — one `.md.html` file.** Sections remain internal structure of the
+file, not units of storage or sharing. (Consequence: the chapter's source of
+record is the `.md.html` file itself, with markdown source embedded;
+registration extracts and hashes it. Slides/paged handouts derive from the
+chapter file and trace to it — study-guide-centered, coarser grain.)
+
+**Sharing at two levels:**
+
+- **File level** — every single file is individually shareable: a study
+  guide, a slide deck, an image, a plot, an element, a piece of markdown
+  source, …. A reusable markdown piece is its own small object file (not an
+  addressable block inside a chapter). **Each file has version control and a
+  permalink** (per-file history comes from Git; pinned form = the file at a
+  version). The two permalink classes (§3) apply: documents = view/cite/find;
+  objects = insert as `src`.
+- **Package level** — a whole course package is shared as a whole (portal
+  page / published site / repo pair) and has **united version control**:
+  named snapshots (Git tags). A package snapshot pins every file at once; a
+  file permalink can pin either to the file's own version or to a package
+  snapshot ("this figure, as taught in Fall 2026").
+
+**Discover searches both levels:** whole course packages (exists) and
+**elements** — individual files across registered packages (new; powered by
+the document-contract registration index: kind, description/alt text,
+provenance, license, permalink). Element results are public-safe only, with
+class-appropriate actions (view/cite/adapt vs copy-permalink/insert).
+
+Open sub-questions: block IDs demote to optional in-file anchors (citation,
+provenance, AI merge assistance) — no longer editing/sharing units, and
+suggest-back becomes file-level; file versions stay a plain dated history
+while *named* versions exist only at package level (snapshots); element
+search scope = public layer of registered packages. (Owner to confirm.)
+
+Next: the owner defines **what a whole OER package should have** (the
+document taxonomy, §4).
+
 ## 4. Next design session (owner reminder — most important open work)
 
 **The document taxonomy:** what types of documents a course package should
