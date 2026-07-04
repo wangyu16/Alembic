@@ -1,10 +1,12 @@
 # Document model — package structure, taxonomy, versioning, discovery
 
-**Status: DRAFT for owner review (2026-07-04).** Synthesized from the owner's
-[userinputs/userguide.md](../userinputs/userguide.md), [SteeringNote.md
-§3b](../SteeringNote.md), and the 2026-07 direction
-([self-contained-editing.md](self-contained-editing.md)). Open questions are
-marked **[open]**. Once approved, this spec supersedes the taxonomy/asset
+**Status: direction locked (owner-reviewed 2026-07-04).** Synthesized from
+the owner's [userinputs/userguide.md](../userinputs/userguide.md),
+[SteeringNote.md §3b](../SteeringNote.md), and the 2026-07 direction
+([self-contained-editing.md](self-contained-editing.md)); the four open
+questions were ruled by the owner same-day (assessment guide public +
+adapt-included; pin at insert; one-click "share this" opt-in; current space
+excluded from element search). This spec supersedes the taxonomy/asset
 portions of [carriers-and-assets.md](carriers-and-assets.md) (codec details
 remain there until the specs rebuild reaches it).
 
@@ -41,7 +43,7 @@ remain there until the specs rebuild reaches it).
 | 1 | Chapter concept map | `.md` | Chapter-level topics/concepts/objectives + correlations | Public repo, not on website | Included |
 | 2 | **Study guide** (name flexible: lecture note, handout, …) | `.md.html` | Complete description of topics/concepts/objectives with illustrations, tables, examples; concise companion when a textbook exists, textbook-grade detail when not. **Includes everything; the chapter's source of truth.** | Public-facing | Included |
 | 3 | Slides | `.slides.html` | Deck derived from the study guide — same outline, concise bullets, reuses its graphics/tables | Public-facing | Included |
-| 4 | Assessment guide | `.md` | *How* to assess each topic/concept: question kinds and phrasing, differentiation across assignment/discussion/quiz/exam, example question ideas per objective. Methods, not a question pool. | **Not public-facing** — **[open]** public repo (like concept maps) or private repo? | Included **[open]** |
+| 4 | Assessment guide | `.md` | *How* to assess each topic/concept: question kinds and phrasing, differentiation across assignment/discussion/quiz/exam, example question ideas per objective. Methods, not a question pool. | Public repo, **not** on the course website (not private) | **Automatically included** when adapted |
 | 5 | Example & practice questions | `.md.html` | Questions created per the assessment guide, showing students what to expect | Public-facing | Included |
 | 6 | **Assets** (space, not a file) | any (images, reaction schemes, plots, diagrams, markdown-source pieces, pdf/docx/pptx, …) | Individual reusable elements; each file searchable and adaptable on its own | Public repo; per-file discoverable | Per-file |
 | 7 | **Current** (space) | any; prefer `.paged.html` for exam sheets/handouts | Current teaching cycle: this semester's assignment list, completed exams with keys for student review, …. Newest set shown on the website; on semester turnover the old set is archived. | Public-facing (website shows newest set; inclusion per instructor) | **Not** auto-included |
@@ -70,11 +72,10 @@ Implications (new platform capabilities):
   permalinks (rebuildable projection — references live in the files).
 - **Notifications:** element-level notices (correction available, revision
   available) delivered in educator terms.
-- **[open] Insert default — pinned vs live:** a live permalink would make
-  corrections propagate silently (no notice, no choice); a pinned insert +
-  notification gives each user the update/keep decision the owner describes.
-  Recommendation: **pin at insert, notify on new versions** — the fork/keep
-  choice stays with each user. Owner to confirm.
+- **Insert default (decided): pin at insert.** Inserted references point at
+  a pinned version; when the element gains a new version (correction or
+  revision/fork), users are notified and each chooses update or keep. A live
+  permalink would propagate changes silently, removing that choice.
 
 ## 4. Registration & discovery
 
@@ -86,12 +87,12 @@ Implications (new platform capabilities):
   and **elements** (individual files). Element discoverability is **per
   file**, not gated on whole-package listing — supporting the start-small
   path. Files in `private` are never discoverable; `current` files are
-  public-facing but **[open]** presumably not element-indexed by default.
-- **[open] Discoverability default** for public files: opt-in per file
-  ("make discoverable"), or automatic for `assets` once the repo is public?
-  Recommendation: assets opt-in at creation with a one-click "share this"
-  affordance (Tier 3 stays: making something discoverable is a deliberate
-  act).
+  **excluded from element search** (semester ephemera, not reusable OER —
+  they remain visible on the course website only).
+- **Discoverability default (decided): opt-in per file** via a one-click
+  **"share this"** affordance. Making something discoverable stays a
+  deliberate act (Tier-3 spirit); nothing is indexed merely because the
+  repo is public.
 
 ## 5. Workspace consequences
 
