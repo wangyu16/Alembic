@@ -53,6 +53,9 @@ any pair, re-verify ≥4.5:1 for text and ≥3:1 for UI outlines.
 - Breakpoints: mobile-first; `sm:` 640, `md:` 768, `lg:` 1024. Editing
   surfaces go single-column below `lg:`; navigation panes become overlay
   drawers below `md:` (studio shell) with the same toggle buttons.
+- Site header: one nav-item list renders twice — inline links from `sm:` up,
+  a CSS-only `<details>` "Menu" dropdown below (both auth states). New nav
+  items go in the list once and appear in both presentations.
 - Never a fixed pane width without a mobile fallback; dropdowns clamp to
   `max-w-[calc(100vw-2rem)]`.
 - Touch targets: `@media (pointer: coarse)` bumps `.btn`/`.btn-sm` padding.
