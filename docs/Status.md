@@ -687,6 +687,15 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
 ## Log
 
 ### 2026-07-04
+- **`orz-host-save@1` implemented upstream (all three sibling repos, one
+  pass) and browser-verified** — canonical PROTOCOL.md + runtime hook in
+  orz-mdhtml (`efd6d4b`), orz-slides (`37459cc`), orz-paged (`c5f25e9`).
+  Handshake (parent-only trust, origin pinning, version negotiation),
+  hosted Save `{source, html}` with ack + 10s watchdog, dirty signal,
+  unhosted behavior unchanged; slides 47/47 + paged 125/125 tests green.
+  **Pending operator action: push the three repos and publish releases**
+  (no version bumps made). Alembic host side must retry the hello.
+  Unblocks E1's generic hosted-carrier EditorModule.
 - **Sprint 1 (Modules R+E) landed.** **R1 core primitives** (subagent,
   purely additive to v1): `package-contract` gains the v2 spaces module
   (space=layer; `spaceForPath`, `assertPathAllowedInRepoV2`, v1→v2

@@ -79,6 +79,15 @@ negotiation** (host announces the protocol; an unhosted file keeps its
 normal File-System-Access/download save). Alembic consumes md first (E3);
 slides/paged panes activate later with no upstream work left.
 
+**Status 2026-07-04: implemented upstream and browser-verified** — canonical
+`PROTOCOL.md` + runtime in orz-mdhtml (`efd6d4b`), orz-slides (`37459cc`),
+orz-paged (`c5f25e9`); committed locally, **not pushed / not published**
+(owner releases). Verified: handshake (bogus hellos ignored), save with
+ack + 10s watchdog, dirty signal (+ post-handshake catch-up), unhosted
+behavior unchanged. Host-side notes for Alembic's EditorModule: **retry
+the hello** until `orz-host-ready` (CDN-slow files boot late); the
+framework self-Update flow stays on the file's own save path in v1.
+
 - Study guide becomes one `.md.html` file per chapter with its **in-file
   editor hosted** in the editor pane (orz-mdhtml via the `editor-kit`
   seam); the block editor is the interim surface until then.
