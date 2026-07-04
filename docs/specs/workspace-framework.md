@@ -88,6 +88,25 @@ behavior unchanged. Host-side notes for Alembic's EditorModule: **retry
 the hello** until `orz-host-ready` (CDN-slow files boot late); the
 framework self-Update flow stays on the file's own save path in v1.
 
+**Duplicate-logo suppression — DEFERRED (owner, 2026-07-04).** The orz
+files show their own brand mark (top-left of the slide-in edit panel);
+Alembic shows the same orz family mark in its header, so an embedded
+editor duplicates it. A first attempt hid the logo on handshake
+(`data-orz-hosted` + serializer-strip) — **reverted** (that couples
+Alembic-specific policy into the general file/protocol). Decision: **leave
+it for now** (the duplicate only appears while actively editing; minor).
+Two facts constrain any future fix, both established here: (1) the file is
+embedded in a **sandboxed opaque iframe** (no host DOM access — security),
+and (2) `serializeDoc` **deep-clones the live DOM**, so anything hidden
+in-file bakes into saves unless the serializer strips it. **Future
+approach when wanted — a generic embed flag (upstream, download-safe):**
+the file hides its brand only when a host opens it with an explicit
+"minimal chrome" request (e.g. `?embed=minimal`), and the serializer
+always keeps the full brand in saved/downloaded copies — a neutral file
+capability any embedder can use, documented in the file README, *not* in
+the save protocol. A pure Alembic-side overlay was rejected as fragile
+(can't see the file's read/edit mode → stray patch in read mode).
+
 - Study guide becomes one `.md.html` file per chapter with its **in-file
   editor hosted** in the editor pane (orz-mdhtml via the `editor-kit`
   seam); the block editor is the interim surface until then.

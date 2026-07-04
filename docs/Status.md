@@ -687,6 +687,17 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
 ## Log
 
 ### 2026-07-04
+- **Hosted-chrome logo-hide REVERTED (owner).** The upstream attempt to
+  hide the orz brand on host handshake (orz-mdhtml/slides/paged) was
+  reverted and pushed (revert commits `9d495d1` / `050cfbd` / `d2a5e9d`);
+  the `orz-host-save@1` protocol itself is untouched. Duplicate-logo
+  suppression is **deferred** — the general file shouldn't carry
+  Alembic-specific policy, and the duplicate only shows while editing.
+  Future path documented in workspace-framework.md §3 (a generic,
+  download-safe `?embed=minimal` file capability). Established constraints:
+  sandboxed opaque iframe (no host DOM access) + `serializeDoc`
+  deep-clones live DOM (in-file hides bake into saves without a serializer
+  strip).
 - **Owner decision: Alembic drops its own dual-extension builders.**
   `.md.html` / `.slides.html` generation moves to the upstream orz-family
   generators (and `.md.pdf` is retired — print a `.paged.html` instead), so
