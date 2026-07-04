@@ -687,6 +687,18 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
 ## Log
 
 ### 2026-07-04
+- **Owner decision: Alembic drops its own dual-extension builders.**
+  `.md.html` / `.slides.html` generation moves to the upstream orz-family
+  generators (and `.md.pdf` is retired — print a `.paged.html` instead), so
+  every file Alembic produces carries its in-file editor + host-save
+  protocol. Plan: (1) upstream library entries (`buildMdHtml` /
+  `buildSlidesHtml` / `buildPagedHtml` exported from the three packages,
+  inline-runtime mode; CLI refactored over the library) — queued behind the
+  in-flight hosted-chrome agent (same repos); (2) owner publishes releases
+  (npm token was deleted after the last publish); (3) Alembic renderer
+  adopts: replace `renderer/mdhtml.ts` + `renderer/slides.ts` builders,
+  update `package-ops/slides.ts` + web export; verify carrier
+  `extractSource` round-trips upstream-generated files.
 - **E1 host side landed: the generic hosted-carrier editor.**
   `@alembic/editor-kit` gains the pure `createHostSaveClient` (hello retry →
   ready → save relay → `orz-host-saved` ack → dirty; 8 tests, fake-timer
