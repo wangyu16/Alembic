@@ -77,6 +77,26 @@ fallback, never recommended.
 - Generated files are stamped with their canonical permalink in carrier
   metadata (self-describing downloads).
 
+## 4b. Change significance (owner decision, 2026-07-04)
+
+When saving a new version of a file that is **discoverable or has downstream
+references**, the educator tags the change (ordinary WIP saves never ask;
+skipping defaults to Update). Version entries carry
+`changeKind: fix | update | variation` + a one-line note (the release note,
+in educator language — it becomes the notification text).
+
+| Kind | Meaning | Downstream behavior |
+|---|---|---|
+| **Fix** | error/mistake correction everyone should take | notify all referrers promptly, "Update" emphasized; adapters may opt in per element to *auto-accept fixes from this source* (auto-update is opt-in per user — pin-at-insert stays the default) |
+| **Update** | expansion / new progress in the field | notify with neutral update/keep, batchable in the Inbox |
+| **Variation** | local customization few others need | **no notices**; visible in the file's history. On a file *with* downstream references, "Variation" offers fork-as-named-variant (new docId, `adapted-from`) as the default, keeping the shared main line meaning-stable |
+
+The tag is **advisory, never trusted**: a mislabeled fix still arrives as the
+same update/keep choice — the kind shapes prominence and sorting only (fixes
+first/loud, updates batched, variations silent). Tier rules unchanged.
+Discover may sort elements by recent fixes/updates (a maintenance signal).
+Schema lands with contract v2 (Roadmap R1) so no later migration is needed.
+
 ## 5. Insertion registry & element notifications
 
 Inserts are **pinned at insert** (owner decision). To power the
