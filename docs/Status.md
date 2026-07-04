@@ -723,8 +723,11 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
   now **live end to end** — exports and generated slides route through the
   Fly worker and produce live-editable files (in-file editor + host-save),
   with the in-process fallback still there if the worker is unreachable.
-  Final human check: sign in, download a study guide, confirm it opens with
-  the pencil editor. `.md.pdf` retirement is a no-op.
+  **Human-verified in production (2026-07-05): downloading a study guide
+  produces a correct live `.md.html`.** The Module R/E generator-adoption
+  arc is complete: carriers read upstream islands · `@alembic/generators` ·
+  worker HTTP service on Fly · web seam with fallback · deployed + wired.
+  `.md.pdf` retirement is a no-op.
 - **Generator adoption — Step 2 BLOCKED ON A DECISION (owner).**  ~~superseded above~~ Swapping
   `renderer/mdhtml.ts` + `renderer/slides.ts` to call `buildMdHtml` /
   `buildSlidesHtml` / `buildPagedHtml` surfaced two real issues: (a) the
