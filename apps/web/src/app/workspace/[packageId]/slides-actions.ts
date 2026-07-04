@@ -7,6 +7,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
 import { supabaseEventLogger } from "@/lib/events";
 import { syncFilesToGitHub } from "@/lib/github";
+import { generateSelfContainedFile } from "@/lib/worker-client";
 
 async function requireUser() {
   const supabase = await createSupabaseServerClient();
@@ -40,6 +41,10 @@ export async function generateSlidesAction(
     const { record: art, carrier } = await generateSlidesArtifact(store, packageId, {
       path,
       packageTitle: record?.title,
+      // Worker-backed when WORKER_URL is set (live, in-file-editable deck);
+      // renderer's in-process build otherwise.
+      generate: ({ title, source }) =>
+        generateSelfContainedFile({ kind: "slides", markdown: source, title }),
     });
     await syncFilesToGitHub(
       supabase, store, user.id, packageId,

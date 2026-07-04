@@ -61,7 +61,17 @@ export interface GenerateSlidesInput {
   path?: string;
   packageTitle?: string;
   now?: () => Date;
+  /** Override the carrier builder (e.g. worker-backed, live-editable). Defaults
+   *  to the in-process renderer build so package-ops needs no worker /
+   *  Node-only generator dependency. */
+  generate?: SlidesCarrierGenerator;
 }
+
+/** Builds a `.slides.html` carrier from deck source (injectable). */
+export type SlidesCarrierGenerator = (input: {
+  title: string;
+  source: string;
+}) => Promise<string> | string;
 
 /**
  * Generate (or regenerate) a chapter's slide deck. Deterministic per chapter:
@@ -78,7 +88,7 @@ export async function generateSlidesArtifact(
     guide.blocks.map((b) => ({ title: b.title, body: b.body })),
   );
   const title = input.packageTitle ? `${input.packageTitle} — Slides` : "Slides";
-  const carrier = buildSlidesHtml({ title, source });
+  const carrier = await (input.generate ?? buildSlidesHtml)({ title, source });
 
   const deckPath = slidesPath(guide.path);
   const artifactId = (await existingSlidesId(store, packageId, deckPath)) ?? newArtifactId();

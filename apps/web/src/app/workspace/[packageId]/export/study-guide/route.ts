@@ -30,7 +30,7 @@ export async function GET(
 
   const doc = await loadStudyGuide(store, packageId, chapter?.path);
   const markdown = serializeStudyGuide(doc.preamble, doc.blocks);
-  const { response, sourceHash } = mdHtmlResponse({
+  const { response, sourceHash } = await mdHtmlResponse({
     // The chapter title is the document heading; falls back to the package title.
     title: chapter?.title ?? record.title,
     markdown,

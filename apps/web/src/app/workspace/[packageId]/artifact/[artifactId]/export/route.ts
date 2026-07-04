@@ -20,7 +20,7 @@ export async function GET(
   const loaded = await loadArtifactContent(store, packageId, artifactId);
   if (!loaded) return new Response("Not found", { status: 404 });
 
-  const { response, sourceHash } = mdHtmlResponse({
+  const { response, sourceHash } = await mdHtmlResponse({
     title: loaded.record.title,
     markdown: loaded.content,
     theme: await getRenderTheme(),

@@ -1,5 +1,6 @@
-import { buildMdHtml, type RenderTheme } from "@alembic/renderer";
+import type { RenderTheme } from "@alembic/renderer";
 import { hashContent } from "@alembic/package-contract";
+import { generateSelfContainedFile } from "@/lib/worker-client";
 
 export function slugForFile(title: string): string {
   return (
@@ -26,17 +27,19 @@ function fileStamp(d: Date): string {
 }
 
 /** Build a `.md.html` download Response and the source hash for provenance. */
-export function mdHtmlResponse(input: {
+export async function mdHtmlResponse(input: {
   title: string;
   markdown: string;
   now?: Date;
   theme?: RenderTheme;
-}): { response: Response; sourceHash: string } {
+}): Promise<{ response: Response; sourceHash: string }> {
   const sourceHash = hashContent(input.markdown);
-  const html = buildMdHtml({
+  // Live, in-file-editable `.md.html` via the worker when configured; the
+  // renderer's in-process build is the fallback (see worker-client).
+  const html = await generateSelfContainedFile({
+    kind: "md",
     title: input.title,
     markdown: input.markdown,
-    sourceHash,
     theme: input.theme ?? "dark",
   });
   const filename = `${slugForFile(input.title)}-${fileStamp(input.now ?? new Date())}.md.html`;

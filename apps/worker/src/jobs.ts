@@ -7,6 +7,7 @@
  */
 
 import { rendererVersion } from "@alembic/renderer";
+import { generateSelfContained } from "@alembic/generators";
 
 export interface BuildSiteJob {
   type: "build-site";
@@ -49,7 +50,34 @@ export interface AgentRunResult {
   message?: string;
 }
 
-export type WorkerJob = BuildSiteJob | AgentRunJob;
+/**
+ * Generate a self-contained orz-family file (`.md.html` / `.slides.html` /
+ * `.paged.html`). Runs in the worker because the upstream generators are
+ * Node-only and read package assets from disk — a poor fit for Vercel
+ * serverless (whose file tracing wouldn't ship those assets). Fast
+ * (sub-second), so the worker serves it synchronously over HTTP rather than
+ * via the async queue. The produced file carries the in-file editor + the
+ * `orz-host-save` protocol; the source stays extractable via `@alembic/carriers`.
+ */
+export interface GenerateFileJob {
+  type: "generate-file";
+  kind: "md" | "slides" | "paged";
+  /** orz-markdown source (with the format's layout syntax where relevant). */
+  markdown: string;
+  title?: string;
+  /** orz theme id, passed through (unknown → the tool's default). */
+  theme?: string;
+}
+
+export interface GenerateFileResult {
+  ok: boolean;
+  /** The full self-contained document, when ok. */
+  html?: string;
+  /** Educator-facing message on failure — never a raw stack trace. */
+  message?: string;
+}
+
+export type WorkerJob = BuildSiteJob | AgentRunJob | GenerateFileJob;
 
 /** M6 implements checkout → orz-markdown build → Pages push. */
 export async function handleBuildSite(job: BuildSiteJob): Promise<BuildResult> {
@@ -58,6 +86,24 @@ export async function handleBuildSite(job: BuildSiteJob): Promise<BuildResult> {
     rendererVersion: rendererVersion(),
     message: `Build for ${job.packageId} not implemented yet (M6)`,
   };
+}
+
+/** Generate a self-contained file via the upstream generators. */
+export async function handleGenerateFile(job: GenerateFileJob): Promise<GenerateFileResult> {
+  try {
+    const html = await generateSelfContained({
+      kind: job.kind,
+      markdown: job.markdown,
+      title: job.title,
+      theme: job.theme,
+    });
+    return { ok: true, html };
+  } catch (err) {
+    return {
+      ok: false,
+      message: `Couldn't generate the ${job.kind} file.`,
+    };
+  }
 }
 
 /**

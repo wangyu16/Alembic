@@ -90,6 +90,9 @@ importers:
 
   apps/worker:
     dependencies:
+      '@alembic/generators':
+        specifier: workspace:*
+        version: link:../../packages/generators
       '@alembic/package-contract':
         specifier: workspace:*
         version: link:../../packages/package-contract
