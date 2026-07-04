@@ -1,0 +1,23 @@
+{
+  "name": "@alembic/generators",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Worker-tier generation of self-contained orz-family files (.md.html/.slides.html/.paged.html) via the upstream libraries. Node-only (reads package assets). Runs in the worker, never in Vercel serverless.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "orz-mdhtml": "^0.4.0",
+    "orz-slides": "^0.3.0",
+    "orz-paged": "^0.3.0"
+  },
+  "devDependencies": {
+    "@alembic/carriers": "workspace:*",
+    "vitest": "^3.2.4"
+  }
+}
