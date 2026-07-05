@@ -5,7 +5,8 @@ permalink mechanism ([self-contained-editing.md §7](self-contained-editing.md))
 with the file-as-atom / two-level-sharing decisions
 ([document-model.md](document-model.md)). The three open items were ruled
 same-day (content-hash pins; platform-served pinned resolution; in-app
-inbox notifications). Supersedes the permalink portions of
+inbox notifications). §5b (relative→permalink rewrite on upload) added
+2026-07-04. Supersedes the permalink portions of
 [carriers-and-assets.md](carriers-and-assets.md) §5–6 (raw GitHub URLs are
 demoted to an internal transport, never the shared form).
 
@@ -129,6 +130,50 @@ report→correct→notify and revise→fork→choose loops:
   Copying a file into one's own package is an *adaptation* — new docId +
   file-level `adapted-from`. Whole-package forks set package-level lineage
   which files inherit.
+
+## 5b. Relative → permalink rewrite on upload (owner Q, 2026-07-04)
+
+An **offline-authored** document references its assets by **relative path**
+(`![](figures/plot.svg)`, `<img src="./plot.svg">`) so it works standalone.
+On upload/registration those references must become **permalinks**, so
+cross-reference resolution, the insertion registry, and notifications work.
+Two mechanisms, not one — don't conflate them:
+
+- **Asset identity (the UUID) makes the permalink durable.** Every
+  Alembic/orz-generated asset embeds a **stable id** in its carrier envelope
+  (mint at generation; the generators have the seam). The docId derives from
+  / preserves that id, so **registration is idempotent**: re-uploading the
+  same asset (a new version, or into another package) yields the **same
+  docId → same permalink** rather than a fresh unrelated id, and existing
+  references stay valid. Foreign assets with no embed (a raw `.png`/`.pdf`)
+  get identity by **content hash** at first registration.
+- **The switch is a reference-rewrite pass** — the *path* is what it keys on:
+  1. Register assets first (idempotent, by embedded id → content hash → new).
+  2. Build an identity→permalink map over newly-uploaded **and**
+     already-registered package assets.
+  3. For each document, resolve every relative `src` / `![](…)` / `[](…)`
+     against the document's location; if it lands on a registered asset,
+     rewrite to that asset's **pinned** permalink (consistent with
+     pin-at-insert — the upload *is* the insertion into Alembic).
+  4. Only touch intra-package refs that resolve to a registered asset; leave
+     external URLs and existing permalinks alone. **Idempotent** (a second
+     upload finds nothing to change). All through `packageOps`, two-repo
+     fail-closed.
+
+**Offline/online split (intended):** the file on the author's disk keeps
+relative paths (works standalone); the registered/published version carries
+permalinks. The rewrite is a registered mutation (logged), and the study
+guide's source-of-record after registration is the permalinked form.
+
+**Optional robustness (future, needs orz-markdown):** carry the asset's id
+*in the reference itself* (an inline attribute) so the rewrite reads the id
+directly instead of resolving a path — immune to path ambiguity or a moved
+file. Not required; path resolution works today.
+
+**Risk:** the rewrite must be conservative (registered intra-package assets
+only) and strictly idempotent, or a re-upload could double-rewrite; the
+pinned form makes this safe. Shapes **R2** (idempotent identity-keyed
+registration) and **P3** (insertion registry).
 
 ## 6. Element search (Discover, second scope)
 
