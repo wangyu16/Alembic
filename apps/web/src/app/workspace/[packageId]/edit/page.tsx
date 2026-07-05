@@ -10,6 +10,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
 import { clientForUser, githubConfig, installUrl } from "@/lib/github";
 import { StudioShell, type StudioCategory } from "./studio-shell";
+import { syncPackageRegistry } from "@/lib/register";
 
 export const dynamic = "force-dynamic";
 
@@ -47,6 +48,10 @@ export default async function EditShellPage({
   const store = new SupabaseSandboxStore(supabase);
   const record = await store.getPackage(packageId);
   if (!record) notFound();
+
+  // R2: keep the documents registry in sync with the package's current files
+  // (rebuildable projection; best-effort, never blocks the editor).
+  await syncPackageRegistry(supabase, packageId, "created");
 
   const chapters = await listChapters(store, packageId);
   const activeChapter = chapters.find((c) => c.slug === chapter) ?? chapters[0] ?? null;

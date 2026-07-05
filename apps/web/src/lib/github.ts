@@ -15,6 +15,7 @@ import {
   type ReconcileOutcome,
   type RepoReader,
 } from "@alembic/package-ops";
+import { syncPackageRegistry } from "@/lib/register";
 
 export interface GithubConfig {
   appId: string;
@@ -229,6 +230,10 @@ export async function reconcilePackage(
   // visible until resolved.
   if (outcome.status === "up-to-date" || outcome.status === "absorbed") {
     await recordSyncedSha(supabase, packageId, outcome.headSha);
+    // Door #3: register the absorbed external-commit files (best-effort).
+    if (outcome.status === "absorbed") {
+      await syncPackageRegistry(supabase, packageId, "external-commit");
+    }
   }
   return outcome;
 }
