@@ -696,13 +696,16 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
   `assertPathAllowedInEitherContract`; editor-edit + reconcile + findLeakedPaths
   are dual-mode (v2 spaces validate, two-repo invariant still fail-closed);
   reconcile validates block IDs of v2 `.md.html` study guides via carrier
-  extraction (door-#3 origin parity); +4 adversarial tests. **Remaining
-  Phase-1 (increment 3): registration HOOKS** — a Supabase-backed
-  `DocumentRegistryStore` + `registerFile`/`rebuildPackageRegistry` wired into
-  the three doors (create/save, upload, reconcile-absorb), which **needs
-  migration `0014_documents.sql` applied to Supabase** (operator step) to
-  function. That completes R2 and unblocks Module P (permalinks). Then the
-  v1→v2 migration runner (with E3) and R3 version listing.
+  extraction (door-#3 origin parity); +4 adversarial tests. (3) **Registration hooks** (`4398977`): migration `0014` **applied**;
+  `SupabaseDocumentRegistryStore` + best-effort `syncPackageRegistry`
+  (rebuildable projection, never breaks a workflow) wired at the edit-page
+  load (`created`) and reconcile-absorb (`external-commit`) doors. **R2 core
+  done** (registration happens on open + external commit) — unblocks Module P
+  (permalinks). Human smoke check pending: open a package → rows appear in the
+  `documents` table. **Remaining in R:** the v1→v2 migration runner (rides
+  E3) and R3 version listing; and rounding out registration to the upload
+  door + a permalink resolver route (P1). Phase 1's durable contract + registry
+  foundation is now real, tested, and coherent with the docs.
 - **Coherence re-evaluation (owner-requested) — done; plan de-conflicted +
   leaned.** Three concurrent audits (coherence: 30 findings; simplification:
   7; code-reality). Key insight: the plan's conflicts and its complexity were
