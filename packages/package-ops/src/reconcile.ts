@@ -18,10 +18,11 @@
  */
 
 import {
-  assertPathAllowedInRepo,
+  assertPathAllowedInEitherContract,
   parseStudyGuide,
   validateBlockIds,
 } from "@alembic/package-contract";
+import { extractSource, hasCarrier } from "@alembic/carriers";
 import type { PackageStore } from "./store";
 
 export interface RepoReader {
@@ -41,9 +42,21 @@ export type ReconcileOutcome =
   | { status: "absorbed"; headSha: string; changedPaths: string[] }
   | { status: "quarantined"; headSha: string; violations: string[] };
 
-/** A study-guide markdown file whose block IDs we must keep intact. */
+/** A study-guide file whose block IDs we must keep intact — v1 `.md` or v2
+ *  `.md.html` (source embedded in the carrier). */
 function isStudyGuideMarkdown(path: string): boolean {
-  return path.startsWith("study-guide/") && path.endsWith(".md");
+  return (
+    path.startsWith("study-guide/") &&
+    (path.endsWith(".md") || path.endsWith(".md.html"))
+  );
+}
+
+/** The block-bearing markdown of a study-guide file: the raw `.md`, or the
+ *  source extracted from a `.md.html` carrier. */
+function studyGuideMarkdown(path: string, content: string): string {
+  return path.endsWith(".md.html") && hasCarrier(content)
+    ? extractSource(content).source
+    : content;
 }
 
 /**
@@ -74,10 +87,12 @@ export async function reconcilePublicRepo(
   for (const change of changed) {
     if (change.status === "removed") continue;
 
-    // Two-repo invariant: a private-instructor path or disallowed layer must
+    // Two-repo invariant: a private-space path or disallowed location must
     // never land in the PUBLIC repo. This is the security-critical leak check.
+    // Dual-mode (v1 layers or v2 spaces) — a private-space path is rejected by
+    // both, so the invariant holds for v1 and v2 packages alike.
     try {
-      assertPathAllowedInRepo(change.path, "public");
+      assertPathAllowedInEitherContract(change.path, "public");
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       violations.push(`${change.path}: ${message}`);
@@ -94,13 +109,14 @@ export async function reconcilePublicRepo(
         );
         continue;
       }
-      const { blocks } = parseStudyGuide(content);
-      // A heading with no/garbled marker parses to id === null; pass it through
-      // so validateBlockIds flags it as malformed (its param is typed string,
-      // but it runtime-validates the value — the null IS the violation here).
-      const integrity = validateBlockIds(
-        blocks.map((b) => ({ id: b.id as string })),
-      );
+      // v1 `.md` is parsed directly; v2 `.md.html` has its markdown extracted
+      // from the carrier first, so external commits of either format have
+      // their block IDs validated identically (origin parity, door #3).
+      const { blocks } = parseStudyGuide(studyGuideMarkdown(change.path, content));
+      // Missing block IDs are legal anonymous sections (contract v2 §4);
+      // validateBlockIds skips them and rejects only malformed or DUPLICATE
+      // ids — the corruption that actually breaks block identity.
+      const integrity = validateBlockIds(blocks.map((b) => ({ id: b.id })));
       if (!integrity.ok) {
         for (const e of integrity.errors) {
           violations.push(`${change.path}: ${e}`);
@@ -154,7 +170,9 @@ export function findLeakedPaths(publicRepoPaths: ReadonlyArray<string>): string[
   const leaked: string[] = [];
   for (const path of publicRepoPaths) {
     try {
-      assertPathAllowedInRepo(path, "public");
+      // Dual-mode: a v2 public-space path (assets/, slides/, …) is not a leak;
+      // a private-space path in the public repo is rejected by both contracts.
+      assertPathAllowedInEitherContract(path, "public");
     } catch {
       leaked.push(path);
     }

@@ -8,7 +8,7 @@
  */
 
 import {
-  assertPathAllowedInRepo,
+  assertPathAllowedInEitherContract,
   assertPublicMarkdownReferences,
   parseStudyGuide,
   type RepoKind,
@@ -40,8 +40,11 @@ export async function applyEditorEdit(
   edit: EditorEdit,
 ): Promise<void> {
   // Re-assert the two-repo invariant before writing — the destination is never
-  // trusted from the caller without this check.
-  assertPathAllowedInRepo(edit.path, edit.repo);
+  // trusted from the caller without this check. Dual-mode (v1 layers or v2
+  // spaces): a v2 package's `assets/`, `slides/`, `private/`, … validate
+  // alongside v1 `materials/`, `private-instructor/`; a private-space path in
+  // the public repo is still rejected by both, so the invariant holds.
+  assertPathAllowedInEitherContract(edit.path, edit.repo);
 
   if (edit.repo === "public" && edit.path.startsWith(STUDY_GUIDE_PREFIX)) {
     const parsed = parseStudyGuide(edit.source);

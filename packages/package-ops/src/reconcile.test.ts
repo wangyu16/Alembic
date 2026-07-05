@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { embedSource } from "@alembic/carriers";
 import type { PackageFile } from "./store";
 import { MemoryPackageStore } from "./memory-store";
 import { findLeakedPaths, reconcilePublicRepo, type RepoReader } from "./reconcile";
@@ -203,6 +204,84 @@ describe("reconcilePublicRepo", () => {
       reader,
     });
 
+    expect(out.status).toBe("absorbed");
+  });
+
+  // ── contract v2: .md.html study guides + v2 spaces (door-#3 origin parity) ──
+
+  it("ABSORB — v2 study guide as .md.html (block IDs validated from extracted source)", async () => {
+    const store = new MemoryPackageStore();
+    const path = "study-guide/ch01.md.html";
+    const file = embedSource({
+      kind: "md",
+      format: 1,
+      payload: "html",
+      rendered: "<!doctype html><html><body><main>rendered</main></body></html>",
+      source: validStudyGuide(),
+    });
+    const reader = new FakeRepoReader(
+      "sha-2",
+      [{ path, status: "added" }],
+      new Map([[path, file]]),
+    );
+    const out = await reconcilePublicRepo(store, PKG, { lastSyncedSha: "sha-1", reader });
+    expect(out.status).toBe("absorbed");
+  });
+
+  it("QUARANTINE — v2 .md.html study guide with DUPLICATE block IDs", async () => {
+    const store = new MemoryPackageStore();
+    const path = "study-guide/ch01.md.html";
+    const dupSource = [
+      "# Chapter 1",
+      "",
+      "## Energy {{attrs[#blk-aaaa1111]}}",
+      "",
+      "Body A.",
+      "",
+      "## Heat {{attrs[#blk-aaaa1111]}}", // same id — corruption that breaks identity
+      "",
+      "Body B.",
+      "",
+    ].join("\n");
+    const file = embedSource({
+      kind: "md",
+      format: 1,
+      payload: "html",
+      rendered: "<!doctype html><html><body>x</body></html>",
+      source: dupSource,
+    });
+    const reader = new FakeRepoReader(
+      "sha-2",
+      [{ path, status: "added" }],
+      new Map([[path, file]]),
+    );
+    const out = await reconcilePublicRepo(store, PKG, { lastSyncedSha: "sha-1", reader });
+    expect(out.status).toBe("quarantined");
+    expect(await store.listFiles(PKG)).toEqual([]);
+  });
+
+  it("QUARANTINE — a v2 private-space path in the PUBLIC repo (invariant holds under dual-mode)", async () => {
+    const store = new MemoryPackageStore();
+    const path = "private/answer-keys/exam.md"; // v2 private space — must never be public
+    const reader = new FakeRepoReader(
+      "sha-2",
+      [{ path, status: "added" }],
+      new Map([[path, "secret"]]),
+    );
+    const out = await reconcilePublicRepo(store, PKG, { lastSyncedSha: "sha-1", reader });
+    expect(out.status).toBe("quarantined");
+    expect(await store.listFiles(PKG)).toEqual([]);
+  });
+
+  it("ABSORB — a v2 public-space path (assets/) is not wrongly rejected", async () => {
+    const store = new MemoryPackageStore();
+    const path = "assets/figures/benzene.png"; // v2 assets space (was v1 materials/)
+    const reader = new FakeRepoReader(
+      "sha-2",
+      [{ path, status: "added" }],
+      new Map([[path, "\x89PNG…"]]),
+    );
+    const out = await reconcilePublicRepo(store, PKG, { lastSyncedSha: "sha-1", reader });
     expect(out.status).toBe("absorbed");
   });
 

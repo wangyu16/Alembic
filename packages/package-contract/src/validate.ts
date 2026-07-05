@@ -35,7 +35,7 @@ import type { RepoKind } from "./layers";
  * still fails closed — a private-space path in the public repo is rejected by
  * both checks. Pure: no IO, no framework imports.
  */
-function assertPathAllowedInEitherContract(path: string, repo: RepoKind): void {
+export function assertPathAllowedInEitherContract(path: string, repo: RepoKind): void {
   try {
     assertPathAllowedInRepo(path, repo);
     return; // valid under v1
