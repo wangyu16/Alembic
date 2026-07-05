@@ -6,8 +6,26 @@
 
 import { z } from "zod";
 
-/** Bump only with an explicit, documented migration. Old versions stay readable. */
+/**
+ * Schema version stamped on NEWLY CREATED packages. Bump only with an explicit,
+ * documented migration. Old versions stay readable. Held at 1 until the E3
+ * migration gate lands elsewhere — the schema already ACCEPTS v2 (see
+ * `SUPPORTED_SCHEMA_VERSIONS`) so a migrated v2 package validates.
+ */
 export const PACKAGE_SCHEMA_VERSION = 1;
+
+/**
+ * Schema versions the manifest parser accepts. Contract v2 (package-contract-v2.md
+ * §7) is a staged, one-way migration: a v2 manifest (`schemaVersion: 2`) must
+ * validate alongside v1 while new packages stay v1 until the migration gate flips
+ * the creation default. Additive — v1 packages parse byte-for-byte as before.
+ */
+export const SUPPORTED_SCHEMA_VERSIONS = [1, 2] as const;
+
+/** True when a parsed manifest is contract v2 (package-contract-v2.md). */
+export function isV2Manifest(m: Pick<PackageManifest, "schemaVersion">): boolean {
+  return m.schemaVersion === 2;
+}
 
 export const LicenseSchema = z.enum([
   "CC-BY-4.0",
@@ -95,7 +113,21 @@ export const AccessibilityStatusSchema = z.object({
 export type AccessibilityStatus = z.infer<typeof AccessibilityStatusSchema>;
 
 export const PackageManifestSchema = z.object({
-  schemaVersion: z.number().int().positive(),
+  /**
+   * Contract schema version. Accepts 1 (v1) or 2 (v2); other values reject so a
+   * package from an unknown/future schema fails closed rather than parsing
+   * loosely. New packages are stamped `PACKAGE_SCHEMA_VERSION` (still 1).
+   */
+  schemaVersion: z
+    .number()
+    .int()
+    .refine(
+      (v): v is (typeof SUPPORTED_SCHEMA_VERSIONS)[number] =>
+        (SUPPORTED_SCHEMA_VERSIONS as readonly number[]).includes(v),
+      {
+        message: `schemaVersion must be one of ${SUPPORTED_SCHEMA_VERSIONS.join(", ")}`,
+      },
+    ),
   /** Stable platform-wide package ID (not the repo name). */
   packageId: z.string().min(1),
   title: z.string().min(1),

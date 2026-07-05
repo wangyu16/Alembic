@@ -55,16 +55,27 @@ export const BlockSchema = z.object({
 export type Block = z.infer<typeof BlockSchema>;
 
 /**
- * Validate ID integrity for a block list, run on every save:
- * no duplicates, all well-formed.
+ * Validate ID integrity for a block list, run on every save.
+ *
+ * Contract v2 (§4): block ids are OPTIONAL anchors — a section with no id is an
+ * anonymous section and is legal. Validation rejects only *malformed* ids and
+ * *duplicate* (non-null) ids; a null/absent id is simply skipped, never an
+ * error. The parameter type is widened to `string | null` additively so
+ * existing string-only callers (v1 `Block[]`) still typecheck unchanged.
  */
-export function validateBlockIds(blocks: ReadonlyArray<Pick<Block, "id">>): {
+export function validateBlockIds(
+  blocks: ReadonlyArray<{ id: string | null | undefined }>,
+): {
   ok: boolean;
   errors: string[];
 } {
   const errors: string[] = [];
   const seen = new Set<string>();
   for (const block of blocks) {
+    // Anonymous section (no anchor): legal in v2, skip.
+    if (block.id === null || block.id === undefined) {
+      continue;
+    }
     const parsed = BlockIdSchema.safeParse(block.id);
     if (!parsed.success) {
       errors.push(`Malformed block ID: "${block.id}"`);

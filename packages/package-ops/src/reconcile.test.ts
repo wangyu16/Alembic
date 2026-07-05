@@ -179,15 +179,15 @@ describe("reconcilePublicRepo", () => {
     expect(await store.listFiles(PKG)).toEqual([]);
   });
 
-  it("QUARANTINE — block IDs: a malformed marker is rejected", async () => {
+  it("ABSORB — block IDs: an anonymous section (no marker) is legal (contract v2 §4)", async () => {
     const store = new MemoryPackageStore();
     const path = "study-guide/ch01.md";
-    // A heading with no marker parses to a block with id === null, which
-    // validateBlockIds treats as malformed.
-    const malformed = [
+    // A heading with no marker parses to id === null. Under contract v2 §4 a
+    // missing block id is a legal anonymous section, so reconcile absorbs it.
+    const anonymous = [
       "# Chapter 1",
       "",
-      "## Energy", // no block-ID marker at all
+      "## Energy", // no block-ID marker at all → anonymous section
       "",
       "Body.",
       "",
@@ -195,7 +195,7 @@ describe("reconcilePublicRepo", () => {
     const reader = new FakeRepoReader(
       "sha-2",
       [{ path, status: "added" }],
-      new Map([[path, malformed]]),
+      new Map([[path, anonymous]]),
     );
 
     const out = await reconcilePublicRepo(store, PKG, {
@@ -203,13 +203,7 @@ describe("reconcilePublicRepo", () => {
       reader,
     });
 
-    expect(out.status).toBe("quarantined");
-    if (out.status === "quarantined") {
-      expect(out.violations.some((v) => v.includes("Malformed block ID"))).toBe(
-        true,
-      );
-    }
-    expect(await store.listFiles(PKG)).toEqual([]);
+    expect(out.status).toBe("absorbed");
   });
 
   it("never synced (lastSyncedSha null): validates then absorbs", async () => {

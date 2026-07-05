@@ -122,3 +122,67 @@ describe("validateProject — carriers", () => {
     ).toBe(false);
   });
 });
+
+describe("validateProject — contract v2 (dual-mode paths)", () => {
+  const v2Manifest = {
+    schemaVersion: 2,
+    packageId: "pkg-genchem-v2",
+    title: "Thermochemistry (v2)",
+    license: "CC-BY-4.0",
+    currentTerm: "2026-fall",
+    createdAt: "2026-07-05T12:00:00Z",
+  };
+
+  const v2Files: ProjectFile[] = [
+    { repo: "public", path: "alembic.json" },
+    { repo: "public", path: "assets/structures/benzene.ketcher.svg" },
+    { repo: "public", path: "slides/lecture-01.slides.html" },
+    { repo: "public", path: "practice/set-01.md.html" },
+    { repo: "public", path: "current/quiz-01.md.html" },
+    { repo: "private", path: "private/answer-key.md" },
+  ];
+
+  it("accepts a native v2-layout package (assets/, slides/, practice/, current/, private/)", () => {
+    const result = validateProject({ manifest: v2Manifest, files: v2Files }, KNOWN);
+    expect(result.ok).toBe(true);
+    expect(result.issues).toEqual([]);
+  });
+
+  it("still recognizes v1 paths alongside v2 (mid-migration)", () => {
+    const mixed: ProjectFile[] = [
+      { repo: "public", path: "materials/structures/old.ketcher.svg" },
+      { repo: "public", path: "assets/structures/new.ketcher.svg" },
+    ];
+    const result = validateProject({ manifest: v2Manifest, files: mixed }, KNOWN);
+    expect(result.ok).toBe(true);
+  });
+
+  it("accepts a known carrier under assets/ as public (v2)", () => {
+    const files: ProjectFile[] = [
+      { repo: "public", path: "assets/figures/plot.plot.svg" },
+    ];
+    const result = validateProject({ manifest: v2Manifest, files }, KNOWN);
+    expect(result.ok).toBe(true);
+  });
+
+  it("fails closed: a v2 private-space path declared in the public repo is rejected", () => {
+    const files: ProjectFile[] = [
+      { repo: "public", path: "private/answer-key.md" },
+    ];
+    const result = validateProject({ manifest: v2Manifest, files }, KNOWN);
+    expect(result.ok).toBe(false);
+    expect(result.issues.some((i) => i.path === "private/answer-key.md")).toBe(true);
+  });
+
+  it("fails closed: a v2 private-space carrier in the public repo is an error", () => {
+    const files: ProjectFile[] = [
+      { repo: "private", path: "private/secret.ketcher.svg" },
+    ];
+    const result = validateProject({ manifest: v2Manifest, files }, KNOWN);
+    // Known carrier in a private location → must be public → error.
+    expect(result.ok).toBe(false);
+    expect(
+      result.issues.some((i) => i.path === "private/secret.ketcher.svg"),
+    ).toBe(true);
+  });
+});

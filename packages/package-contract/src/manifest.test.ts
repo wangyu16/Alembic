@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { PACKAGE_SCHEMA_VERSION, parseManifest } from "./manifest";
+import {
+  PACKAGE_SCHEMA_VERSION,
+  SUPPORTED_SCHEMA_VERSIONS,
+  isV2Manifest,
+  parseManifest,
+} from "./manifest";
 
 const valid = {
   schemaVersion: PACKAGE_SCHEMA_VERSION,
@@ -71,5 +76,33 @@ describe("parseManifest", () => {
     expect(parseManifest({ ...valid, currentTerm: "2026-fall" }).currentTerm).toBe(
       "2026-fall",
     );
+  });
+});
+
+describe("schema version awareness (contract v2)", () => {
+  it("keeps the creation default at 1 (new packages stay v1)", () => {
+    expect(PACKAGE_SCHEMA_VERSION).toBe(1);
+    expect(SUPPORTED_SCHEMA_VERSIONS).toEqual([1, 2]);
+  });
+
+  it("parses a v1 manifest unchanged", () => {
+    const m = parseManifest(valid);
+    expect(m.schemaVersion).toBe(1);
+    expect(isV2Manifest(m)).toBe(false);
+  });
+
+  it("parses a v2 manifest (schemaVersion:2, currentTerm set)", () => {
+    const m = parseManifest({
+      ...valid,
+      schemaVersion: 2,
+      currentTerm: "2026-fall",
+    });
+    expect(m.schemaVersion).toBe(2);
+    expect(m.currentTerm).toBe("2026-fall");
+    expect(isV2Manifest(m)).toBe(true);
+  });
+
+  it("rejects an unsupported schema version (3)", () => {
+    expect(() => parseManifest({ ...valid, schemaVersion: 3 })).toThrow();
   });
 });

@@ -54,4 +54,36 @@ describe("validateBlockIds", () => {
     expect(result.ok).toBe(false);
     expect(result.errors).toHaveLength(2);
   });
+
+  it("accepts blocks whose ids are all null (anonymous sections, v2 §4)", () => {
+    const result = validateBlockIds([{ id: null }, { id: null }, { id: undefined }]);
+    expect(result.ok).toBe(true);
+    expect(result.errors).toEqual([]);
+  });
+
+  it("accepts a mix of null ids and valid ids", () => {
+    const result = validateBlockIds([
+      { id: null },
+      { id: "blk-a1b2c3d4" },
+      { id: null },
+      { id: "blk-e5f6a7b8" },
+    ]);
+    expect(result.ok).toBe(true);
+  });
+
+  it("still rejects duplicate non-null ids even amid null ids", () => {
+    const result = validateBlockIds([
+      { id: null },
+      { id: "blk-a1b2c3d4" },
+      { id: "blk-a1b2c3d4" },
+    ]);
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((e) => /Duplicate/.test(e))).toBe(true);
+  });
+
+  it("still rejects malformed ids even amid null ids", () => {
+    const result = validateBlockIds([{ id: null }, { id: "not-an-id" }]);
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((e) => /Malformed/.test(e))).toBe(true);
+  });
 });

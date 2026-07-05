@@ -94,6 +94,18 @@ is new. This is what makes permalinks durable across offline re-uploads and
 `discoverable=true` in `private`/`current` and requires `repo` to match the
 space.
 
+*Known edge — duplicate content (resolved at wire time):* content-hash
+identity is ambiguous when two live files in one package have byte-identical
+source — a single-file `registerFile` call can't tell a *move* (reuse docId)
+from a *duplicate* (mint a new docId). The authoritative resolution is a
+**same-location tiebreaker** available only with the full package file list:
+prefer an exact `(repo, path)` match; treat a cross-path hash match as a move
+**only when the matched record's old path is no longer present** (else it is a
+distinct duplicate → new docId). `rebuildPackageRegistry` has the file list and
+implements this; the Supabase-backed store wired into the three doors applies
+the same rule. The pure `registerFile` (memory-tested) favors move-continuity
+in isolation — correct for the common flows, refined by rebuild.
+
 **Mutable vs immutable.** Immutable: `docId`. Mutable on re-registration:
 `path`, `sourceHash`, `description`, `altText`, `discoverable`, `license`.
 Deletion sets `tombstoned=true` (record retained forever; permalink resolves

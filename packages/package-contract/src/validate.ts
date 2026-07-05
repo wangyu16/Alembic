@@ -17,8 +17,55 @@
  */
 
 import { LAYER_REPO, assertPathAllowedInRepo, layerForPath } from "./layers";
+import {
+  SPACE_REPO,
+  assertPathAllowedInRepoV2,
+  spaceForPath,
+} from "./spaces";
 import { parseManifest } from "./manifest";
 import type { RepoKind } from "./layers";
+
+/**
+ * Dual-mode two-repo check (contract v2 §1). A path is allowed in its declared
+ * repo if it is valid under EITHER the v1 layer set OR the v2 space set — so a
+ * package mid-migration (or a native v2 layout with `assets/`, `slides/`,
+ * `practice/`, `current/`, `private/`) validates alongside a v1 layout
+ * (`materials/`, `private-instructor/`). Throws only when BOTH reject; the v1
+ * error is preferred (most callers are still v1) but the two-repo invariant
+ * still fails closed — a private-space path in the public repo is rejected by
+ * both checks. Pure: no IO, no framework imports.
+ */
+function assertPathAllowedInEitherContract(path: string, repo: RepoKind): void {
+  try {
+    assertPathAllowedInRepo(path, repo);
+    return; // valid under v1
+  } catch (v1Err) {
+    try {
+      assertPathAllowedInRepoV2(path, repo);
+      return; // valid under v2
+    } catch {
+      throw v1Err; // neither accepts it — surface the v1 message
+    }
+  }
+}
+
+/** True if a path resolves to a PUBLIC location under v1 layers OR v2 spaces.
+ *  Root-allowlisted files (v1 layer null) are public-safe. Used by the carrier
+ *  placement check so v2 `assets/…` is recognized as public alongside v1
+ *  `materials/…`. */
+function isInPublicLocation(path: string): boolean {
+  try {
+    const layer = layerForPath(path);
+    if (layer === null || LAYER_REPO[layer] === "public") return true;
+  } catch {
+    // fall through to the v2 attempt
+  }
+  try {
+    return SPACE_REPO[spaceForPath(path)] === "public";
+  } catch {
+    return false;
+  }
+}
 
 export interface ProjectFile {
   repo: RepoKind; // "public" | "private"
@@ -59,10 +106,13 @@ function chapterStudyGuidePath(slug: string): string {
   return `study-guide/${slug}.md`;
 }
 
-/** A file under materials/ that *looks* like a carrier (renderable payload). */
+/** A file under materials/ (v1) or assets/ (v2) that *looks* like a carrier
+ *  (renderable payload). */
 function looksLikeCarrier(path: string): boolean {
   const normalized = path.replace(/\\/g, "/").replace(/^\/+/, "");
-  if (!normalized.startsWith("materials/")) return false;
+  if (!normalized.startsWith("materials/") && !normalized.startsWith("assets/")) {
+    return false;
+  }
   return (
     normalized.endsWith(".svg") ||
     normalized.endsWith(".html") ||
@@ -134,10 +184,11 @@ export function validateProject(
     }
   }
 
-  // 2. Every file path allowed in its declared repo.
+  // 2. Every file path allowed in its declared repo (dual-mode: v1 layers OR
+  //    v2 spaces — a package mid-migration or a native v2 layout validates).
   for (const file of input.files) {
     try {
-      assertPathAllowedInRepo(file.path, file.repo);
+      assertPathAllowedInEitherContract(file.path, file.repo);
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "path is not allowed in this repository";
@@ -170,20 +221,13 @@ export function validateProject(
     const isKnownCarrier = matchesKnownCarrier(normalized, opts.knownCarrierExtensions);
 
     if (isKnownCarrier) {
-      // Known carriers must be public. Determine the layer's repo; if the path
-      // can't be classified, layerForPath throws and we surface it as an error.
-      let inPublicLayer = false;
-      try {
-        const layer = layerForPath(normalized);
-        // Allowlisted root files (layer === null) are public-safe.
-        inPublicLayer = layer === null || LAYER_REPO[layer] === "public";
-      } catch {
-        inPublicLayer = false;
-      }
-      if (!inPublicLayer) {
+      // Known carriers must be public. Dual-mode: public under v1 layers OR v2
+      // spaces (so `assets/…` is accepted alongside `materials/…`). If the path
+      // can't be classified in either contract, treat as non-public → error.
+      if (!isInPublicLocation(normalized)) {
         addError({
           path: normalized,
-          message: `Reusable media "${normalized}" must live in a public folder (under materials/) so it can be shown and shared. It is currently in a private folder.`,
+          message: `Reusable media "${normalized}" must live in a public folder (under materials/ or assets/) so it can be shown and shared. It is currently in a private folder.`,
         });
       }
     } else if (looksLikeCarrier(normalized)) {
