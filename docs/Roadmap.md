@@ -8,11 +8,23 @@ around the self-contained-editing direction: the four owner-named elements
 become five modules plus one cross-cutting enabler, with explicit seams so
 they can be built independently without future conflict.
 
-Governing specs: [SteeringNote.md](SteeringNote.md) ·
+Governing specs: **[specs/package-contract-v2.md](specs/package-contract-v2.md)
+(authoritative schema)** · [SteeringNote.md](SteeringNote.md) ·
 [specs/self-contained-editing.md](specs/self-contained-editing.md) ·
 [specs/document-model.md](specs/document-model.md) ·
 [specs/permalinks-and-registration.md](specs/permalinks-and-registration.md) ·
 [specs/workspace-framework.md](specs/workspace-framework.md).
+
+**Scope (owner decision, 2026-07-05 re-evaluation): lean core first.** A
+coherence/simplification/code-reality audit found the plan's conflicts and its
+complexity were the same thing — both concentrated in the parts that aren't
+built yet. Decision: ship the **core loop end to end** (create → edit in-file →
+register → permalink → publish → discover & insert elements → adapt), and
+**sequence the heavier machinery right after** rather than building it now:
+element notifications, the `changeKind` prompt, the unified Inbox, and Module I
+(AI) are deferred with their schema seams kept dormant (see
+[package-contract-v2.md §9](specs/package-contract-v2.md)). This cuts the
+complexity and dissolves most open conflicts.
 
 ## The conflict-avoidance rules (read first)
 
@@ -32,11 +44,15 @@ Modules stay independent because each concern has exactly one owner:
 4. **One editor seam.** Editing surfaces mount only through
    `@alembic/editor-kit` (`EditorModule`/`EditorHandle`). Adding a format =
    registering a module; the shell never special-cases a format.
-5. **One inbox.** Everything that asks the educator for a decision —
-   Tier-2 AI review, element update/keep notices, suggest-backs, external
-   change reports — is an item in a single workspace Inbox with one item
-   contract (kind, summary, diff/preview, actions). New decision types add
-   a kind, not a surface.
+5. **Decisions surface in the workspace** (softened 2026-07-05). Everything
+   that asks the educator for a decision — Tier-2 AI review, element notices,
+   suggest-backs, external-change reports — surfaces through workspace review
+   surfaces routed via `packageOps` and the approval gates. Whether these
+   unify into **one** Inbox or stay a few narrower surfaces (review queue,
+   reconcile banner, suggestions) is decided when **Module T** is actually
+   built — the audit judged a single overloaded item contract likely
+   premature. For the core loop, re-land only the two trust-critical surfaces
+   (review queue + reconcile banner); don't build the unified Inbox yet.
 6. **AI stays behind `AIProvider`** + the change-tier queue. AI features
    are verbs on files through the same write path — never a parallel
    document model. (Keeps Module I deliberately flexible.)

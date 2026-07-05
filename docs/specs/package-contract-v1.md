@@ -1,5 +1,9 @@
 # Alembic Package Contract — v1
 
+> **The authoritative v2 schema is [package-contract-v2.md](package-contract-v2.md)**
+> (2026-07-05) — spaces, registration record, migration, terminology. This v1
+> doc stays normative only for the not-yet-migrated code.
+>
 > **Supersession note (2026-07-04):** v1 remains the contract the *code
 > implements today*, and this document stays normative for it. The **v2
 > direction** is locked at the design level — see

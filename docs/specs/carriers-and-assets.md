@@ -1,5 +1,10 @@
 # Carriers & Assets
 
+> **Authoritative schema is now [package-contract-v2.md](package-contract-v2.md)**
+> (2026-07-05). This doc's §5–6 (permalinks, pin-at-publish, raw-GitHub links)
+> are **[SUPERSEDED]** — pin-at-insert and ID-based `/d/{docId}` win. The
+> carrier codec + kind registry (§1–4) remain authoritative.
+>
 > **Supersession note (2026-07-04):** the carrier *codec* and *kind
 > registry* here remain authoritative. Superseded by newer specs: asset
 > **permalinks** (§5–6 raw-GitHub link forms, pin-at-publish) →

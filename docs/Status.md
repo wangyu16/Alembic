@@ -686,6 +686,24 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
 
 ## Log
 
+### 2026-07-05
+- **Coherence re-evaluation (owner-requested) — done; plan de-conflicted +
+  leaned.** Three concurrent audits (coherence: 30 findings; simplification:
+  7; code-reality). Key insight: the plan's conflicts and its complexity were
+  the same thing, concentrated in unbuilt parts. **Owner decisions:** lean
+  core first (defer element notifications, `changeKind` UI, unified Inbox,
+  Module I — schema seams kept dormant); permalinks ID-based but a **thin**
+  `/d/{docId}` route (not permanent infra); keep the `space` field + retire
+  "layer"; content-hash asset identity for MVP. **Wrote the authoritative
+  [specs/package-contract-v2.md](specs/package-contract-v2.md)** (consolidates
+  the schema, dissolving ~half the findings); softened Roadmap rule 5
+  (unified-Inbox-vs-separate decided when Module T is built); v2 supersession
+  pointers added to carriers-and-assets + package-contract-v1. **Code-reality:
+  contract v2 is ~70% in code** (spaces/registration/ids landed); remaining
+  Phase-1 is mechanical — bump SCHEMA_VERSION→2 + migration, wire write paths
+  to spaces, extract `.md.html` source in editor-edit/reconcile, the
+  `documents` table (migration 0014) + registration hooks. Implementation next.
+
 ### 2026-07-04
 - **Generator adoption — Step 1 DONE (carrier codec).** `@alembic/carriers`
   `extractSource`/`hasCarrier`/`detectFormatVersion` now read the upstream
