@@ -687,6 +687,22 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
 ## Log
 
 ### 2026-07-05
+- **Phase 1 (Module R) implementation — 2 of 3 increments landed, green.**
+  (1) **Contract v2 activation + registry projection** (`dda7df0`): manifest
+  accepts schemaVersion 1|2 (creation default stays v1 until the E3 gate);
+  block IDs optional (§4); dual-mode path validation; the `documents` registry
+  table (migration `0014`) + the pure idempotent `document-registry.ts`
+  (+9 tests). (2) **Write paths v2-aware** (`22cc7b3`): exported
+  `assertPathAllowedInEitherContract`; editor-edit + reconcile + findLeakedPaths
+  are dual-mode (v2 spaces validate, two-repo invariant still fail-closed);
+  reconcile validates block IDs of v2 `.md.html` study guides via carrier
+  extraction (door-#3 origin parity); +4 adversarial tests. **Remaining
+  Phase-1 (increment 3): registration HOOKS** — a Supabase-backed
+  `DocumentRegistryStore` + `registerFile`/`rebuildPackageRegistry` wired into
+  the three doors (create/save, upload, reconcile-absorb), which **needs
+  migration `0014_documents.sql` applied to Supabase** (operator step) to
+  function. That completes R2 and unblocks Module P (permalinks). Then the
+  v1→v2 migration runner (with E3) and R3 version listing.
 - **Coherence re-evaluation (owner-requested) — done; plan de-conflicted +
   leaned.** Three concurrent audits (coherence: 30 findings; simplification:
   7; code-reality). Key insight: the plan's conflicts and its complexity were
