@@ -847,6 +847,19 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
   the clipboard receives Markdown (`## The atom … **atoms** … - protons`); page
   is clean + responsive at 375px. +1 renderer test (runtime inlined on every
   page). Green (typecheck + full test + web build).
+- **Bugfix (upstream orz-markdown + vendored copy): image sizing `![](img =WxH)`
+  did nothing.** `markdown-it-imsize` was correctly emitting `width`/`height`
+  attributes, but `common.css`'s `.markdown-body img { width:auto; height:auto }`
+  (CSS properties) **overrode** them, so sized images rendered at intrinsic size.
+  Fix: apply `auto` only to images WITHOUT an explicit dimension
+  (`img:not([width])` / `img:not([height])`) — responsive default kept, `=WxH`
+  wins. Fixed in **orz-markdown** `themes/common.css` (upstream, `a80b60a` —
+  reaches `.md.html` via the CDN theme once orz-markdown is republished) **and**
+  Alembic's vendored `renderer/theme-css.ts` (both dark + light inlined copies —
+  live now for `themedDocument`: student-site home, previews, worksheet viewer).
+  Browser-verified: a `=200x100` image renders 200×100 (old CSS gave 400×400
+  intrinsic); unsized images stay responsive. Green (renderer typecheck + 35
+  tests + web build).
 - **Course theme is a per-course manifest setting** (owner note: one theme for
   the whole course, not per-file or the transient editor cookie). Added optional
   `theme` (`dark`|`light`) to the manifest (pure enum, no renderer import);
