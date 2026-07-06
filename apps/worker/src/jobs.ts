@@ -67,6 +67,8 @@ export interface GenerateFileJob {
   title?: string;
   /** orz theme id, passed through (unknown → the tool's default). */
   theme?: string;
+  /** Framework delivery: `inline` (default) or `cdn` (small file). */
+  delivery?: "inline" | "cdn";
 }
 
 export interface GenerateFileResult {
@@ -96,6 +98,7 @@ export async function handleGenerateFile(job: GenerateFileJob): Promise<Generate
       markdown: job.markdown,
       title: job.title,
       theme: job.theme,
+      delivery: job.delivery,
     });
     return { ok: true, html };
   } catch (err) {

@@ -847,6 +847,27 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
   the clipboard receives Markdown (`## The atom … **atoms** … - protons`); page
   is clean + responsive at 375px. +1 renderer test (runtime inlined on every
   page). Green (typecheck + full test + web build).
+- **Thin CDN delivery shipped end-to-end (owner-approved release).** The
+  student-site views are now **small CDN-linked files** that load the framework
+  from jsDelivr at view time (owner goal: don't commit the ~1 MB framework
+  repeatedly; viewers get the published framework). **Upstream:** added a
+  `delivery: 'inline' | 'cdn'` option to the three library builders
+  (`buildMdHtml`/`buildSlidesHtml`/`buildPagedHtml` — the CDN compose already
+  existed in each CLI, just wasn't exposed) and **published 6 packages**:
+  `orz-mdhtml@0.5.0` + `orz-mdhtml-browser@0.5.0`, `orz-slides@0.4.0` +
+  `-browser`, `orz-paged@0.4.0` + `-browser` (each tool bumped to
+  `orz-markdown ^1.3.2`). Verified thin output before publishing: md **75 KB**
+  (vs 827 KB inline), slides **78 KB** (vs 1.07 MB), paged **89 KB** (vs
+  1.44 MB) — each correctly referencing `…-browser@<ver>` + `orz-markdown@1.3.2`.
+  **Alembic:** `delivery` threaded worker-client → worker (`jobs`/`server`) →
+  `@alembic/generators`; `publishSiteAction` now generates each chapter as
+  `.md.html` **+ `.slides.html` + `.paged.html`** (all `cdn`) and the course
+  home links **Slides · Print** per card (extend-to-slides/paged, owner ask);
+  practice pages are `cdn` too. Downloads/editing keep `inline` (default) for
+  offline self-containment. Green (typecheck + full test + web build).
+  **REQUIRES: redeploy the Fly worker** (`apps/worker`) so it runs the new code
+  + orz tools — until then the worker still emits inline. Vercel auto-deploys
+  the web side.
 - **Bugfix (upstream orz-markdown + vendored copy): image sizing `![](img =WxH)`
   did nothing.** `markdown-it-imsize` was correctly emitting `width`/`height`
   attributes, but `common.css`'s `.markdown-body img { width:auto; height:auto }`

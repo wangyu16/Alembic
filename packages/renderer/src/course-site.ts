@@ -29,9 +29,12 @@ export interface CourseChapter {
   /** URL-safe slug. */
   slug: string;
   title: string;
-  /** Root-relative href of this chapter's self-contained page
+  /** Root-relative href of this chapter's self-contained reading page
    *  (e.g. "chapters/<slug>.md.html"); the caller generates the file. */
   viewHref: string;
+  /** Optional per-chapter slide deck / print view (self-contained files). */
+  slidesHref?: string;
+  pagedHref?: string;
 }
 
 export interface CoursePractice {
@@ -60,6 +63,8 @@ const SITE_STYLE = `<style>
 .chapter-cards{list-style:none;padding:0;margin:1.5rem 0;display:grid;gap:.75rem}
 .chapter-cards li{border:1px solid rgba(128,128,128,.28);border-radius:.6rem;padding:.85rem 1.1rem}
 .chapter-cards .chapter-link{font-weight:600;text-decoration:none;font-size:1.1rem}
+.chapter-cards .card-links{display:block;margin-top:.35rem;font-size:.82rem;opacity:.75}
+.chapter-cards .card-links a{text-decoration:none}
 .site-footer{margin-top:3rem;padding-top:1rem;border-top:1px solid rgba(128,128,128,.2);font-size:.8rem;opacity:.6}
 </style>`;
 
@@ -81,12 +86,16 @@ export function buildCourseSite(input: CourseSiteInput): SiteFile[] {
     : "";
 
   const cards = input.chapters
-    .map(
-      (c) =>
-        `<li><a class="chapter-link" href="${escapeHtml(c.viewHref)}">${escapeHtml(
-          c.title,
-        )}</a></li>`,
-    )
+    .map((c) => {
+      const extra = [
+        c.slidesHref ? `<a href="${escapeHtml(c.slidesHref)}">Slides</a>` : "",
+        c.pagedHref ? `<a href="${escapeHtml(c.pagedHref)}">Print</a>` : "",
+      ].filter(Boolean);
+      const links = extra.length ? `<span class="card-links">${extra.join(" · ")}</span>` : "";
+      return `<li><a class="chapter-link" href="${escapeHtml(c.viewHref)}">${escapeHtml(
+        c.title,
+      )}</a>${links}</li>`;
+    })
     .join("\n");
   const chapterList = input.chapters.length
     ? `\n<ul class="chapter-cards">\n${cards}\n</ul>`

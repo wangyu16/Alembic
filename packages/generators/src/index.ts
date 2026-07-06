@@ -29,6 +29,13 @@ export interface GenerateInput {
   /** Document `<title>` (default: the tool's own, "Untitled"). */
   title?: string;
   /**
+   * Framework delivery: `inline` (default) embeds the ~1 MB framework (offline,
+   * self-contained — right for downloads); `cdn` emits a small (~75 KB) file
+   * that loads the framework from jsDelivr at view time (right for repo-committed
+   * views — GitHub stays markdown-sized and viewers get the published framework).
+   */
+  delivery?: "inline" | "cdn";
+  /**
    * orz theme id, passed straight to the tool (unknown ids fall back to the
    * tool's own default). Theme ids differ per tool, so the caller — which owns
    * any `RenderTheme`-style abstraction — resolves the id; this package stays
@@ -43,7 +50,12 @@ export interface GenerateInput {
  * can swap in without changing callers.
  */
 export async function generateSelfContained(input: GenerateInput): Promise<string> {
-  const opts = { markdown: input.markdown, title: input.title, theme: input.theme };
+  const opts = {
+    markdown: input.markdown,
+    title: input.title,
+    theme: input.theme,
+    delivery: input.delivery,
+  };
   switch (input.kind) {
     case "md":
       return buildMdHtml(opts);

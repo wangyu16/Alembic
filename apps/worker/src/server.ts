@@ -58,12 +58,14 @@ function parseGenerateJob(raw: string): GenerateFileJob | null {
   const kind = d["kind"];
   if (kind !== "md" && kind !== "slides" && kind !== "paged") return null;
   if (typeof d["markdown"] !== "string") return null;
+  const delivery = d["delivery"] === "cdn" ? "cdn" : d["delivery"] === "inline" ? "inline" : undefined;
   return {
     type: "generate-file",
     kind,
     markdown: d["markdown"],
     title: typeof d["title"] === "string" ? d["title"] : undefined,
     theme: typeof d["theme"] === "string" ? d["theme"] : undefined,
+    delivery,
   };
 }
 

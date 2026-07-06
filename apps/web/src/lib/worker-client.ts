@@ -25,6 +25,9 @@ export interface GenerateFileInput {
   title?: string;
   /** Alembic's theme abstraction; mapped to an orz theme id for the worker. */
   theme?: RenderTheme;
+  /** Framework delivery: `inline` (default, offline copy) or `cdn` (small file
+   *  that loads the framework at view time — for repo-committed views). */
+  delivery?: "inline" | "cdn";
 }
 
 /** Map Alembic's RenderTheme to an orz theme id (md; other kinds use defaults). */
@@ -53,6 +56,7 @@ async function callWorker(input: GenerateFileInput): Promise<string> {
       markdown: input.markdown,
       title: input.title,
       theme: input.kind === "md" ? orzThemeId(input.theme) : undefined,
+      delivery: input.delivery,
     }),
   });
   const data = (await res.json()) as { ok: boolean; html?: string; message?: string };

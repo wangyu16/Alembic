@@ -11,6 +11,7 @@ import {
 } from "@alembic/package-ops";
 import {
   buildCourseSite,
+  slidesSourceFromBlocks,
   type CourseChapter,
   type CoursePractice,
   type SiteFile,
@@ -85,11 +86,13 @@ export async function publishSiteAction(
     // to the editor's cookie only when the course theme is unset.
     const theme = record!.manifest.theme ?? (await getRenderTheme());
 
-    // Owner decision (2026-07-06): the student-site VIEWS are the self-contained
-    // files themselves. Each chapter is generated as its own `.md.html` (via the
-    // worker; falls back to an in-process build with no worker) and served as the
-    // chapter page. The course home links to them (hub-and-spoke). Best-effort
-    // per page — a generation hiccup skips that page rather than blocking publish.
+    // Owner decision: the student-site VIEWS are the self-contained files
+    // themselves, delivered `cdn` (small committed files that pull the framework
+    // from jsDelivr at view time — GitHub stays markdown-sized, viewers get the
+    // published framework). Per chapter we generate the reading page (`.md.html`),
+    // a slide deck (`.slides.html`), and a print view (`.paged.html`); the home
+    // links all three (hub-and-spoke). Best-effort — a generation hiccup skips
+    // that file rather than blocking publish.
     const pageFiles: SiteFile[] = [];
     const chapters: CourseChapter[] = [];
     for (const ch of await listChapters(store, packageId)) {
@@ -97,9 +100,29 @@ export async function publishSiteAction(
       const markdown = serializeStudyGuide(guide.preamble, guide.blocks);
       const viewHref = `chapters/${ch.slug}.md.html`;
       try {
-        const html = await generateSelfContainedFile({ kind: "md", markdown, title: ch.title, theme });
+        const html = await generateSelfContainedFile({ kind: "md", markdown, title: ch.title, theme, delivery: "cdn" });
         pageFiles.push({ path: viewHref, content: html });
-        chapters.push({ slug: ch.slug, title: ch.title, viewHref });
+        const chapter: CourseChapter = { slug: ch.slug, title: ch.title, viewHref };
+
+        try {
+          const deck = slidesSourceFromBlocks(guide.blocks.map((b) => ({ title: b.title, body: b.body })));
+          const slidesHtml = await generateSelfContainedFile({ kind: "slides", markdown: deck, title: ch.title, delivery: "cdn" });
+          const slidesHref = `slides/${ch.slug}.slides.html`;
+          pageFiles.push({ path: slidesHref, content: slidesHtml });
+          chapter.slidesHref = slidesHref;
+        } catch {
+          /* omit the slides link for this chapter */
+        }
+        try {
+          const pagedHtml = await generateSelfContainedFile({ kind: "paged", markdown, title: ch.title, delivery: "cdn" });
+          const pagedHref = `paged/${ch.slug}.paged.html`;
+          pageFiles.push({ path: pagedHref, content: pagedHtml });
+          chapter.pagedHref = pagedHref;
+        } catch {
+          /* omit the print link for this chapter */
+        }
+
+        chapters.push(chapter);
       } catch {
         /* skip this chapter's page; the rest of the course still publishes */
       }
@@ -117,6 +140,7 @@ export async function publishSiteAction(
           markdown: loaded.content,
           title: a.record.title,
           theme,
+          delivery: "cdn",
         });
         pageFiles.push({ path: viewHref, content: html });
         practice.push({ title: a.record.title, viewHref });
