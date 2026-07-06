@@ -700,8 +700,19 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
   pins arrive with R3), immutable caching + CORS for public objects. Guard
   paths verified against dev; **owner smoke test pending: open
   `/d/<a doc_id from the documents table>` in a browser** (signed-in for
-  private rows; service key enables anonymous public access). Next: P2 —
-  "share this" toggle + Discover's Elements tab reading discoverable rows.
+  private rows; service key enables anonymous public access).
+- **P2 landed: "share this" + Discover's Elements scope** (`006c237`).
+  Per-file discoverability toggle in the Assets pane (owner-only; objects
+  require a description first; private/current never shareable) with
+  Copy-permalink / Unshare; Discover's Elements chip is live
+  (`/portal?scope=elements`), listing every explicitly shared file via the
+  service client (graceful message when `SUPABASE_SECRET_KEY` is unset —
+  **setting it on Vercel is what turns on anonymous permalinks + element
+  search**). The start-small story now works end to end: draw a figure →
+  Share this → appears on Discover → anyone opens it by permalink.
+  **Owner smoke test:** share an asset from the Assets pane, see it on
+  `/portal?scope=elements`, open its permalink. Next: P4 file-level
+  adaptation, or E3 study-guide switchover.
 
 ### 2026-07-05
 - **Phase 1 (Module R) implementation — 2 of 3 increments landed, green.**
