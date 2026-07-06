@@ -4,6 +4,7 @@ import { createServiceClient } from "@/lib/supabase/service";
 import { learningResource } from "@alembic/renderer";
 import type { License } from "@alembic/package-contract";
 import { PortalBrowser, type PortalRegistration } from "@/components/portal-browser";
+import { ElementAdapt, type AdaptTarget } from "./element-adapt";
 
 export const dynamic = "force-dynamic";
 
@@ -143,6 +144,22 @@ async function ElementsList() {
       alt_text: string | null;
     }> | null) ?? [];
 
+  // The signed-in educator's own packages, offered as adaptation targets
+  // ("Adapt into my package"). RLS scopes the select to packages they own, so
+  // a signed-out visitor simply gets none and sees no adapt control.
+  const session = await createSupabaseServerClient();
+  const {
+    data: { user },
+  } = await session.auth.getUser();
+  let myPackages: AdaptTarget[] = [];
+  if (user) {
+    const { data: pkgs } = await session
+      .from("packages")
+      .select("id, title")
+      .order("created_at", { ascending: false });
+    myPackages = (pkgs as AdaptTarget[] | null) ?? [];
+  }
+
   if (docs.length === 0) {
     return (
       <p className="text-muted">
@@ -176,9 +193,12 @@ async function ElementsList() {
               <span className="truncate">{titles.get(d.package_id) ?? "a course package"}</span>
             </div>
           </div>
-          <a href={`/d/${d.doc_id}`} target="_blank" rel="noreferrer" className="link shrink-0 text-sm">
-            Open ↗
-          </a>
+          <div className="flex shrink-0 items-center gap-3">
+            <ElementAdapt docId={d.doc_id} packages={myPackages} />
+            <a href={`/d/${d.doc_id}`} target="_blank" rel="noreferrer" className="link text-sm">
+              Open ↗
+            </a>
+          </div>
         </li>
       ))}
     </ul>

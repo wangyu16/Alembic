@@ -735,8 +735,16 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
   distinct-docId-cross-package). Green (typecheck + full test + web build).
   **Owner smoke test:** in a package's Assets, click **Adapt…**, paste a shared
   element's permalink from Discover, confirm it appears with a new permalink and
-  that a rejected (license-incompatible) source shows a clear message. Discover-
-  side "Adapt into…" button (needs a package picker) is a deferred follow-up.
+  that a rejected (license-incompatible) source shows a clear message.
+- **P4 Discover-side "Adapt into my package"** — each Discover → Elements row now
+  carries an **Adapt →** control for a signed-in educator: pick one of your
+  packages from a dropdown, and the shared object is copied in (reusing the same
+  `adaptElementAction` durable path — source is discoverable, target is owned).
+  Signed-out visitors (or those with no packages) see no control; RLS scopes the
+  package list to the owner. New client `portal/element-adapt.tsx`; `ElementsList`
+  fetches the session user's packages. Two entry points now cover the loop:
+  permalink-paste inside the workspace Assets pane, and one-click from Discover.
+  Green (typecheck + web build; Discover page renders clean in preview).
 - **Bugfix: "Share this" never appeared on assets** (owner-reported). Root
   cause was a datetime round-trip: `RegistrationRecordSchema.registeredAt`
   used `z.iso.datetime()`, which accepts a bare `Z` but **rejects a timezone
