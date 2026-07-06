@@ -1,197 +1,86 @@
 import { describe, expect, it } from "vitest";
 import { buildCourseSite } from "./course-site";
 
-const multi = {
+const course = {
   title: "General Chemistry",
   chapters: [
-    { slug: "atoms", title: "Atoms", markdown: "## Atoms\n\nMatter is made of atoms." },
-    {
-      slug: "water",
-      title: "Water",
-      markdown: "## Water\n\nWater is H~2~O and $\\Delta H$ matters.",
-    },
-    { slug: "acids", title: "Acids", markdown: "## Acids\n\nHCl is strong." },
+    { slug: "atoms", title: "Atoms", viewHref: "chapters/atoms.md.html" },
+    { slug: "water", title: "Water", viewHref: "chapters/water.md.html" },
+    { slug: "acids", title: "Acids", viewHref: "chapters/acids.md.html" },
   ],
-  worksheets: [
-    { title: "Practice 1", slug: "practice-1", markdown: "1. Define an atom." },
-  ],
+  practice: [{ title: "Practice 1", viewHref: "worksheets/practice-1.md.html" }],
   builtAt: "2026-06-15T08:00:00Z",
 };
 
-describe("buildCourseSite — multi-chapter", () => {
-  it("emits an index TOC linking each chapter and the worksheets", () => {
-    const files = buildCourseSite(multi);
-    const index = files.find((f) => f.path === "index.html")!;
+describe("buildCourseSite — course home hub", () => {
+  it("emits only the home + build metadata (chapter pages are added by the caller)", () => {
+    const files = buildCourseSite(course);
+    const paths = files.map((f) => f.path).sort();
+    expect(paths).toEqual([".nojekyll", "build-info.json", "index.html"]);
+  });
+
+  it("links each chapter's self-contained view and the practice pages", () => {
+    const index = buildCourseSite(course).find((f) => f.path === "index.html")!;
     expect(index.content).toContain("<h1>General Chemistry</h1>");
-    expect(index.content).toContain('href="chapters/atoms.html"');
-    expect(index.content).toContain('href="chapters/water.html"');
-    expect(index.content).toContain('href="chapters/acids.html"');
-    expect(index.content).toContain('href="worksheets/practice-1.html"');
-    // The index is a TOC, not the chapter bodies inline.
-    expect(index.content).not.toContain("Matter is made of atoms");
+    expect(index.content).toContain('href="chapters/atoms.md.html"');
+    expect(index.content).toContain('href="chapters/water.md.html"');
+    expect(index.content).toContain('href="chapters/acids.md.html"');
+    expect(index.content).toContain('href="worksheets/practice-1.md.html"');
+    // The home is a hub — it does not inline chapter bodies.
+    expect(index.content).not.toContain("chapters/atoms.html"); // no bare-render page
   });
 
-  it("threads the selected render theme into every page (default dark)", () => {
-    const dark = buildCourseSite(multi); // no theme → dark
-    expect(dark.find((f) => f.path === "index.html")!.content).toContain("Cinzel"); // dark-elegant
-    expect(dark.find((f) => f.path === "chapters/atoms.html")!.content).toContain("Cinzel");
-
-    const light = buildCourseSite({ ...multi, theme: "light" });
-    for (const f of light.filter((f) => f.path.endsWith(".html"))) {
-      // Every emitted page carries the light-academic theme, not the dark one.
-      expect(f.content, f.path).toContain("Alegreya"); // light-academic
-      expect(f.content, f.path).not.toContain("Cinzel");
-    }
-  });
-
-  it("emits one page per chapter that renders content and links back to the index", () => {
-    const files = buildCourseSite(multi);
-    const water = files.find((f) => f.path === "chapters/water.html")!;
-    expect(water.content).toContain("<sub>2</sub>"); // chemistry rendered
-    expect(water.content).toContain("katex"); // math rendered
-    expect(water.content).toContain('href="../index.html"');
-    expect(files.some((f) => f.path === "chapters/atoms.html")).toBe(true);
-    expect(files.some((f) => f.path === "chapters/acids.html")).toBe(true);
-  });
-
-  it("uses the chapter title as the page h1 (sourced from the manifest)", () => {
-    const files = buildCourseSite(multi);
-    const water = files.find((f) => f.path === "chapters/water.html")!;
-    expect(water.content).toContain("<h1>Water</h1>");
-  });
-
-  it("wires prev/next nav by array order with relative slug links", () => {
-    const files = buildCourseSite(multi);
-    const water = files.find((f) => f.path === "chapters/water.html")!;
-    // Middle chapter: both prev and next, links relative within chapters/.
-    expect(water.content).toContain('href="atoms.html"');
-    expect(water.content).toContain('href="acids.html"');
-    expect(water.content).toContain("← Atoms");
-    expect(water.content).toContain("Acids →");
-  });
-
-  it("omits the previous link on the first chapter and next on the last", () => {
-    const files = buildCourseSite(multi);
-    const first = files.find((f) => f.path === "chapters/atoms.html")!;
-    const last = files.find((f) => f.path === "chapters/acids.html")!;
-    // First: a forward link to Water, no backward chapter link.
-    expect(first.content).toContain('href="water.html"');
-    expect(first.content).toContain("Water →");
-    // Last: a backward link to Water, no forward arrow at all.
-    expect(last.content).toContain('href="water.html"');
-    expect(last.content).toContain("← Water");
-    expect(last.content).not.toContain(" →");
-  });
-
-  it("renders worksheet pages with a back link", () => {
-    const files = buildCourseSite(multi);
-    const ws = files.find((f) => f.path === "worksheets/practice-1.html")!;
-    expect(ws.content).toContain("Define an atom");
-    expect(ws.content).toContain('href="../index.html"');
-  });
-});
-
-describe("buildCourseSite — single chapter", () => {
-  const single = {
-    title: "Thermochemistry",
-    chapters: [
-      {
-        slug: "enthalpy",
-        title: "Enthalpy",
-        markdown: "## Enthalpy\n\nWater is H~2~O and $\\Delta H$ matters.",
-      },
-    ],
-    worksheets: [
-      { title: "Practice 1", slug: "practice-1", markdown: "1. Define enthalpy." },
-    ],
-    builtAt: "2026-06-15T08:00:00Z",
-  };
-
-  it("renders the chapter inline on the index with no chapters/ pages", () => {
-    const files = buildCourseSite(single);
-    const index = files.find((f) => f.path === "index.html")!;
-    expect(index.content).toContain("<h1>Thermochemistry</h1>");
-    expect(index.content).toContain("<sub>2</sub>"); // chapter content inline
-    expect(index.content).toContain("katex");
-    expect(index.content).toContain('href="worksheets/practice-1.html"');
-    expect(files.some((f) => f.path.startsWith("chapters/"))).toBe(false);
-  });
-
-  it("still emits worksheet pages with a back link", () => {
-    const files = buildCourseSite(single);
-    const ws = files.find((f) => f.path === "worksheets/practice-1.html")!;
-    expect(ws.content).toContain("Define enthalpy");
-    expect(ws.content).toContain('href="../index.html"');
-  });
-});
-
-describe("buildCourseSite — edges and metadata", () => {
-  it("emits an index with just the title when there are no chapters", () => {
-    const files = buildCourseSite({
-      title: "Empty Course",
-      chapters: [],
-      builtAt: "2026-06-15T08:00:00Z",
-    });
-    const index = files.find((f) => f.path === "index.html")!;
-    expect(index.content).toContain("<h1>Empty Course</h1>");
-    expect(files.some((f) => f.path.startsWith("chapters/"))).toBe(false);
-    expect(files.some((f) => f.path.startsWith("worksheets/"))).toBe(false);
-  });
-
-  it("works with no worksheets", () => {
-    const files = buildCourseSite({ ...multi, worksheets: undefined });
-    const index = files.find((f) => f.path === "index.html")!;
-    expect(index.content).not.toContain("worksheets/");
-    expect(files.some((f) => f.path.startsWith("worksheets/"))).toBe(false);
-  });
-
-  it("stamps the renderer version in build-info and includes .nojekyll", () => {
-    const files = buildCourseSite(multi);
-    const info = files.find((f) => f.path === "build-info.json")!;
-    expect(JSON.parse(info.content).renderer).toMatch(/^orz-markdown@/);
-    expect(JSON.parse(info.content).builtAt).toBe(multi.builtAt);
-    expect(files.some((f) => f.path === ".nojekyll")).toBe(true);
-  });
-
-  it("renders the course intro on the home page when a description is given", () => {
-    const files = buildCourseSite({ ...multi, description: "A **first** course in chemistry." });
-    const index = files.find((f) => f.path === "index.html")!;
+  it("renders the course intro when a description is given", () => {
+    const index = buildCourseSite({
+      ...course,
+      description: "A **first** course in chemistry.",
+    }).find((f) => f.path === "index.html")!;
     expect(index.content).toContain('<div class="course-intro">');
     expect(index.content).toContain("<strong>first</strong>");
   });
 
-  it("links a chapter's offline download from the home card and the chapter page", () => {
-    const withDl = {
-      ...multi,
-      chapters: multi.chapters.map((c) => ({ ...c, downloadHref: `downloads/${c.slug}.md.html` })),
-    };
-    const files = buildCourseSite(withDl);
-    const index = files.find((f) => f.path === "index.html")!;
-    // Home card: root-relative download link.
-    expect(index.content).toContain('href="downloads/atoms.md.html" download');
-    // Chapter page under chapters/: resolved one level up.
-    const atoms = files.find((f) => f.path === "chapters/atoms.html")!;
-    expect(atoms.content).toContain('href="../downloads/atoms.md.html" download');
-    expect(atoms.content).toContain('<div class="resource-bar">');
+  it("threads the selected render theme (default dark)", () => {
+    expect(buildCourseSite(course).find((f) => f.path === "index.html")!.content).toContain(
+      "Cinzel",
+    ); // dark-elegant
+    const light = buildCourseSite({ ...course, theme: "light" }).find(
+      (f) => f.path === "index.html",
+    )!;
+    expect(light.content).toContain("Alegreya"); // light-academic
+    expect(light.content).not.toContain("Cinzel");
   });
 
-  it("omits the download link (and its resource bar) when no downloadHref", () => {
-    const files = buildCourseSite(multi);
-    expect(files.find((f) => f.path === "index.html")!.content).not.toContain("downloads/");
-    expect(files.find((f) => f.path === "chapters/atoms.html")!.content).not.toContain(
-      '<div class="resource-bar">',
-    );
-  });
-
-  it("inlines orz-markdown's browser runtime on every page (copy-as-source)", async () => {
-    // Copy-as-source is the orz runtime (select + Cmd/Ctrl-C → Markdown over
-    // .markdown-body), the SAME mechanism .md.html uses — not a bespoke button.
+  it("inlines orz-markdown's browser runtime on the home (copy-as-source)", async () => {
     const { getBrowserRuntimeScript } = await import("orz-markdown/runtime");
-    const marker = getBrowserRuntimeScript().slice(0, 48);
-    const files = buildCourseSite(multi);
-    for (const f of files.filter((f) => f.path.endsWith(".html"))) {
-      expect(f.content, f.path).toContain(marker);
-      expect(f.content, f.path).toContain('class="markdown-body"');
-    }
+    const index = buildCourseSite(course).find((f) => f.path === "index.html")!;
+    expect(index.content).toContain(getBrowserRuntimeScript().slice(0, 48));
+    expect(index.content).toContain('class="markdown-body"');
+  });
+
+  it("emits an LRMI JSON-LD block on the index when metadata is given", () => {
+    const index = buildCourseSite({
+      ...course,
+      meta: { name: "General Chemistry", license: "CC-BY-4.0" },
+    }).find((f) => f.path === "index.html")!;
+    expect(index.content).toContain("application/ld+json");
+    expect(index.content).toContain("LearningResource");
+  });
+
+  it("works with no chapters and no practice", () => {
+    const files = buildCourseSite({ title: "Empty", chapters: [], builtAt: course.builtAt });
+    const index = files.find((f) => f.path === "index.html")!;
+    expect(index.content).toContain("<h1>Empty</h1>");
+    // (.chapter-cards is defined in the stylesheet; assert the list ELEMENT and
+    // the practice heading are absent, not the class name.)
+    expect(index.content).not.toContain('<ul class="chapter-cards">');
+    expect(index.content).not.toContain("<h2>Practice</h2>");
+  });
+
+  it("stamps the renderer version in build-info and includes .nojekyll", () => {
+    const files = buildCourseSite(course);
+    const info = files.find((f) => f.path === "build-info.json")!;
+    expect(JSON.parse(info.content).renderer).toMatch(/^orz-markdown@/);
+    expect(JSON.parse(info.content).builtAt).toBe(course.builtAt);
+    expect(files.some((f) => f.path === ".nojekyll")).toBe(true);
   });
 });

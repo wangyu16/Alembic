@@ -847,7 +847,28 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
   the clipboard receives Markdown (`## The atom … **atoms** … - protons`); page
   is clean + responsive at 375px. +1 renderer test (runtime inlined on every
   page). Green (typecheck + full test + web build).
-- **Bugfix: "Share this" never appeared on assets** (owner-reported). Root
+- **Module S — viewing = the self-contained files** (owner decision, supersedes
+  the S1 bare-render reading pages + `downloads/`). The student-site chapter
+  **view IS its `.md.html`** (rationale: slides always need a framework anyway,
+  so plain-markdown's size edge never held uniformly; and the files ARE the
+  product experience — copy-as-source, editor, themes, math all built in and
+  identical to what the educator sees). ~1 MB/page accepted for today's web.
+  Model: `buildCourseSite` is now a **course-home hub** (title + intro + chapter
+  cards linking `chapters/<slug>.md.html` + practice) — hub-and-spoke;
+  `publishSiteAction` generates each chapter (and practice artifact) as its own
+  self-contained page via the worker (in-process fallback) and serves it as the
+  page. The bare-render chapter/worksheet pages and the separate `downloads/`
+  are gone (the page IS the download). Source of record stays lean `.md`.
+  `CourseChapter` is now `{slug, title, viewHref}`; added `CoursePractice`;
+  site-preview shows the home hub. Browser-verified: hub cards link to
+  `chapters/*.md.html`, and the linked page is a real self-contained `.md.html`
+  (823 KB, orz runtime + reading view + content). Renderer tests rewritten (35
+  pass). Green (typecheck + full test + web build). **Trade-off noted:** a
+  chapter page has no course prev/next (standalone file) — hub-and-spoke covers
+  navigation; in-chapter prev/next would want an upstream `buildMdHtml` nav-slot
+  (future). The edit pencil on a student page is intentional (OER remix: edit
+  locally → download your copy). **Deferred:** slides/paged ON the site
+  (`.slides.html`/`.paged.html` per the same policy), current-term, R3 pins.
   cause was a datetime round-trip: `RegistrationRecordSchema.registeredAt`
   used `z.iso.datetime()`, which accepts a bare `Z` but **rejects a timezone
   offset**. Writes stored `Date#toISOString()` (`…Z`, so rows inserted fine),
