@@ -812,6 +812,28 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
   increments): the duplicate orz logo/theme chrome (needs the upstream
   `?embed=minimal`, deferred), pane sizing polish, and bringing concept-map /
   assessment-guide / private onto the hosted editor for a consistent model.
+- **Module S1 landed: student-site information architecture + per-chapter
+  offline downloads** (owner decision: full S1 incl. `.md.html` downloads).
+  `buildCourseSite` (`@alembic/renderer`, rule 7) reworked into a reading-first
+  IA: a course **home** with intro + **chapter cards** (each linking its page
+  and its offline copy) + Practice; per-chapter reading pages with a top nav,
+  a **resource bar** (⬇ Download this chapter), rendered study guide, and
+  prev/next (`← Prev` / `Next →`); a "Published with Alembic" footer; all on a
+  theme-neutral reading-chrome stylesheet that sits on either orz theme.
+  `publishSiteAction` now generates a **self-contained `.md.html` per chapter**
+  via the worker (falls back to an in-process rendered copy when no worker) and
+  commits them under `downloads/`, linked from the cards + resource bars
+  (best-effort per chapter — a generation hiccup skips that download, never
+  blocks publishing). `CourseSiteInput` gained `description` + per-chapter
+  `downloadHref`; site-preview passes the description. +4 renderer tests
+  (intro, download links root- vs `../`-relative, omit-when-absent); browser-
+  verified the home + chapter pages render cleanly (dark theme). Green
+  (typecheck + full test + web build). **Meets the S1 DoD** (any public
+  resource ≤2 clicks from home). **Owner smoke test:** Publish web page, open
+  the site — confirm the chapter cards, a chapter's Download-offline link
+  resolves to its `.md.html`, and prev/next work. **Deferred (S2/S3):** the
+  full impeccable reading design pass, copy-as-source on pages, slides/paged on
+  the site, current-term section, permalink stamps + pinned assets (R3).
 - **Bugfix: "Share this" never appeared on assets** (owner-reported). Root
   cause was a datetime round-trip: `RegistrationRecordSchema.registeredAt`
   used `z.iso.datetime()`, which accepts a bare `Z` but **rejects a timezone

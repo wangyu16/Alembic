@@ -1,21 +1,24 @@
 /**
- * Multi-chapter static-site builder: renders a course (one or more chapters
- * plus optional worksheets) into an HTML file set for GitHub Pages, using the
- * shared dark-elegant themed document.
+ * Multi-chapter static-site builder (Module S): renders a course into an HTML
+ * file set for GitHub Pages, using the shared themed document.
  *
- * Layout:
- *   index.html              — course title + chapter TOC (multi) or the single
- *                             chapter inline (single) + optional worksheet nav
- *   chapters/<slug>.html    — one page per chapter (multi-chapter only), with
- *                             back/prev/next nav
- *   worksheets/<slug>.html  — one page per worksheet (same as buildSite)
+ * Information architecture (S1) — reading-first, ≤2 clicks to anything:
+ *   index.html              — course home: title + intro + chapter cards (each
+ *                             linking its page and its offline download) +
+ *                             optional practice; single-chapter renders inline
+ *   chapters/<slug>.html    — one reading page per chapter (multi-chapter), with
+ *                             a resource bar (offline download) + prev/next nav
+ *   worksheets/<slug>.html  — one practice page per worksheet
+ *   downloads/<slug>.md.html — self-contained chapter file (added by the caller;
+ *                             this module only LINKS it via `downloadHref`)
  *   build-info.json, .nojekyll
  *
- * All links are relative and resolve within _site/. Chapter pages live in
- * chapters/, so they reach the index via ../index.html and worksheets via
- * ../worksheets/<slug>.html.
+ * Reading chrome (a slim top nav, chapter cards, resource bar, footer) is added
+ * via a small theme-neutral stylesheet so it sits cleanly on either orz theme.
+ * All links are relative; `prefix` ("" at root, "../" under chapters/ and
+ * worksheets/) resolves root-relative hrefs per page.
  *
- * This is additive: buildSite (single-chapter callers) is untouched.
+ * This is additive: buildSite (single-page callers) is untouched.
  */
 
 import { md } from "orz-markdown";
@@ -30,10 +33,15 @@ export interface CourseChapter {
   slug: string;
   title: string;
   markdown: string;
+  /** Root-relative href of this chapter's self-contained offline download
+   *  (e.g. "downloads/<slug>.md.html"), when the caller built one. */
+  downloadHref?: string;
 }
 
 export interface CourseSiteInput {
   title: string;
+  /** Short course intro shown on the home page (markdown). */
+  description?: string;
   chapters: CourseChapter[];
   worksheets?: SiteWorksheet[];
   /** ISO timestamp, passed in for deterministic builds. */
@@ -44,8 +52,45 @@ export interface CourseSiteInput {
   theme?: RenderTheme;
 }
 
+/** Theme-neutral reading chrome (greys via opacity, so it fits dark or light). */
+const SITE_STYLE = `<style>
+.site-nav{display:flex;gap:1rem;align-items:center;font-size:.9rem;opacity:.75;margin-bottom:2rem;padding-bottom:.9rem;border-bottom:1px solid rgba(128,128,128,.25)}
+.site-nav a{text-decoration:none}
+.course-intro{opacity:.85}
+.chapter-cards{list-style:none;padding:0;margin:1.5rem 0;display:grid;gap:.75rem}
+.chapter-cards li{border:1px solid rgba(128,128,128,.28);border-radius:.6rem;padding:.85rem 1.1rem}
+.chapter-cards .chapter-link{font-weight:600;text-decoration:none;font-size:1.1rem}
+.chapter-cards .card-links{display:block;margin-top:.35rem;font-size:.82rem;opacity:.75}
+.resource-bar{display:flex;flex-wrap:wrap;gap:.6rem;margin:1.1rem 0 1.8rem;padding:.7rem 0;border-top:1px solid rgba(128,128,128,.2);border-bottom:1px solid rgba(128,128,128,.2)}
+.resource-bar a{display:inline-flex;align-items:center;gap:.4rem;font-size:.85rem;text-decoration:none;border:1px solid rgba(128,128,128,.32);border-radius:.5rem;padding:.35rem .75rem}
+.chapter-nav{display:flex;justify-content:space-between;flex-wrap:wrap;gap:1rem;font-size:.9rem;margin-top:2.5rem;padding-top:1rem;border-top:1px solid rgba(128,128,128,.25)}
+.site-footer{margin-top:3rem;padding-top:1rem;border-top:1px solid rgba(128,128,128,.2);font-size:.8rem;opacity:.6}
+</style>`;
+
+/** Combine the reading-chrome style with any extra head HTML (e.g. JSON-LD). */
+function head(extra?: string): string {
+  return extra ? `${SITE_STYLE}\n${extra}` : SITE_STYLE;
+}
+
+/** A root-relative href resolved for a page at the given `prefix`. */
+function at(prefix: string, href: string): string {
+  return `${prefix}${href}`;
+}
+
+/** Top nav: home link back to the course (omitted on the home page itself). */
+function topNav(title: string, prefix: string, home: boolean): string {
+  if (home) return "";
+  return `<nav class="site-nav"><a href="${at(prefix, "index.html")}">← ${escapeHtml(
+    title,
+  )}</a></nav>`;
+}
+
+function footer(): string {
+  return `<footer class="site-footer">Published with Alembic</footer>`;
+}
+
 /**
- * Worksheet nav fragment, with link paths relative to the page that hosts it.
+ * Practice nav fragment, links relative to the hosting page.
  * `prefix` is "" for the root index and "../" for pages under chapters/.
  */
 function worksheetNav(worksheets: SiteWorksheet[], prefix: string): string {
@@ -53,12 +98,18 @@ function worksheetNav(worksheets: SiteWorksheet[], prefix: string): string {
   const items = worksheets
     .map(
       (w) =>
-        `<li><a href="${prefix}worksheets/${w.slug}.html">${escapeHtml(
-          w.title,
-        )}</a></li>`,
+        `<li><a href="${at(prefix, `worksheets/${w.slug}.html`)}">${escapeHtml(w.title)}</a></li>`,
     )
     .join("\n");
-  return `<hr>\n<h2>Worksheets</h2>\n<ul>\n${items}\n</ul>`;
+  return `<hr>\n<h2>Practice</h2>\n<ul>\n${items}\n</ul>`;
+}
+
+/** Offline-download link for a chapter, resolved for the hosting page. */
+function downloadLink(ch: CourseChapter, prefix: string): string {
+  if (!ch.downloadHref) return "";
+  return `<a href="${at(prefix, ch.downloadHref)}" download>⬇ Download this ${escapeHtml(
+    "chapter",
+  )} (offline copy)</a>`;
 }
 
 /** Build the static site file set for a multi-chapter course. */
@@ -66,85 +117,77 @@ export function buildCourseSite(input: CourseSiteInput): SiteFile[] {
   const files: SiteFile[] = [];
   const worksheets = input.worksheets ?? [];
   const chapters = input.chapters;
-  const indexHead = input.meta ? learningResourceJsonLd(input.meta) : undefined;
+  const indexHead = head(input.meta ? learningResourceJsonLd(input.meta) : undefined);
+  const intro = input.description
+    ? `<div class="course-intro">${md.render(input.description)}</div>`
+    : "";
 
   if (chapters.length > 1) {
-    // Multi-chapter: index is a table of contents.
-    const toc = chapters
-      .map(
-        (c) =>
-          `<li><a href="chapters/${c.slug}.html">${escapeHtml(
-            c.title,
-          )}</a></li>`,
-      )
+    // Multi-chapter: the home page is a set of chapter cards.
+    const cards = chapters
+      .map((c) => {
+        const dl = c.downloadHref
+          ? `<span class="card-links"><a href="${escapeHtml(c.downloadHref)}" download>Download offline copy</a></span>`
+          : "";
+        return `<li><a class="chapter-link" href="chapters/${c.slug}.html">${escapeHtml(
+          c.title,
+        )}</a>${dl}</li>`;
+      })
       .join("\n");
     const wsNav = worksheetNav(worksheets, "");
-    const indexBody = `<h1>${escapeHtml(
-      input.title,
-    )}</h1>\n<ul>\n${toc}\n</ul>${wsNav ? `\n${wsNav}` : ""}`;
+    const indexBody = `<h1>${escapeHtml(input.title)}</h1>${intro ? `\n${intro}` : ""}
+<ul class="chapter-cards">\n${cards}\n</ul>${wsNav ? `\n${wsNav}` : ""}\n${footer()}`;
     files.push({
       path: "index.html",
       content: themedDocument({ title: input.title, bodyHtml: indexBody, headHtml: indexHead, theme: input.theme }),
     });
 
     chapters.forEach((c, i) => {
-      const back = `<p><a href="../index.html">← ${escapeHtml(
-        input.title,
-      )}</a></p>`;
       const prev = chapters[i - 1];
       const next = chapters[i + 1];
       const navParts: string[] = [];
-      if (prev) {
-        navParts.push(
-          `<a href="${prev.slug}.html">← Previous: ${escapeHtml(
-            prev.title,
-          )}</a>`,
-        );
-      }
-      if (next) {
-        navParts.push(
-          `<a href="${next.slug}.html">Next: ${escapeHtml(next.title)} →</a>`,
-        );
-      }
-      const pagerNav = navParts.length
-        ? `\n<hr>\n<nav class="chapter-nav">\n${navParts
-            .map((p) => `<p>${p}</p>`)
-            .join("\n")}\n</nav>`
-        : "";
-      // The chapter title is the page h1 (sourced from the manifest, not the
-      // markdown — blocks are h2). Keeps title as the single source of truth.
-      const body = `${back}\n<h1>${escapeHtml(c.title)}</h1>\n${md.render(
-        c.markdown,
-      )}${pagerNav}`;
+      if (prev) navParts.push(`<a href="${prev.slug}.html">← ${escapeHtml(prev.title)}</a>`);
+      else navParts.push("<span></span>");
+      if (next) navParts.push(`<a href="${next.slug}.html">${escapeHtml(next.title)} →</a>`);
+      const pagerNav = `\n<nav class="chapter-nav">\n${navParts
+        .map((p) => p)
+        .join("\n")}\n</nav>`;
+      const dl = downloadLink(c, "../");
+      const resourceBar = dl ? `\n<div class="resource-bar">${dl}</div>` : "";
+      // The chapter title is the page h1 (from the manifest, not the markdown —
+      // blocks are h2). Keeps title as the single source of truth.
+      const body = `${topNav(input.title, "../", false)}\n<h1>${escapeHtml(
+        c.title,
+      )}</h1>${resourceBar}\n${md.render(c.markdown)}${pagerNav}\n${footer()}`;
       files.push({
         path: `chapters/${c.slug}.html`,
-        content: themedDocument({ title: c.title, bodyHtml: body, theme: input.theme }),
+        content: themedDocument({ title: c.title, bodyHtml: body, headHtml: head(), theme: input.theme }),
       });
     });
   } else {
-    // Single chapter (or none): render inline under the course title, mirroring
-    // buildSite's single-page look. No separate chapters/ pages.
+    // Single chapter (or none): render inline under the course title.
+    const c = chapters[0];
+    const dl = c ? downloadLink(c, "") : "";
+    const resourceBar = dl ? `\n<div class="resource-bar">${dl}</div>` : "";
+    const chapterHtml = c ? `${resourceBar}\n${md.render(c.markdown)}` : "";
     const wsNav = worksheetNav(worksheets, "");
-    const chapterHtml = chapters.length
-      ? `\n${md.render(chapters[0]!.markdown)}`
-      : "";
-    const indexBody = `<h1>${escapeHtml(input.title)}</h1>${chapterHtml}${
+    const indexBody = `<h1>${escapeHtml(input.title)}</h1>${intro ? `\n${intro}` : ""}${chapterHtml}${
       wsNav ? `\n${wsNav}` : ""
-    }`;
+    }\n${footer()}`;
     files.push({
       path: "index.html",
       content: themedDocument({ title: input.title, bodyHtml: indexBody, headHtml: indexHead, theme: input.theme }),
     });
   }
 
-  // Worksheet pages (same shape for single- and multi-chapter).
+  // Practice pages (same shape for single- and multi-chapter).
   for (const w of worksheets) {
-    const body = `<p><a href="../index.html">← ${escapeHtml(
-      input.title,
-    )}</a></p>\n<h1>${escapeHtml(w.title)}</h1>\n${md.render(w.markdown)}`;
+    const body = `${topNav(input.title, "../", false)}\n<h1>${escapeHtml(
+      w.title,
+    )}</h1>\n${md.render(w.markdown)}\n${footer()}`;
     files.push({
       path: `worksheets/${w.slug}.html`,
-      content: themedDocument({ title: w.title, bodyHtml: body, theme: input.theme }),
+      content: themedDocument({ title: w.title, bodyHtml: body, headHtml: head(), theme: input.theme }),
     });
   }
 

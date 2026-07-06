@@ -61,6 +61,7 @@ export default async function SitePreviewPage({
 
   const files = buildCourseSite({
     title: record.title,
+    description: record.manifest.description || undefined,
     chapters,
     worksheets,
     builtAt: new Date().toISOString(),

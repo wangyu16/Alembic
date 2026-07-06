@@ -66,18 +66,21 @@ describe("buildCourseSite — multi-chapter", () => {
     // Middle chapter: both prev and next, links relative within chapters/.
     expect(water.content).toContain('href="atoms.html"');
     expect(water.content).toContain('href="acids.html"');
-    expect(water.content).toContain("Previous: Atoms");
-    expect(water.content).toContain("Next: Acids");
+    expect(water.content).toContain("← Atoms");
+    expect(water.content).toContain("Acids →");
   });
 
-  it("omits Previous on the first chapter and Next on the last", () => {
+  it("omits the previous link on the first chapter and next on the last", () => {
     const files = buildCourseSite(multi);
     const first = files.find((f) => f.path === "chapters/atoms.html")!;
     const last = files.find((f) => f.path === "chapters/acids.html")!;
-    expect(first.content).not.toContain("Previous:");
-    expect(first.content).toContain("Next: Water");
-    expect(last.content).toContain("Previous: Water");
-    expect(last.content).not.toContain("Next:");
+    // First: a forward link to Water, no backward chapter link.
+    expect(first.content).toContain('href="water.html"');
+    expect(first.content).toContain("Water →");
+    // Last: a backward link to Water, no forward arrow at all.
+    expect(last.content).toContain('href="water.html"');
+    expect(last.content).toContain("← Water");
+    expect(last.content).not.toContain(" →");
   });
 
   it("renders worksheet pages with a back link", () => {
@@ -148,5 +151,37 @@ describe("buildCourseSite — edges and metadata", () => {
     expect(JSON.parse(info.content).renderer).toMatch(/^orz-markdown@/);
     expect(JSON.parse(info.content).builtAt).toBe(multi.builtAt);
     expect(files.some((f) => f.path === ".nojekyll")).toBe(true);
+  });
+
+  it("renders the course intro on the home page when a description is given", () => {
+    const files = buildCourseSite({ ...multi, description: "A **first** course in chemistry." });
+    const index = files.find((f) => f.path === "index.html")!;
+    expect(index.content).toContain('<div class="course-intro">');
+    expect(index.content).toContain("<strong>first</strong>");
+  });
+
+  it("links a chapter's offline download from the home card and the chapter page", () => {
+    const withDl = {
+      ...multi,
+      chapters: multi.chapters.map((c) => ({ ...c, downloadHref: `downloads/${c.slug}.md.html` })),
+    };
+    const files = buildCourseSite(withDl);
+    const index = files.find((f) => f.path === "index.html")!;
+    // Home card: root-relative download link.
+    expect(index.content).toContain('href="downloads/atoms.md.html" download');
+    // Chapter page under chapters/: resolved one level up.
+    const atoms = files.find((f) => f.path === "chapters/atoms.html")!;
+    expect(atoms.content).toContain('href="../downloads/atoms.md.html" download');
+    expect(atoms.content).toContain('<div class="resource-bar">');
+  });
+
+  it("omits download links when no downloadHref is provided", () => {
+    const files = buildCourseSite(multi);
+    // (the .resource-bar CSS class is always defined in the stylesheet; assert
+    // the actual element and the download href are absent, not the class name)
+    expect(files.find((f) => f.path === "index.html")!.content).not.toContain("downloads/");
+    expect(files.find((f) => f.path === "chapters/atoms.html")!.content).not.toContain(
+      '<div class="resource-bar">',
+    );
   });
 });
