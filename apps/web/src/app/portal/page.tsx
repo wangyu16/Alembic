@@ -1,4 +1,6 @@
+import Link from "next/link";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/service";
 import { learningResource } from "@alembic/renderer";
 import type { License } from "@alembic/package-contract";
 import { PortalBrowser, type PortalRegistration } from "@/components/portal-browser";
@@ -7,7 +9,12 @@ export const dynamic = "force-dynamic";
 
 type Registration = PortalRegistration & { registered_at: string };
 
-export default async function PortalPage() {
+export default async function PortalPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ scope?: string }>;
+}) {
+  const scope = (await searchParams).scope === "elements" ? "elements" : "courses";
   const supabase = await createSupabaseServerClient();
   // Public read (RLS allows anyone); empty list if not configured.
   let registrations: Registration[] = [];
@@ -63,22 +70,35 @@ export default async function PortalPage() {
         </p>
       </header>
 
-      {/* Two search scopes (document-model.md): whole courses today; element
-          search (individual figures, plots, explanations) arrives with the
-          registration index. */}
+      {/* Two search scopes (document-model.md): whole courses, and individual
+          shared elements (per-file "share this" → the documents registry). */}
       <div className="flex items-center gap-2 text-sm">
-        <span className="rounded-full bg-[var(--accent-soft)] px-3 py-1 font-medium text-[var(--accent)]">
-          Courses
-        </span>
-        <span
-          className="rounded-full border border-edge px-3 py-1 text-faint"
-          title="Search individual shared elements — figures, plots, explanations — coming soon"
+        <Link
+          href="/portal"
+          className={
+            scope === "courses"
+              ? "rounded-full bg-[var(--accent-soft)] px-3 py-1 font-medium text-[var(--accent)]"
+              : "rounded-full border border-edge px-3 py-1 text-muted hover:text-ink"
+          }
         >
-          Elements <span className="text-[0.7rem]">· soon</span>
-        </span>
+          Courses
+        </Link>
+        <Link
+          href="/portal?scope=elements"
+          className={
+            scope === "elements"
+              ? "rounded-full bg-[var(--accent-soft)] px-3 py-1 font-medium text-[var(--accent)]"
+              : "rounded-full border border-edge px-3 py-1 text-muted hover:text-ink"
+          }
+          title="Individual shared elements — figures, plots, explanations"
+        >
+          Elements
+        </Link>
       </div>
 
-      {registrations.length === 0 ? (
+      {scope === "elements" ? (
+        <ElementsList />
+      ) : registrations.length === 0 ? (
         <p className="text-muted">
           No courses have been listed yet — be the first: publish a package,
           then choose <span className="text-ink">List publicly</span>.
@@ -87,5 +107,80 @@ export default async function PortalPage() {
         <PortalBrowser registrations={registrations} />
       )}
     </main>
+  );
+}
+
+/**
+ * Elements scope (P2): every file an educator explicitly shared ("share
+ * this"). The registry's RLS is owner-only, so the public listing reads
+ * through the service client; without it (dev, or key unset) the scope
+ * degrades to an explanatory message rather than an error.
+ */
+async function ElementsList() {
+  const service = createServiceClient();
+  if (!service) {
+    return (
+      <p className="text-muted">
+        Element search isn&rsquo;t available on this deployment yet.
+      </p>
+    );
+  }
+
+  const { data } = await service
+    .from("documents")
+    .select("doc_id, package_id, path, kind, description, alt_text")
+    .eq("discoverable", true)
+    .eq("tombstoned", false)
+    .order("registered_at", { ascending: false })
+    .limit(200);
+  const docs =
+    (data as Array<{
+      doc_id: string;
+      package_id: string;
+      path: string;
+      kind: string;
+      description: string | null;
+      alt_text: string | null;
+    }> | null) ?? [];
+
+  if (docs.length === 0) {
+    return (
+      <p className="text-muted">
+        No shared elements yet — in your workspace, open a package&rsquo;s
+        Assets and choose <span className="text-ink">Share this</span> on any
+        figure, plot, or explanation worth reusing.
+      </p>
+    );
+  }
+
+  // Package titles for context (one query; index is small).
+  const ids = [...new Set(docs.map((d) => d.package_id))];
+  const { data: pkgs } = await service
+    .from("packages")
+    .select("id, title")
+    .in("id", ids);
+  const titles = new Map(
+    ((pkgs as Array<{ id: string; title: string }> | null) ?? []).map((p) => [p.id, p.title]),
+  );
+
+  return (
+    <ul className="divide-y divide-[var(--edge-soft)]">
+      {docs.map((d) => (
+        <li key={d.doc_id} className="flex items-center justify-between gap-3 py-4">
+          <div className="min-w-0">
+            <div className="truncate text-sm text-ink">
+              {d.description ?? d.alt_text ?? d.path.split("/").pop()}
+            </div>
+            <div className="mt-0.5 flex items-center gap-2 text-xs text-faint">
+              <span className="chip">{d.kind}</span>
+              <span className="truncate">{titles.get(d.package_id) ?? "a course package"}</span>
+            </div>
+          </div>
+          <a href={`/d/${d.doc_id}`} target="_blank" rel="noreferrer" className="link shrink-0 text-sm">
+            Open ↗
+          </a>
+        </li>
+      ))}
+    </ul>
   );
 }

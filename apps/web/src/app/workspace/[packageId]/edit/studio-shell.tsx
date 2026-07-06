@@ -16,6 +16,7 @@ import {
 } from "../metadata-actions";
 import { saveFileAction, proposeEditAction } from "./edit-actions";
 import { importFileAction } from "../import-actions";
+import { shareFileAction } from "../share-actions";
 import { useUnsavedGuard } from "@/lib/use-unsaved-guard";
 import type { EditorHandle } from "@alembic/editor-kit";
 import { ModuleMount } from "@/lib/editor-modules/module-mount";
@@ -33,6 +34,13 @@ interface AssetItem {
   path: string;
   kind: string;
   altText?: string;
+}
+
+/** Registry state per asset path (P2 sharing): docId + discoverable. */
+export interface AssetDocInfo {
+  docId: string;
+  discoverable: boolean;
+  description?: string;
 }
 interface ArtifactItem {
   artifactId: string;
@@ -94,6 +102,7 @@ export function StudioShell({
   courseDescription,
   categoryFile,
   assets,
+  assetDocs,
   artifacts,
   chapterBlockIds,
   publishing,
@@ -110,6 +119,7 @@ export function StudioShell({
   courseDescription: string | null;
   categoryFile: { path: string; repo: "public" | "private"; content: string } | null;
   assets: AssetItem[];
+  assetDocs?: Record<string, AssetDocInfo>;
   artifacts: ArtifactItem[];
   chapterBlockIds: string[];
   publishing: PublishingState;
@@ -323,7 +333,7 @@ export function StudioShell({
               onDirty={setDirty}
             />
           ) : category === "assets" ? (
-            <AssetsView key="assets" packageId={packageId} activePath={activePath} assets={assets} onDirty={setDirty} />
+            <AssetsView key="assets" packageId={packageId} activePath={activePath} assets={assets} assetDocs={assetDocs} onDirty={setDirty} />
           ) : category === "slides" ? (
             <ArtifactView
               packageId={packageId}
@@ -838,11 +848,13 @@ function AssetsView({
   packageId,
   activePath,
   assets,
+  assetDocs,
   onDirty,
 }: {
   packageId: string;
   activePath: string | null;
   assets: AssetItem[];
+  assetDocs?: Record<string, AssetDocInfo>;
   onDirty?: (d: boolean) => void;
 }) {
   const router = useRouter();
@@ -926,12 +938,103 @@ function AssetsView({
                     Edit
                   </button>
                 )}
+                {assetDocs?.[a.path] && (
+                  <ShareControl packageId={packageId} doc={assetDocs[a.path]} />
+                )}
               </div>
             </li>
           ))}
         </ul>
       )}
     </div>
+  );
+}
+
+/* ── "Share this" (P2): per-file discoverability + copyable permalink ─────── */
+function ShareControl({ packageId, doc }: { packageId: string; doc: AssetDocInfo }) {
+  const router = useRouter();
+  const [asking, setAsking] = useState(false);
+  const [description, setDescription] = useState(doc.description ?? "");
+  const [pending, start] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  const set = (share: boolean, desc?: string) => {
+    setError(null);
+    start(async () => {
+      const r = await shareFileAction(packageId, doc.docId, share, desc);
+      if (!r.ok) setError(r.error ?? "That didn't complete.");
+      else {
+        setAsking(false);
+        router.refresh();
+      }
+    });
+  };
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(`${window.location.origin}/d/${doc.docId}`);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      setError("Couldn't copy — the permalink is /d/" + doc.docId);
+    }
+  };
+
+  if (doc.discoverable) {
+    return (
+      <span className="flex items-center gap-2">
+        <button onClick={copy} className="link text-xs" title="Copy the shareable permalink">
+          {copied ? "Copied!" : "Copy permalink"}
+        </button>
+        <button
+          onClick={() => set(false)}
+          disabled={pending}
+          className="text-xs text-faint hover:text-ink"
+          title="Stop sharing this file (its permalink stops resolving for others)"
+        >
+          {pending ? "…" : "Unshare"}
+        </button>
+        {error && <span className="text-xs text-danger">{error}</span>}
+      </span>
+    );
+  }
+
+  if (asking) {
+    return (
+      <span className="flex items-center gap-1">
+        <input
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          placeholder="Short description (what others find it by)…"
+          aria-label="Description for sharing"
+          className="field w-56 text-xs"
+          onKeyDown={(e) => e.key === "Enter" && !pending && set(true, description)}
+        />
+        <button
+          onClick={() => set(true, description)}
+          disabled={pending || !description.trim()}
+          className="btn btn-primary btn-sm"
+        >
+          {pending ? "…" : "Share"}
+        </button>
+        <button onClick={() => setAsking(false)} className="btn btn-ghost btn-sm">
+          Cancel
+        </button>
+        {error && <span className="text-xs text-danger">{error}</span>}
+      </span>
+    );
+  }
+
+  return (
+    <button
+      onClick={() => (doc.description ? set(true) : setAsking(true))}
+      disabled={pending}
+      className="btn btn-ghost btn-sm"
+      title="Make this file discoverable on Discover's Elements and shareable by permalink"
+    >
+      {pending ? "…" : "Share this"}
+    </button>
   );
 }
 

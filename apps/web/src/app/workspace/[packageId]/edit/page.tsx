@@ -11,6 +11,7 @@ import { SupabaseSandboxStore } from "@/lib/sandbox-store";
 import { clientForUser, githubConfig, installUrl } from "@/lib/github";
 import { StudioShell, type StudioCategory } from "./studio-shell";
 import { syncPackageRegistry } from "@/lib/register";
+import { SupabaseDocumentRegistryStore } from "@/lib/document-registry-store";
 
 export const dynamic = "force-dynamic";
 
@@ -86,6 +87,26 @@ export default async function EditShellPage({
 
   // Carrier categories: assets list, and slides/worksheet artifacts.
   const assets = category === "assets" ? await listAssets(store, packageId) : [];
+  // Registry rows for the assets pane: docId + sharing state per path (P2).
+  let assetDocs: Record<
+    string,
+    { docId: string; discoverable: boolean; description?: string }
+  > = {};
+  if (category === "assets") {
+    try {
+      const registry = new SupabaseDocumentRegistryStore(supabase);
+      for (const r of await registry.listByPackage(packageId)) {
+        if (r.tombstoned || r.repo !== "public") continue;
+        assetDocs[r.path] = {
+          docId: r.docId,
+          discoverable: r.discoverable,
+          description: r.description,
+        };
+      }
+    } catch {
+      assetDocs = {}; // registry is best-effort; the pane still renders
+    }
+  }
   const artifacts =
     category === "slides" || category === "practice"
       ? (await listArtifacts(store, packageId)).map((a) => ({
@@ -165,6 +186,7 @@ export default async function EditShellPage({
       courseDescription={courseDescription}
       categoryFile={categoryFile}
       assets={assets.map((a) => ({ path: a.path, kind: a.kind }))}
+      assetDocs={assetDocs}
       artifacts={artifacts}
       chapterBlockIds={chapterBlockIds}
       publishing={publishing}
