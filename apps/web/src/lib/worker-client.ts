@@ -92,3 +92,16 @@ export async function generateSelfContainedFile(input: GenerateFileInput): Promi
   }
   return fallback(input);
 }
+
+/**
+ * Generate an EDITABLE self-contained file — worker only (E3 hosted editing).
+ * The in-process fallback produces a rendered document with NO in-file editor
+ * and no `orz-host-save` protocol, so it can't be hosted for editing. This
+ * therefore THROWS when no worker is configured or the worker is unreachable,
+ * letting the caller fall back to another editing surface rather than silently
+ * mounting a view-only file the educator can't save.
+ */
+export async function generateEditableFile(input: GenerateFileInput): Promise<string> {
+  if (!workerConfigured()) throw new Error("No worker configured for editable generation.");
+  return callWorker(input);
+}

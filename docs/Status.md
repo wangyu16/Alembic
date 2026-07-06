@@ -745,6 +745,28 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
   fetches the session user's packages. Two entry points now cover the loop:
   permalink-paste inside the workspace Assets pane, and one-click from Discover.
   Green (typecheck + web build; Discover page renders clean in preview).
+- **E3a landed: study-guide editing switches to the hosted `.md.html` in-file
+  editor** (owner decision: **lean-source model** — the committed source of
+  record stays markdown `study-guide/NN.md`; the self-contained `.md.html` is
+  generated on demand purely as the editing surface, never committed). Flow: the
+  content pane generates the chapter's `.md.html` via the worker
+  (`generateEditableFile`, worker-only — the in-process fallback has no in-file
+  editor), hosts it through the existing dormant `hostedCarrierModule`/
+  `ModuleMount`/`orz-host-save` machinery (E1), and on save persists the
+  **extracted markdown** back through `saveStudyGuideAction` (block-ID
+  validation + reconcile-first GitHub sync intact). New `hosted-actions.ts`
+  (`generateChapterHtmlAction` → `{editable, html}`; `hostSaveStudyGuideAction`
+  → parse + delegate). The block editor (`ContentEditor`) is **kept as a
+  graceful fallback** when no worker is configured or generation fails, so
+  editing never breaks (e.g. local dev without `WORKER_URL`). Verified via all
+  three orz builds emitting `orz-host-save` in `app.js`, so generated files
+  answer the handshake. Green (typecheck + full test + web build). **Owner
+  smoke test (needs the deployed worker):** open a chapter's **Study guide**,
+  confirm the in-file pencil editor loads, edit a section, use the file's own
+  save, and confirm the change persists (reopen the chapter). **Next:** E3b
+  slides (`.slides.html`) + E3c paged (`.paged.html`) on the same rails — these
+  need one taxonomy call (a per-document lean source + where paged lives, since
+  the v2 space set is closed).
 - **Bugfix: "Share this" never appeared on assets** (owner-reported). Root
   cause was a datetime round-trip: `RegistrationRecordSchema.registeredAt`
   used `z.iso.datetime()`, which accepts a bare `Z` but **rejects a timezone

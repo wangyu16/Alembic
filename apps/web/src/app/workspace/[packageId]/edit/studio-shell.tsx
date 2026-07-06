@@ -18,6 +18,7 @@ import { saveFileAction, proposeEditAction } from "./edit-actions";
 import { importFileAction } from "../import-actions";
 import { shareFileAction } from "../share-actions";
 import { adaptElementAction } from "../adapt-actions";
+import { generateChapterHtmlAction, hostSaveStudyGuideAction } from "../hosted-actions";
 import { useUnsavedGuard } from "@/lib/use-unsaved-guard";
 import type { EditorHandle } from "@alembic/editor-kit";
 import { ModuleMount } from "@/lib/editor-modules/module-mount";
@@ -310,7 +311,7 @@ export function StudioShell({
               onDirty={setDirty}
             />
           ) : category === "content" && activePath && content ? (
-            <ContentEditor
+            <HostedStudyGuideEditor
               key={`content:${activePath}`}
               packageId={packageId}
               path={activePath}
@@ -472,6 +473,63 @@ function CourseHome({
 interface EditBlock extends StudyGuideBlock {
   key: string;
   collapsed?: boolean;
+}
+
+/* ── E3: host the chapter's .md.html in-file editor ───────────────────────────
+ * The study guide is edited through the self-contained file's OWN editor. We
+ * generate the `.md.html` on demand (worker) as the editing surface, host it via
+ * ModuleMount, and persist the extracted markdown on save. When no editable file
+ * can be produced (no worker / generation error) we fall back to the block
+ * editor, so editing never breaks. */
+function HostedStudyGuideEditor(props: {
+  packageId: string;
+  path: string;
+  chapterTitle: string;
+  initial: { preamble: string; blocks: StudyGuideBlock[] };
+  onDirty?: (d: boolean) => void;
+}) {
+  const { packageId, path, chapterTitle, onDirty } = props;
+  const [state, setState] = useState<
+    { s: "loading" } | { s: "hosted"; html: string } | { s: "fallback" }
+  >({ s: "loading" });
+
+  useEffect(() => {
+    let cancelled = false;
+    setState({ s: "loading" });
+    generateChapterHtmlAction(packageId, path, chapterTitle)
+      .then((r) => {
+        if (cancelled) return;
+        setState(r.ok && r.editable && r.html ? { s: "hosted", html: r.html } : { s: "fallback" });
+      })
+      .catch(() => !cancelled && setState({ s: "fallback" }));
+    return () => {
+      cancelled = true;
+    };
+  }, [packageId, path, chapterTitle]);
+
+  if (state.s === "loading") {
+    return (
+      <div className="flex h-full min-h-[60vh] items-center justify-center text-sm text-muted">
+        Preparing the editor…
+      </div>
+    );
+  }
+  if (state.s === "fallback") {
+    // The block editor stays as a safety net (no worker, or generation failed).
+    return <ContentEditor {...props} />;
+  }
+  return (
+    <ModuleMount
+      kind="md"
+      source={state.html}
+      onDirty={onDirty}
+      hostSave={async (payload) => {
+        const r = await hostSaveStudyGuideAction(packageId, path, payload);
+        return { ok: r.ok, error: r.error };
+      }}
+      className="h-full min-h-[75vh] w-full"
+    />
+  );
 }
 
 function ContentEditor({
