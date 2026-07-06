@@ -7,8 +7,17 @@
  */
 
 import { md } from "orz-markdown";
+import { getBrowserRuntimeScript } from "orz-markdown/runtime";
 import { rendererVersion } from "./index";
 import { themeCss, type RenderTheme } from "./theme-css";
+
+/**
+ * orz-markdown's browser runtime — the SAME layer `.md.html` inlines. Once
+ * loaded it powers **copy-as-Markdown** (select rendered content, Cmd/Ctrl-C →
+ * Markdown source, via a DOM→Markdown walker over `.markdown-body`, reading
+ * preserved `data-md` attributes) plus QR/tab enhancements. Computed once.
+ */
+const RUNTIME_SCRIPT = `<script>${getBrowserRuntimeScript()}</script>`;
 
 const KATEX_CSS =
   "https://cdn.jsdelivr.net/npm/katex@0.16.35/dist/katex.min.css";
@@ -53,6 +62,7 @@ ${themeCss(theme)}
 <div class="markdown-body">
 ${opts.bodyHtml}
 </div>${opts.trailingHtml ? `\n${opts.trailingHtml}` : ""}
+${RUNTIME_SCRIPT}
 </body>
 </html>
 `;

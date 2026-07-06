@@ -834,16 +834,19 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
   resolves to its `.md.html`, and prev/next work. **Deferred (S2/S3):** the
   full impeccable reading design pass, slides/paged on the site, current-term
   section, permalink stamps + pinned assets (R3).
-- **Module S2 (partial): copy-as-source on every student-site page.** Each
-  content page (chapter, worksheet, single-chapter home) carries its Markdown in
-  a hidden `<textarea id="page-source">` (entity-escaped, can't break out) + a
-  **⧉ Copy as Markdown** button in the resource bar + a ~3-line inline copy
-  script (reading pages are static, so that's the whole runtime). The resource
-  bar now always renders (it hosts copy + any download). Browser-verified: the
-  button copies the correct source, and the page is clean + fully responsive at
-  375px (title wraps, resource-bar buttons stack, nav/footer read well) — the
-  "on a phone" DoD. +1 renderer test. Green (typecheck + renderer 43 + web
-  build).
+- **Module S2 (partial): copy-as-source on every page — the real orz-markdown
+  runtime.** (Corrected from a first attempt that hand-rolled a copy button.)
+  Copy-as-source is a **built-in feature of orz-markdown**, exactly as `.md.html`
+  has it: `themedDocument` now inlines `getBrowserRuntimeScript()` (from
+  `orz-markdown/runtime`) — the same runtime `.md.html` ships — so **selecting
+  rendered content and Cmd/Ctrl-C yields Markdown** (a DOM→Markdown walker over
+  `.markdown-body`, reading preserved `data-md`). Every themed surface (student
+  site, in-app preview, worksheet viewer) gets it for free; the custom button /
+  hidden-textarea was removed. Browser-verified on a generated chapter page: a
+  synthetic copy over `.markdown-body` is intercepted (`defaultPrevented`) and
+  the clipboard receives Markdown (`## The atom … **atoms** … - protons`); page
+  is clean + responsive at 375px. +1 renderer test (runtime inlined on every
+  page). Green (typecheck + full test + web build).
 - **Bugfix: "Share this" never appeared on assets** (owner-reported). Root
   cause was a datetime round-trip: `RegistrationRecordSchema.registeredAt`
   used `z.iso.datetime()`, which accepts a bare `Z` but **rejects a timezone

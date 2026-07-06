@@ -175,26 +175,23 @@ describe("buildCourseSite — edges and metadata", () => {
     expect(atoms.content).toContain('<div class="resource-bar">');
   });
 
-  it("omits the download link when no downloadHref is provided", () => {
+  it("omits the download link (and its resource bar) when no downloadHref", () => {
     const files = buildCourseSite(multi);
-    // The resource bar itself always renders (it hosts copy-as-source); only the
-    // download href is absent without a downloadHref.
     expect(files.find((f) => f.path === "index.html")!.content).not.toContain("downloads/");
-    expect(files.find((f) => f.path === "chapters/atoms.html")!.content).not.toContain("download>");
+    expect(files.find((f) => f.path === "chapters/atoms.html")!.content).not.toContain(
+      '<div class="resource-bar">',
+    );
   });
 
-  it("puts copy-as-source on every content page (chapter + worksheet), not the TOC index", () => {
-    const files = buildCourseSite(multi); // multi → index is a TOC, no inline content
-    const atoms = files.find((f) => f.path === "chapters/atoms.html")!;
-    expect(atoms.content).toContain('class="copy-src"');
-    expect(atoms.content).toContain('<textarea id="page-source" hidden>');
-    // the embedded source is the chapter markdown (entity-escaped h2)
-    expect(atoms.content).toContain("## Atoms");
-    const ws = files.find((f) => f.path === "worksheets/practice-1.html")!;
-    expect(ws.content).toContain('class="copy-src"');
-    expect(ws.content).toContain('<textarea id="page-source" hidden>');
-    // multi-chapter home is a card TOC — no page source to copy there
-    const index = files.find((f) => f.path === "index.html")!;
-    expect(index.content).not.toContain('<textarea id="page-source"');
+  it("inlines orz-markdown's browser runtime on every page (copy-as-source)", async () => {
+    // Copy-as-source is the orz runtime (select + Cmd/Ctrl-C → Markdown over
+    // .markdown-body), the SAME mechanism .md.html uses — not a bespoke button.
+    const { getBrowserRuntimeScript } = await import("orz-markdown/runtime");
+    const marker = getBrowserRuntimeScript().slice(0, 48);
+    const files = buildCourseSite(multi);
+    for (const f of files.filter((f) => f.path.endsWith(".html"))) {
+      expect(f.content, f.path).toContain(marker);
+      expect(f.content, f.path).toContain('class="markdown-body"');
+    }
   });
 });
