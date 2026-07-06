@@ -867,7 +867,11 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
   offline self-containment. Green (typecheck + full test + web build).
   **REQUIRES: redeploy the Fly worker** (`apps/worker`) so it runs the new code
   + orz tools — until then the worker still emits inline. Vercel auto-deploys
-  the web side.
+  the web side. **✅ VERIFIED LIVE (2026-07-06):** Fly worker redeployed
+  (`/health` → `orz-markdown@1.3.2`); orz-markdown `CHANGELOG.md` documents the
+  1.3.2 image fix (`98e7cd6`); owner confirmed a **published study guide in the
+  GitHub Pages repo is 74.4 KB** (thin CDN file, framework loaded from jsDelivr)
+  — the lean-source model holds in production.
 - **Bugfix (upstream orz-markdown + vendored copy): image sizing `![](img =WxH)`
   did nothing.** `markdown-it-imsize` was correctly emitting `width`/`height`
   attributes, but `common.css`'s `.markdown-body img { width:auto; height:auto }`
