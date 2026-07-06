@@ -715,6 +715,28 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
   adaptation, or E3 study-guide switchover.
 
 ### 2026-07-06
+- **P4 landed: file-level object adaptation** — copy a shared object
+  (structure/plot/figure) from another package into yours **by permalink**,
+  carrying `adaptedFrom` lineage. Durable core (all unit-tested): `registerFile`
+  gains an `adaptedFrom` input (set once at the adapting registration, then
+  preserved by every projection rebuild); `adaptAssetInto` (package-ops) does a
+  license-gated (`canAdapt`) **byte-for-byte** copy under `materials/adapted/`
+  (dedup on name collision), writing only the public target (two-repo
+  invariant). App: shared `fetchDocBytes` helper (extracted from the `/d/`
+  resolver, now used by both); `registerAdaptedFile` stamps the lineage and
+  returns the new docId; `adaptElementAction` (owner-gated; source must be a
+  public **object** that is shared or owned; cross-owner reads via the service
+  client; content-hash dedup returns the existing permalink instead of
+  duplicating). Thin client: an **Adapt…** control in the Assets pane (paste a
+  shared `/d/…` link → copies it in, refreshes). The copy gets its **own**
+  permalink (content identity is per-package) and is itself shareable/
+  re-adaptable. +9 durable tests (license block, verbatim copy, dedup,
+  non-object rejection, lineage set-on-register + preserved-on-rebuild +
+  distinct-docId-cross-package). Green (typecheck + full test + web build).
+  **Owner smoke test:** in a package's Assets, click **Adapt…**, paste a shared
+  element's permalink from Discover, confirm it appears with a new permalink and
+  that a rejected (license-incompatible) source shows a clear message. Discover-
+  side "Adapt into…" button (needs a package picker) is a deferred follow-up.
 - **Bugfix: "Share this" never appeared on assets** (owner-reported). Root
   cause was a datetime round-trip: `RegistrationRecordSchema.registeredAt`
   used `z.iso.datetime()`, which accepts a bare `Z` but **rejects a timezone

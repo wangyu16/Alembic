@@ -1,6 +1,6 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { rebuildPackageRegistry } from "@alembic/package-ops";
+import { rebuildPackageRegistry, registerFile } from "@alembic/package-ops";
 import type { RegistrationRecord } from "@alembic/package-contract";
 import { SupabaseSandboxStore } from "./sandbox-store";
 import { SupabaseDocumentRegistryStore } from "./document-registry-store";
@@ -35,5 +35,39 @@ export async function syncPackageRegistry(
       `[registry] sync failed for ${packageId}:`,
       err instanceof Error ? err.message : err,
     );
+  }
+}
+
+/**
+ * Register a freshly-adapted file with its `adaptedFrom` lineage (P4), returning
+ * the new file's docId (its permalink id) so the caller can hand the educator a
+ * link. Unlike `syncPackageRegistry` this is a single targeted registration —
+ * the lineage must be stamped here (a later projection rebuild passes no
+ * adaptedFrom and would only preserve, never set it). Returns null on failure;
+ * the file still exists and a later rebuild will register it (without lineage).
+ */
+export async function registerAdaptedFile(
+  supabase: SupabaseClient,
+  packageId: string,
+  input: { repo: "public" | "private"; path: string; content: string; adaptedFrom: string; author?: string },
+): Promise<string | null> {
+  try {
+    const registry = new SupabaseDocumentRegistryStore(supabase);
+    const record = await registerFile(registry, {
+      packageId,
+      repo: input.repo,
+      path: input.path,
+      origin: "created",
+      content: input.content,
+      adaptedFrom: input.adaptedFrom,
+      author: input.author,
+    });
+    return record.docId;
+  } catch (err) {
+    console.warn(
+      `[registry] adapt-register failed for ${packageId} ${input.path}:`,
+      err instanceof Error ? err.message : err,
+    );
+    return null;
   }
 }

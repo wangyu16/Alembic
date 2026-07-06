@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
-import { fetchPublicRepoFile } from "@alembic/github-bridge";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
+import { fetchDocBytes } from "@/lib/doc-content";
 
 export const dynamic = "force-dynamic";
 
@@ -125,34 +125,9 @@ export async function GET(
     );
   }
 
-  // Load the package to find where the bytes live (trial sandbox vs GitHub).
-  const { data: pkg } = await db
-    .from("packages")
-    .select("id, storage, manifest")
-    .eq("id", doc.package_id)
-    .maybeSingle();
-  if (!pkg) return notFound();
-
-  let content: string | null = null;
-  const publicRepo = (pkg.manifest as { publicRepo?: { owner: string; name: string } })
-    ?.publicRepo;
-  if (pkg.storage === "github" && doc.repo === "public" && publicRepo) {
-    // Internal transport only — the bytes are re-served with the correct MIME.
-    content = await fetchPublicRepoFile(
-      { owner: publicRepo.owner, repo: publicRepo.name },
-      doc.path,
-    ).catch(() => null);
-  }
-  if (content === null) {
-    const { data: file } = await db
-      .from("sandbox_files")
-      .select("content")
-      .eq("package_id", doc.package_id)
-      .eq("repo", doc.repo)
-      .eq("path", doc.path)
-      .maybeSingle();
-    content = (file as { content: string } | null)?.content ?? null;
-  }
+  // Fetch the bytes wherever they live (published GitHub repo vs trial
+  // sandbox) — the shared primitive also backs file-level adaptation.
+  const content = await fetchDocBytes(db, doc);
   if (content === null) return notFound();
 
   return new Response(content, {

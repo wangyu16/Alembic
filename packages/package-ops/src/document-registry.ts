@@ -206,6 +206,12 @@ export interface RegisterFileInput {
   content: string;
   /** Per-file license; defaults to the package license upstream (not here). */
   license?: string;
+  /**
+   * File-level adaptation lineage: the SOURCE docId this file was copied from
+   * (P4). Set once, at the adapting registration; a later projection rebuild
+   * (which passes no adaptedFrom) preserves it via the existing record.
+   */
+  adaptedFrom?: string;
 }
 
 /**
@@ -227,6 +233,7 @@ export async function registerFile(
   input: RegisterFileInput,
 ): Promise<RegistrationRecord> {
   const { packageId, repo, path, origin, author, content, license } = input;
+  const adaptedFrom = input.adaptedFrom;
 
   const space = spaceForFilePath(path); // dual-mode: v2 spaces + v1 layers
   const sourceHash = computeSourceHash(content);
@@ -260,7 +267,9 @@ export async function registerFile(
     discoverable: existing?.discoverable ?? false,
     permalinkClass,
     tombstoned: false,
-    adaptedFrom: existing?.adaptedFrom,
+    // Set once by the adapting registration; a later rebuild passes none and
+    // inherits it from the existing record (lineage is permanent).
+    adaptedFrom: adaptedFrom ?? existing?.adaptedFrom,
   } satisfies RegistrationRecord);
 
   assertRegistrationInvariants(record);

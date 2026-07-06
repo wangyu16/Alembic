@@ -4,11 +4,14 @@ import { createSandboxPackage } from "./create";
 import { loadStudyGuide, saveStudyGuide } from "./study-guide";
 import {
   adaptBlocksInto,
+  adaptAssetInto,
   loadAdaptationProvenance,
   AdaptationNotAllowedError,
   ADAPTATIONS_PROVENANCE_PATH,
+  ADAPTED_ASSET_DIR,
   type AdaptBlocksInput,
 } from "./adaptation";
+import { writeAsset } from "./assets";
 import type { AdaptationSource } from "@alembic/package-contract";
 
 async function pkg(store: MemoryPackageStore, license: "CC-BY-4.0" | "CC-BY-SA-4.0" | "CC-BY-NC-4.0") {
@@ -118,5 +121,78 @@ describe("adaptBlocksInto", () => {
     await adaptBlocksInto(store, { source: { packageId: src, path: srcPath, blockIds: [blocks[0]!.id!] }, ...common });
     await adaptBlocksInto(store, { source: { packageId: src, path: srcPath, blockIds: [blocks[1]!.id!] }, ...common });
     expect(await loadAdaptationProvenance(store, tgt)).toHaveLength(2);
+  });
+});
+
+/** Seed a carrier object (structure) in the source package; return its bytes. */
+async function seedAsset(store: MemoryPackageStore, packageId: string, name = "benzene") {
+  const path = `materials/structures/${name}.ketcher.svg`;
+  const { carrier } = await writeAsset(store, packageId, {
+    path,
+    rendered: "<svg xmlns='http://www.w3.org/2000/svg'><title>ring</title></svg>",
+    source: '{"root":{"nodes":[]}}',
+  });
+  return { path, carrier };
+}
+
+describe("adaptAssetInto", () => {
+  it("copies a shared object VERBATIM into materials/adapted/ and reports its kind", async () => {
+    const store = new MemoryPackageStore();
+    const src = await pkg(store, "CC-BY-4.0");
+    const tgt = await pkg(store, "CC-BY-SA-4.0");
+    const { path: srcPath, carrier } = await seedAsset(store, src);
+
+    const res = await adaptAssetInto(store, {
+      target: { packageId: tgt, license: "CC-BY-SA-4.0" },
+      source: { license: "CC-BY-4.0", carrier, path: srcPath },
+    });
+
+    expect(res.kind).toBe("ketcher");
+    expect(res.path).toBe(`${ADAPTED_ASSET_DIR}/benzene.ketcher.svg`);
+    // byte-for-byte copy — same embedded source, so identity is preserved
+    const files = await store.listFiles(tgt);
+    const written = files.find((f) => f.repo === "public" && f.path === res.path);
+    expect(written?.content).toBe(carrier);
+    // never touches the private repo
+    expect(files.every((f) => f.repo === "public" || !f.path.includes("adapted"))).toBe(true);
+  });
+
+  it("dedupes a name collision with a numeric suffix", async () => {
+    const store = new MemoryPackageStore();
+    const src = await pkg(store, "CC-BY-4.0");
+    const tgt = await pkg(store, "CC-BY-4.0");
+    const { path: srcPath, carrier } = await seedAsset(store, src);
+    const common = { target: { packageId: tgt, license: "CC-BY-4.0" as const }, source: { license: "CC-BY-4.0" as const, carrier, path: srcPath } };
+
+    const first = await adaptAssetInto(store, { ...common, existingPaths: [] });
+    const second = await adaptAssetInto(store, { ...common, existingPaths: [first.path] });
+    expect(first.path).toBe(`${ADAPTED_ASSET_DIR}/benzene.ketcher.svg`);
+    expect(second.path).toBe(`${ADAPTED_ASSET_DIR}/benzene-2.ketcher.svg`);
+  });
+
+  it("blocks a license-incompatible adaptation and writes nothing", async () => {
+    const store = new MemoryPackageStore();
+    const src = await pkg(store, "CC-BY-SA-4.0");
+    const tgt = await pkg(store, "CC-BY-4.0");
+    const { path: srcPath, carrier } = await seedAsset(store, src);
+    await expect(
+      adaptAssetInto(store, {
+        target: { packageId: tgt, license: "CC-BY-4.0" },
+        source: { license: "CC-BY-SA-4.0", carrier, path: srcPath }, // SA → must stay SA
+      }),
+    ).rejects.toBeInstanceOf(AdaptationNotAllowedError);
+    const files = await store.listFiles(tgt);
+    expect(files.some((f) => f.path.startsWith(ADAPTED_ASSET_DIR))).toBe(false);
+  });
+
+  it("rejects a source path that isn't a recognized object kind", async () => {
+    const store = new MemoryPackageStore();
+    const tgt = await pkg(store, "CC-BY-4.0");
+    await expect(
+      adaptAssetInto(store, {
+        target: { packageId: tgt, license: "CC-BY-4.0" },
+        source: { license: "CC-BY-4.0", carrier: "not a carrier", path: "materials/notes.txt" },
+      }),
+    ).rejects.toBeInstanceOf(AdaptationNotAllowedError);
   });
 });

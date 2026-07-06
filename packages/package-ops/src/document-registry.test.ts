@@ -254,6 +254,60 @@ describe("rebuildPackageRegistry", () => {
   });
 });
 
+describe("registerFile — adaptedFrom lineage (P4)", () => {
+  const SRC_DOC = "doc-source123456";
+
+  it("stamps adaptedFrom on the adapting registration and preserves it on rebuild", async () => {
+    const store = new MemoryDocumentRegistryStore();
+    const content = mdHtml("# Adapted figure caption");
+    // The adapting write sets the lineage explicitly.
+    const first = await registerFile(store, {
+      packageId: PKG,
+      repo: "public",
+      path: "materials/adapted/x.md.html",
+      origin: "created",
+      content,
+      adaptedFrom: SRC_DOC,
+    });
+    expect(first.adaptedFrom).toBe(SRC_DOC);
+
+    // A later projection rebuild passes NO adaptedFrom — lineage must survive.
+    const rebuilt = await registerFile(store, {
+      packageId: PKG,
+      repo: "public",
+      path: "materials/adapted/x.md.html",
+      origin: "created",
+      content,
+    });
+    expect(rebuilt.docId).toBe(first.docId);
+    expect(rebuilt.adaptedFrom).toBe(SRC_DOC);
+  });
+
+  it("adapting the SAME bytes into a different package mints a distinct docId", async () => {
+    const store = new MemoryDocumentRegistryStore();
+    const content = mdHtml("# Shared object");
+    const a = await registerFile(store, {
+      packageId: "pkg-aaaa11112222",
+      repo: "public",
+      path: "materials/adapted/o.md.html",
+      origin: "created",
+      content,
+    });
+    const b = await registerFile(store, {
+      packageId: "pkg-bbbb33334444",
+      repo: "public",
+      path: "materials/adapted/o.md.html",
+      origin: "created",
+      content,
+      adaptedFrom: a.docId, // b is adapted FROM a's element
+    });
+    // Content-hash identity is per-package, so b is its own permalink.
+    expect(b.docId).not.toBe(a.docId);
+    expect(b.adaptedFrom).toBe(a.docId);
+    expect(a.adaptedFrom).toBeUndefined();
+  });
+});
+
 describe("computeSourceHash", () => {
   it("hashes extracted source for carriers, raw bytes otherwise", async () => {
     const source = "# Hello";

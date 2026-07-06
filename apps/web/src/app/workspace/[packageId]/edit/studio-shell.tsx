@@ -17,6 +17,7 @@ import {
 import { saveFileAction, proposeEditAction } from "./edit-actions";
 import { importFileAction } from "../import-actions";
 import { shareFileAction } from "../share-actions";
+import { adaptElementAction } from "../adapt-actions";
 import { useUnsavedGuard } from "@/lib/use-unsaved-guard";
 import type { EditorHandle } from "@alembic/editor-kit";
 import { ModuleMount } from "@/lib/editor-modules/module-mount";
@@ -908,6 +909,7 @@ function AssetsView({
             label="Upload"
             title="Upload a file Alembic (or an orz tool) wrote — structures and plots land in Assets"
           />
+          <AdaptControl packageId={packageId} />
         </div>
       </div>
       <p className="text-xs text-faint">
@@ -947,6 +949,66 @@ function AssetsView({
         </ul>
       )}
     </div>
+  );
+}
+
+/* ── "Adapt" (P4): copy a shared object into this package by permalink ─────── */
+function AdaptControl({ packageId }: { packageId: string }) {
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [link, setLink] = useState("");
+  const [pending, start] = useTransition();
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  const submit = () => {
+    setMsg(null);
+    start(async () => {
+      const r = await adaptElementAction(packageId, link);
+      if (!r.ok) {
+        setMsg({ ok: false, text: r.error ?? "Couldn't add that element." });
+        return;
+      }
+      setLink("");
+      setOpen(false);
+      setMsg({ ok: true, text: r.already ? "Already in this package." : "Added to Assets." });
+      router.refresh();
+    });
+  };
+
+  if (!open) {
+    return (
+      <span className="flex items-center gap-2">
+        <button
+          onClick={() => setOpen(true)}
+          className="btn btn-ghost btn-sm"
+          title="Paste a shared element's permalink (from Discover) to copy it into this package"
+        >
+          Adapt…
+        </button>
+        {msg?.ok && <span className="text-xs text-muted">{msg.text}</span>}
+      </span>
+    );
+  }
+
+  return (
+    <span className="flex items-center gap-1">
+      <input
+        value={link}
+        onChange={(e) => setLink(e.target.value)}
+        placeholder="Paste a shared link (/d/…)"
+        aria-label="Shared element permalink"
+        className="field w-56 text-xs"
+        autoFocus
+        onKeyDown={(e) => e.key === "Enter" && !pending && link.trim() && submit()}
+      />
+      <button onClick={submit} disabled={pending || !link.trim()} className="btn btn-primary btn-sm">
+        {pending ? "…" : "Add"}
+      </button>
+      <button onClick={() => { setOpen(false); setMsg(null); }} className="btn btn-ghost btn-sm">
+        Cancel
+      </button>
+      {msg && !msg.ok && <span className="text-xs text-danger">{msg.text}</span>}
+    </span>
   );
 }
 

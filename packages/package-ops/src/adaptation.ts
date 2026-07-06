@@ -16,6 +16,7 @@ import {
   canAdapt,
   assertPathAllowedInRepo,
   hashContent,
+  layerForPath,
   newBlockId,
   newPackageId,
   parseManifest,
@@ -25,6 +26,7 @@ import {
   type License,
   type PackageManifest,
 } from "@alembic/package-contract";
+import { extractSource, getKindByExtension } from "@alembic/carriers";
 import type { PackageFile, PackageStore } from "./store";
 import { loadStudyGuide, saveStudyGuide } from "./study-guide";
 
@@ -313,4 +315,97 @@ export function forkPackage(input: ForkPackageInput): ForkedPackage {
   for (const f of files) assertPathAllowedInRepo(f.path, f.repo);
 
   return { packageId, manifest, files, lineage };
+}
+
+/* ── File-level object adaptation (P4) ──────────────────────────────────────
+ * Copy ONE shared carrier object (structure/plot/figure — an insertable
+ * `object`, never a final-view `document`) from another package into this one.
+ * The docId-level `adaptedFrom` lineage is stamped by the caller at
+ * registration; this owns the license gate + the validated verbatim write. */
+
+/** Sub-directory adapted objects land in (public `materials/` layer). */
+export const ADAPTED_ASSET_DIR = "materials/adapted";
+
+export interface AdaptAssetInput {
+  target: { packageId: string; license: License };
+  source: {
+    /** Source package license at adaptation time — gates `canAdapt`. */
+    license: License;
+    /** The full carrier file fetched from the source element. */
+    carrier: string;
+    /** Source repo-relative path — its basename + carrier extension carry over. */
+    path: string;
+  };
+  /** Current target public paths, to dedupe a name collision. */
+  existingPaths?: string[];
+}
+
+export interface AdaptAssetResult {
+  path: string;
+  kind: string;
+  contentHash: string;
+}
+
+/**
+ * Adapt (copy) one shared carrier OBJECT into a target package (P4). The copy
+ * is BYTE-FOR-BYTE (same embedded source → same content identity in the
+ * target), placed under `materials/adapted/`, license-gated by `canAdapt`.
+ * Writes only the public target through `store.putFiles` — assets are public
+ * and referenceable (two-repo invariant). The caller restricts this to
+ * `object`s (documents are final views, never adapted this way) and stamps the
+ * `adaptedFrom` lineage when it registers the new file.
+ */
+export async function adaptAssetInto(
+  store: PackageStore,
+  input: AdaptAssetInput,
+): Promise<AdaptAssetResult> {
+  const compat = canAdapt(input.source.license, input.target.license);
+  if (!compat.ok) {
+    throw new AdaptationNotAllowedError(compat.reason ?? "Licenses are not compatible.");
+  }
+
+  const kind = getKindByExtension(input.source.path);
+  if (!kind) {
+    throw new AdaptationNotAllowedError(
+      "Only reusable objects (structures, plots, figures) can be adapted this way.",
+    );
+  }
+  // If the bytes carry an embedded source island, sanity-check that its kind
+  // matches the extension (fail closed on a mismatched/corrupt carrier). A
+  // plain asset with no island copies verbatim.
+  try {
+    const extracted = extractSource(input.source.carrier);
+    if (extracted.kind !== kind.id) {
+      throw new AdaptationNotAllowedError(
+        `The file's embedded type ("${extracted.kind}") doesn't match its extension ("${kind.id}").`,
+      );
+    }
+  } catch (e) {
+    if (e instanceof AdaptationNotAllowedError) throw e;
+    /* no carrier island — a plain object; verbatim copy is correct */
+  }
+
+  const base = input.source.path.split("/").pop() ?? `object${kind.extension}`;
+  const stem = base.toLowerCase().endsWith(kind.extension.toLowerCase())
+    ? base.slice(0, base.length - kind.extension.length)
+    : base;
+  const taken = new Set(input.existingPaths ?? []);
+  let path = `${ADAPTED_ASSET_DIR}/${stem}${kind.extension}`;
+  for (let n = 2; taken.has(path); n++) {
+    path = `${ADAPTED_ASSET_DIR}/${stem}-${n}${kind.extension}`;
+  }
+
+  // Placement guards mirror writeAsset (public `materials/`), but the copy is
+  // verbatim rather than re-embedded, to preserve the object exactly.
+  if (layerForPath(path) !== "materials") {
+    throw new AdaptationNotAllowedError(
+      `Adapted objects must live under "materials/" (got "${path}").`,
+    );
+  }
+  assertPathAllowedInRepo(path, "public");
+
+  await store.putFiles(input.target.packageId, [
+    { repo: "public", path, content: input.source.carrier },
+  ]);
+  return { path, kind: kind.id, contentHash: hashContent(input.source.carrier) };
 }

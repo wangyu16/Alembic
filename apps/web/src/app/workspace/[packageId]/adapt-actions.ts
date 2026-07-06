@@ -10,6 +10,8 @@ import {
 import {
   adaptBlocksInto,
   adaptGivenBlocksInto,
+  adaptAssetInto,
+  computeSourceHash,
   forkPackage,
   loadStudyGuide,
   saveStudyGuide,
@@ -25,7 +27,11 @@ import {
 } from "@alembic/package-ops";
 import { fetchPublicRepoFile } from "@alembic/github-bridge";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/service";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
+import { SupabaseDocumentRegistryStore } from "@/lib/document-registry-store";
+import { fetchDocBytes } from "@/lib/doc-content";
+import { registerAdaptedFile } from "@/lib/register";
 import { supabaseEventLogger } from "@/lib/events";
 import { syncFilesToGitHub } from "@/lib/github";
 import { recordChange } from "@/lib/changes";
@@ -307,6 +313,139 @@ export async function adaptFromPortalAction(
   } catch (e) {
     if (e instanceof AdaptationNotAllowedError) return { ok: false, error: e.reason };
     return { ok: false, error: "Couldn't adapt from the portal. Please try again." };
+  }
+}
+
+/** Extract a docId from a permalink URL or a bare `doc-…` id. */
+function parseDocId(input: string): string | null {
+  const m = input.trim().match(/doc-[a-z0-9]+/i);
+  return m ? m[0].toLowerCase() : null;
+}
+
+interface SourceDocRow {
+  doc_id: string;
+  package_id: string;
+  repo: "public" | "private";
+  path: string;
+  kind: string;
+  permalink_class: "document" | "object";
+  discoverable: boolean;
+  tombstoned: boolean;
+}
+
+export interface AdaptElementResult {
+  ok: boolean;
+  /** Permalink of the copy in THIS package (its own docId). */
+  permalink?: string;
+  path?: string;
+  /** True when the element was already present (no duplicate written). */
+  already?: boolean;
+  error?: string;
+}
+
+/**
+ * P4 — adapt one shared OBJECT (a structure/plot/figure) into this package by
+ * its permalink. Byte-for-byte copy under `materials/adapted/`, license-gated
+ * (`canAdapt`), registered with `adaptedFrom` lineage pointing at the source
+ * docId; the copy gets its OWN permalink (content identity is per-package).
+ *
+ * The source must be a PUBLIC object that is either shared ("share this") or one
+ * the educator owns. Documents (final views) are never adapted this way — they
+ * are cited/opened, not inserted. Cross-owner reads go through the service
+ * client (the object is public); the write is the owner's own package.
+ */
+export async function adaptElementAction(
+  packageId: string,
+  sourcePermalink: string,
+): Promise<AdaptElementResult> {
+  const { supabase, user } = await requireUser();
+  const store = new SupabaseSandboxStore(supabase);
+
+  const docId = parseDocId(sourcePermalink);
+  if (!docId) return { ok: false, error: "That doesn't look like a shareable link." };
+
+  try {
+    const target = await store.getPackage(packageId);
+    if (!target) return { ok: false, error: "Package not found." };
+
+    // Read the source doc — service client for cross-owner public reads,
+    // falling back to the session (owners can always read their own).
+    const db = createServiceClient() ?? supabase;
+    const { data } = await db
+      .from("documents")
+      .select("doc_id, package_id, repo, path, kind, permalink_class, discoverable, tombstoned")
+      .eq("doc_id", docId)
+      .maybeSingle();
+    const doc = data as SourceDocRow | null;
+    if (!doc || doc.tombstoned) return { ok: false, error: "That element isn't available." };
+    if (doc.package_id === packageId) {
+      return { ok: false, error: "That element is already in this package." };
+    }
+    if (doc.repo !== "public" || doc.permalink_class !== "object") {
+      return {
+        ok: false,
+        error: "Only shared objects (structures, plots, figures) can be added this way.",
+      };
+    }
+    // Must be shared, or a package the educator owns (getPackage is RLS-scoped).
+    if (!doc.discoverable && !(await store.getPackage(doc.package_id))) {
+      return { ok: false, error: "That element isn't shared." };
+    }
+
+    // Source license from the source package manifest (gates `canAdapt`).
+    const { data: srcPkg } = await db
+      .from("packages")
+      .select("manifest")
+      .eq("id", doc.package_id)
+      .maybeSingle();
+    const sourceLicense = (srcPkg?.manifest as { license?: License } | null)?.license;
+    if (!sourceLicense) return { ok: false, error: "Couldn't read the source's license." };
+
+    const carrier = await fetchDocBytes(db, doc);
+    if (carrier == null) return { ok: false, error: "Couldn't read that element." };
+
+    // Already have this exact object here? Return its permalink, don't duplicate.
+    const registry = new SupabaseDocumentRegistryStore(supabase);
+    const dup = await registry.getByContentHash(packageId, computeSourceHash(carrier));
+    if (dup) {
+      return { ok: true, already: true, path: dup.path, permalink: `/d/${dup.docId}` };
+    }
+
+    const existingPaths = (await store.listFiles(packageId))
+      .filter((f) => f.repo === "public")
+      .map((f) => f.path);
+
+    const res = await adaptAssetInto(store, {
+      target: { packageId, license: target.manifest.license },
+      source: { license: sourceLicense, carrier, path: doc.path },
+      existingPaths,
+    });
+
+    await syncFilesToGitHub(
+      supabase, store, user.id, packageId,
+      [{ path: res.path, content: carrier }],
+      `Adapt shared ${res.kind} (Alembic)`,
+    );
+    const newDocId = await registerAdaptedFile(supabase, packageId, {
+      repo: "public",
+      path: res.path,
+      content: carrier,
+      adaptedFrom: doc.doc_id,
+      author: user.id,
+    });
+
+    await supabaseEventLogger(supabase).log({
+      type: "adaptation.completed",
+      userId: user.id,
+      packageId,
+      detail: { mode: "element", sourceDocId: doc.doc_id, sourcePackageId: doc.package_id, kind: res.kind },
+      occurredAt: new Date().toISOString(),
+    });
+    revalidatePath(`/workspace/${packageId}`);
+    return { ok: true, path: res.path, permalink: newDocId ? `/d/${newDocId}` : undefined };
+  } catch (e) {
+    if (e instanceof AdaptationNotAllowedError) return { ok: false, error: e.reason };
+    return { ok: false, error: "Couldn't add that element. Please try again." };
   }
 }
 
