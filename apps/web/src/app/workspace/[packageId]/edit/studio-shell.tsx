@@ -18,7 +18,11 @@ import { saveFileAction, proposeEditAction } from "./edit-actions";
 import { importFileAction } from "../import-actions";
 import { shareFileAction } from "../share-actions";
 import { adaptElementAction } from "../adapt-actions";
-import { generateChapterHtmlAction, hostSaveStudyGuideAction } from "../hosted-actions";
+import {
+  generateChapterHtmlAction,
+  hostSaveStudyGuideAction,
+  generateChapterViewAction,
+} from "../hosted-actions";
 import { useUnsavedGuard } from "@/lib/use-unsaved-guard";
 import type { EditorHandle } from "@alembic/editor-kit";
 import { ModuleMount } from "@/lib/editor-modules/module-mount";
@@ -58,6 +62,7 @@ export type StudioCategory =
   | "concept-map"
   | "content"
   | "slides"
+  | "paged"
   | "assessment-guide"
   | "practice"
   | "assets"
@@ -68,6 +73,7 @@ const CATEGORY_LABELS: Record<StudioCategory, string> = {
   "concept-map": "Concept map",
   content: "Study guide",
   slides: "Slides",
+  paged: "Print / handout",
   "assessment-guide": "Assessment guide",
   practice: "Practice questions",
   assets: "Assets",
@@ -79,6 +85,7 @@ const CATEGORY_ORDER: StudioCategory[] = [
   "concept-map",
   "content",
   "slides",
+  "paged",
   "assessment-guide",
   "practice",
   "assets",
@@ -336,13 +343,21 @@ export function StudioShell({
             />
           ) : category === "assets" ? (
             <AssetsView key="assets" packageId={packageId} activePath={activePath} assets={assets} assetDocs={assetDocs} onDirty={setDirty} />
-          ) : category === "slides" ? (
-            <ArtifactView
+          ) : category === "slides" && activePath ? (
+            <HostedChapterView
+              key={`slides:${activePath}`}
               packageId={packageId}
-              activePath={activePath}
+              path={activePath}
+              chapterTitle={chapters.find((c) => c.slug === activeSlug)?.title ?? title}
               kind="slides"
-              label="Slides"
-              items={artifacts.filter((a) => a.kind === "slides")}
+            />
+          ) : category === "paged" && activePath ? (
+            <HostedChapterView
+              key={`paged:${activePath}`}
+              packageId={packageId}
+              path={activePath}
+              chapterTitle={chapters.find((c) => c.slug === activeSlug)?.title ?? title}
+              kind="paged"
             />
           ) : category === "practice" ? (
             <ArtifactView
@@ -529,6 +544,87 @@ function HostedStudyGuideEditor(props: {
       }}
       className="h-full min-h-[75vh] w-full"
     />
+  );
+}
+
+/* ── E3b/E3c: host a DERIVED view (slides / paged) of the chapter ─────────────
+ * Slides and paged are generated from the chapter's study guide and hosted for
+ * presenting / printing (owner decision: derived views for now). The single
+ * authored source is the study guide; these regenerate from it. The `hostSave`
+ * stub below is the ONE seam that turns these into independently-authored,
+ * persisted documents later: swap it to write a committed per-document source
+ * (slides in the `slides` space; paged would need a home) — generation + hosting
+ * are unchanged. */
+function HostedChapterView({
+  packageId,
+  path,
+  chapterTitle,
+  kind,
+}: {
+  packageId: string;
+  path: string;
+  chapterTitle: string;
+  kind: "slides" | "paged";
+}) {
+  const [state, setState] = useState<
+    { s: "loading" } | { s: "ready"; html: string } | { s: "error"; msg: string }
+  >({ s: "loading" });
+
+  useEffect(() => {
+    let cancelled = false;
+    setState({ s: "loading" });
+    generateChapterViewAction(packageId, path, kind, chapterTitle)
+      .then((r) => {
+        if (cancelled) return;
+        setState(
+          r.ok && r.html
+            ? { s: "ready", html: r.html }
+            : { s: "error", msg: r.error ?? "Couldn't prepare this view." },
+        );
+      })
+      .catch(() => !cancelled && setState({ s: "error", msg: "Couldn't prepare this view." }));
+    return () => {
+      cancelled = true;
+    };
+  }, [packageId, path, kind, chapterTitle]);
+
+  const noun = kind === "slides" ? "slides" : "print view";
+  if (state.s === "loading") {
+    return (
+      <div className="flex h-full min-h-[60vh] items-center justify-center text-sm text-muted">
+        Preparing the {noun}…
+      </div>
+    );
+  }
+  if (state.s === "error") {
+    return (
+      <div className="flex h-full min-h-[40vh] items-center justify-center px-6 text-center text-sm text-muted">
+        {state.msg}
+      </div>
+    );
+  }
+  return (
+    <div className="flex h-full min-h-[75vh] flex-col gap-2">
+      <p className="text-xs text-faint">
+        {kind === "slides"
+          ? "Slides are generated from this chapter's study guide. Edit the study guide to change them; use the file's own Download to keep a copy."
+          : "A print-ready view generated from this chapter's study guide. Use the file's Print / Download; edit the study guide to change the content."}
+      </p>
+      <ModuleMount
+        kind={kind}
+        source={state.html}
+        // Derived view: file-initiated saves aren't persisted (the study guide is
+        // the source). This is the seam to make slides/paged authored later.
+        hostSave={async () => ({
+          ok: false,
+          error:
+            kind === "slides"
+              ? "Slides are generated from your study guide — edit the chapter to change them. Use Download to keep this copy."
+              : "This print view is generated from your study guide — edit the chapter to change it. Use Print / Download to keep this copy.",
+        })}
+        className="min-h-[70vh] w-full flex-1"
+      />
+    </div>
   );
 }
 

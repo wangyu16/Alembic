@@ -3,9 +3,10 @@
 import { redirect } from "next/navigation";
 import { parseStudyGuide, serializeStudyGuide } from "@alembic/package-contract";
 import { loadStudyGuide } from "@alembic/package-ops";
+import { slidesSourceFromBlocks } from "@alembic/renderer";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
-import { generateEditableFile, workerConfigured } from "@/lib/worker-client";
+import { generateEditableFile, generateSelfContainedFile, workerConfigured } from "@/lib/worker-client";
 import { saveStudyGuideAction } from "./actions";
 
 /**
@@ -55,6 +56,52 @@ export async function generateChapterHtmlAction(
   } catch {
     // No reachable worker / generation error — degrade to the block editor.
     return { ok: true, editable: false };
+  }
+}
+
+export interface ChapterViewResult {
+  ok: boolean;
+  /** The self-contained file to host for viewing (slides/paged). */
+  html?: string;
+  error?: string;
+}
+
+/**
+ * E3b/E3c — generate a DERIVED VIEW of a chapter for hosted viewing:
+ *  - `slides`: a deck built from the chapter's blocks (`slidesSourceFromBlocks`);
+ *  - `paged`: a print-paged rendering of the chapter markdown.
+ * The chapter study guide is the single authored source (owner decision:
+ * derived views for now); these regenerate from it. Uses the worker-or-fallback
+ * builder — a viewable file is enough (unlike hosted editing, which needs the
+ * protocol). Making slides/paged independently AUTHORED later is a localized
+ * change: give them a committed per-document source and a persisting hostSave
+ * (see the view's hostSave stub in studio-shell) — the generate+host rails here
+ * stay the same.
+ */
+export async function generateChapterViewAction(
+  packageId: string,
+  path: string,
+  kind: "slides" | "paged",
+  title?: string,
+): Promise<ChapterViewResult> {
+  const { supabase } = await requireUser();
+  try {
+    const store = new SupabaseSandboxStore(supabase);
+    const doc = await loadStudyGuide(store, packageId, path);
+    const markdown =
+      kind === "slides"
+        ? slidesSourceFromBlocks(doc.blocks.map((b) => ({ title: b.title, body: b.body })))
+        : serializeStudyGuide(doc.preamble, doc.blocks);
+    const html = await generateSelfContainedFile({ kind, markdown, title });
+    return { ok: true, html };
+  } catch {
+    return {
+      ok: false,
+      error:
+        kind === "paged" && !workerConfigured()
+          ? "The print / handout view needs the worker tier (set WORKER_URL)."
+          : "Couldn't prepare this view. Please try again.",
+    };
   }
 }
 

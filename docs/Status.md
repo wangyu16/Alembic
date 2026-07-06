@@ -763,10 +763,26 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
   answer the handshake. Green (typecheck + full test + web build). **Owner
   smoke test (needs the deployed worker):** open a chapter's **Study guide**,
   confirm the in-file pencil editor loads, edit a section, use the file's own
-  save, and confirm the change persists (reopen the chapter). **Next:** E3b
-  slides (`.slides.html`) + E3c paged (`.paged.html`) on the same rails — these
-  need one taxonomy call (a per-document lean source + where paged lives, since
-  the v2 space set is closed).
+  save, and confirm the change persists (reopen the chapter).
+- **E3b/E3c landed: slides + paged as hosted derived views** (owner decision:
+  **derived views for now**, kept flexible). Slides (`.slides.html`) and paged
+  (`.paged.html`) generate from the chapter's study guide on demand
+  (`generateChapterViewAction`: slides via `slidesSourceFromBlocks`, paged via
+  the chapter markdown) and mount in-shell through the same
+  `hostedCarrierModule`/`ModuleMount` machinery for presenting / printing. New
+  **Print / handout** category (`paged`) added to the rail (UI only — **no new
+  space**; the v2 space set stays closed per rule 9). The study guide is the
+  single authored source; a `HostedChapterView` `hostSave` stub returns an
+  honest "edit the chapter to change this; use Download to keep a copy" message
+  — **that stub is the single seam** to make slides/paged independently
+  *authored* later (swap it to persist a committed per-document source; the
+  generate+host rails stay identical). Uses the worker-or-fallback builder (a
+  viewable file suffices; only hosted *editing* needs the protocol) — slides
+  render even without a worker; paged shows a "needs the worker tier" note.
+  Green (typecheck + full test + web build). **Owner smoke test:** open a
+  chapter's **Slides** and **Print / handout** categories; confirm the deck /
+  print view renders from the study-guide content. E3 now covers all three
+  formats.
 - **Bugfix: "Share this" never appeared on assets** (owner-reported). Root
   cause was a datetime round-trip: `RegistrationRecordSchema.registeredAt`
   used `z.iso.datetime()`, which accepts a bare `Z` but **rejects a timezone

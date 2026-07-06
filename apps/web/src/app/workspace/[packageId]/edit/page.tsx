@@ -19,6 +19,7 @@ const CATEGORIES: StudioCategory[] = [
   "concept-map",
   "content",
   "slides",
+  "paged",
   "assessment-guide",
   "practice",
   "assets",
