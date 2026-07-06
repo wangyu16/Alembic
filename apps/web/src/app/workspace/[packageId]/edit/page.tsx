@@ -103,8 +103,12 @@ export default async function EditShellPage({
           description: r.description,
         };
       }
-    } catch {
-      assetDocs = {}; // registry is best-effort; the pane still renders
+    } catch (err) {
+      // Registry is best-effort; the pane still renders without sharing
+      // controls. Log rather than swallow — a silent blank here once hid a
+      // datetime parse failure that disabled "share this" everywhere.
+      console.warn(`assets registry read failed for ${packageId}:`, err);
+      assetDocs = {};
     }
   }
   const artifacts =

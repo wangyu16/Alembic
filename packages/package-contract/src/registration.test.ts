@@ -69,6 +69,15 @@ describe("DocumentVersionSchema", () => {
       DocumentVersionSchema.parse({ contentHash: "a1", savedAt: "yesterday" }),
     ).toThrow();
   });
+
+  // Regression: Postgres `timestamptz` reads back through PostgREST with a
+  // timezone offset and microsecond precision, not a bare Z. The schema must
+  // parse that shape or the registry projection can't be read back at all.
+  it("accepts a Postgres timestamptz round-trip (offset + microseconds)", () => {
+    expect(() =>
+      DocumentVersionSchema.parse({ contentHash: "a1", savedAt: "2026-07-04T12:00:00.123456+00:00" }),
+    ).not.toThrow();
+  });
 });
 
 describe("parseRegistrationRecord", () => {
@@ -83,6 +92,18 @@ describe("parseRegistrationRecord", () => {
     for (const origin of ["created", "uploaded", "external-commit"]) {
       expect(parseRegistrationRecord({ ...valid, origin }).origin).toBe(origin);
     }
+  });
+
+  // Regression: the row is written with `Date#toISOString()` (…Z) but read
+  // back from Postgres with an offset (…+00:00). Both must parse — otherwise
+  // every registry read throws and "share this" silently disappears.
+  it("accepts registeredAt in Postgres offset form, not just Z", () => {
+    expect(parseRegistrationRecord({ ...valid, registeredAt: "2026-07-04T12:00:00Z" }).registeredAt).toBe(
+      "2026-07-04T12:00:00Z",
+    );
+    expect(() =>
+      parseRegistrationRecord({ ...valid, registeredAt: "2026-07-04T12:00:00.123456+00:00" }),
+    ).not.toThrow();
   });
 
   it("rejects a malformed docId", () => {

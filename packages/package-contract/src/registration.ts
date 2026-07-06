@@ -34,7 +34,10 @@ export type VersionChangeKind = z.infer<typeof ChangeKindSchema>;
  */
 export const DocumentVersionSchema = z.object({
   contentHash: z.string().min(1),
-  savedAt: z.iso.datetime(),
+  // Accept a timezone offset (…+00:00), not just Z: Postgres `timestamptz`
+  // reads back through PostgREST with an offset, while `Date#toISOString()`
+  // writes Z. Both must parse or the registry projection can't be read back.
+  savedAt: z.iso.datetime({ offset: true }),
   changeKind: ChangeKindSchema.optional(),
   /** One-line release note in educator language — becomes the notification text. */
   note: z.string().optional(),
@@ -58,7 +61,9 @@ export const RegistrationRecordSchema = z.object({
   /** Provenance: which door the file arrived through (origin parity). */
   origin: z.enum(["created", "uploaded", "external-commit"]),
   author: z.string().optional(),
-  registeredAt: z.iso.datetime(),
+  // Offset-tolerant: Postgres returns `…+00:00`; `Date#toISOString()` writes
+  // Z. See DocumentVersionSchema.savedAt for the full rationale.
+  registeredAt: z.iso.datetime({ offset: true }),
   /** Inherited from the package manifest unless overridden per file. */
   license: z.string().optional(),
   /** Required for discoverable objects (a11y + element search) — enforced

@@ -714,6 +714,24 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
   `/portal?scope=elements`, open its permalink. Next: P4 file-level
   adaptation, or E3 study-guide switchover.
 
+### 2026-07-06
+- **Bugfix: "Share this" never appeared on assets** (owner-reported). Root
+  cause was a datetime round-trip: `RegistrationRecordSchema.registeredAt`
+  used `z.iso.datetime()`, which accepts a bare `Z` but **rejects a timezone
+  offset**. Writes stored `Date#toISOString()` (`…Z`, so rows inserted fine),
+  but Postgres `timestamptz` reads back as `…+00:00` → `parseRegistrationRecord`
+  threw on **every** row → `listByPackage` threw → the edit page's `catch`
+  blanked `assetDocs` → no "Share this" on any asset, for every account, while
+  the rows sat plainly in the dashboard. Fix: `registeredAt` (and
+  `DocumentVersionSchema.savedAt`) now use `z.iso.datetime({ offset: true })`
+  — still accepts `Z`, so writes/tests are unaffected. Added two regression
+  tests (Postgres offset + microseconds). Also made the edit page's registry
+  `catch` **log** instead of silently swallowing (it hid this). Audited the
+  other seven `z.iso.datetime()` schemas: all parse file/manifest content
+  (verbatim `…Z`), and `research_events` reads bypass the Zod schema, so
+  registration was the only timestamptz-through-Zod path. Green (typecheck +
+  full test + web build).
+
 ### 2026-07-05
 - **Phase 1 (Module R) implementation — 2 of 3 increments landed, green.**
   (1) **Contract v2 activation + registry projection** (`dda7df0`): manifest
