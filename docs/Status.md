@@ -783,6 +783,19 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
   chapter's **Slides** and **Print / handout** categories; confirm the deck /
   print view renders from the study-guide content. E3 now covers all three
   formats.
+- **E3 bugfix: hosted editor showed blank + the pencil did nothing.** The
+  hosted-carrier iframe sandbox was `allow-scripts` WITHOUT `allow-same-origin`,
+  giving the file an opaque origin. But the self-contained file renders its
+  preview into a NESTED iframe via `contentDocument.write` and lazy-loads its
+  editor — both need same-origin, so under an opaque origin the file rendered
+  blank and the edit toggle failed. Fix: add `allow-same-origin` (+ `allow-
+  popups`) to the sandbox. Reproduced and verified in the preview against a real
+  generated `.md.html`: opaque origin → blank; `allow-same-origin` → full
+  render + working CodeMirror editor. Safe because Alembic GENERATES the hosted
+  file from the educator's own source (trusted orz runtime); documented that on
+  a `srcdoc` iframe `allow-same-origin` is the HOST origin, so hosting UNTRUSTED
+  documents this way would instead need a separate content origin (follow-up if
+  in-app preview of others' files is ever added).
 - **Bugfix: "Share this" never appeared on assets** (owner-reported). Root
   cause was a datetime round-trip: `RegistrationRecordSchema.registeredAt`
   used `z.iso.datetime()`, which accepts a bare `Z` but **rejects a timezone

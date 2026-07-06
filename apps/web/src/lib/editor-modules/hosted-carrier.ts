@@ -25,10 +25,20 @@ export function hostedCarrierModule(
     wysiwyg: true,
     mount(el: HTMLElement, ctx: EditorContext): EditorHandle {
       const frame = document.createElement("iframe");
-      // Sandboxed per the protocol's security rules: scripts run (the file IS
-      // an app) but with an opaque origin and no same-origin reach into the
-      // workspace. The file's runtime handles the "null"-origin case.
-      frame.setAttribute("sandbox", "allow-scripts allow-downloads allow-modals");
+      // Sandboxed, but WITH `allow-same-origin` — the self-contained file needs
+      // its own origin to work: it renders its preview into a NESTED iframe via
+      // `contentDocument.write` and lazy-loads its editor, both of which fail
+      // under an opaque origin (the file shows blank and the pencil does
+      // nothing). This is safe here because Alembic GENERATES the hosted file
+      // from the educator's own source (the trusted orz runtime, not attacker
+      // content). NOTE: on a `srcdoc` iframe `allow-same-origin` resolves to the
+      // HOST origin, so the file can reach `window.parent`. Hosting UNTRUSTED
+      // documents this way (e.g. previewing another educator's file in-app)
+      // would instead require serving them from a separate content origin.
+      frame.setAttribute(
+        "sandbox",
+        "allow-scripts allow-same-origin allow-downloads allow-modals allow-popups",
+      );
       frame.srcdoc = ctx.source;
       frame.title = `${label} editor`;
       frame.style.width = "100%";
