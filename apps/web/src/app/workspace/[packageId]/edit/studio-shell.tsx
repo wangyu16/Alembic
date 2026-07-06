@@ -13,6 +13,7 @@ import { saveStudyGuideAction } from "../actions";
 import {
   generateCourseDescriptionAction,
   saveCourseDescriptionAction,
+  setCourseThemeAction,
 } from "../metadata-actions";
 import { saveFileAction, proposeEditAction } from "./edit-actions";
 import { importFileAction } from "../import-actions";
@@ -115,6 +116,7 @@ export function StudioShell({
   artifacts,
   chapterBlockIds,
   publishing,
+  courseTheme,
 }: {
   packageId: string;
   title: string;
@@ -132,6 +134,7 @@ export function StudioShell({
   artifacts: ArtifactItem[];
   chapterBlockIds: string[];
   publishing: PublishingState;
+  courseTheme: "dark" | "light";
 }) {
   const forms = unitTermForms(unitTerm);
   const router = useRouter();
@@ -329,6 +332,7 @@ export function StudioShell({
               packageId={packageId}
               initial={courseDescription}
               published={published}
+              theme={courseTheme}
               onDirty={setDirty}
             />
           ) : category === "content" && activePath && content ? (
@@ -417,15 +421,60 @@ function useReportDirty(dirty: boolean, onDirty?: (d: boolean) => void) {
 }
 
 /* ── Course home: the canonical description (G6) ─────────────────────────── */
+/* One viewing theme for the whole course (manifest) — so every generated view
+   is consistent; a student can still switch after downloading a copy. */
+function CourseThemeControl({ packageId, theme }: { packageId: string; theme: "dark" | "light" }) {
+  const router = useRouter();
+  const [pending, start] = useTransition();
+  const [value, setValue] = useState<"dark" | "light">(theme);
+  const [saved, setSaved] = useState(false);
+
+  const pick = (next: "dark" | "light") => {
+    setValue(next);
+    setSaved(false);
+    start(async () => {
+      const r = await setCourseThemeAction(packageId, next);
+      if (r.ok) {
+        setSaved(true);
+        router.refresh();
+      }
+    });
+  };
+
+  return (
+    <div className="flex flex-wrap items-center gap-2 rounded-lg border border-edge px-3 py-2">
+      <span className="text-sm text-ink">Course theme</span>
+      <span className="text-xs text-faint">every page a student sees</span>
+      <select
+        value={value}
+        onChange={(e) => pick(e.target.value as "dark" | "light")}
+        disabled={pending}
+        aria-label="Course viewing theme"
+        className="field ml-auto text-sm"
+      >
+        <option value="dark">Dark elegant</option>
+        <option value="light">Light academic</option>
+      </select>
+      {pending ? (
+        <span className="text-xs text-faint">…</span>
+      ) : saved ? (
+        <span className="text-xs text-ok">Saved</span>
+      ) : null}
+    </div>
+  );
+}
+
 function CourseHome({
   packageId,
   initial,
   published,
+  theme,
   onDirty,
 }: {
   packageId: string;
   initial: string | null;
   published: boolean;
+  theme: "dark" | "light";
   onDirty?: (d: boolean) => void;
 }) {
   const [md, setMd] = useState(initial ?? "");
@@ -457,6 +506,7 @@ function CourseHome({
 
   return (
     <div className="flex flex-col gap-3">
+      <CourseThemeControl packageId={packageId} theme={theme} />
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="font-serif text-lg text-ink">Course description</h2>
         <div className="flex flex-wrap items-center gap-2">

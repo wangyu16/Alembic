@@ -81,7 +81,9 @@ export async function publishSiteAction(
   });
 
   try {
-    const theme = await getRenderTheme();
+    // One theme per course (manifest), so every view is consistent; fall back
+    // to the editor's cookie only when the course theme is unset.
+    const theme = record!.manifest.theme ?? (await getRenderTheme());
 
     // Owner decision (2026-07-06): the student-site VIEWS are the self-contained
     // files themselves. Each chapter is generated as its own `.md.html` (via the

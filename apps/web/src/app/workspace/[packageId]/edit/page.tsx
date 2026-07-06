@@ -195,6 +195,7 @@ export default async function EditShellPage({
       artifacts={artifacts}
       chapterBlockIds={chapterBlockIds}
       publishing={publishing}
+      courseTheme={record.manifest.theme ?? "dark"}
     />
   );
 }

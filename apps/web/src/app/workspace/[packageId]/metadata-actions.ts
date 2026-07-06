@@ -8,6 +8,7 @@ import {
   loadCourseDescription,
   setCourseDescription,
 } from "@alembic/package-ops";
+import { parseManifest } from "@alembic/package-contract";
 import { generateCourseDescription } from "@alembic/ai-assist";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
@@ -28,6 +29,34 @@ export interface DescriptionResult {
   ok: boolean;
   markdown?: string;
   error?: string;
+}
+
+/**
+ * Set the course's single viewing theme (manifest-level, so every generated
+ * view is consistent — not the transient editor cookie or per-file settings).
+ * Persists to the manifest row + commits alembic.json.
+ */
+export async function setCourseThemeAction(
+  packageId: string,
+  theme: "dark" | "light",
+): Promise<{ ok: boolean; error?: string }> {
+  const { supabase, user } = await requireUser();
+  const store = new SupabaseSandboxStore(supabase);
+  try {
+    const record = await store.getPackage(packageId);
+    if (!record) return { ok: false, error: "Package not found." };
+    const manifest = parseManifest({ ...record.manifest, theme });
+    await supabase.from("packages").update({ manifest }).eq("id", packageId);
+    await syncFilesToGitHub(
+      supabase, store, user.id, packageId,
+      [{ path: "alembic.json", content: JSON.stringify(manifest, null, 2) + "\n" }],
+      "Set course theme (Alembic)",
+    );
+    revalidatePath(`/workspace/${packageId}`);
+    return { ok: true };
+  } catch {
+    return { ok: false, error: "Couldn't save the theme. Please try again." };
+  }
 }
 
 /** The current canonical course description markdown (metadata/course.md). */

@@ -77,6 +77,13 @@ describe("parseManifest", () => {
       "2026-fall",
     );
   });
+
+  it("parses the course theme (dark/light) and defaults to absent", () => {
+    expect(parseManifest(valid).theme).toBeUndefined();
+    expect(parseManifest({ ...valid, theme: "light" }).theme).toBe("light");
+    expect(parseManifest({ ...valid, theme: "dark" }).theme).toBe("dark");
+    expect(() => parseManifest({ ...valid, theme: "neon" })).toThrow();
+  });
 });
 
 describe("schema version awareness (contract v2)", () => {

@@ -156,6 +156,14 @@ export const PackageManifestSchema = z.object({
    * additive; absent = "chapter". Never affects the data model.
    */
   unitTerm: UnitTermSchema.optional(),
+  /**
+   * The course's viewing theme — ONE theme for the whole course, chosen by the
+   * instructor, so every generated view (chapters/slides/paged, student site)
+   * looks consistent (rather than the transient editor cookie or per-file
+   * settings). Optional + additive; absent = "dark". Values match the
+   * renderer's RenderTheme; readers must not import the renderer here.
+   */
+  theme: z.enum(["dark", "light"]).optional(),
   /** Last accessibility audit result. Optional and additive (absent = unknown). */
   accessibility: AccessibilityStatusSchema.optional(),
   /**

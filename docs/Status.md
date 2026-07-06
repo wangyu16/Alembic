@@ -847,6 +847,18 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
   the clipboard receives Markdown (`## The atom … **atoms** … - protons`); page
   is clean + responsive at 375px. +1 renderer test (runtime inlined on every
   page). Green (typecheck + full test + web build).
+- **Course theme is a per-course manifest setting** (owner note: one theme for
+  the whole course, not per-file or the transient editor cookie). Added optional
+  `theme` (`dark`|`light`) to the manifest (pure enum, no renderer import);
+  `setCourseThemeAction` persists it (manifest row + `alembic.json` commit); a
+  **Course theme** selector in the Course pane (`CourseThemeControl`);
+  `publishSiteAction` now uses `manifest.theme ?? cookie` so every generated
+  view is consistent. Students still switch after downloading a copy. +1 test.
+  Green (typecheck + full test + web build). **Owner smoke test:** open a
+  course's Course pane, pick a theme, republish, confirm all pages match.
+  **Note (student save):** already handled — the published `.md.html`, opened
+  standalone, turns Save into "download a local copy" (a student can't write to
+  the instructor's GitHub); orz default, no work needed.
 - **Module S — viewing = the self-contained files** (owner decision, supersedes
   the S1 bare-render reading pages + `downloads/`). The student-site chapter
   **view IS its `.md.html`** (rationale: slides always need a framework anyway,
