@@ -62,10 +62,25 @@ const SITE_STYLE = `<style>
 .chapter-cards .chapter-link{font-weight:600;text-decoration:none;font-size:1.1rem}
 .chapter-cards .card-links{display:block;margin-top:.35rem;font-size:.82rem;opacity:.75}
 .resource-bar{display:flex;flex-wrap:wrap;gap:.6rem;margin:1.1rem 0 1.8rem;padding:.7rem 0;border-top:1px solid rgba(128,128,128,.2);border-bottom:1px solid rgba(128,128,128,.2)}
-.resource-bar a{display:inline-flex;align-items:center;gap:.4rem;font-size:.85rem;text-decoration:none;border:1px solid rgba(128,128,128,.32);border-radius:.5rem;padding:.35rem .75rem}
+.resource-bar a,.copy-src{display:inline-flex;align-items:center;gap:.4rem;font-size:.85rem;text-decoration:none;border:1px solid rgba(128,128,128,.32);border-radius:.5rem;padding:.35rem .75rem}
+.copy-src{cursor:pointer;background:none;color:inherit;font-family:inherit}
 .chapter-nav{display:flex;justify-content:space-between;flex-wrap:wrap;gap:1rem;font-size:.9rem;margin-top:2.5rem;padding-top:1rem;border-top:1px solid rgba(128,128,128,.25)}
 .site-footer{margin-top:3rem;padding-top:1rem;border-top:1px solid rgba(128,128,128,.2);font-size:.8rem;opacity:.6}
 </style>`;
+
+/**
+ * Copy-as-source (S2): every content page carries its Markdown in a hidden
+ * textarea (entity-escaped, so it can't break out) and a small button to copy
+ * it. Reading pages are static, so this is the whole runtime — a few lines.
+ */
+const COPY_SCRIPT = `<script>document.querySelectorAll('.copy-src').forEach(function(b){b.addEventListener('click',function(){var t=document.getElementById(b.getAttribute('data-src'));if(!t)return;navigator.clipboard.writeText(t.value).then(function(){var o=b.textContent;b.textContent='Copied!';setTimeout(function(){b.textContent=o;},1500);});});});</script>`;
+
+const COPY_BUTTON = `<button type="button" class="copy-src" data-src="page-source" title="Copy this page's Markdown source">⧉ Copy as Markdown</button>`;
+
+/** Hidden source + copy script appended after a content page's body. */
+function sourceTrailing(markdown: string): string {
+  return `<textarea id="page-source" hidden>${escapeHtml(markdown)}</textarea>\n${COPY_SCRIPT}`;
+}
 
 /** Combine the reading-chrome style with any extra head HTML (e.g. JSON-LD). */
 function head(extra?: string): string {
@@ -153,7 +168,7 @@ export function buildCourseSite(input: CourseSiteInput): SiteFile[] {
         .map((p) => p)
         .join("\n")}\n</nav>`;
       const dl = downloadLink(c, "../");
-      const resourceBar = dl ? `\n<div class="resource-bar">${dl}</div>` : "";
+      const resourceBar = `\n<div class="resource-bar">${dl}${dl ? " " : ""}${COPY_BUTTON}</div>`;
       // The chapter title is the page h1 (from the manifest, not the markdown —
       // blocks are h2). Keeps title as the single source of truth.
       const body = `${topNav(input.title, "../", false)}\n<h1>${escapeHtml(
@@ -161,14 +176,20 @@ export function buildCourseSite(input: CourseSiteInput): SiteFile[] {
       )}</h1>${resourceBar}\n${md.render(c.markdown)}${pagerNav}\n${footer()}`;
       files.push({
         path: `chapters/${c.slug}.html`,
-        content: themedDocument({ title: c.title, bodyHtml: body, headHtml: head(), theme: input.theme }),
+        content: themedDocument({
+          title: c.title,
+          bodyHtml: body,
+          headHtml: head(),
+          theme: input.theme,
+          trailingHtml: sourceTrailing(c.markdown),
+        }),
       });
     });
   } else {
     // Single chapter (or none): render inline under the course title.
     const c = chapters[0];
     const dl = c ? downloadLink(c, "") : "";
-    const resourceBar = dl ? `\n<div class="resource-bar">${dl}</div>` : "";
+    const resourceBar = c ? `\n<div class="resource-bar">${dl}${dl ? " " : ""}${COPY_BUTTON}</div>` : "";
     const chapterHtml = c ? `${resourceBar}\n${md.render(c.markdown)}` : "";
     const wsNav = worksheetNav(worksheets, "");
     const indexBody = `<h1>${escapeHtml(input.title)}</h1>${intro ? `\n${intro}` : ""}${chapterHtml}${
@@ -176,7 +197,14 @@ export function buildCourseSite(input: CourseSiteInput): SiteFile[] {
     }\n${footer()}`;
     files.push({
       path: "index.html",
-      content: themedDocument({ title: input.title, bodyHtml: indexBody, headHtml: indexHead, theme: input.theme }),
+      content: themedDocument({
+        title: input.title,
+        bodyHtml: indexBody,
+        headHtml: indexHead,
+        theme: input.theme,
+        // Single-chapter home renders the chapter inline → copy-as-source here.
+        trailingHtml: c ? sourceTrailing(c.markdown) : undefined,
+      }),
     });
   }
 
@@ -184,10 +212,16 @@ export function buildCourseSite(input: CourseSiteInput): SiteFile[] {
   for (const w of worksheets) {
     const body = `${topNav(input.title, "../", false)}\n<h1>${escapeHtml(
       w.title,
-    )}</h1>\n${md.render(w.markdown)}\n${footer()}`;
+    )}</h1>\n<div class="resource-bar">${COPY_BUTTON}</div>\n${md.render(w.markdown)}\n${footer()}`;
     files.push({
       path: `worksheets/${w.slug}.html`,
-      content: themedDocument({ title: w.title, bodyHtml: body, headHtml: head(), theme: input.theme }),
+      content: themedDocument({
+        title: w.title,
+        bodyHtml: body,
+        headHtml: head(),
+        theme: input.theme,
+        trailingHtml: sourceTrailing(w.markdown),
+      }),
     });
   }
 

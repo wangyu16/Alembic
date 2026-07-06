@@ -832,8 +832,18 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
   resource ≤2 clicks from home). **Owner smoke test:** Publish web page, open
   the site — confirm the chapter cards, a chapter's Download-offline link
   resolves to its `.md.html`, and prev/next work. **Deferred (S2/S3):** the
-  full impeccable reading design pass, copy-as-source on pages, slides/paged on
-  the site, current-term section, permalink stamps + pinned assets (R3).
+  full impeccable reading design pass, slides/paged on the site, current-term
+  section, permalink stamps + pinned assets (R3).
+- **Module S2 (partial): copy-as-source on every student-site page.** Each
+  content page (chapter, worksheet, single-chapter home) carries its Markdown in
+  a hidden `<textarea id="page-source">` (entity-escaped, can't break out) + a
+  **⧉ Copy as Markdown** button in the resource bar + a ~3-line inline copy
+  script (reading pages are static, so that's the whole runtime). The resource
+  bar now always renders (it hosts copy + any download). Browser-verified: the
+  button copies the correct source, and the page is clean + fully responsive at
+  375px (title wraps, resource-bar buttons stack, nav/footer read well) — the
+  "on a phone" DoD. +1 renderer test. Green (typecheck + renderer 43 + web
+  build).
 - **Bugfix: "Share this" never appeared on assets** (owner-reported). Root
   cause was a datetime round-trip: `RegistrationRecordSchema.registeredAt`
   used `z.iso.datetime()`, which accepts a bare `Z` but **rejects a timezone

@@ -175,13 +175,26 @@ describe("buildCourseSite — edges and metadata", () => {
     expect(atoms.content).toContain('<div class="resource-bar">');
   });
 
-  it("omits download links when no downloadHref is provided", () => {
+  it("omits the download link when no downloadHref is provided", () => {
     const files = buildCourseSite(multi);
-    // (the .resource-bar CSS class is always defined in the stylesheet; assert
-    // the actual element and the download href are absent, not the class name)
+    // The resource bar itself always renders (it hosts copy-as-source); only the
+    // download href is absent without a downloadHref.
     expect(files.find((f) => f.path === "index.html")!.content).not.toContain("downloads/");
-    expect(files.find((f) => f.path === "chapters/atoms.html")!.content).not.toContain(
-      '<div class="resource-bar">',
-    );
+    expect(files.find((f) => f.path === "chapters/atoms.html")!.content).not.toContain("download>");
+  });
+
+  it("puts copy-as-source on every content page (chapter + worksheet), not the TOC index", () => {
+    const files = buildCourseSite(multi); // multi → index is a TOC, no inline content
+    const atoms = files.find((f) => f.path === "chapters/atoms.html")!;
+    expect(atoms.content).toContain('class="copy-src"');
+    expect(atoms.content).toContain('<textarea id="page-source" hidden>');
+    // the embedded source is the chapter markdown (entity-escaped h2)
+    expect(atoms.content).toContain("## Atoms");
+    const ws = files.find((f) => f.path === "worksheets/practice-1.html")!;
+    expect(ws.content).toContain('class="copy-src"');
+    expect(ws.content).toContain('<textarea id="page-source" hidden>');
+    // multi-chapter home is a card TOC — no page source to copy there
+    const index = files.find((f) => f.path === "index.html")!;
+    expect(index.content).not.toContain('<textarea id="page-source"');
   });
 });
