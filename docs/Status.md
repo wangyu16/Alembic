@@ -686,6 +686,23 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
 
 ## Log
 
+### 2026-07-06
+- **R2 verified live by the owner** — after the v1-path registration fix
+  (`901a8ed`: dual-mode `spaceForFilePath`, per-file rebuild resilience,
+  logged guard), a fresh package registers correctly: `documents` rows appear
+  with spaces `metadata` / `study-guide` / `private`. Phase 1 (Module R core)
+  is confirmed end to end in production.
+- **P1 landed: the thin `/d/{docId}` permalink resolver** (`99018e9`).
+  ID-based over the registry (links survive rename/move); tombstone 410;
+  private = owner-only via session RLS; public GitHub platform-served with
+  correct MIME (raw GitHub is internal transport only); trial served from the
+  sandbox; `@{version}` pins serve when they match the current hash (older
+  pins arrive with R3), immutable caching + CORS for public objects. Guard
+  paths verified against dev; **owner smoke test pending: open
+  `/d/<a doc_id from the documents table>` in a browser** (signed-in for
+  private rows; service key enables anonymous public access). Next: P2 —
+  "share this" toggle + Discover's Elements tab reading discoverable rows.
+
 ### 2026-07-05
 - **Phase 1 (Module R) implementation — 2 of 3 increments landed, green.**
   (1) **Contract v2 activation + registry projection** (`dda7df0`): manifest
