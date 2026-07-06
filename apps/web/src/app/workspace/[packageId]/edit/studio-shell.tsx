@@ -136,9 +136,13 @@ export function StudioShell({
   const forms = unitTermForms(unitTerm);
   const router = useRouter();
   const [manageOpen, setManageOpen] = useState(false);
-  // Lifted from the active editing pane so the publish header can block "Save to
-  // GitHub" while there are unsaved edits (you must save to the package first).
+  // Lifted from the active editing pane so the publish header can block
+  // publishing while there are unsaved edits (save to the package first).
   const [dirty, setDirty] = useState(false);
+  // Shell-level unsaved guard so navigating away warns for EVERY editing
+  // surface — including the hosted in-file editors, which (unlike the block
+  // editor) have no guard of their own.
+  useUnsavedGuard(dirty);
   // Left panes are collapsible to give the editor the full width. The chapter
   // list starts collapsed; the category rail starts open — except at course
   // level, where categories don't apply (only the course description/concept
@@ -202,6 +206,16 @@ export function StudioShell({
             ← Workspace
           </Link>
           <h1 className="min-w-0 truncate font-serif text-xl tracking-tight text-ink">{title}</h1>
+          {/* Save-state: your EDITS save in the editor (this clears when they
+              land); the header's "Save online" is a separate publish step. */}
+          {dirty && (
+            <span
+              className="shrink-0 rounded-full bg-[var(--accent-soft)] px-2 py-0.5 text-xs font-medium text-[var(--accent)]"
+              title="You have unsaved edits — use the Save button in the editor"
+            >
+              ● Unsaved
+            </span>
+          )}
         </div>
         <PublishHeader
           packageId={packageId}
@@ -467,7 +481,7 @@ function CourseHome({
       <p className="text-xs text-faint">
         The canonical course summary (shown on Discover). Markdown. The short
         description for the public index is derived from the first paragraph.
-        {published ? "" : " Saved to GitHub when you publish."}
+        {published ? "" : " Saved online when you publish."}
       </p>
       <textarea
         value={md}
@@ -534,16 +548,22 @@ function HostedStudyGuideEditor(props: {
     return <ContentEditor {...props} />;
   }
   return (
-    <ModuleMount
-      kind="md"
-      source={state.html}
-      onDirty={onDirty}
-      hostSave={async (payload) => {
-        const r = await hostSaveStudyGuideAction(packageId, path, payload);
-        return { ok: r.ok, error: r.error };
-      }}
-      className="h-full min-h-[75vh] w-full"
-    />
+    <div className="flex h-full min-h-[75vh] flex-col gap-2">
+      <p className="shrink-0 text-xs text-faint">
+        Edit inline — your changes save with the <span className="text-muted">Save</span> button in
+        the document’s toolbar. “Save online” in the header is a separate step that publishes.
+      </p>
+      <ModuleMount
+        kind="md"
+        source={state.html}
+        onDirty={onDirty}
+        hostSave={async (payload) => {
+          const r = await hostSaveStudyGuideAction(packageId, path, payload);
+          return { ok: r.ok, error: r.error };
+        }}
+        className="w-full flex-1"
+      />
+    </div>
   );
 }
 

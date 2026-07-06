@@ -236,27 +236,31 @@ export function PublishHeader({
         {published ? (
           <Control
             icon={<CheckIcon />}
-            label="Saved to GitHub"
+            label="Saved online"
             tone="ok"
             href={publishing.publicRepoUrl ?? undefined}
-            title="View the repository on GitHub"
+            title="Your project is saved to its online home — click to view it"
           />
         ) : publishing.connected ? (
           <Control
             icon={<GitHubIcon />}
-            label={repoBusy ? "Saving…" : "Save to GitHub"}
+            label={repoBusy ? "Saving…" : "Save online"}
             tone="accent"
             onClick={onSaveToGitHub}
             disabled={repoBusy || dirty}
-            title={dirty ? "Save your changes first" : "Create your repositories and save your content"}
+            title={
+              dirty
+                ? "Finish saving your edits in the editor first"
+                : "Create your project's online home and save your content there"
+            }
           />
         ) : (
           <Control
             icon={<GitHubIcon />}
-            label="Save to GitHub"
+            label="Save online"
             tone="accent"
             href={publishing.installUrl ?? undefined}
-            title="Connect GitHub, then save"
+            title="Connect your online account, then save"
           />
         )}
 
@@ -296,7 +300,7 @@ export function PublishHeader({
             tone={published ? "accent" : "muted"}
             onClick={onPublishPage}
             disabled={!published || siteBusy}
-            title={published ? "Build the public web page and link" : "Save to GitHub first"}
+            title={published ? "Build the public web page and link" : "Save online first"}
           />
         )}
 

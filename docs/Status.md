@@ -796,6 +796,22 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
   a `srcdoc` iframe `allow-same-origin` is the HOST origin, so hosting UNTRUSTED
   documents this way would instead need a separate content origin (follow-up if
   in-app preview of others' files is ever added).
+- **E3 editing-shell coherence (increment 1).** With hosted editing live, the
+  file's own **Save** (content) sat next to the header's **"Save to GitHub"**
+  (which is really the publish/promote step, not a second content-save) — two
+  "save" concepts. Fixes: (1) renamed the header control **"Save to GitHub" →
+  "Save online"** ("Saved to GitHub" → "Saved online", tooltips reworded) —
+  drops the dev term per the CLAUDE.md educator-language rule and reframes the
+  header as *publishing*, distinct from the in-editor save; (2) a header
+  **"● Unsaved"** chip driven by the lifted `dirty` state, so the in-editor
+  save is the obvious content-save; (3) a **shell-level `useUnsavedGuard`** so
+  navigating away warns for EVERY surface, including the hosted editors (which
+  had no guard of their own); (4) a one-line hint in the hosted study-guide pane
+  ("edit inline — changes save with the document's Save button; Save online
+  publishes"). Green (typecheck + web build). **Remaining coherence** (later
+  increments): the duplicate orz logo/theme chrome (needs the upstream
+  `?embed=minimal`, deferred), pane sizing polish, and bringing concept-map /
+  assessment-guide / private onto the hosted editor for a consistent model.
 - **Bugfix: "Share this" never appeared on assets** (owner-reported). Root
   cause was a datetime round-trip: `RegistrationRecordSchema.registeredAt`
   used `z.iso.datetime()`, which accepts a bare `Z` but **rejects a timezone
