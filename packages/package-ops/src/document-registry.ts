@@ -19,13 +19,34 @@ import { extractSource, getKindByExtension, hasCarrier } from "@alembic/carriers
 import {
   assertRegistrationInvariants,
   hashContent,
+  layerForPath,
   newDocId,
   parseRegistrationRecord,
   spaceForPath,
+  spaceForV1Layer,
+  type PackageSpace,
   type RegistrationRecord,
   type RepoKind,
 } from "@alembic/package-contract";
 import type { PackageStore } from "./store";
+
+/**
+ * Resolve a path to its v2 space, accepting BOTH layouts (dual-mode, like the
+ * write paths): a native v2 path resolves directly; a v1 path (e.g.
+ * `private-instructor/notes/…`, `materials/…` — every pre-v2 package) resolves
+ * through its v1 layer and the v1→v2 mapping. Root-allowlisted files and the
+ * unmapped `research-schema` layer register under `metadata` (contract v2 §1).
+ * Throws only when neither contract recognizes the path.
+ */
+function spaceForFilePath(path: string): PackageSpace {
+  try {
+    return spaceForPath(path);
+  } catch {
+    const layer = layerForPath(path); // throws for a path neither contract knows
+    if (layer === null) return "metadata"; // root allowlist (alembic.json, …)
+    return spaceForV1Layer(layer) ?? "metadata";
+  }
+}
 
 /**
  * Durable store for registration records, keyed by docId. IO is confined here
@@ -207,7 +228,7 @@ export async function registerFile(
 ): Promise<RegistrationRecord> {
   const { packageId, repo, path, origin, author, content, license } = input;
 
-  const space = spaceForPath(path);
+  const space = spaceForFilePath(path); // dual-mode: v2 spaces + v1 layers
   const sourceHash = computeSourceHash(content);
   const { kind, formatVersion } = kindForFile(path, content);
   const permalinkClass = permalinkClassForPath(path);
@@ -264,15 +285,23 @@ export async function rebuildPackageRegistry(
   const registered: RegistrationRecord[] = [];
   const liveLocations = new Set<string>();
   for (const file of files) {
-    const record = await registerFile(store, {
-      packageId,
-      repo: file.repo,
-      path: file.path,
-      origin,
-      content: file.content,
-    });
-    registered.push(record);
-    liveLocations.add(`${record.repo} ${record.path}`);
+    // Per-file resilience: one unregistrable file (unknown location, invariant
+    // violation) must not abort the whole projection rebuild — skip it and
+    // keep its existing record (if any) alive rather than tombstoning a file
+    // that is still present.
+    try {
+      const record = await registerFile(store, {
+        packageId,
+        repo: file.repo,
+        path: file.path,
+        origin,
+        content: file.content,
+      });
+      registered.push(record);
+    } catch {
+      /* skipped — leave any prior record untouched */
+    }
+    liveLocations.add(`${file.repo} ${file.path}`);
   }
 
   // Tombstone records whose location is no longer present in the repos.

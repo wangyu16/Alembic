@@ -27,7 +27,13 @@ export async function syncPackageRegistry(
     const packageStore = new SupabaseSandboxStore(supabase);
     const registry = new SupabaseDocumentRegistryStore(supabase);
     await rebuildPackageRegistry(registry, packageStore, packageId, origin);
-  } catch {
-    /* rebuildable projection — never surface a registry error to the educator */
+  } catch (err) {
+    // Rebuildable projection — never surface a registry error to the educator,
+    // but DO leave a trace in the server logs (a fully silent guard hid the
+    // v1-path registration bug once already).
+    console.warn(
+      `[registry] sync failed for ${packageId}:`,
+      err instanceof Error ? err.message : err,
+    );
   }
 }

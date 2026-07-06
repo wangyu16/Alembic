@@ -263,3 +263,54 @@ describe("computeSourceHash", () => {
     expect(computeSourceHash("plain bytes")).toBe(hashContent("plain bytes"));
   });
 });
+
+describe("v1-layout packages register (dual-mode) — regression for the empty-table bug", () => {
+  function seedV1Package(files: PackageFile[]): MemoryPackageStore {
+    const packageStore = new MemoryPackageStore();
+    const record: PackageRecord = {
+      packageId: PKG,
+      ownerId: "owner-1",
+      title: "Test",
+      manifest: {} as PackageRecord["manifest"],
+      storage: "sandbox",
+    };
+    void packageStore.createPackage(record, files);
+    return packageStore;
+  }
+
+  it("registers a fresh createSandboxPackage layout (v1 paths) completely", async () => {
+    // Exactly what a new package seeds today (create.ts) — v1 paths. The
+    // production bug: spaceForPath (v2-only) threw on private-instructor/ and
+    // the silent guard left the documents table EMPTY.
+    const packageStore = seedV1Package([
+      { repo: "public", path: "alembic.json", content: "{}" },
+      { repo: "public", path: "study-guide/01-getting-started.md", content: "# Hi" },
+      { repo: "private", path: "private-instructor/notes/getting-started.md", content: "notes" },
+      { repo: "public", path: "materials/plots/x.plot.svg", content: "<svg/>" },
+    ]);
+    const registry = new MemoryDocumentRegistryStore();
+    const records = await rebuildPackageRegistry(registry, packageStore, PKG, "created");
+
+    expect(records).toHaveLength(4);
+    const bySpace = new Map(records.map((r) => [r.path, r.space]));
+    expect(bySpace.get("alembic.json")).toBe("metadata");
+    expect(bySpace.get("study-guide/01-getting-started.md")).toBe("study-guide");
+    expect(bySpace.get("private-instructor/notes/getting-started.md")).toBe("private");
+    expect(bySpace.get("materials/plots/x.plot.svg")).toBe("assets");
+  });
+
+  it("one unregistrable file is skipped; the rest still register (per-file resilience)", async () => {
+    const packageStore = seedV1Package([
+      { repo: "public", path: "study-guide/ch1.md", content: "# ok" },
+      { repo: "public", path: "junk-dir/mystery.md", content: "?" }, // neither contract knows it
+    ]);
+    const registry = new MemoryDocumentRegistryStore();
+    const records = await rebuildPackageRegistry(registry, packageStore, PKG, "created");
+
+    expect(records).toHaveLength(1);
+    expect(records[0]?.path).toBe("study-guide/ch1.md");
+    // The junk file was skipped, not registered — and nothing threw.
+    const all = await registry.listByPackage(PKG);
+    expect(all.some((r) => r.path.startsWith("junk-dir/"))).toBe(false);
+  });
+});
