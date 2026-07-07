@@ -154,6 +154,22 @@ export function StudioShell({
   // time, and picking an item closes them.
   const [showChapters, setShowChapters] = useState(false);
   const [showRail, setShowRail] = useState(category !== "course");
+  // Optimistic selection. Picking a chapter/category navigates via the URL —
+  // a server round-trip that is not instant. Mirror the target here so the
+  // header toggle, the active highlights, and the rail all flip in the SAME
+  // tick as the click, instead of the rail (instant local state) racing ahead
+  // of the button styling (derived from the server-sent `category` prop). The
+  // editor pane still renders the real props, so it updates when content lands.
+  const [optCat, setOptCat] = useState<StudioCategory | "course">(category);
+  const [optSlug, setOptSlug] = useState<string | null>(activeSlug);
+  // When the navigation lands, the props are the source of truth again.
+  useEffect(() => {
+    setOptCat(category);
+    setOptSlug(activeSlug);
+  }, [category, activeSlug]);
+  // Self-clearing: true only while the click's navigation is still in flight
+  // (the props haven't caught up to the optimistic target yet).
+  const navigating = optCat !== category || optSlug !== activeSlug;
   const isNarrow = () =>
     typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches;
   useEffect(() => {
@@ -177,8 +193,8 @@ export function StudioShell({
   };
 
   const href = (next: { chapter?: string | null; cat?: string }) => {
-    const c = next.chapter !== undefined ? next.chapter : activeSlug;
-    const cat = next.cat ?? category;
+    const c = next.chapter !== undefined ? next.chapter : optSlug;
+    const cat = next.cat ?? optCat;
     const qs = new URLSearchParams();
     if (c) qs.set("chapter", c);
     qs.set("cat", cat);
@@ -199,21 +215,21 @@ export function StudioShell({
           </button>
           <button
             onClick={toggleRail}
-            disabled={category === "course"}
+            disabled={optCat === "course"}
             className={`btn btn-ghost btn-sm ${
-              category === "course"
+              optCat === "course"
                 ? "cursor-not-allowed text-faint opacity-50"
                 : showRail
                   ? "text-ink"
                   : "text-muted"
             }`}
             title={
-              category === "course"
+              optCat === "course"
                 ? `Categories apply to a ${forms.singular} — pick one first`
                 : `${showRail ? "Hide" : "Show"} categories`
             }
-            aria-pressed={category === "course" ? undefined : showRail}
-            aria-disabled={category === "course"}
+            aria-pressed={optCat === "course" ? undefined : showRail}
+            aria-disabled={optCat === "course"}
           >
             ▤ Categories
           </button>
@@ -229,6 +245,14 @@ export function StudioShell({
               title="You have unsaved edits — use the Save button in the editor"
             >
               ● Unsaved
+            </span>
+          )}
+          {navigating && (
+            <span
+              className="shrink-0 animate-pulse text-xs text-faint"
+              aria-live="polite"
+            >
+              Loading…
             </span>
           )}
         </div>
@@ -258,11 +282,13 @@ export function StudioShell({
             href={href({ chapter: null, cat: "course" })}
             onClick={() => {
               // Course level has no per-chapter categories — collapse the rail.
+              setOptSlug(null);
+              setOptCat("course");
               setShowRail(false);
               closeDrawers();
             }}
             className={`block rounded-md px-2 py-1.5 text-sm ${
-              category === "course" ? "bg-accent text-[var(--accent-ink)]" : "text-muted hover:bg-elevated hover:text-ink"
+              optCat === "course" ? "bg-accent text-[var(--accent-ink)]" : "text-muted hover:bg-elevated hover:text-ink"
             }`}
           >
             ⊙ Course
@@ -294,15 +320,17 @@ export function StudioShell({
           {chapters.map((c, i) => (
             <Link
               key={c.slug}
-              href={href({ chapter: c.slug, cat: category === "course" ? "content" : category })}
+              href={href({ chapter: c.slug, cat: optCat === "course" ? "content" : optCat })}
               onClick={() => {
                 // A chapter has categories — bring the rail back (drawers
                 // still close on narrow screens).
+                setOptSlug(c.slug);
+                setOptCat((prev) => (prev === "course" ? "content" : prev));
                 if (!isNarrow()) setShowRail(true);
                 closeDrawers();
               }}
               className={`mt-0.5 block truncate rounded-md px-2 py-1.5 text-sm ${
-                c.slug === activeSlug && category !== "course"
+                c.slug === optSlug && optCat !== "course"
                   ? "bg-elevated text-ink"
                   : "text-muted hover:bg-elevated hover:text-ink"
               }`}
@@ -317,15 +345,18 @@ export function StudioShell({
         {showRail && (
         <nav className="panel min-h-0 w-52 shrink-0 overflow-y-auto p-2 max-md:absolute max-md:inset-y-0 max-md:left-0 max-md:z-20 max-md:w-64 max-md:shadow-xl">
           <div className="px-2 pb-1 text-xs text-faint">
-            {category === "course" ? "Course" : activeSlug ? `${forms.Singular}` : ""}
+            {optCat === "course" ? "Course" : optSlug ? `${forms.Singular}` : ""}
           </div>
           {CATEGORY_ORDER.map((cat) => (
             <Link
               key={cat}
               href={href({ cat })}
-              onClick={closeDrawers}
+              onClick={() => {
+                setOptCat(cat);
+                closeDrawers();
+              }}
               className={`mt-0.5 block rounded-md px-2 py-1.5 text-sm ${
-                cat === category
+                cat === optCat
                   ? "bg-accent text-[var(--accent-ink)]"
                   : "text-muted hover:bg-elevated hover:text-ink"
               }`}
