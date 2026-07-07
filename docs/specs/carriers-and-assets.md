@@ -393,7 +393,7 @@ Constraints (so the skills can't drift): each skill's per-kind facts are
 the skill" must mean exactly "passes `validate()`". New kinds get a skill the
 same way they get a registry line — additive. Skills are portable prose +
 examples (not Alembic-only), so the orz-stack tools share them. Tracked as a
-side task on the [editor overhaul](workspace-editor-overhaul.md) path; build
+side task on the [workspace framework](workspace-framework.md) path; build
 alongside the editor-module extraction (Phase 2), since modules + skills are the
 two halves of cross-platform interop.
 
@@ -477,4 +477,4 @@ removes the orz gap #5 blocker — the carrier foundation is strictly more usefu
   should eventually have a considered list/preview presentation and editing
   affordance (thumbnail, in-place edit, replace-from-file, where it appears).
   This is the UI counterpart to the kind registry — a future pass keyed off
-  `CarrierKind`, governed by [editor-layout.md](editor-layout.md).
+  `CarrierKind`, governed by [workspace-framework.md](workspace-framework.md).

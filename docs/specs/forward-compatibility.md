@@ -37,7 +37,7 @@ must not create parallel mechanisms that fight the durable core.
    **typed data**, never pre-rendered HTML baked into a durable package.
 5. **Thin, disposable feature UI.** Minimal and in its own component,
    entitlement-gated, easy to delete; never woven into shared chrome. Placement
-   follows [editor-layout.md](editor-layout.md). Don't polish UI now (it's being
+   follows [workspace-framework.md](workspace-framework.md). Don't polish UI now (it's being
    redone) — but don't entrench it either.
 6. **Forward-compatible data only:** additive, versioned, append-only; provenance
    multi-author from day one (a goal.md commitment); migrations forward-only;

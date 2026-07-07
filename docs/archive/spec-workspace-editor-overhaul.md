@@ -1,5 +1,15 @@
 # Workspace Editor Overhaul (v2) — design spec
 
+> ⚠️ **SUPERSEDED (2026-07-04) — archived.** This bespoke-editor design was
+> replaced by the **self-contained-editing** direction: the workspace *hosts* the
+> in-file editors of `.md.html` / `.slides.html` / `.paged.html` and builds no
+> editor of its own. See
+> [self-contained-editing.md](../specs/self-contained-editing.md) and
+> [workspace-framework.md](../specs/workspace-framework.md). Kept only for the
+> guardrail history — the "implemented / authoritative" status below refers to the
+> durable guardrails **G1–G8** (all landed + tested), **not** to the bespoke
+> editor surface, which was not shipped.
+
 **Status:** **implemented** (Phases 0–4), conflict-audited; statically verified
 (typecheck/test/build/AI-seam-guard). Authoritative for the post-v1.0 editor
 overhaul. All eight guardrails (G1–G8) landed + tested; Phase 1 AI
