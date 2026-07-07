@@ -199,9 +199,21 @@ export function StudioShell({
           </button>
           <button
             onClick={toggleRail}
-            className={`btn btn-ghost btn-sm ${showRail ? "text-ink" : "text-muted"}`}
-            title={`${showRail ? "Hide" : "Show"} categories`}
-            aria-pressed={showRail}
+            disabled={category === "course"}
+            className={`btn btn-ghost btn-sm ${
+              category === "course"
+                ? "cursor-not-allowed text-faint opacity-50"
+                : showRail
+                  ? "text-ink"
+                  : "text-muted"
+            }`}
+            title={
+              category === "course"
+                ? `Categories apply to a ${forms.singular} — pick one first`
+                : `${showRail ? "Hide" : "Show"} categories`
+            }
+            aria-pressed={category === "course" ? undefined : showRail}
+            aria-disabled={category === "course"}
           >
             ▤ Categories
           </button>
