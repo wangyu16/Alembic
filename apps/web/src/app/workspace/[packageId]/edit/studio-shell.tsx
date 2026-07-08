@@ -570,9 +570,26 @@ function CourseHome({
               aria-pressed={mode === "preview"}
               className={`rounded-md px-2 py-1 ${mode === "preview" ? "bg-elevated text-ink" : "text-muted hover:text-ink"}`}
             >
-              Rendered
+              Preview
             </button>
           </div>
+          <AIAssistant
+            packageId={packageId}
+            current={md}
+            onApply={(p) => {
+              setMd(p);
+              setDirty(true);
+              setMode("source");
+            }}
+            extraActions={[
+              {
+                label: "Generate concept map",
+                disabled: true,
+                title:
+                  "Available once every chapter has a concept map, or you provide a draft (Word, PDF…)",
+              },
+            ]}
+          />
           <button
             onClick={() => run(() => generateCourseDescriptionAction(packageId), "Generated with AI.")}
             disabled={pending}
@@ -867,7 +884,7 @@ function ContentEditor({
               {allCollapsed ? "Expand all" : "Collapse all"}
             </button>
           )}
-          <AskAI packageId={packageId} path={path} repo="public" current={assembled} />
+          <AIAssistant packageId={packageId} path={path} repo="public" current={assembled} />
           <a
             href={`/workspace/${packageId}/export/study-guide?chapter=${path.replace(/^.*\//, "").replace(/\.md$/, "")}`}
             className="btn btn-ghost btn-sm"
@@ -1013,7 +1030,7 @@ function FileEditor({
               Preview
             </button>
           </div>
-          <AskAI packageId={packageId} path={file.path} repo={file.repo} current={text} />
+          <AIAssistant packageId={packageId} path={file.path} repo={file.repo} current={text} />
           <button onClick={save} disabled={pending || !dirty} className="btn btn-primary btn-sm">
             {pending ? "Saving…" : "Save"}
           </button>
@@ -1043,97 +1060,232 @@ function FileEditor({
 }
 
 /* ── In-editor AI: propose → diff (before/after) → approve ───────────────── */
-function AskAI({
+/* AI assistant: an eye-catching icon that opens a context menu of the allowed
+ * actions for the current page. The universal aids (spelling/grammar, language,
+ * accessibility) are preset instructions run through the same propose → diff →
+ * apply flow as a custom instruction. Hosts pass page-specific `extraActions`
+ * (e.g. the course description's gated "Generate concept map"). By default an
+ * approved suggestion saves directly (saveFileAction); pass `onApply` to route
+ * it into the host's own buffer/save instead (e.g. the derive-aware course
+ * description save). */
+type AIExtraAction = {
+  label: string;
+  instruction?: string;
+  disabled?: boolean;
+  title?: string;
+};
+
+const AI_PRESETS: { key: string; label: string; instruction: string }[] = [
+  {
+    key: "grammar",
+    label: "Check spelling & grammar",
+    instruction:
+      "Correct spelling, grammar, and punctuation only. Do not change meaning, wording style, structure, or formatting beyond what is required for correctness. Preserve all Markdown, block-id attributes, links, and math verbatim.",
+  },
+  {
+    key: "language",
+    label: "Improve language",
+    instruction:
+      "Improve clarity, flow, and readability while preserving the meaning and the author's voice. Do not add or remove content. Preserve all Markdown, block-id attributes, links, and math.",
+  },
+  {
+    key: "accessibility",
+    label: "Check accessibility",
+    instruction:
+      "Improve accessibility only: ensure every image has meaningful alt text, headings form a logical order without skipped levels, links have descriptive text (never 'click here'), and tables have header rows. Preserve meaning and all Markdown, block-id attributes, and math. Make accessibility-related changes only.",
+  },
+];
+
+function AIAssistant({
   packageId,
+  current,
   path,
   repo,
-  current,
+  onApply,
+  extraActions,
 }: {
   packageId: string;
-  path: string;
-  repo: "public" | "private";
   current: string;
+  path?: string;
+  repo?: "public" | "private";
+  onApply?: (proposed: string) => void;
+  extraActions?: AIExtraAction[];
 }) {
   const router = useRouter();
-  const [open, setOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [panelOpen, setPanelOpen] = useState(false);
+  const [customMode, setCustomMode] = useState(false);
   const [instruction, setInstruction] = useState("");
   const [proposed, setProposed] = useState<string | null>(null);
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
-  const ask = () => {
+  const reset = () => {
+    setPanelOpen(false);
+    setMenuOpen(false);
+    setCustomMode(false);
+    setProposed(null);
+    setInstruction("");
     setError(null);
+  };
+
+  const runInstruction = (text: string) => {
+    if (!text.trim()) return;
+    setMenuOpen(false);
+    setPanelOpen(true);
+    setError(null);
+    setProposed(null);
     start(async () => {
-      const r = await proposeEditAction(packageId, current, instruction);
+      const r = await proposeEditAction(packageId, current, text);
       if (!r.ok) setError(r.error ?? "Couldn't get a suggestion.");
       else setProposed(r.proposed ?? "");
     });
   };
+
   const apply = () => {
     if (proposed == null) return;
+    if (onApply) {
+      onApply(proposed);
+      reset();
+      return;
+    }
     setError(null);
     start(async () => {
-      const r = await saveFileAction(packageId, path, repo, proposed);
+      const r = await saveFileAction(packageId, path!, repo!, proposed);
       if (!r.ok) setError(r.error ?? "Couldn't apply.");
       else {
-        setProposed(null);
-        setInstruction("");
-        setOpen(false);
+        reset();
         router.refresh();
       }
     });
   };
 
-  if (!open) {
-    return (
-      <button onClick={() => setOpen(true)} className="btn btn-ghost btn-sm" title="Ask AI to edit this file">
-        ✦ Ask AI
-      </button>
-    );
-  }
-
   return (
-    <div className="panel flex flex-col gap-2 p-3">
-      <div className="flex items-center gap-2">
-        <input
-          value={instruction}
-          onChange={(e) => setInstruction(e.target.value)}
-          placeholder="e.g. make this section more concise; fix the terminology"
-          className="field flex-1 text-sm"
-          onKeyDown={(e) => e.key === "Enter" && !pending && ask()}
+    <div className="relative inline-block">
+      <button
+        onClick={() => (panelOpen ? reset() : setMenuOpen((v) => !v))}
+        className="inline-flex items-center gap-1 rounded-md border border-[var(--accent)] px-2 py-1 text-xs font-medium text-[var(--accent)] transition-colors hover:bg-[var(--accent-soft)]"
+        title="AI assistant"
+        aria-haspopup="menu"
+        aria-expanded={menuOpen || panelOpen}
+      >
+        <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor" aria-hidden>
+          <path d="M12 2l1.6 4.9L18.5 8.5l-4.9 1.6L12 15l-1.6-4.9L5.5 8.5l4.9-1.6z" />
+          <path d="M18.5 13l.8 2.2L21.5 16l-2.2.8-.8 2.2-.8-2.2L15.5 16l2.2-.8z" />
+        </svg>
+        AI
+      </button>
+
+      {(menuOpen || panelOpen) && (
+        <button
+          type="button"
+          aria-label="Close AI assistant"
+          onClick={reset}
+          className="fixed inset-0 z-20 cursor-default"
         />
-        <button onClick={ask} disabled={pending || !instruction.trim()} className="btn btn-primary btn-sm">
-          {pending && proposed == null ? "Thinking…" : "Suggest"}
-        </button>
-        <button onClick={() => { setOpen(false); setProposed(null); }} className="btn btn-ghost btn-sm">
-          Close
-        </button>
-      </div>
-      {proposed != null && (
-        <>
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            <div className="flex flex-col gap-1">
-              <span className="text-xs text-faint">Before</span>
-              <textarea readOnly value={current} className="field h-48 w-full resize-none font-mono text-xs opacity-70" />
-            </div>
-            <div className="flex flex-col gap-1">
-              <span className="text-xs text-[var(--accent)]">After (AI — edit before applying)</span>
-              <textarea
-                value={proposed}
-                onChange={(e) => setProposed(e.target.value)}
-                className="field h-48 w-full resize-none font-mono text-xs"
-              />
-            </div>
-          </div>
-          <div className="flex items-center justify-end gap-2">
-            <button onClick={() => setProposed(null)} className="btn btn-ghost btn-sm">Discard</button>
-            <button onClick={apply} disabled={pending} className="btn btn-primary btn-sm">
-              {pending ? "Applying…" : "Apply"}
-            </button>
-          </div>
-        </>
       )}
-      {error && <p className="text-sm text-danger">{error}</p>}
+
+      {menuOpen && (
+        <div
+          role="menu"
+          className="absolute right-0 z-30 mt-1 w-64 rounded-lg border border-edge bg-[var(--surface)] p-1 shadow-xl"
+        >
+          {AI_PRESETS.map((p) => (
+            <button
+              key={p.key}
+              role="menuitem"
+              onClick={() => runInstruction(p.instruction)}
+              className="block w-full rounded-md px-2 py-1.5 text-left text-sm text-ink hover:bg-elevated"
+            >
+              {p.label}
+            </button>
+          ))}
+          {extraActions?.map((a) => (
+            <button
+              key={a.label}
+              role="menuitem"
+              disabled={a.disabled}
+              title={a.title}
+              onClick={() => a.instruction && runInstruction(a.instruction)}
+              className={`block w-full rounded-md px-2 py-1.5 text-left text-sm ${
+                a.disabled
+                  ? "cursor-not-allowed text-faint"
+                  : "text-ink hover:bg-elevated"
+              }`}
+            >
+              {a.label}
+              {a.disabled ? " (coming soon)" : ""}
+            </button>
+          ))}
+          <div className="my-1 border-t border-edge" />
+          <button
+            role="menuitem"
+            onClick={() => {
+              setMenuOpen(false);
+              setPanelOpen(true);
+              setCustomMode(true);
+            }}
+            className="block w-full rounded-md px-2 py-1.5 text-left text-sm text-ink hover:bg-elevated"
+          >
+            Custom instruction…
+          </button>
+        </div>
+      )}
+
+      {panelOpen && (
+        <div className="panel absolute right-0 z-30 mt-1 flex w-[36rem] max-w-[90vw] flex-col gap-2 p-3 shadow-xl">
+          {customMode && (
+            <div className="flex items-center gap-2">
+              <input
+                value={instruction}
+                onChange={(e) => setInstruction(e.target.value)}
+                placeholder="e.g. make this section more concise; fix the terminology"
+                className="field flex-1 text-sm"
+                autoFocus
+                onKeyDown={(e) => e.key === "Enter" && !pending && runInstruction(instruction)}
+              />
+              <button
+                onClick={() => runInstruction(instruction)}
+                disabled={pending || !instruction.trim()}
+                className="btn btn-primary btn-sm"
+              >
+                {pending && proposed == null ? "Thinking…" : "Suggest"}
+              </button>
+            </div>
+          )}
+          {proposed == null && !error && (
+            <p className="text-sm text-muted">{pending ? "Thinking…" : "Choose an action…"}</p>
+          )}
+          {proposed != null && (
+            <>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <div className="flex flex-col gap-1">
+                  <span className="text-xs text-faint">Before</span>
+                  <textarea readOnly value={current} className="field h-48 w-full resize-none font-mono text-xs opacity-70" />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <span className="text-xs text-[var(--accent)]">After (AI — edit before applying)</span>
+                  <textarea
+                    value={proposed}
+                    onChange={(e) => setProposed(e.target.value)}
+                    className="field h-48 w-full resize-none font-mono text-xs"
+                  />
+                </div>
+              </div>
+              <div className="flex items-center justify-end gap-2">
+                <button onClick={() => setProposed(null)} className="btn btn-ghost btn-sm">Discard</button>
+                <button onClick={apply} disabled={pending} className="btn btn-primary btn-sm">
+                  {pending ? "Applying…" : onApply ? "Use this" : "Apply"}
+                </button>
+              </div>
+            </>
+          )}
+          <div className="flex justify-end">
+            <button onClick={reset} className="btn btn-ghost btn-sm">Close</button>
+          </div>
+          {error && <p className="text-sm text-danger">{error}</p>}
+        </div>
+      )}
     </div>
   );
 }
