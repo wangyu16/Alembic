@@ -1421,11 +1421,17 @@ function useSelectionAI({
           />
         )}
         <div
-          className="fixed z-40"
-          style={{
-            top: Math.min(anchor.y + 10, (typeof window !== "undefined" ? window.innerHeight : 800) - 240),
-            left: Math.max(8, Math.min(anchor.x, (typeof window !== "undefined" ? window.innerWidth : 1200) - 340)),
-          }}
+          className="fixed z-40 overflow-y-auto"
+          style={(() => {
+            const vh = typeof window !== "undefined" ? window.innerHeight : 800;
+            const vw = typeof window !== "undefined" ? window.innerWidth : 1200;
+            const left = Math.max(8, Math.min(anchor.x, vw - 340));
+            // Near the bottom of the viewport, anchor the popover ABOVE the
+            // selection (grow upward) so its menu/panel never runs off-screen.
+            return anchor.y > vh * 0.6
+              ? { left, bottom: vh - anchor.y + 10, maxHeight: anchor.y - 20 }
+              : { left, top: anchor.y + 10, maxHeight: vh - anchor.y - 20 };
+          })()}
         >
           {!engaged && (
             <button
