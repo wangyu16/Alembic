@@ -981,7 +981,7 @@ function FileEditor({
         const res = await fetch("/api/preview", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ source: text, heading: label }),
+          body: JSON.stringify({ source: text, plain: true }),
         });
         const data = (await res.json()) as { html?: string };
         setPreviewHtml(data.html ?? "");
