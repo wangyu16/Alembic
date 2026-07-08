@@ -1,10 +1,10 @@
 # `orz-host-ai@1` — an AI bridge for the self-contained editors
 
-**Status:** host + orz-mdhtml file half **implemented + published**
-(`orz-mdhtml@0.6.0` / `orz-mdhtml-browser@0.6.0`, 2026-07-08); Alembic's
-`generators` dep bumped to `^0.6.0`. **Pending: redeploy the Fly worker** (it
-generates the `.md.html` editing surface) to go live. Slides/paged file half
-deferred.
+**Status:** **LIVE** end-to-end for the study guide (2026-07-08). Host half +
+orz-mdhtml file half implemented, published (`orz-mdhtml@0.6.0` /
+`orz-mdhtml-browser@0.6.0`), Alembic `generators` dep bumped to `^0.6.0`, and the
+**Fly worker redeployed** (health OK) so newly generated `.md.html` editing
+surfaces embed the assistant. Slides/paged file half deferred.
 **Mirrors:** [`orz-host-save@1`](../../packages/editor-kit/src/host-save-client.ts)
 (the save bridge). **Related:** [ai-operations.md](ai-operations.md).
 
@@ -91,11 +91,10 @@ modules (Ketcher/Plotly) can call `requestAI` directly and skip the transport.
   `runAIOperation` → `proposeEditAction` (registry op + `PLATFORM_SCOPE`).
 - ✅ **orz-mdhtml file half** — `assets/app.js` in-file assistant + `PROTOCOL.md`
   (`orz-host-ai@1`); verified valid + embedded in generated `.md.html`.
-- 🔄 **Release:** ✅ published `orz-mdhtml@0.6.0` + `orz-mdhtml-browser@0.6.0`;
-  ✅ bumped Alembic's `orz-mdhtml` dep to `^0.6.0` (typecheck + generators tests +
-  web build green). ⬜ **redeploy the Fly worker** (owner) — it generates the
-  `.md.html` editing surface; until then the worker still embeds the old app.js.
-  Then the bridge lights up end-to-end.
+- ✅ **Release (done):** published `orz-mdhtml@0.6.0` + `orz-mdhtml-browser@0.6.0`;
+  bumped Alembic's `orz-mdhtml` dep to `^0.6.0` (typecheck + generators tests +
+  web build green); **redeployed the Fly worker** (health OK). The bridge is live
+  for the study-guide `.md.html` editor.
 - ⬜ **orz-slides / orz-paged file half** — deferred (Alembic treats slides/paged
   as derived views today; wire when they become independently authored).
 
