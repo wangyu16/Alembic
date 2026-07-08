@@ -1,6 +1,8 @@
 # `orz-host-ai@1` — an AI bridge for the self-contained editors
 
-**Status:** design (owner direction, 2026-07-08); not yet implemented.
+**Status:** host half + orz-mdhtml file half **implemented** (2026-07-08);
+**pending the owner-triggered release** (publish orz-mdhtml → bump Alembic dep →
+redeploy the worker) before it's live. Slides/paged file half deferred.
 **Mirrors:** [`orz-host-save@1`](../../packages/editor-kit/src/host-save-client.ts)
 (the save bridge). **Related:** [ai-operations.md](ai-operations.md).
 
@@ -78,7 +80,23 @@ for hosted (iframe) modules**: `createHostAIClient` (host half) receives
 `orz-host-ai-result` — the sibling of `createHostSaveClient`. Same-origin
 modules (Ketcher/Plotly) can call `requestAI` directly and skip the transport.
 
-## Implementation plan (cross-repo — needs a coordinated release)
+## Implementation status
+
+- ✅ **editor-kit** — `createHostAIClient` + 8 unit tests; `EditorContext` gains
+  `aiOperations` + `runAIOperation`.
+- ✅ **Alembic host** — `hosted-carrier` builds the AI client; the hosted
+  study-guide editor advertises the registry's selection-capable ops and routes
+  `runAIOperation` → `proposeEditAction` (registry op + `PLATFORM_SCOPE`).
+- ✅ **orz-mdhtml file half** — `assets/app.js` in-file assistant + `PROTOCOL.md`
+  (`orz-host-ai@1`); verified valid + embedded in generated `.md.html`.
+- ⬜ **Release (owner):** publish `orz-mdhtml` + `orz-mdhtml-browser` (needs the
+  npm token) → bump Alembic's `orz-mdhtml` dep in `packages/generators` →
+  redeploy the Fly worker (it generates the `.md.html` editing surface). Only
+  then does the bridge light up end-to-end.
+- ⬜ **orz-slides / orz-paged file half** — deferred (Alembic treats slides/paged
+  as derived views today; wire when they become independently authored).
+
+## Implementation plan (original — for reference)
 
 1. **editor-kit** — `createHostAIClient` (mirror of `createHostSaveClient`):
    hello advertises `ai.operations`; handles `orz-host-ai-request` → host
