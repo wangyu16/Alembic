@@ -1107,17 +1107,22 @@ function AIAssistant({
     setError(null);
   };
 
-  const runInstruction = (text: string) => {
-    if (!text.trim()) return;
+  // Registry ops send their id (the server resolves the authoritative,
+  // skill-compiled rules + model routing); a custom ask sends free text. Both
+  // are composed with PLATFORM_SCOPE server-side.
+  const run = (request: { operationId?: string; instruction?: string }) => {
     setMenuOpen(false);
     setPanelOpen(true);
     setError(null);
     setProposed(null);
     start(async () => {
-      const r = await proposeEditAction(packageId, current, text);
+      const r = await proposeEditAction(packageId, current, request);
       if (!r.ok) setError(r.error ?? "Couldn't get a suggestion.");
       else setProposed(r.proposed ?? "");
     });
+  };
+  const runCustom = () => {
+    if (instruction.trim()) run({ instruction });
   };
 
   const apply = () => {
@@ -1179,8 +1184,8 @@ function AIAssistant({
                 disabled={!available}
                 title={reason}
                 onClick={() =>
-                  available && op.mode === "edit" && op.instruction
-                    ? runInstruction(op.instruction)
+                  available && op.mode === "edit"
+                    ? run({ operationId: op.id })
                     : undefined
                 }
                 className={`block w-full rounded-md px-2 py-1.5 text-left text-sm ${
@@ -1217,10 +1222,10 @@ function AIAssistant({
                 placeholder="e.g. make this section more concise; fix the terminology"
                 className="field flex-1 text-sm"
                 autoFocus
-                onKeyDown={(e) => e.key === "Enter" && !pending && runInstruction(instruction)}
+                onKeyDown={(e) => e.key === "Enter" && !pending && runCustom()}
               />
               <button
-                onClick={() => runInstruction(instruction)}
+                onClick={runCustom}
                 disabled={pending || !instruction.trim()}
                 className="btn btn-primary btn-sm"
               >

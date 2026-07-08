@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { applyEditorEdit } from "@alembic/package-ops";
 import type { RepoKind } from "@alembic/package-contract";
 import { editFile } from "@alembic/ai-assist";
+import { operationById, PLATFORM_SCOPE } from "@alembic/ai-operations";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
 import { syncFilesToGitHub, syncPrivateFilesToGitHub } from "@/lib/github";
@@ -59,22 +60,43 @@ export interface ProposeEditResult {
 }
 
 /**
- * In-editor AI: propose a revision of the current file per an instruction. The
- * host's `requestAI` — runs through the governed provider (entitlement + budget
- * + logging + the AI seam). Returns the full proposed content for the client to
- * diff and the educator to approve (then `saveFileAction` applies it as a
- * validated, reviewed edit). Does not write anything itself.
+ * In-editor AI: propose a revision of the current file. Either a registry
+ * `operationId` (the server resolves its authoritative, skill-compiled
+ * instruction + model routing) or a free-text `instruction` (custom ask). Both
+ * are composed with the platform focus guardrail (`PLATFORM_SCOPE`) so the model
+ * stays task-scoped to course-material building, then run through the governed
+ * provider (entitlement + budget + logging + the AI seam). Returns the full
+ * proposed content for the client to diff and the educator to approve (then
+ * `saveFileAction` applies it as a validated, reviewed edit). Writes nothing.
  */
 export async function proposeEditAction(
   packageId: string,
   currentSource: string,
-  instruction: string,
+  request: { operationId?: string; instruction?: string },
 ): Promise<ProposeEditResult> {
   const { supabase, user } = await requireUser();
+
+  // Resolve the operation: a registry op supplies authoritative rules + routing;
+  // otherwise fall back to the educator's free-text instruction (custom).
+  let instruction = request.instruction ?? "";
+  let routingKind = "editor-ai-edit";
+  if (request.operationId) {
+    const op = operationById(request.operationId);
+    if (!op || op.mode !== "edit" || !op.instruction) {
+      return { ok: false, error: "Unknown AI operation." };
+    }
+    instruction = op.instruction;
+    routingKind = op.routingKind;
+  }
   if (!instruction.trim()) return { ok: false, error: "Describe the edit you want." };
+
   try {
-    const provider = governedProvider(supabase, { userId: user.id, packageId, kind: "editor-ai-edit" });
-    const { proposed } = await editFile(provider, { source: currentSource, instruction });
+    const provider = governedProvider(supabase, { userId: user.id, packageId, kind: routingKind });
+    const { proposed } = await editFile(provider, {
+      source: currentSource,
+      instruction,
+      scope: PLATFORM_SCOPE,
+    });
     return { ok: true, proposed };
   } catch (e) {
     if (e instanceof RateLimitError || e instanceof BudgetExceededError) {

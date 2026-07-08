@@ -62,15 +62,33 @@ catalogs it bridges.
   page). Gated + `planned` until its execution + change-tier routing land.
 - **`analyze`** — report only, no write (e.g. a future accessibility audit).
 
-### Rules live in the skill (skill-primary)
+### Rules: skill-primary + platform supplement
 
-Each operation's behaviour is specified by a **skill** under
-`skills/ai-operations/<id>/SKILL.md` — portable prose + examples, the one place
-the rules are edited, and the same rules an agent uses on any platform. For
-`edit` ops the registry also carries `instruction`: the **compiled** (distilled)
-form of the skill that the runtime propose flow sends. The skill is
-authoritative; keep `instruction` and the runtime system prompt
-(`ai-assist/prompts.ts`) in sync with it.
+An operation's rules come in two layers:
+
+1. **Skill (authoritative, portable).** `skills/ai-operations/<id>/SKILL.md` —
+   prose + examples, the one place the behaviour is edited, and the same rules an
+   agent applies on any platform (cross-platform reusable). For `edit` ops the
+   registry carries `instruction`: the **compiled** (distilled) form of the skill
+   the runtime sends. The skill is authoritative; keep `instruction` and the
+   runtime system prompt (`ai-assist/prompts.ts`) in sync with it.
+
+2. **Platform supplement (focus).** `PLATFORM_SCOPE` (`platform.ts`) is composed
+   ahead of every operation's system framing at runtime. It keeps the model
+   task-scoped: **Alembic's AI is invoked for well-defined course-material
+   building operations on provided content — not an open-ended chatbot or
+   tutor.** Do exactly the requested operation, nothing else; no chat, no
+   meta-commentary; stay within the course material; return only the result.
+
+   *Open questions about the course content* are deliberately out of scope for
+   these operations. They may become their own operation later (an
+   `analyze`/answer mode); decide then.
+
+Runtime system prompt = `PLATFORM_SCOPE` + the operation's own framing; the
+operation's specific rules arrive as its `instruction`. Composition happens in
+`proposeEditAction` (edit ops today): it resolves the op by id, uses its
+authoritative server-side `instruction` + `routingKind`, and passes
+`PLATFORM_SCOPE` to `editFile`.
 
 ### Page scope
 
@@ -82,10 +100,11 @@ durable package so the agent/worker offer the same operations the menu does.
 
 The workspace AI-assistant menu is a **thin client**: it renders
 `operationsForCategory(category)`, disables `planned`/gated ops, and for an
-available `edit` op sends its `instruction` through the existing
-`proposeEditAction` → diff → apply path (the one validated write path). Access,
-rate limit, token budget, model routing, and `ai_invocations` logging are all
-enforced once, at `governedProvider` — unchanged.
+available `edit` op sends its **id** through `proposeEditAction` → diff → apply
+(the one validated write path). The server resolves the op's authoritative,
+skill-compiled `instruction` + `routingKind`, composes `PLATFORM_SCOPE`, and runs
+it. Access, rate limit, token budget, model routing, and `ai_invocations` logging
+are all enforced once, at `governedProvider` — unchanged.
 
 ## Adding an operation
 
