@@ -1,9 +1,5 @@
 import "server-only";
-import {
-  buildMdHtml,
-  buildSlidesHtml,
-  type RenderTheme,
-} from "@alembic/renderer";
+import { buildMdHtml, buildSlidesHtml, themeScheme } from "@alembic/renderer";
 
 /**
  * Web → worker seam for generating self-contained files. The upstream
@@ -23,18 +19,20 @@ export interface GenerateFileInput {
   /** orz-markdown source (deck source for slides). */
   markdown: string;
   title?: string;
-  /** Alembic's theme abstraction; mapped to an orz theme id for the worker. */
-  theme?: RenderTheme;
+  /** The course's theme — an orz theme id (`light-neat-3`, `dark-elegant-1`, …),
+   *  or a legacy `"dark"`/`"light"` that's mapped to a default. */
+  theme?: string;
   /** Framework delivery: `inline` (default, offline copy) or `cdn` (small file
    *  that loads the framework at view time — for repo-committed views). */
   delivery?: "inline" | "cdn";
 }
 
-/** Map Alembic's RenderTheme to an orz theme id (md; other kinds use defaults). */
-function orzThemeId(theme: RenderTheme | undefined): string | undefined {
+/** Resolve the theme to an orz theme id: pass orz ids through; map legacy dark/light. */
+function orzThemeId(theme: string | undefined): string | undefined {
+  if (!theme) return undefined;
   if (theme === "dark") return "dark-elegant-1";
   if (theme === "light") return "light-academic-1";
-  return undefined;
+  return theme; // already an orz theme id
 }
 
 /** True when a worker is configured — callers can prefer the live path. */
@@ -69,7 +67,13 @@ async function callWorker(input: GenerateFileInput): Promise<string> {
 /** In-process fallback (rendered docs, no in-file editor) for md/slides. */
 function fallback(input: GenerateFileInput): string {
   if (input.kind === "md") {
-    return buildMdHtml({ title: input.title ?? "Untitled", markdown: input.markdown, theme: input.theme });
+    // Fallback build is Alembic's own renderer (dark/light), not the orz builder,
+    // so it takes a scheme derived from the theme id (not an orz id).
+    return buildMdHtml({
+      title: input.title ?? "Untitled",
+      markdown: input.markdown,
+      theme: input.theme ? themeScheme(input.theme) : undefined,
+    });
   }
   if (input.kind === "slides") {
     return buildSlidesHtml({ title: input.title ?? "Slides", source: input.markdown });

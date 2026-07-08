@@ -78,11 +78,14 @@ describe("parseManifest", () => {
     );
   });
 
-  it("parses the course theme (dark/light) and defaults to absent", () => {
+  it("parses the course theme (an orz theme id string) and defaults to absent", () => {
     expect(parseManifest(valid).theme).toBeUndefined();
+    // Any orz theme id (or a legacy dark/light) is accepted; captured from the
+    // study guide's own theme picker.
     expect(parseManifest({ ...valid, theme: "light" }).theme).toBe("light");
-    expect(parseManifest({ ...valid, theme: "dark" }).theme).toBe("dark");
-    expect(() => parseManifest({ ...valid, theme: "neon" })).toThrow();
+    expect(parseManifest({ ...valid, theme: "dark-elegant-1" }).theme).toBe("dark-elegant-1");
+    expect(parseManifest({ ...valid, theme: "light-neat-3" }).theme).toBe("light-neat-3");
+    expect(() => parseManifest({ ...valid, theme: 42 })).toThrow(); // must be a string
   });
 });
 

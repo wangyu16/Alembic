@@ -23,6 +23,9 @@ export interface HostSavePayload {
   /** The full serialized self-reproducing document — the bytes a file save
    *  would write. This is what the host persists as the file's content. */
   rendered: string;
+  /** The file's current theme id, when the runtime reports one (orz-host-save
+   *  v1 additive field). Hosts may persist it as a course-wide default. */
+  theme?: string;
 }
 
 export interface HostSaveClientOptions {
@@ -120,12 +123,13 @@ export function createHostSaveClient(opts: HostSaveClientOptions): HostSaveClien
         if (!ready) return; // saves are only valid after the handshake
         const source = typeof saveMsg["source"] === "string" ? saveMsg["source"] : "";
         const rendered = typeof saveMsg["html"] === "string" ? saveMsg["html"] : "";
+        const theme = typeof saveMsg["theme"] === "string" ? saveMsg["theme"] : undefined;
         if (!rendered) {
           opts.post({ type: "orz-host-saved", ok: false, error: "The save arrived empty." });
           return;
         }
         void opts
-          .save({ source, rendered })
+          .save({ source, rendered, theme })
           .then((r) =>
             opts.post(
               r.ok

@@ -11,6 +11,16 @@ export const ORZ_LIGHT_ACADEMIC_CSS = "@import url('https://fonts.googleapis.com
 
 export type RenderTheme = "dark" | "light";
 
+/**
+ * Derive a dark/light scheme from an orz theme id (or a legacy "dark"/"light"
+ * value). orz theme ids are prefixed by scheme (e.g. `dark-elegant-1`,
+ * `light-neat-3`). Used to theme the Alembic-rendered course-home hub to match
+ * the course's chosen study-guide theme.
+ */
+export function themeScheme(theme: string | undefined): RenderTheme {
+  return theme && theme.toLowerCase().startsWith("dark") ? "dark" : "light";
+}
+
 /** The vendored orz-markdown CSS for a render theme (dark-elegant / light-academic). */
 export function themeCss(theme: RenderTheme = "dark"): string {
   return theme === "light" ? ORZ_LIGHT_ACADEMIC_CSS : ORZ_DARK_ELEGANT_CSS;

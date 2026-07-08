@@ -65,7 +65,7 @@ export interface EditorContext {
    *  (`orz-host-saved`); on `ok: false` the file keeps the document dirty.
    *  When absent, hosted-carrier modules fall back to `onChange` and
    *  acknowledge ok. */
-  hostSave?(payload: { source: string; rendered: string }): Promise<{ ok: boolean; error?: string }>;
+  hostSave?(payload: { source: string; rendered: string; theme?: string }): Promise<{ ok: boolean; error?: string }>;
   /** The file's unsaved-changes signal (`orz-host-dirty`), so the host can
    *  arm its own unsaved guard without owning the editing surface. */
   onDirty?(dirty: boolean): void;

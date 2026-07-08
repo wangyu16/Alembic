@@ -12,6 +12,7 @@ import {
 import {
   buildCourseSite,
   slidesSourceFromBlocks,
+  themeScheme,
   type CourseChapter,
   type CoursePractice,
   type SiteFile,
@@ -83,8 +84,13 @@ export async function publishSiteAction(
 
   try {
     // One theme per course (manifest), so every view is consistent; fall back
-    // to the editor's cookie only when the course theme is unset.
-    const theme = record!.manifest.theme ?? (await getRenderTheme());
+    // to the editor's cookie only when the course theme is unset. `manifest.theme`
+    // is an orz theme id (used verbatim for the chapter .md.html files); the
+    // Alembic-rendered course-home hub takes a derived dark/light scheme.
+    const cookie = await getRenderTheme();
+    const orzTheme = record!.manifest.theme ?? undefined;
+    const mdTheme = orzTheme ?? cookie;
+    const hubScheme = orzTheme ? themeScheme(orzTheme) : cookie;
 
     // Owner decision: the student-site VIEWS are the self-contained files
     // themselves, delivered `cdn` (small committed files that pull the framework
@@ -100,7 +106,7 @@ export async function publishSiteAction(
       const markdown = serializeStudyGuide(guide.preamble, guide.blocks);
       const viewHref = `chapters/${ch.slug}.md.html`;
       try {
-        const html = await generateSelfContainedFile({ kind: "md", markdown, title: ch.title, theme, delivery: "cdn" });
+        const html = await generateSelfContainedFile({ kind: "md", markdown, title: ch.title, theme: mdTheme, delivery: "cdn" });
         pageFiles.push({ path: viewHref, content: html });
         const chapter: CourseChapter = { slug: ch.slug, title: ch.title, viewHref };
 
@@ -139,7 +145,7 @@ export async function publishSiteAction(
           kind: "md",
           markdown: loaded.content,
           title: a.record.title,
-          theme,
+          theme: mdTheme,
           delivery: "cdn",
         });
         pageFiles.push({ path: viewHref, content: html });
@@ -156,8 +162,8 @@ export async function publishSiteAction(
         chapters,
         practice,
         builtAt: new Date().toISOString(),
-        // The published site matches the educator's selected render theme.
-        theme,
+        // The published site's hub matches the course theme's dark/light scheme.
+        theme: hubScheme,
         // LRMI/schema.org LearningResource metadata for the published index (M30).
         meta: {
           name: record!.title,

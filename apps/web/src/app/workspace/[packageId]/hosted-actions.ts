@@ -8,6 +8,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
 import { generateEditableFile, generateSelfContainedFile, workerConfigured } from "@/lib/worker-client";
 import { saveStudyGuideAction } from "./actions";
+import { setCourseThemeAction } from "./metadata-actions";
 
 /**
  * E3 — hosted study-guide editing. The chapter's committed source of record
@@ -49,9 +50,12 @@ export async function generateChapterHtmlAction(
   if (!workerConfigured()) return { ok: true, editable: false };
   try {
     const store = new SupabaseSandboxStore(supabase);
+    const record = await store.getPackage(packageId);
     const doc = await loadStudyGuide(store, packageId, path);
     const markdown = serializeStudyGuide(doc.preamble, doc.blocks);
-    const html = await generateEditableFile({ kind: "md", markdown, title });
+    // Open the editing surface in the course theme, so the in-file theme picker
+    // reflects the current global choice (and a change persists on save).
+    const html = await generateEditableFile({ kind: "md", markdown, title, theme: record?.manifest.theme });
     return { ok: true, editable: true, html };
   } catch {
     // No reachable worker / generation error — degrade to the block editor.
@@ -120,7 +124,7 @@ export interface HostSaveResult {
 export async function hostSaveStudyGuideAction(
   packageId: string,
   path: string,
-  payload: { source: string; rendered: string },
+  payload: { source: string; rendered: string; theme?: string },
 ): Promise<HostSaveResult> {
   await requireUser();
   if (!payload.source.trim()) {
@@ -128,6 +132,16 @@ export async function hostSaveStudyGuideAction(
   }
   const { preamble, blocks } = parseStudyGuide(payload.source);
   const res = await saveStudyGuideAction(packageId, { path, preamble, blocks });
+  // The study guide carries the course theme: capture the educator's pick as the
+  // course-wide default (last write wins across chapters; no-op if unchanged).
+  // Best-effort — a theme-persist hiccup never fails the study-guide save.
+  if (res.ok && payload.theme) {
+    try {
+      await setCourseThemeAction(packageId, payload.theme);
+    } catch {
+      /* keep the save even if the theme couldn't persist */
+    }
+  }
   // A GitHub-sync warning (outside changes) still means the local save landed;
   // surface it as the ack message so the educator sees it in the file.
   return { ok: res.ok, error: res.error ?? res.warning };

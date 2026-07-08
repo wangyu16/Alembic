@@ -34,7 +34,7 @@ export function ModuleMount({
   onChange?: (next: { source: string; rendered: string }) => void;
   /** Persist a file-initiated save (orz-host-save); the result becomes the
    *  in-file ack. Route through the validated write path. */
-  hostSave?: (payload: { source: string; rendered: string }) => Promise<{ ok: boolean; error?: string }>;
+  hostSave?: (payload: { source: string; rendered: string; theme?: string }) => Promise<{ ok: boolean; error?: string }>;
   onDirty?: (dirty: boolean) => void;
   onReady?: (handle: EditorHandle) => void;
   /** AI operations advertised to the file's in-file assistant (orz-host-ai@1). */

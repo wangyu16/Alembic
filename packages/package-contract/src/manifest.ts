@@ -157,13 +157,14 @@ export const PackageManifestSchema = z.object({
    */
   unitTerm: UnitTermSchema.optional(),
   /**
-   * The course's viewing theme — ONE theme for the whole course, chosen by the
-   * instructor, so every generated view (chapters/slides/paged, student site)
-   * looks consistent (rather than the transient editor cookie or per-file
-   * settings). Optional + additive; absent = "dark". Values match the
-   * renderer's RenderTheme; readers must not import the renderer here.
+   * The course's viewing theme — ONE theme for the whole course, so every
+   * generated view (chapters/slides/paged, student site) looks consistent. It is
+   * an **orz theme id** (e.g. `light-neat-3`, `dark-elegant-1`, `light-academic-1`),
+   * captured from the study guide's own theme picker on save (last write wins
+   * across chapters). Legacy values `"dark"`/`"light"` are still accepted and map
+   * to defaults at generation. Optional + additive; absent = the editor default.
    */
-  theme: z.enum(["dark", "light"]).optional(),
+  theme: z.string().optional(),
   /** Last accessibility audit result. Optional and additive (absent = unknown). */
   accessibility: AccessibilityStatusSchema.optional(),
   /**

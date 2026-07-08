@@ -38,13 +38,14 @@ export interface DescriptionResult {
  */
 export async function setCourseThemeAction(
   packageId: string,
-  theme: "dark" | "light",
+  theme: string,
 ): Promise<{ ok: boolean; error?: string }> {
   const { supabase, user } = await requireUser();
   const store = new SupabaseSandboxStore(supabase);
   try {
     const record = await store.getPackage(packageId);
     if (!record) return { ok: false, error: "Package not found." };
+    if (record.manifest.theme === theme) return { ok: true }; // unchanged — no commit
     const manifest = parseManifest({ ...record.manifest, theme });
     await supabase.from("packages").update({ manifest }).eq("id", packageId);
     await syncFilesToGitHub(

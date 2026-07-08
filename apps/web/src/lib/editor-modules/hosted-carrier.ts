@@ -51,10 +51,10 @@ export function hostedCarrierModule(
 
       const client = createHostSaveClient({
         post: (m) => frame.contentWindow?.postMessage(m, "*"),
-        save: async ({ source, rendered }) => {
+        save: async ({ source, rendered, theme }) => {
           if (ctx.readOnly) return { ok: false, error: "This view is read-only." };
           const result = ctx.hostSave
-            ? await ctx.hostSave({ source, rendered })
+            ? await ctx.hostSave({ source, rendered, theme })
             : (ctx.onChange({ source, rendered }), { ok: true as const });
           if (result.ok) latest = rendered;
           return result;
