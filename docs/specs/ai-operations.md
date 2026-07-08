@@ -35,6 +35,7 @@ AIOperation {
   summary       // one-line help / tooltip
   appliesTo     // OperationCategory[] | "*"   → which pages offer it
   mode          // "edit" | "generate" | "analyze"
+  surface       // "assistant" (in the menu) | "panel" (its own UI, registered here)
   routingKind   // → ai-assist DEFAULT_ROUTING.byTask   (which model)
   changeKind    // → package-contract BASE_TIER         (tier, audit, apply path)
   event         // → research-events EVENT_TYPES         (what is logged)
@@ -58,8 +59,11 @@ catalogs it bridges.
   `proposeEditAction` → before/after diff → apply. The three universal aids
   (`check-spelling-grammar`, `improve-language`, `check-accessibility`) are edit
   ops offered on every page (`appliesTo: "*"`).
-- **`generate`** — produce new content (e.g. `generate-concept-map` on the course
-  page). Gated + `planned` until its execution + change-tier routing land.
+- **`generate`** — produce new content. `draft-description` (course page) is wired
+  and assistant-surfaced: `runGenerateOperationAction` dispatches by op id,
+  composes `PLATFORM_SCOPE`, routes by `routingKind`, and returns a proposed draft
+  the educator reviews then applies (replacing the standalone "Generate with AI"
+  button). `generate-concept-map` is declared+gated, `planned`.
 - **`analyze`** — report only, no write (e.g. a future accessibility audit).
 
 ### Rules: skill-primary + platform supplement
@@ -128,11 +132,13 @@ concept map, or a provided draft) and marked `planned`; the example skill
 
 **Follow-ups (tracked in [Status.md](../Status.md)):**
 
-- **Migrate the scattered AI actions** (`draftSectionAction`,
-  `generateWorksheetAction`, `generateQuestions`, `suggestA11yFixAction`,
-  coherence agent, `generateCourseDescriptionAction`) to declare + dispatch
-  through the registry, so their routing/change/event/skill are read from the
-  row rather than hand-wired.
+- **Migrate the remaining generative actions** to declare + dispatch through the
+  registry as `surface: "panel"` ops (invoked from their own UI, but reading
+  routing/change/event/skill from the row + composing `PLATFORM_SCOPE`):
+  `draftSectionAction`, `generateWorksheetAction`, `generateQuestions`,
+  `suggestA11yFixAction`/`suggestStructureAltText`, the coherence agent.
+  *(`course-metadata`/`draft-description` is migrated — assistant-surfaced +
+  dispatched.)*
 - **Route edit-op persistence through `changeKind`/tier** rather than the current
   direct `saveFileAction` after the diff, so `editor-ai-edit`/`a11y-fix` land in
   the Tier-2 review queue where the tier says they should.

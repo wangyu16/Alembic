@@ -76,6 +76,13 @@ export interface AIOperation {
   /** Which pages offer it. `"*"` = every editable page. */
   appliesTo: readonly OperationCategory[] | "*";
   mode: OperationMode;
+  /**
+   * Where the operation is invoked from:
+   * - `assistant` — appears in the workspace AI-assistant menu.
+   * - `panel` — registered here for routing/tier/event/scope, but surfaced from
+   *   its own panel UI (e.g. worksheet generation in the practice pane).
+   */
+  surface: "assistant" | "panel";
   /** ai-assist model-routing task key (`DEFAULT_ROUTING.byTask`). */
   routingKind: string;
   /** package-contract change kind → tier, audit trail, apply path. */

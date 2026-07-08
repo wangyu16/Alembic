@@ -7,11 +7,11 @@ export interface EditFileInput {
   /** Plain-language instruction, e.g. "make the tone more concise". */
   instruction: string;
   /**
-   * Optional caller-supplied system preamble composed ahead of the edit framing
-   * — used to inject a platform focus guardrail (e.g. `@alembic/ai-operations`
-   * `PLATFORM_SCOPE`) so the operation stays task-scoped.
+   * Optional platform focus preamble composed ahead of the edit framing — used
+   * to inject the `@alembic/ai-operations` `PLATFORM_SCOPE` guardrail so the
+   * operation stays task-scoped.
    */
-  scope?: string;
+  focus?: string;
 }
 
 /**
@@ -24,8 +24,8 @@ export async function editFile(
   provider: AIProvider,
   input: EditFileInput,
 ): Promise<{ proposed: string }> {
-  const system = input.scope
-    ? `${input.scope}\n\n${EDIT_FILE_SYSTEM}`
+  const system = input.focus
+    ? `${input.focus}\n\n${EDIT_FILE_SYSTEM}`
     : EDIT_FILE_SYSTEM;
   const { text } = await provider.generateText({
     system,

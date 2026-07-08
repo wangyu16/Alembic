@@ -9,6 +9,11 @@ export interface CourseMetadataInput {
   content?: string;
   /** "course" (whole course) or "chapter" — tunes the framing. */
   scope?: "course" | "chapter";
+  /**
+   * Optional platform focus preamble composed ahead of the system prompt
+   * (`@alembic/ai-operations` `PLATFORM_SCOPE`) so the draft stays task-scoped.
+   */
+  focus?: string;
 }
 
 /**
@@ -31,8 +36,11 @@ export async function generateCourseDescription(
     .filter(Boolean)
     .join("\n");
 
+  const system = input.focus
+    ? `${input.focus}\n\n${COURSE_METADATA_SYSTEM}`
+    : COURSE_METADATA_SYSTEM;
   const { text } = await provider.generateText({
-    system: COURSE_METADATA_SYSTEM,
+    system,
     prompt,
     temperature: 0.4,
   });

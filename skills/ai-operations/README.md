@@ -22,6 +22,7 @@ file *formats*, not AI *operations*.
 ## Operations
 
 - [check-spelling-grammar](check-spelling-grammar/SKILL.md) — correctness-only pass (worked example / template)
+- [draft-description](draft-description/SKILL.md) — draft the course description from title + chapters
 - `improve-language` — clarity & flow, meaning preserved *(skill pending)*
 - `check-accessibility` — alt text, heading order, link text, table headers *(skill pending)*
 - `generate-concept-map` — course concept map from chapter maps or a draft *(planned)*

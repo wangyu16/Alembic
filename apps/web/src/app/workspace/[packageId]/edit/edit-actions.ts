@@ -2,9 +2,9 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { applyEditorEdit } from "@alembic/package-ops";
+import { applyEditorEdit, listChapters } from "@alembic/package-ops";
 import type { RepoKind } from "@alembic/package-contract";
-import { editFile } from "@alembic/ai-assist";
+import { editFile, generateCourseDescription } from "@alembic/ai-assist";
 import { operationById, PLATFORM_SCOPE } from "@alembic/ai-operations";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
@@ -95,7 +95,7 @@ export async function proposeEditAction(
     const { proposed } = await editFile(provider, {
       source: currentSource,
       instruction,
-      scope: PLATFORM_SCOPE,
+      focus: PLATFORM_SCOPE,
     });
     return { ok: true, proposed };
   } catch (e) {
@@ -103,5 +103,47 @@ export async function proposeEditAction(
       return { ok: false, error: e.message };
     }
     return { ok: false, error: "Couldn't get an AI suggestion. Please try again." };
+  }
+}
+
+/**
+ * In-editor AI (generate ops): produce new content for the current surface from
+ * a registry `generate` operation — e.g. drafting the course description from
+ * the title + chapter outline. Composed with `PLATFORM_SCOPE` and routed by the
+ * op's `routingKind`. Returns the proposed content for the client to diff and
+ * the educator to approve (applied via the host's own save). Writes nothing.
+ */
+export async function runGenerateOperationAction(
+  packageId: string,
+  operationId: string,
+): Promise<ProposeEditResult> {
+  const { supabase, user } = await requireUser();
+  const op = operationById(operationId);
+  if (!op || op.mode !== "generate") return { ok: false, error: "Unknown AI operation." };
+  const store = new SupabaseSandboxStore(supabase);
+  try {
+    const provider = governedProvider(supabase, { userId: user.id, packageId, kind: op.routingKind });
+
+    if (op.id === "draft-description") {
+      const record = await store.getPackage(packageId);
+      if (!record) return { ok: false, error: "Package not found." };
+      const chapters = await listChapters(store, packageId);
+      const outline = chapters.map((c) => `- ${c.title}`).join("\n");
+      const { markdown } = await generateCourseDescription(provider, {
+        title: record.title,
+        discipline: record.manifest.discipline,
+        content: outline,
+        scope: "course",
+        focus: PLATFORM_SCOPE,
+      });
+      return { ok: true, proposed: markdown };
+    }
+
+    return { ok: false, error: "This AI operation isn't available yet." };
+  } catch (e) {
+    if (e instanceof RateLimitError || e instanceof BudgetExceededError) {
+      return { ok: false, error: e.message };
+    }
+    return { ok: false, error: "Couldn't generate that. Please try again." };
   }
 }

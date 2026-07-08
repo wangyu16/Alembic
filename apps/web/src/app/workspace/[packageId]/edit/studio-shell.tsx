@@ -11,15 +11,13 @@ import {
 } from "@alembic/package-contract";
 import {
   operationsForCategory,
+  type AIOperation,
   type OperationCategory,
   type OperationGateContext,
 } from "@alembic/ai-operations";
 import { saveStudyGuideAction } from "../actions";
-import {
-  generateCourseDescriptionAction,
-  saveCourseDescriptionAction,
-} from "../metadata-actions";
-import { saveFileAction, proposeEditAction } from "./edit-actions";
+import { saveCourseDescriptionAction } from "../metadata-actions";
+import { saveFileAction, proposeEditAction, runGenerateOperationAction } from "./edit-actions";
 import { importFileAction } from "../import-actions";
 import { shareFileAction } from "../share-actions";
 import { adaptElementAction } from "../adapt-actions";
@@ -591,14 +589,6 @@ function CourseHome({
             gateContext={{ conceptMapsReady: false, draftProvided: false }}
           />
           <button
-            onClick={() => run(() => generateCourseDescriptionAction(packageId), "Generated with AI.")}
-            disabled={pending}
-            className="btn btn-ghost btn-sm"
-            title="Draft a description from the course title + chapter list"
-          >
-            {pending ? "Working…" : "Generate with AI"}
-          </button>
-          <button
             onClick={() => run(() => saveCourseDescriptionAction(packageId, md), "Saved.")}
             disabled={pending}
             className="btn btn-primary btn-sm"
@@ -1089,7 +1079,7 @@ function AIAssistant({
   gateContext?: OperationGateContext;
 }) {
   const router = useRouter();
-  const ops = operationsForCategory(category);
+  const ops = operationsForCategory(category).filter((o) => o.surface === "assistant");
   const [menuOpen, setMenuOpen] = useState(false);
   const [panelOpen, setPanelOpen] = useState(false);
   const [customMode, setCustomMode] = useState(false);
@@ -1107,22 +1097,29 @@ function AIAssistant({
     setError(null);
   };
 
-  // Registry ops send their id (the server resolves the authoritative,
-  // skill-compiled rules + model routing); a custom ask sends free text. Both
-  // are composed with PLATFORM_SCOPE server-side.
-  const run = (request: { operationId?: string; instruction?: string }) => {
+  // Every action resolves to a proposed rewrite the educator reviews. Registry
+  // ops send their id (the server resolves the authoritative, skill-compiled
+  // rules + model routing + PLATFORM_SCOPE); generate ops run their own path; a
+  // custom ask sends free text. All are scoped server-side.
+  const execute = (fn: () => Promise<{ ok: boolean; proposed?: string; error?: string }>) => {
     setMenuOpen(false);
     setPanelOpen(true);
     setError(null);
     setProposed(null);
     start(async () => {
-      const r = await proposeEditAction(packageId, current, request);
-      if (!r.ok) setError(r.error ?? "Couldn't get a suggestion.");
+      const r = await fn();
+      if (!r.ok) setError(r.error ?? "Couldn't complete that.");
       else setProposed(r.proposed ?? "");
     });
   };
+  const runOp = (op: AIOperation) =>
+    execute(() =>
+      op.mode === "generate"
+        ? runGenerateOperationAction(packageId, op.id)
+        : proposeEditAction(packageId, current, { operationId: op.id }),
+    );
   const runCustom = () => {
-    if (instruction.trim()) run({ instruction });
+    if (instruction.trim()) execute(() => proposeEditAction(packageId, current, { instruction }));
   };
 
   const apply = () => {
@@ -1147,16 +1144,21 @@ function AIAssistant({
     <div className="relative inline-block">
       <button
         onClick={() => (panelOpen ? reset() : setMenuOpen((v) => !v))}
-        className="inline-flex items-center gap-1 rounded-md border border-[var(--accent)] px-2 py-1 text-xs font-medium text-[var(--accent)] transition-colors hover:bg-[var(--accent-soft)]"
-        title="AI assistant"
+        className="group inline-flex items-center gap-1.5 rounded-full border border-[var(--accent)] bg-[var(--accent-soft)] px-3 py-1.5 text-sm font-medium text-[var(--accent)] shadow-sm transition-colors hover:bg-[var(--accent)] hover:text-[var(--accent-ink)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+        title="AI assistant — tasks for this page"
         aria-haspopup="menu"
         aria-expanded={menuOpen || panelOpen}
       >
-        <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor" aria-hidden>
+        <svg
+          viewBox="0 0 24 24"
+          className="h-4 w-4 transition-transform duration-300 group-hover:rotate-12"
+          fill="currentColor"
+          aria-hidden
+        >
           <path d="M12 2l1.6 4.9L18.5 8.5l-4.9 1.6L12 15l-1.6-4.9L5.5 8.5l4.9-1.6z" />
           <path d="M18.5 13l.8 2.2L21.5 16l-2.2.8-.8 2.2-.8-2.2L15.5 16l2.2-.8z" />
         </svg>
-        AI
+        Assistant
       </button>
 
       {(menuOpen || panelOpen) && (
@@ -1171,49 +1173,75 @@ function AIAssistant({
       {menuOpen && (
         <div
           role="menu"
-          className="absolute right-0 z-30 mt-1 w-64 rounded-lg border border-edge bg-[var(--surface)] p-1 shadow-xl"
+          className="absolute right-0 z-30 mt-2 w-72 overflow-hidden rounded-xl border border-edge bg-[var(--surface)] shadow-xl"
         >
-          {ops.map((op) => {
-            const gateRes = op.gate ? op.gate(gateContext ?? {}) : true;
-            const available = op.status === "available" && gateRes === true;
-            const reason = typeof gateRes === "string" ? gateRes : op.summary;
-            return (
-              <button
-                key={op.id}
-                role="menuitem"
-                disabled={!available}
-                title={reason}
-                onClick={() =>
-                  available && op.mode === "edit"
-                    ? run({ operationId: op.id })
-                    : undefined
-                }
-                className={`block w-full rounded-md px-2 py-1.5 text-left text-sm ${
-                  available ? "text-ink hover:bg-elevated" : "cursor-not-allowed text-faint"
-                }`}
-              >
-                {op.title}
-                {op.status === "planned" ? " (coming soon)" : ""}
-              </button>
-            );
-          })}
-          <div className="my-1 border-t border-edge" />
-          <button
-            role="menuitem"
-            onClick={() => {
-              setMenuOpen(false);
-              setPanelOpen(true);
-              setCustomMode(true);
-            }}
-            className="block w-full rounded-md px-2 py-1.5 text-left text-sm text-ink hover:bg-elevated"
-          >
-            Custom instruction…
-          </button>
+          <div className="flex items-center gap-2.5 border-b border-edge px-3 py-2.5">
+            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--accent-soft)] text-[var(--accent)]">
+              <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor" aria-hidden>
+                <path d="M12 2l1.6 4.9L18.5 8.5l-4.9 1.6L12 15l-1.6-4.9L5.5 8.5l4.9-1.6z" />
+              </svg>
+            </span>
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-ink">AI assistant</p>
+              <p className="text-xs text-muted">Tasks for this page</p>
+            </div>
+          </div>
+          <div className="p-1.5">
+            {ops.map((op) => {
+              const gateRes = op.gate ? op.gate(gateContext ?? {}) : true;
+              const available = op.status === "available" && gateRes === true;
+              const reason = typeof gateRes === "string" ? gateRes : op.summary;
+              return (
+                <button
+                  key={op.id}
+                  role="menuitem"
+                  disabled={!available}
+                  title={reason}
+                  onClick={() => (available ? runOp(op) : undefined)}
+                  className={`block w-full rounded-lg px-2.5 py-1.5 text-left transition-colors ${
+                    available ? "hover:bg-elevated" : "cursor-not-allowed"
+                  }`}
+                >
+                  <span className={`text-sm ${available ? "text-ink" : "text-faint"}`}>
+                    {op.title}
+                    {op.status === "planned" ? " · soon" : ""}
+                  </span>
+                </button>
+              );
+            })}
+            <div className="my-1.5 border-t border-edge" />
+            <button
+              role="menuitem"
+              onClick={() => {
+                setMenuOpen(false);
+                setPanelOpen(true);
+                setCustomMode(true);
+              }}
+              className="block w-full rounded-lg px-2.5 py-1.5 text-left text-sm text-muted transition-colors hover:bg-elevated hover:text-ink"
+            >
+              Custom instruction…
+            </button>
+          </div>
         </div>
       )}
 
       {panelOpen && (
-        <div className="panel absolute right-0 z-30 mt-1 flex w-[36rem] max-w-[90vw] flex-col gap-2 p-3 shadow-xl">
+        <div className="absolute right-0 z-30 mt-2 flex w-[38rem] max-w-[92vw] flex-col gap-2.5 rounded-xl border border-edge bg-[var(--surface)] p-3 shadow-xl">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5 text-sm font-medium text-ink">
+              <svg viewBox="0 0 24 24" className="h-4 w-4 text-[var(--accent)]" fill="currentColor" aria-hidden>
+                <path d="M12 2l1.6 4.9L18.5 8.5l-4.9 1.6L12 15l-1.6-4.9L5.5 8.5l4.9-1.6z" />
+              </svg>
+              AI assistant
+            </div>
+            <button
+              onClick={reset}
+              className="rounded-md p-1 text-muted transition-colors hover:bg-elevated hover:text-ink"
+              aria-label="Close assistant"
+            >
+              ✕
+            </button>
+          </div>
           {customMode && (
             <div className="flex items-center gap-2">
               <input
@@ -1234,7 +1262,9 @@ function AIAssistant({
             </div>
           )}
           {proposed == null && !error && (
-            <p className="text-sm text-muted">{pending ? "Thinking…" : "Choose an action…"}</p>
+            <p className="py-4 text-center text-sm text-muted">
+              {pending ? "Thinking…" : "Choose an action to see a suggestion."}
+            </p>
           )}
           {proposed != null && (
             <>
@@ -1244,7 +1274,7 @@ function AIAssistant({
                   <textarea readOnly value={current} className="field h-48 w-full resize-none font-mono text-xs opacity-70" />
                 </div>
                 <div className="flex flex-col gap-1">
-                  <span className="text-xs text-[var(--accent)]">After (AI — edit before applying)</span>
+                  <span className="text-xs text-[var(--accent)]">After — edit before applying</span>
                   <textarea
                     value={proposed}
                     onChange={(e) => setProposed(e.target.value)}
@@ -1260,9 +1290,6 @@ function AIAssistant({
               </div>
             </>
           )}
-          <div className="flex justify-end">
-            <button onClick={reset} className="btn btn-ghost btn-sm">Close</button>
-          </div>
           {error && <p className="text-sm text-danger">{error}</p>}
         </div>
       )}

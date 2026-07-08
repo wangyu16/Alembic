@@ -45,11 +45,18 @@ describe("AI operations registry", () => {
     }
   });
 
+  it("every op declares a surface", () => {
+    for (const op of AI_OPERATIONS) {
+      expect(["assistant", "panel"], op.id).toContain(op.surface);
+    }
+  });
+
   it("offers the universal aids on every page and scopes course-only ops", () => {
     const course = operationsForCategory("course").map((o) => o.id);
     expect(course).toContain("check-spelling-grammar");
     expect(course).toContain("improve-language");
     expect(course).toContain("check-accessibility");
+    expect(course).toContain("draft-description");
     expect(course).toContain("generate-concept-map");
 
     const content = operationsForCategory("content").map((o) => o.id);

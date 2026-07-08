@@ -24,8 +24,14 @@ event, entitlement, gate, and the rules skill), reconciling the five previously
 unaligned catalogs; the assistant menu is a thin client over
 `operationsForCategory`, and each op follows the same rules. Universal aids
 (spelling/grammar, improve language, accessibility) are available on every page;
-`generate-concept-map` is declared+gated on the course page (planned). Rules live
-in `skills/ai-operations/<id>`. See [ai-operations.md](specs/ai-operations.md).
+`generate-concept-map` is declared+gated on the course page (planned). Rules are
+two-layer — a portable **skill** (`skills/ai-operations/<id>`) compiled into the
+op's `instruction`, plus a shared **`PLATFORM_SCOPE`** guardrail composed at
+runtime so the AI stays task-scoped to course-material building (not an open
+chatbot). The assistant is redesigned as a copper "Assistant" popover; the course
+description's standalone "Generate with AI" button is folded in as the
+`draft-description` generate op (first generative action migrated to registry
+dispatch). See [ai-operations.md](specs/ai-operations.md).
 
 ### Pending operator actions (human-in-the-loop)
 
