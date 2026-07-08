@@ -1,8 +1,10 @@
 # `orz-host-ai@1` — an AI bridge for the self-contained editors
 
-**Status:** host half + orz-mdhtml file half **implemented** (2026-07-08);
-**pending the owner-triggered release** (publish orz-mdhtml → bump Alembic dep →
-redeploy the worker) before it's live. Slides/paged file half deferred.
+**Status:** host + orz-mdhtml file half **implemented + published**
+(`orz-mdhtml@0.6.0` / `orz-mdhtml-browser@0.6.0`, 2026-07-08); Alembic's
+`generators` dep bumped to `^0.6.0`. **Pending: redeploy the Fly worker** (it
+generates the `.md.html` editing surface) to go live. Slides/paged file half
+deferred.
 **Mirrors:** [`orz-host-save@1`](../../packages/editor-kit/src/host-save-client.ts)
 (the save bridge). **Related:** [ai-operations.md](ai-operations.md).
 
@@ -89,10 +91,11 @@ modules (Ketcher/Plotly) can call `requestAI` directly and skip the transport.
   `runAIOperation` → `proposeEditAction` (registry op + `PLATFORM_SCOPE`).
 - ✅ **orz-mdhtml file half** — `assets/app.js` in-file assistant + `PROTOCOL.md`
   (`orz-host-ai@1`); verified valid + embedded in generated `.md.html`.
-- ⬜ **Release (owner):** publish `orz-mdhtml` + `orz-mdhtml-browser` (needs the
-  npm token) → bump Alembic's `orz-mdhtml` dep in `packages/generators` →
-  redeploy the Fly worker (it generates the `.md.html` editing surface). Only
-  then does the bridge light up end-to-end.
+- 🔄 **Release:** ✅ published `orz-mdhtml@0.6.0` + `orz-mdhtml-browser@0.6.0`;
+  ✅ bumped Alembic's `orz-mdhtml` dep to `^0.6.0` (typecheck + generators tests +
+  web build green). ⬜ **redeploy the Fly worker** (owner) — it generates the
+  `.md.html` editing surface; until then the worker still embeds the old app.js.
+  Then the bridge lights up end-to-end.
 - ⬜ **orz-slides / orz-paged file half** — deferred (Alembic treats slides/paged
   as derived views today; wire when they become independently authored).
 
