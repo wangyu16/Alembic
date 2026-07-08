@@ -146,5 +146,11 @@ concept map, or a provided draft) and marked `planned`; the example skill
   maps or an uploaded draft; accessibility audit).
 - **Author the remaining skills** — one per operation — and keep `instruction` +
   `ai-assist/prompts.ts` compiled from them.
+- **Hosted-editor AI** (study guide / slides / paged): the self-contained files'
+  in-file editors get the assistant + selection AI via the
+  **[`orz-host-ai@1`](orz-host-ai.md)** bridge (editor-kit host client + the three
+  orz repos + a coordinated republish). Alembic's host half maps requests onto
+  this registry, so hosted-editor AI flows through the same ops + `PLATFORM_SCOPE`
+  + governance. *(The plain-text editors have selection AI already, in-app.)*
 - **Promote `OperationCategory`** to the shared source the workspace
   `StudioCategory` imports, removing the 1:1 duplication.

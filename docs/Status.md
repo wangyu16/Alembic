@@ -31,7 +31,12 @@ runtime so the AI stays task-scoped to course-material building (not an open
 chatbot). The assistant is redesigned as a copper "Assistant" popover; the course
 description's standalone "Generate with AI" button is folded in as the
 `draft-description` generate op (first generative action migrated to registry
-dispatch). See [ai-operations.md](specs/ai-operations.md).
+dispatch). See [ai-operations.md](specs/ai-operations.md). **Selection AI (v1):**
+highlight a passage in a plain-text editor → a floating "Improve selection" chip
+runs a selection-capable op (spelling/grammar, language) on just the selection and
+splices the reviewed result back. The hosted editors (study guide / slides /
+paged) get the same via the planned **[orz-host-ai@1](specs/orz-host-ai.md)**
+bridge (upstream, so any host can plug in AI).
 
 ### Pending operator actions (human-in-the-loop)
 
