@@ -13,7 +13,6 @@ import { saveStudyGuideAction } from "../actions";
 import {
   generateCourseDescriptionAction,
   saveCourseDescriptionAction,
-  setCourseThemeAction,
 } from "../metadata-actions";
 import { saveFileAction, proposeEditAction } from "./edit-actions";
 import { importFileAction } from "../import-actions";
@@ -116,7 +115,6 @@ export function StudioShell({
   artifacts,
   chapterBlockIds,
   publishing,
-  courseTheme,
 }: {
   packageId: string;
   title: string;
@@ -134,7 +132,6 @@ export function StudioShell({
   artifacts: ArtifactItem[];
   chapterBlockIds: string[];
   publishing: PublishingState;
-  courseTheme: "dark" | "light";
 }) {
   const forms = unitTermForms(unitTerm);
   const router = useRouter();
@@ -373,9 +370,9 @@ export function StudioShell({
             <CourseHome
               key="course"
               packageId={packageId}
+              title={title}
               initial={courseDescription}
               published={published}
-              theme={courseTheme}
               onDirty={setDirty}
             />
           ) : category === "content" && activePath && content ? (
@@ -464,69 +461,75 @@ function useReportDirty(dirty: boolean, onDirty?: (d: boolean) => void) {
 }
 
 /* ── Course home: the canonical description (G6) ─────────────────────────── */
-/* One viewing theme for the whole course (manifest) — so every generated view
-   is consistent; a student can still switch after downloading a copy. */
-function CourseThemeControl({ packageId, theme }: { packageId: string; theme: "dark" | "light" }) {
-  const router = useRouter();
-  const [pending, start] = useTransition();
-  const [value, setValue] = useState<"dark" | "light">(theme);
-  const [saved, setSaved] = useState(false);
+/* Empty-state scaffold shown when a course has no description yet — the fields
+   we want instructors to fill (and that Discover meta-extraction will later
+   read). Personalized with the real course title. */
+function courseDescriptionTemplate(title: string): string {
+  return `# ${title}
 
-  const pick = (next: "dark" | "light") => {
-    setValue(next);
-    setSaved(false);
-    start(async () => {
-      const r = await setCourseThemeAction(packageId, next);
-      if (r.ok) {
-        setSaved(true);
-        router.refresh();
-      }
-    });
-  };
+- **Instructor:**
+- **Institute:**
 
-  return (
-    <div className="flex flex-wrap items-center gap-2 rounded-lg border border-edge px-3 py-2">
-      <span className="text-sm text-ink">Course theme</span>
-      <span className="text-xs text-faint">every page a student sees</span>
-      <select
-        value={value}
-        onChange={(e) => pick(e.target.value as "dark" | "light")}
-        disabled={pending}
-        aria-label="Course viewing theme"
-        className="field ml-auto text-sm"
-      >
-        <option value="dark">Dark elegant</option>
-        <option value="light">Light academic</option>
-      </select>
-      {pending ? (
-        <span className="text-xs text-faint">…</span>
-      ) : saved ? (
-        <span className="text-xs text-ok">Saved</span>
-      ) : null}
-    </div>
-  );
+## Description
+
+A short overview of the course — this first paragraph is what other educators see on Discover.
+
+## Tags / keywords
+
+
+
+## Objectives
+
+-
+
+## Topics and concept map
+
+Outline the major topics. Once every chapter has a concept map, AI can draft this section for you.
+`;
 }
 
 function CourseHome({
   packageId,
+  title,
   initial,
   published,
-  theme,
   onDirty,
 }: {
   packageId: string;
+  title: string;
   initial: string | null;
   published: boolean;
-  theme: "dark" | "light";
   onDirty?: (d: boolean) => void;
 }) {
-  const [md, setMd] = useState(initial ?? "");
+  const hasInitial = !!(initial && initial.trim());
+  const [md, setMd] = useState(hasInitial ? initial! : courseDescriptionTemplate(title));
   const [dirty, setDirty] = useState(false);
   const [pending, start] = useTransition();
   const [note, setNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Source ⇄ rendered toggle, mirroring the concept-map FileEditor. The preview
+  // renders on switch, not per keystroke.
+  const [mode, setMode] = useState<"source" | "preview">("source");
+  const [previewHtml, setPreviewHtml] = useState("");
   useUnsavedGuard(dirty);
   useReportDirty(dirty, onDirty);
+
+  const showPreview = () => {
+    setMode("preview");
+    void (async () => {
+      try {
+        const res = await fetch("/api/preview", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ source: md, heading: "Course description" }),
+        });
+        const data = (await res.json()) as { html?: string };
+        setPreviewHtml(data.html ?? "");
+      } catch {
+        setPreviewHtml("");
+      }
+    })();
+  };
 
   const run = (fn: () => Promise<{ ok: boolean; markdown?: string; error?: string }>, label: string) => {
     setNote(null);
@@ -539,6 +542,7 @@ function CourseHome({
         if (r.markdown !== undefined) {
           setMd(r.markdown);
           setDirty(true);
+          setMode("source");
         } else {
           setDirty(false);
         }
@@ -548,12 +552,27 @@ function CourseHome({
   };
 
   return (
-    <div className="flex flex-col gap-3">
-      <CourseThemeControl packageId={packageId} theme={theme} />
+    <div className="flex h-full flex-col gap-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="font-serif text-lg text-ink">Course description</h2>
         <div className="flex flex-wrap items-center gap-2">
           {dirty && <span className="text-xs text-warn">Unsaved</span>}
+          <div className="flex items-center rounded-lg border border-edge p-0.5 text-xs">
+            <button
+              onClick={() => setMode("source")}
+              aria-pressed={mode === "source"}
+              className={`rounded-md px-2 py-1 ${mode === "source" ? "bg-elevated text-ink" : "text-muted hover:text-ink"}`}
+            >
+              Source
+            </button>
+            <button
+              onClick={showPreview}
+              aria-pressed={mode === "preview"}
+              className={`rounded-md px-2 py-1 ${mode === "preview" ? "bg-elevated text-ink" : "text-muted hover:text-ink"}`}
+            >
+              Rendered
+            </button>
+          </div>
           <button
             onClick={() => run(() => generateCourseDescriptionAction(packageId), "Generated with AI.")}
             disabled={pending}
@@ -571,20 +590,28 @@ function CourseHome({
           </button>
         </div>
       </div>
-      <p className="text-xs text-faint">
-        The canonical course summary (shown on Discover). Markdown. The short
-        description for the public index is derived from the first paragraph.
+      <p className="max-w-prose text-xs text-faint">
+        The canonical course summary (shown on Discover). Markdown; the short
+        public description is derived from the first paragraph.
+        {hasInitial ? "" : " Not started yet — fill in the suggested fields."}
         {published ? "" : " Saved online when you publish."}
       </p>
-      <textarea
-        value={md}
-        onChange={(e) => {
-          setMd(e.target.value);
-          setDirty(true);
-        }}
-        placeholder="A general chemistry course covering…&#10;&#10;## Topics&#10;- …"
-        className="field min-h-[50vh] w-full resize-y font-mono text-sm"
-      />
+      {mode === "source" ? (
+        <textarea
+          value={md}
+          onChange={(e) => {
+            setMd(e.target.value);
+            setDirty(true);
+          }}
+          className="field min-h-[55vh] w-full flex-1 resize-y font-mono text-sm"
+        />
+      ) : (
+        <iframe
+          title="Course description preview"
+          srcDoc={previewHtml}
+          className="min-h-[55vh] w-full flex-1 rounded-xl border border-[var(--border)] bg-[var(--bg)]"
+        />
+      )}
       {note && <p className="text-xs text-ok">{note}</p>}
       {error && <p className="text-sm text-danger">{error}</p>}
     </div>
