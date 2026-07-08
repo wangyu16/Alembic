@@ -2,7 +2,14 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useTransition,
+  type MouseEvent as ReactMouseEvent,
+} from "react";
 import {
   serializeStudyGuide,
   unitTermForms,
@@ -535,6 +542,16 @@ function CourseHome({
     })();
   };
 
+  const sel = useSelectionAI({
+    packageId,
+    category: "course",
+    text: md,
+    onReplace: (n) => {
+      setMd(n);
+      setDirty(true);
+    },
+  });
+
   const run = (fn: () => Promise<{ ok: boolean; markdown?: string; error?: string }>, label: string) => {
     setNote(null);
     setError(null);
@@ -610,6 +627,7 @@ function CourseHome({
             setMd(e.target.value);
             setDirty(true);
           }}
+          {...sel.selectionProps}
           className="field min-h-[55vh] w-full flex-1 resize-y font-mono text-sm"
         />
       ) : (
@@ -621,6 +639,7 @@ function CourseHome({
       )}
       {note && <p className="text-xs text-ok">{note}</p>}
       {error && <p className="text-sm text-danger">{error}</p>}
+      {sel.overlay}
     </div>
   );
 }
@@ -973,6 +992,15 @@ function FileEditor({
   const [previewHtml, setPreviewHtml] = useState("");
   useUnsavedGuard(dirty);
   useReportDirty(dirty, onDirty);
+  const sel = useSelectionAI({
+    packageId,
+    category,
+    text,
+    onReplace: (n) => {
+      setText(n);
+      setDirty(true);
+    },
+  });
 
   const showPreview = () => {
     setMode("preview");
@@ -1036,6 +1064,7 @@ function FileEditor({
             setText(e.target.value);
             setDirty(true);
           }}
+          {...sel.selectionProps}
           placeholder={`# ${label}\n\nWrite in Markdown…`}
           className="field min-h-[55vh] w-full flex-1 resize-y font-mono text-sm"
         />
@@ -1047,6 +1076,7 @@ function FileEditor({
         />
       )}
       {error && <p className="text-sm text-danger">{error}</p>}
+      {sel.overlay}
     </div>
   );
 }
@@ -1295,6 +1325,145 @@ function AIAssistant({
       )}
     </div>
   );
+}
+
+/* ── Selection assistant: a floating action that appears on a highlighted
+ * passage in a plain-text editor. Runs a selection-capable AI op
+ * (spelling/grammar, language) on just the selection and splices the reviewed
+ * result back in. Returns handlers to spread on the textarea + the overlay. */
+function useSelectionAI({
+  packageId,
+  category,
+  text,
+  onReplace,
+}: {
+  packageId: string;
+  category: OperationCategory;
+  text: string;
+  onReplace: (next: string) => void;
+}) {
+  const ops = operationsForCategory(category).filter(
+    (o) => o.selection && o.surface === "assistant",
+  );
+  const [anchor, setAnchor] = useState<{ x: number; y: number; start: number; end: number } | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [proposed, setProposed] = useState<string | null>(null);
+  const [pending, start] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+
+  const close = () => {
+    setAnchor(null);
+    setMenuOpen(false);
+    setProposed(null);
+    setError(null);
+  };
+  const engaged = menuOpen || pending || proposed != null || error != null;
+
+  const onMouseUp = (e: ReactMouseEvent<HTMLTextAreaElement>) => {
+    if (ops.length === 0) return;
+    const ta = e.currentTarget;
+    const s = ta.selectionStart ?? 0;
+    const en = ta.selectionEnd ?? 0;
+    if (en - s >= 2 && text.slice(s, en).trim().length >= 2) {
+      setAnchor({ x: e.clientX, y: e.clientY, start: s, end: en });
+      setMenuOpen(false);
+      setProposed(null);
+      setError(null);
+    } else if (!engaged) {
+      close();
+    }
+  };
+  const onKeyDown = () => {
+    if (!engaged) close();
+  };
+
+  const run = (op: AIOperation) => {
+    if (!anchor) return;
+    const selText = text.slice(anchor.start, anchor.end);
+    setMenuOpen(false);
+    setError(null);
+    setProposed(null);
+    start(async () => {
+      const r = await proposeEditAction(packageId, selText, { operationId: op.id, selection: true });
+      if (!r.ok) setError(r.error ?? "Couldn't complete that.");
+      else setProposed(r.proposed ?? "");
+    });
+  };
+  const applyReplacement = () => {
+    if (proposed == null || !anchor) return;
+    onReplace(text.slice(0, anchor.start) + proposed + text.slice(anchor.end));
+    close();
+  };
+
+  const overlay =
+    anchor && ops.length > 0 ? (
+      <>
+        {engaged && (
+          <button
+            type="button"
+            aria-label="Dismiss"
+            onClick={close}
+            className="fixed inset-0 z-30 cursor-default"
+          />
+        )}
+        <div
+          className="fixed z-40"
+          style={{
+            top: Math.min(anchor.y + 10, (typeof window !== "undefined" ? window.innerHeight : 800) - 240),
+            left: Math.max(8, Math.min(anchor.x, (typeof window !== "undefined" ? window.innerWidth : 1200) - 340)),
+          }}
+        >
+          {!engaged && (
+            <button
+              onClick={() => setMenuOpen(true)}
+              className="inline-flex items-center gap-1 rounded-full border border-[var(--accent)] bg-[var(--surface)] px-2.5 py-1 text-xs font-medium text-[var(--accent)] shadow-lg transition-colors hover:bg-[var(--accent)] hover:text-[var(--accent-ink)]"
+            >
+              <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="currentColor" aria-hidden>
+                <path d="M12 2l1.6 4.9L18.5 8.5l-4.9 1.6L12 15l-1.6-4.9L5.5 8.5l4.9-1.6z" />
+              </svg>
+              Improve selection
+            </button>
+          )}
+          {menuOpen && (
+            <div role="menu" className="w-56 overflow-hidden rounded-xl border border-edge bg-[var(--surface)] p-1 shadow-xl">
+              {ops.map((op) => (
+                <button
+                  key={op.id}
+                  role="menuitem"
+                  onClick={() => run(op)}
+                  title={op.summary}
+                  className="block w-full rounded-lg px-2.5 py-1.5 text-left text-sm text-ink transition-colors hover:bg-elevated"
+                >
+                  {op.title}
+                </button>
+              ))}
+            </div>
+          )}
+          {(pending || proposed != null || error) && (
+            <div className="w-80 max-w-[92vw] rounded-xl border border-edge bg-[var(--surface)] p-3 shadow-xl">
+              {pending && proposed == null && <p className="text-sm text-muted">Thinking…</p>}
+              {proposed != null && (
+                <div className="flex flex-col gap-2">
+                  <span className="text-xs text-[var(--accent)]">Suggested replacement — edit before applying</span>
+                  <textarea
+                    value={proposed}
+                    onChange={(e) => setProposed(e.target.value)}
+                    className="field h-32 w-full resize-y font-mono text-xs"
+                  />
+                  <div className="flex items-center justify-end gap-2">
+                    <button onClick={close} className="btn btn-ghost btn-sm">Cancel</button>
+                    <button onClick={applyReplacement} disabled={pending} className="btn btn-primary btn-sm">Replace</button>
+                  </div>
+                </div>
+              )}
+              {error && <p className="text-sm text-danger">{error}</p>}
+            </div>
+          )}
+        </div>
+      </>
+    ) : null;
+
+  return { selectionProps: { onMouseUp, onKeyDown }, overlay };
 }
 
 /* ── Assets: list + create/edit structures & plots (reuses the editors) ──── */

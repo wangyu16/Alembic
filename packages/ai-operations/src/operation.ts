@@ -100,6 +100,12 @@ export interface AIOperation {
    */
   instruction?: string;
   /**
+   * Whether the op is safe to run on a *selection* (a passage), not only the
+   * whole file — surfaced by the in-editor selection assistant. Set on edit ops
+   * that operate correctly on a fragment (spelling/grammar, language).
+   */
+  selection?: boolean;
+  /**
    * Availability predicate. Returns `true` when allowed, or a human-readable
    * reason string when gated. Absent = always available (subject to `status`
    * and `entitlement`).

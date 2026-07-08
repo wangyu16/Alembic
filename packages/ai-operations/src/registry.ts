@@ -29,6 +29,7 @@ export const AI_OPERATIONS: readonly AIOperation[] = [
     entitlement: "ai",
     instruction:
       "Correct spelling, grammar, and punctuation only. Do not change meaning, wording style, structure, or formatting beyond what is required for correctness. Preserve all Markdown, block-id attributes, links, and math verbatim.",
+    selection: true,
     status: "available",
   },
   {
@@ -46,6 +47,7 @@ export const AI_OPERATIONS: readonly AIOperation[] = [
     entitlement: "ai",
     instruction:
       "Improve clarity, flow, and readability while preserving the meaning and the author's voice. Do not add or remove content. Preserve all Markdown, block-id attributes, links, and math.",
+    selection: true,
     status: "available",
   },
   {

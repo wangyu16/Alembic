@@ -72,7 +72,7 @@ export interface ProposeEditResult {
 export async function proposeEditAction(
   packageId: string,
   currentSource: string,
-  request: { operationId?: string; instruction?: string },
+  request: { operationId?: string; instruction?: string; selection?: boolean },
 ): Promise<ProposeEditResult> {
   const { supabase, user } = await requireUser();
 
@@ -96,6 +96,7 @@ export async function proposeEditAction(
       source: currentSource,
       instruction,
       focus: PLATFORM_SCOPE,
+      passage: request.selection ?? false,
     });
     return { ok: true, proposed };
   } catch (e) {

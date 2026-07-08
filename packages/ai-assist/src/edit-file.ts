@@ -12,6 +12,11 @@ export interface EditFileInput {
    * operation stays task-scoped.
    */
   focus?: string;
+  /**
+   * When true, `source` is a *selected passage* from a larger document (not a
+   * whole file) — frame the model to return only the improved passage.
+   */
+  passage?: boolean;
 }
 
 /**
@@ -27,9 +32,13 @@ export async function editFile(
   const system = input.focus
     ? `${input.focus}\n\n${EDIT_FILE_SYSTEM}`
     : EDIT_FILE_SYSTEM;
+  const passageNote = input.passage
+    ? "\n\nThis is a PASSAGE selected from a larger document. Return only the improved passage itself — preserve inline Markdown, do not add surrounding context, headings, or commentary."
+    : "";
+  const label = input.passage ? "PASSAGE" : "FILE";
   const { text } = await provider.generateText({
     system,
-    prompt: `Instruction: ${input.instruction}\n\n----- FILE -----\n${input.source}`,
+    prompt: `Instruction: ${input.instruction}${passageNote}\n\n----- ${label} -----\n${input.source}`,
     temperature: 0.2,
   });
   return { proposed: text.trim() };
