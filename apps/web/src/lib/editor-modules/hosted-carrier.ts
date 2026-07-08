@@ -1,5 +1,5 @@
 import type { EditorContext, EditorHandle, EditorModule } from "@alembic/editor-kit";
-import { createHostSaveClient } from "@alembic/editor-kit";
+import { createHostSaveClient, createHostAIClient } from "@alembic/editor-kit";
 
 /**
  * The generic hosted-carrier editor (E1): mounts a self-contained orz file
@@ -67,11 +67,29 @@ export function hostedCarrierModule(
         },
       });
 
+      // The AI bridge (orz-host-ai@1): when the host offers operations + a
+      // runner, advertise them to the file's in-file assistant and relay its
+      // requests. Files without the assistant (or hosts without AI) simply
+      // never complete the handshake — additive, no effect on save.
+      const aiClient =
+        ctx.runAIOperation && ctx.aiOperations && ctx.aiOperations.length > 0
+          ? createHostAIClient({
+              post: (m) => frame.contentWindow?.postMessage(m, "*"),
+              operations: ctx.aiOperations,
+              run: (req) => ctx.runAIOperation!(req),
+            })
+          : null;
+
       const onMessage = (e: MessageEvent) => {
-        if (e.source === frame.contentWindow) client.handleMessage(e.data);
+        if (e.source !== frame.contentWindow) return;
+        client.handleMessage(e.data);
+        aiClient?.handleMessage(e.data);
       };
       window.addEventListener("message", onMessage);
-      frame.addEventListener("load", () => client.start());
+      frame.addEventListener("load", () => {
+        client.start();
+        aiClient?.start();
+      });
       el.appendChild(frame);
 
       return {
@@ -79,6 +97,7 @@ export function hostedCarrierModule(
         destroy() {
           window.removeEventListener("message", onMessage);
           client.stop();
+          aiClient?.stop();
           frame.remove();
         },
       };

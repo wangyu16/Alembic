@@ -1,7 +1,12 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import type { EditorHandle, EditorTheme } from "@alembic/editor-kit";
+import type {
+  EditorHandle,
+  EditorTheme,
+  HostAIOperation,
+  HostAIRequest,
+} from "@alembic/editor-kit";
 import { editorRegistry } from "./index";
 
 /**
@@ -18,6 +23,8 @@ export function ModuleMount({
   hostSave,
   onDirty,
   onReady,
+  aiOperations,
+  runAIOperation,
   className,
 }: {
   kind: string;
@@ -30,12 +37,16 @@ export function ModuleMount({
   hostSave?: (payload: { source: string; rendered: string }) => Promise<{ ok: boolean; error?: string }>;
   onDirty?: (dirty: boolean) => void;
   onReady?: (handle: EditorHandle) => void;
+  /** AI operations advertised to the file's in-file assistant (orz-host-ai@1). */
+  aiOperations?: HostAIOperation[];
+  /** Run an operation the file's assistant requested. */
+  runAIOperation?: (req: HostAIRequest) => Promise<{ ok: boolean; proposed?: string; error?: string }>;
   className?: string;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   // Keep the latest callbacks without forcing a remount.
-  const cbs = useRef({ onChange, onReady, hostSave, onDirty });
-  cbs.current = { onChange, onReady, hostSave, onDirty };
+  const cbs = useRef({ onChange, onReady, hostSave, onDirty, runAIOperation });
+  cbs.current = { onChange, onReady, hostSave, onDirty, runAIOperation };
 
   useEffect(() => {
     const el = ref.current;
@@ -51,6 +62,11 @@ export function ModuleMount({
           ? cbs.current.hostSave(payload)
           : Promise.resolve({ ok: true }),
       onDirty: (dirty) => cbs.current.onDirty?.(dirty),
+      aiOperations,
+      runAIOperation: (req) =>
+        cbs.current.runAIOperation
+          ? cbs.current.runAIOperation(req)
+          : Promise.resolve({ ok: false, error: "AI is not available here." }),
     });
     cbs.current.onReady?.(handle);
     return () => handle.destroy();

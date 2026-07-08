@@ -650,6 +650,13 @@ interface EditBlock extends StudyGuideBlock {
   collapsed?: boolean;
 }
 
+/* Selection-capable ops advertised to the hosted study-guide editor's in-file
+ * assistant over the `orz-host-ai@1` bridge (once the upstream `.md.html` editor
+ * speaks it). Same registry ops as the plain-text selection AI. */
+const HOSTED_STUDY_GUIDE_AI_OPS = operationsForCategory("content")
+  .filter((o) => o.selection && o.surface === "assistant")
+  .map((o) => ({ id: o.id, title: o.title, selection: true }));
+
 /* ── E3: host the chapter's .md.html in-file editor ───────────────────────────
  * The study guide is edited through the self-contained file's OWN editor. We
  * generate the `.md.html` on demand (worker) as the editing surface, host it via
@@ -707,6 +714,13 @@ function HostedStudyGuideEditor(props: {
           const r = await hostSaveStudyGuideAction(packageId, path, payload);
           return { ok: r.ok, error: r.error };
         }}
+        aiOperations={HOSTED_STUDY_GUIDE_AI_OPS}
+        runAIOperation={(req) =>
+          proposeEditAction(packageId, req.text, {
+            operationId: req.op,
+            selection: req.selection,
+          })
+        }
         className="w-full flex-1"
       />
     </div>

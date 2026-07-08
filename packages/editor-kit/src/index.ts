@@ -15,6 +15,8 @@
  * hooks `requestAI` / `resolveAsset` and the optional `deriveAltText` capability.
  */
 
+import type { HostAIOperation, HostAIRequest } from "./host-ai-client";
+
 export {
   HOST_SAVE_PROTOCOL,
   HOST_SAVE_VERSION,
@@ -23,6 +25,16 @@ export {
   type HostSaveClientOptions,
   type HostSavePayload,
 } from "./host-save-client";
+
+export {
+  HOST_AI_PROTOCOL,
+  HOST_AI_VERSION,
+  createHostAIClient,
+  type HostAIClient,
+  type HostAIClientOptions,
+  type HostAIOperation,
+  type HostAIRequest,
+} from "./host-ai-client";
 
 /** A proposed AI edit the host diffs and the educator approves (a Tier-2 change). */
 export interface AIProposal {
@@ -60,6 +72,14 @@ export interface EditorContext {
   /** Run AI on the active file and return a proposal for the host to diff +
    *  approve. The Alembic host runs it through the governed provider + tiers. */
   requestAI?(prompt: string, selection?: unknown): Promise<AIProposal>;
+  /** AI operations the host offers this module's file, advertised to the file's
+   *  in-file assistant over the `orz-host-ai@1` bridge. Absent = no AI offered. */
+  aiOperations?: HostAIOperation[];
+  /** Run an advertised AI operation on the file's text/selection and return a
+   *  proposal the file diffs + applies. Alembic routes this through the
+   *  operations registry + `PLATFORM_SCOPE` + governance. Pairs with
+   *  `aiOperations`; used by hosted (iframe) modules via the bridge. */
+  runAIOperation?(req: HostAIRequest): Promise<{ ok: boolean; proposed?: string; error?: string }>;
 }
 
 /** The live handle to a mounted module. */
