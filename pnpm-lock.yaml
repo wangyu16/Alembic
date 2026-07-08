@@ -137,8 +137,8 @@ importers:
   packages/generators:
     dependencies:
       orz-mdhtml:
-        specifier: ^0.6.0
-        version: 0.6.0
+        specifier: ^0.6.1
+        version: 0.6.1
       orz-paged:
         specifier: ^0.4.0
         version: 0.4.0
@@ -2607,8 +2607,8 @@ packages:
   orz-markdown@1.3.2:
     resolution: {integrity: sha512-N2g2n7Rbe6mq0lhhFXjv7VFxVH6X8aCEYfhbIfBd73V/y24QEN1gbHOaEuQHf2umwICWngMNWjXF0oBWf/iU/Q==}
 
-  orz-mdhtml@0.6.0:
-    resolution: {integrity: sha512-6VbdOfS7aPVijZI4piHr2qyYKmbAAjzDJ0c7EEUtO3tuBagV6AEq42SeNzTJyZPGqJ9KCYZdo30lWTALUwIhaw==}
+  orz-mdhtml@0.6.1:
+    resolution: {integrity: sha512-cj2fzpHUiizJVBPrarsXIsVE1C5cs3JW8hvwO2Qg4C8bnJrd458nWabtZOOPVbbR+X+s7XqK24zk31KKGYurgg==}
     hasBin: true
 
   orz-paged@0.4.0:
@@ -5619,7 +5619,7 @@ snapshots:
     transitivePeerDependencies:
       - '@types/markdown-it'
 
-  orz-mdhtml@0.6.0:
+  orz-mdhtml@0.6.1:
     dependencies:
       orz-markdown: 1.3.2(@types/markdown-it@14.1.2)
     transitivePeerDependencies:
