@@ -525,7 +525,7 @@ function CourseHome({
         const res = await fetch("/api/preview", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ source: md, heading: "Course description" }),
+          body: JSON.stringify({ source: md, plain: true }),
         });
         const data = (await res.json()) as { html?: string };
         setPreviewHtml(data.html ?? "");

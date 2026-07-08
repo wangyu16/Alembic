@@ -83,3 +83,41 @@ export function renderDocument(
   const h1 = heading ? `<h1>${escapeHtml(heading)}</h1>\n` : "";
   return themedDocument({ title, bodyHtml: h1 + md.render(markdown), theme });
 }
+
+/**
+ * Deliberately styleless, theme-free render — minimal readable base CSS only, no
+ * document theme, KaTeX, or runtime. For plain-text previews (e.g. the course
+ * description) where a full document theme would be noise. Respects the reader's
+ * light/dark via `color-scheme` rather than imposing one.
+ */
+const PLAIN_CSS = `:root { color-scheme: light dark; }
+body { margin: 0 auto; max-width: 46rem; padding: 1.5rem;
+  font-family: system-ui, -apple-system, sans-serif; line-height: 1.6;
+  color: canvastext; background: canvas; }
+img { max-width: 100%; height: auto; }
+pre { overflow-x: auto; }
+table { border-collapse: collapse; }
+th, td { border: 1px solid; padding: 0.3rem 0.5rem; }`;
+
+export function renderPlainDocument(
+  title: string,
+  markdown: string,
+  heading?: string,
+): string {
+  const h1 = heading ? `<h1>${escapeHtml(heading)}</h1>\n` : "";
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${escapeHtml(title)}</title>
+<style>
+${PLAIN_CSS}
+</style>
+</head>
+<body>
+${h1}${md.render(markdown)}
+</body>
+</html>
+`;
+}
