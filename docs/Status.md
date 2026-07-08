@@ -42,6 +42,14 @@ driven by the formats' upstream authoring skills: `enrich-formatting`
 `suggest-slide-layout` (orz-slides layout grammar), `suggest-page-settings`
 (orz-paged page model) — educators change layout/formatting without memorizing
 syntax. Slides/paged ops light up when those in-file editors get the bridge.
+**Live (orz-mdhtml@0.7.1, worker redeployed):** the study-guide `.md.html` editor
+gains a **page-wide AI button** (whole-document ops) beside the selection chip; a
+**theme picked in the study guide is captured on save** as the course-global
+default (`manifest.theme` = orz theme id; last write wins across chapters) and used
+for the editing surface, published pages, and downloads; and every generated
+`.md.html` carries an **invisible agent guide** (how to fetch the official skill +
+edit correctly) so external AI apps edit it properly. orz-slides/orz-paged carry
+the agent guide too (held from npm until they also get the AI button + theme-in-save).
 
 ### Pending operator actions (human-in-the-loop)
 
