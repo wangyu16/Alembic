@@ -36,7 +36,12 @@ highlight a passage in a plain-text editor → a floating "Improve selection" ch
 runs a selection-capable op (spelling/grammar, language) on just the selection and
 splices the reviewed result back. The hosted editors (study guide / slides /
 paged) get the same via the planned **[orz-host-ai@1](specs/orz-host-ai.md)**
-bridge (upstream, so any host can plug in AI).
+bridge (upstream, so any host can plug in AI). **Format-aware ops** added,
+driven by the formats' upstream authoring skills: `enrich-formatting`
+(orz-markdown callouts/columns/tabs/TOC — surfaces on the study-guide editor),
+`suggest-slide-layout` (orz-slides layout grammar), `suggest-page-settings`
+(orz-paged page model) — educators change layout/formatting without memorizing
+syntax. Slides/paged ops light up when those in-file editors get the bridge.
 
 ### Pending operator actions (human-in-the-loop)
 

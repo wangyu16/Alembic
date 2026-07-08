@@ -68,6 +68,60 @@ export const AI_OPERATIONS: readonly AIOperation[] = [
     status: "available",
   },
   {
+    id: "enrich-formatting",
+    title: "Enrich formatting",
+    summary:
+      "Apply orz-markdown constructs — callouts, columns, tabs, TOC, highlights — where they aid readability.",
+    appliesTo: ["content"],
+    mode: "edit",
+    surface: "assistant",
+    routingKind: "editor-ai-edit",
+    changeKind: "editor-ai-edit",
+    event: "ai.edit.requested",
+    skill: "enrich-formatting",
+    entitlement: "ai",
+    instruction:
+      "Enrich the formatting of this orz-markdown using its native constructs where they genuinely aid comprehension: callout containers (`::: info`, `::: tip`, `::: warn`, `::: center`, `::: spoil Title`), multi-column (`:::: cols` / `::: col`), tabs (`:::: tabs` / `::: tab Label`), a table of contents (`{{toc}}`), and inline highlights (`{{sp[red] text}}`). Do NOT change the meaning, wording, headings, block-id markers (`{{attrs[#blk-…]}}`), math, code, or chemistry notation. Add structure only where it clarifies — never over-format. Return the whole passage.",
+    selection: true,
+    status: "available",
+  },
+  {
+    id: "suggest-slide-layout",
+    title: "Suggest slide layout",
+    summary:
+      "Restructure slides with orz-slides layout — slide markers, title bands, region splits, speaker notes.",
+    appliesTo: ["slides"],
+    mode: "edit",
+    surface: "assistant",
+    routingKind: "editor-ai-edit",
+    changeKind: "editor-ai-edit",
+    event: "ai.edit.requested",
+    skill: "suggest-slide-layout",
+    entitlement: "ai",
+    instruction:
+      "Improve this orz-slides source using its comment-based layout grammar. Slides are separated by `<!-- slide [template] [layout] -->` markers (there is NO bare `---`); an optional leading `<!-- deck … -->` sets deck config; a leading `## title` becomes the slide's title band. Split the content with region markers — e.g. `<!-- slide 2col -->` then `<!-- @left -->` / `<!-- @right -->`, or `row`/`col` splits — and `<!-- @notes -->` for speaker notes; `template=title` for a title slide. Keep one idea per slide, concise bullets over prose. Preserve meaning, math, code, and chemistry. Return the whole passage.",
+    selection: true,
+    status: "available",
+  },
+  {
+    id: "suggest-page-settings",
+    title: "Suggest page settings",
+    summary:
+      "Tune the orz-paged layout — template, page size, margins, headers/footers, page breaks.",
+    appliesTo: ["paged"],
+    mode: "edit",
+    surface: "assistant",
+    routingKind: "editor-ai-edit",
+    changeKind: "editor-ai-edit",
+    event: "ai.edit.requested",
+    skill: "suggest-page-settings",
+    entitlement: "ai",
+    instruction:
+      "Improve this orz-paged document's layout using its page model. Choose a fitting template (`article`, `report`, or `exam`, in a title-page or title-section variant) and page settings — page size (A4 / Letter), margins, running headers/footers, page numbers — via the leading config, plus `font_preset` / `decoration_color` / `page_background` where appropriate. Use page-break controls where a section should start on a new page. Preserve the content, headings, math, code, and chemistry. Return the whole document.",
+    selection: true,
+    status: "available",
+  },
+  {
     id: "draft-description",
     title: "Draft description",
     summary:

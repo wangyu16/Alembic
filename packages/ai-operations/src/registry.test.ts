@@ -61,7 +61,16 @@ describe("AI operations registry", () => {
 
     const content = operationsForCategory("content").map((o) => o.id);
     expect(content).toContain("improve-language");
+    expect(content).toContain("enrich-formatting");
     expect(content).not.toContain("generate-concept-map");
+  });
+
+  it("scopes the format-aware layout ops to their format", () => {
+    expect(operationsForCategory("slides").map((o) => o.id)).toContain("suggest-slide-layout");
+    expect(operationsForCategory("paged").map((o) => o.id)).toContain("suggest-page-settings");
+    // format ops don't bleed across formats
+    expect(operationsForCategory("slides").map((o) => o.id)).not.toContain("suggest-page-settings");
+    expect(operationsForCategory("content").map((o) => o.id)).not.toContain("suggest-slide-layout");
   });
 
   it("gates generate-concept-map until concept maps are ready or a draft is provided", () => {
