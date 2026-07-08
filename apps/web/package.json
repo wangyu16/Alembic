@@ -12,6 +12,7 @@
   "dependencies": {
     "@alembic/a11y": "workspace:*",
     "@alembic/ai-assist": "workspace:*",
+    "@alembic/ai-operations": "workspace:*",
     "@alembic/carriers": "workspace:*",
     "@alembic/editor-kit": "workspace:*",
     "@alembic/github-bridge": "workspace:*",

@@ -1,0 +1,125 @@
+# AI Operations — systematic AI calling
+
+**Status:** direction locked (owner decision, 2026-07-08); first pass landed.
+**Package:** [`@alembic/ai-operations`](../../packages/ai-operations) ·
+**Client:** the workspace AI assistant menu (`edit/studio-shell.tsx`).
+
+## Why
+
+AI calling was ad-hoc: each action hand-wired which model to use, which review
+tier it lands in, what event to log, and which prompt/rules to follow. Five
+**separate** catalogs each knew one facet of an operation, and their string keys
+did **not** line up:
+
+| Facet | Catalog | Example keys |
+| --- | --- | --- |
+| Model routing | `DEFAULT_ROUTING.byTask` (`ai-assist/routing.ts`) | `spelling-grammar`, `worksheet`, `a11y-fix` |
+| Risk tier / audit / apply | `CHANGE_KINDS` + `BASE_TIER` (`package-contract/change-tiers.ts`) | `editor-ai-edit`, `draft-section`, `assessment-edit` |
+| Lifecycle events | `EVENT_TYPES` (`research-events`) | `ai.edit.requested`, `ai.draft.requested` |
+| Access | `Capability` + `resolveEntitlements` (`apps/web/lib/entitlements.ts`) | `ai` |
+| Page scope | `StudioCategory` (`edit/studio-shell.tsx`) | `content`, `concept-map`, `course` |
+
+The routing key `spelling-grammar` persists as change-kind `editor-ai-edit`; the
+routing key `worksheet` persists as `generate-artifact`; `assessment-item` →
+`assessment-edit`. Every call site re-derived that mapping by hand.
+
+## The registry
+
+One typed **`AIOperation`** row is the single source of truth that bridges all
+five facets, so every invocation follows the same specific rules:
+
+```ts
+AIOperation {
+  id            // stable kebab-case; the menu sends it, the server dispatches on it
+  title         // menu label
+  summary       // one-line help / tooltip
+  appliesTo     // OperationCategory[] | "*"   → which pages offer it
+  mode          // "edit" | "generate" | "analyze"
+  routingKind   // → ai-assist DEFAULT_ROUTING.byTask   (which model)
+  changeKind    // → package-contract BASE_TIER         (tier, audit, apply path)
+  event         // → research-events EVENT_TYPES         (what is logged)
+  skill         // → skills/ai-operations/<id>           (the authoritative RULES)
+  entitlement   // "ai"                                  (access)
+  instruction?  // edit-mode only: the compiled form of the skill's rules
+  gate?(ctx)    // availability (true | reason string)
+  status        // "available" | "planned"
+}
+```
+
+The catalog lives in [`registry.ts`](../../packages/ai-operations/src/registry.ts);
+resolvers are `operationsForCategory(category)` and `operationById(id)`. A test
+(`registry.test.ts`) pins that every `routingKind`/`changeKind`/`event`/category
+is valid in its source catalog, so the registry can never drift out of the five
+catalogs it bridges.
+
+### Modes
+
+- **`edit`** — rewrite the current file. Runs the op's `instruction` through
+  `proposeEditAction` → before/after diff → apply. The three universal aids
+  (`check-spelling-grammar`, `improve-language`, `check-accessibility`) are edit
+  ops offered on every page (`appliesTo: "*"`).
+- **`generate`** — produce new content (e.g. `generate-concept-map` on the course
+  page). Gated + `planned` until its execution + change-tier routing land.
+- **`analyze`** — report only, no write (e.g. a future accessibility audit).
+
+### Rules live in the skill (skill-primary)
+
+Each operation's behaviour is specified by a **skill** under
+`skills/ai-operations/<id>/SKILL.md` — portable prose + examples, the one place
+the rules are edited, and the same rules an agent uses on any platform. For
+`edit` ops the registry also carries `instruction`: the **compiled** (distilled)
+form of the skill that the runtime propose flow sends. The skill is
+authoritative; keep `instruction` and the runtime system prompt
+(`ai-assist/prompts.ts`) in sync with it.
+
+### Page scope
+
+`OperationCategory` = the workspace `StudioCategory` union plus `course`. The
+workspace maps its `StudioCategory | "course"` onto it 1:1. Scoping lives in the
+durable package so the agent/worker offer the same operations the menu does.
+
+## Execution
+
+The workspace AI-assistant menu is a **thin client**: it renders
+`operationsForCategory(category)`, disables `planned`/gated ops, and for an
+available `edit` op sends its `instruction` through the existing
+`proposeEditAction` → diff → apply path (the one validated write path). Access,
+rate limit, token budget, model routing, and `ai_invocations` logging are all
+enforced once, at `governedProvider` — unchanged.
+
+## Adding an operation
+
+1. Add a row to `AI_OPERATIONS` (`registry.ts`) — pick its `routingKind`,
+   `changeKind`, `event`, `appliesTo`, `mode`, `entitlement`, `gate?`.
+2. Add `skills/ai-operations/<id>/SKILL.md` with the authoritative rules.
+3. For `edit` ops, set `instruction` (compiled from the skill). For new
+   capabilities, add the durable function in `@alembic/ai-assist` and (if new)
+   its `routingKind`/`changeKind`/`event` to their source catalogs.
+4. The test pins the cross-catalog validity automatically.
+
+No parallel mechanism — extend these existing seams only (architecture rule 9).
+
+## First pass (landed) and follow-ups
+
+**Landed:** the package + registry + cross-catalog test; the menu is
+registry-driven; the three universal edit aids are available everywhere;
+`generate-concept-map` is declared on the course page, gated (needs every chapter
+concept map, or a provided draft) and marked `planned`; the example skill
+`check-spelling-grammar`.
+
+**Follow-ups (tracked in [Status.md](../Status.md)):**
+
+- **Migrate the scattered AI actions** (`draftSectionAction`,
+  `generateWorksheetAction`, `generateQuestions`, `suggestA11yFixAction`,
+  coherence agent, `generateCourseDescriptionAction`) to declare + dispatch
+  through the registry, so their routing/change/event/skill are read from the
+  row rather than hand-wired.
+- **Route edit-op persistence through `changeKind`/tier** rather than the current
+  direct `saveFileAction` after the diff, so `editor-ai-edit`/`a11y-fix` land in
+  the Tier-2 review queue where the tier says they should.
+- **Wire `generate`/`analyze` ops** (concept-map generation from chapter concept
+  maps or an uploaded draft; accessibility audit).
+- **Author the remaining skills** — one per operation — and keep `instruction` +
+  `ai-assist/prompts.ts` compiled from them.
+- **Promote `OperationCategory`** to the shared source the workspace
+  `StudioCategory` imports, removing the 1:1 duplication.

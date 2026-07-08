@@ -1,0 +1,19 @@
+{
+  "name": "@alembic/ai-operations",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Systematic catalog of AI operations: one typed row per operation bridging model routing, change tier, lifecycle event, page scope, entitlement, and rules (skill). Pure metadata — no IO.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@alembic/ai-assist": "workspace:*",
+    "@alembic/package-contract": "workspace:*",
+    "@alembic/research-events": "workspace:*"
+  }
+}

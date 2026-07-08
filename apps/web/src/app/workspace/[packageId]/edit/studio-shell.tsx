@@ -9,6 +9,11 @@ import {
   type StudyGuideBlock,
   type UnitTerm,
 } from "@alembic/package-contract";
+import {
+  operationsForCategory,
+  type OperationCategory,
+  type OperationGateContext,
+} from "@alembic/ai-operations";
 import { saveStudyGuideAction } from "../actions";
 import {
   generateCourseDescriptionAction,
@@ -388,6 +393,7 @@ export function StudioShell({
             <FileEditor
               key={`${category}:${categoryFile.path}`}
               packageId={packageId}
+              category={category}
               label={CATEGORY_LABELS[category as StudioCategory]}
               help={
                 category === "private"
@@ -575,20 +581,14 @@ function CourseHome({
           </div>
           <AIAssistant
             packageId={packageId}
+            category="course"
             current={md}
             onApply={(p) => {
               setMd(p);
               setDirty(true);
               setMode("source");
             }}
-            extraActions={[
-              {
-                label: "Generate concept map",
-                disabled: true,
-                title:
-                  "Available once every chapter has a concept map, or you provide a draft (Word, PDF…)",
-              },
-            ]}
+            gateContext={{ conceptMapsReady: false, draftProvided: false }}
           />
           <button
             onClick={() => run(() => generateCourseDescriptionAction(packageId), "Generated with AI.")}
@@ -884,7 +884,7 @@ function ContentEditor({
               {allCollapsed ? "Expand all" : "Collapse all"}
             </button>
           )}
-          <AIAssistant packageId={packageId} path={path} repo="public" current={assembled} />
+          <AIAssistant packageId={packageId} category="content" path={path} repo="public" current={assembled} />
           <a
             href={`/workspace/${packageId}/export/study-guide?chapter=${path.replace(/^.*\//, "").replace(/\.md$/, "")}`}
             className="btn btn-ghost btn-sm"
@@ -960,12 +960,14 @@ function ContentEditor({
 /* ── Generic single-file markdown editor (assessment guide, …) ───────────── */
 function FileEditor({
   packageId,
+  category,
   label,
   help,
   file,
   onDirty,
 }: {
   packageId: string;
+  category: OperationCategory;
   label: string;
   help: string;
   file: { path: string; repo: "public" | "private"; content: string };
@@ -1030,7 +1032,7 @@ function FileEditor({
               Preview
             </button>
           </div>
-          <AIAssistant packageId={packageId} path={file.path} repo={file.repo} current={text} />
+          <AIAssistant packageId={packageId} category={category} path={file.path} repo={file.repo} current={text} />
           <button onClick={save} disabled={pending || !dirty} className="btn btn-primary btn-sm">
             {pending ? "Saving…" : "Save"}
           </button>
@@ -1059,59 +1061,35 @@ function FileEditor({
   );
 }
 
-/* ── In-editor AI: propose → diff (before/after) → approve ───────────────── */
-/* AI assistant: an eye-catching icon that opens a context menu of the allowed
- * actions for the current page. The universal aids (spelling/grammar, language,
- * accessibility) are preset instructions run through the same propose → diff →
- * apply flow as a custom instruction. Hosts pass page-specific `extraActions`
- * (e.g. the course description's gated "Generate concept map"). By default an
- * approved suggestion saves directly (saveFileAction); pass `onApply` to route
- * it into the host's own buffer/save instead (e.g. the derive-aware course
- * description save). */
-type AIExtraAction = {
-  label: string;
-  instruction?: string;
-  disabled?: boolean;
-  title?: string;
-};
-
-const AI_PRESETS: { key: string; label: string; instruction: string }[] = [
-  {
-    key: "grammar",
-    label: "Check spelling & grammar",
-    instruction:
-      "Correct spelling, grammar, and punctuation only. Do not change meaning, wording style, structure, or formatting beyond what is required for correctness. Preserve all Markdown, block-id attributes, links, and math verbatim.",
-  },
-  {
-    key: "language",
-    label: "Improve language",
-    instruction:
-      "Improve clarity, flow, and readability while preserving the meaning and the author's voice. Do not add or remove content. Preserve all Markdown, block-id attributes, links, and math.",
-  },
-  {
-    key: "accessibility",
-    label: "Check accessibility",
-    instruction:
-      "Improve accessibility only: ensure every image has meaningful alt text, headings form a logical order without skipped levels, links have descriptive text (never 'click here'), and tables have header rows. Preserve meaning and all Markdown, block-id attributes, and math. Make accessibility-related changes only.",
-  },
-];
-
+/* ── In-editor AI: registry-driven context menu → propose → diff → approve ── */
+/* The AI assistant is an eye-catching icon that opens a context menu of the
+ * allowed operations for the current page, resolved from the durable
+ * `@alembic/ai-operations` registry (operationsForCategory). Every operation
+ * follows the same rules: `edit`-mode aids run their canonical instruction
+ * through the propose → diff → apply flow; `generate`/`analyze` ops (and gated
+ * ops) render disabled until wired/allowed. By default an approved suggestion
+ * saves directly (saveFileAction); pass `onApply` to route it into the host's
+ * own buffer/save instead (e.g. the derive-aware course description save). See
+ * docs/specs/ai-operations.md. */
 function AIAssistant({
   packageId,
+  category,
   current,
   path,
   repo,
   onApply,
-  extraActions,
+  gateContext,
 }: {
   packageId: string;
+  category: OperationCategory;
   current: string;
   path?: string;
   repo?: "public" | "private";
   onApply?: (proposed: string) => void;
-  extraActions?: AIExtraAction[];
+  gateContext?: OperationGateContext;
 }) {
   const router = useRouter();
+  const ops = operationsForCategory(category);
   const [menuOpen, setMenuOpen] = useState(false);
   const [panelOpen, setPanelOpen] = useState(false);
   const [customMode, setCustomMode] = useState(false);
@@ -1190,33 +1168,30 @@ function AIAssistant({
           role="menu"
           className="absolute right-0 z-30 mt-1 w-64 rounded-lg border border-edge bg-[var(--surface)] p-1 shadow-xl"
         >
-          {AI_PRESETS.map((p) => (
-            <button
-              key={p.key}
-              role="menuitem"
-              onClick={() => runInstruction(p.instruction)}
-              className="block w-full rounded-md px-2 py-1.5 text-left text-sm text-ink hover:bg-elevated"
-            >
-              {p.label}
-            </button>
-          ))}
-          {extraActions?.map((a) => (
-            <button
-              key={a.label}
-              role="menuitem"
-              disabled={a.disabled}
-              title={a.title}
-              onClick={() => a.instruction && runInstruction(a.instruction)}
-              className={`block w-full rounded-md px-2 py-1.5 text-left text-sm ${
-                a.disabled
-                  ? "cursor-not-allowed text-faint"
-                  : "text-ink hover:bg-elevated"
-              }`}
-            >
-              {a.label}
-              {a.disabled ? " (coming soon)" : ""}
-            </button>
-          ))}
+          {ops.map((op) => {
+            const gateRes = op.gate ? op.gate(gateContext ?? {}) : true;
+            const available = op.status === "available" && gateRes === true;
+            const reason = typeof gateRes === "string" ? gateRes : op.summary;
+            return (
+              <button
+                key={op.id}
+                role="menuitem"
+                disabled={!available}
+                title={reason}
+                onClick={() =>
+                  available && op.mode === "edit" && op.instruction
+                    ? runInstruction(op.instruction)
+                    : undefined
+                }
+                className={`block w-full rounded-md px-2 py-1.5 text-left text-sm ${
+                  available ? "text-ink hover:bg-elevated" : "cursor-not-allowed text-faint"
+                }`}
+              >
+                {op.title}
+                {op.status === "planned" ? " (coming soon)" : ""}
+              </button>
+            );
+          })}
           <div className="my-1 border-t border-edge" />
           <button
             role="menuitem"

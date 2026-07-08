@@ -13,6 +13,20 @@ same commit as the work it tracks. Statuses: ✅ done · 🔄 partially shipped 
 
 **Superseded design (kept for guardrail history):** the 2026-06 “editor overhaul (v2)” — a bespoke three-pane editor with per-section `.md` editing and `.md.html` *export* — was **superseded by the self-contained-editing direction above** (owner decision, 2026-07-03/04) and archived at [docs/archive/spec-workspace-editor-overhaul.md](archive/spec-workspace-editor-overhaul.md). Its durable guardrails (G1–G8) shipped; the bespoke-editor surface did **not** — the workspace hosts the in-file editors instead. The 7-category rail and chapter/publish flows it prototyped carried over into the hosting shell.
 
+**Workspace polish (in progress).** Iterating on the hosting shell's details: the
+category rail toggle is disabled at course level; chapter/category selection is
+**optimistic** (nav chrome no longer lags the server round-trip); the course
+description is a **Source/Preview** editor with an empty-state field template
+(the per-course theme control was removed for now). In-editor AI is now a
+**systematic operations registry** — [`@alembic/ai-operations`](../packages/ai-operations)
+declares one typed row per AI operation (page scope, model routing, change tier,
+event, entitlement, gate, and the rules skill), reconciling the five previously
+unaligned catalogs; the assistant menu is a thin client over
+`operationsForCategory`, and each op follows the same rules. Universal aids
+(spelling/grammar, improve language, accessibility) are available on every page;
+`generate-concept-map` is declared+gated on the course page (planned). Rules live
+in `skills/ai-operations/<id>`. See [ai-operations.md](specs/ai-operations.md).
+
 ### Pending operator actions (human-in-the-loop)
 
 These are the only things blocking full production parity with the code:
