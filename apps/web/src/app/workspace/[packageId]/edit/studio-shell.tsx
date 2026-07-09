@@ -23,7 +23,7 @@ import {
   type OperationGateContext,
 } from "@alembic/ai-operations";
 import { saveStudyGuideAction } from "../actions";
-import { saveCourseDescriptionAction } from "../metadata-actions";
+import { saveCourseDescriptionAction, setCourseInfoAction, type CourseInfo } from "../metadata-actions";
 import { saveFileAction, proposeEditAction, runGenerateOperationAction } from "./edit-actions";
 import { importFileAction } from "../import-actions";
 import { shareFileAction } from "../share-actions";
@@ -123,6 +123,7 @@ export function StudioShell({
   category,
   content,
   courseDescription,
+  courseInfo,
   categoryFile,
   assets,
   assetDocs,
@@ -140,6 +141,7 @@ export function StudioShell({
   category: StudioCategory | "course";
   content: { preamble: string; blocks: StudyGuideBlock[] } | null;
   courseDescription: string | null;
+  courseInfo: CourseInfo;
   categoryFile: { path: string; repo: "public" | "private"; content: string } | null;
   assets: AssetItem[];
   assetDocs?: Record<string, AssetDocInfo>;
@@ -390,6 +392,7 @@ export function StudioShell({
               packageId={packageId}
               title={title}
               initial={courseDescription}
+              courseInfo={courseInfo}
               published={published}
               onDirty={setDirty}
             />
@@ -504,12 +507,14 @@ function CourseHome({
   packageId,
   title,
   initial,
+  courseInfo,
   published,
   onDirty,
 }: {
   packageId: string;
   title: string;
   initial: string | null;
+  courseInfo: CourseInfo;
   published: boolean;
   onDirty?: (d: boolean) => void;
 }) {
@@ -519,6 +524,24 @@ function CourseHome({
   const [pending, start] = useTransition();
   const [note, setNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [info, setInfo] = useState<CourseInfo>(courseInfo);
+  const [infoDirty, setInfoDirty] = useState(false);
+  const [infoPending, startInfo] = useTransition();
+  const [infoNote, setInfoNote] = useState<string | null>(null);
+  const [infoError, setInfoError] = useState<string | null>(null);
+
+  const saveInfo = () => {
+    setInfoNote(null);
+    setInfoError(null);
+    startInfo(async () => {
+      const r = await setCourseInfoAction(packageId, info);
+      if (!r.ok) setInfoError(r.error ?? "That didn't save.");
+      else {
+        setInfoDirty(false);
+        setInfoNote("Saved.");
+      }
+    });
+  };
   // Source ⇄ rendered toggle, mirroring the concept-map FileEditor. The preview
   // renders on switch, not per keystroke.
   const [mode, setMode] = useState<"source" | "preview">("source");
@@ -575,6 +598,64 @@ function CourseHome({
 
   return (
     <div className="flex h-full flex-col gap-3">
+      <div className="rounded-xl border border-edge p-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="font-serif text-sm text-ink">Course details</h2>
+          <div className="flex items-center gap-2">
+            {infoDirty && <span className="text-xs text-warn">Unsaved</span>}
+            <button
+              onClick={saveInfo}
+              disabled={infoPending || !infoDirty}
+              className="btn btn-ghost btn-sm"
+            >
+              {infoPending ? "Saving…" : "Save"}
+            </button>
+          </div>
+        </div>
+        <p className="mb-2 text-xs text-faint">
+          Shown on the published course home page. Optional — leave blank to omit a line.
+        </p>
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+          <label className="text-xs">
+            <span className="mb-1 block text-muted">Instructor</span>
+            <input
+              value={info.instructor ?? ""}
+              onChange={(e) => {
+                setInfo((v) => ({ ...v, instructor: e.target.value }));
+                setInfoDirty(true);
+              }}
+              placeholder="Dr. Yu Wang"
+              className="field w-full"
+            />
+          </label>
+          <label className="text-xs">
+            <span className="mb-1 block text-muted">Course number</span>
+            <input
+              value={info.courseNumber ?? ""}
+              onChange={(e) => {
+                setInfo((v) => ({ ...v, courseNumber: e.target.value }));
+                setInfoDirty(true);
+              }}
+              placeholder="CHEM 320"
+              className="field w-full"
+            />
+          </label>
+          <label className="text-xs">
+            <span className="mb-1 block text-muted">Department / institute</span>
+            <input
+              value={info.department ?? ""}
+              onChange={(e) => {
+                setInfo((v) => ({ ...v, department: e.target.value }));
+                setInfoDirty(true);
+              }}
+              placeholder="Department of Chemistry, University of Louisiana"
+              className="field w-full"
+            />
+          </label>
+        </div>
+        {infoNote && <p className="mt-2 text-xs text-ok">{infoNote}</p>}
+        {infoError && <p className="mt-2 text-sm text-danger">{infoError}</p>}
+      </div>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="font-serif text-lg text-ink">Course description</h2>
         <div className="flex flex-wrap items-center gap-2">

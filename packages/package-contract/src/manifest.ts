@@ -138,6 +138,14 @@ export const PackageManifestSchema = z.object({
       courseName: z.string().optional(),
       level: z.string().optional(),
       institutionType: z.string().optional(),
+      /**
+       * Course-identity fields shown on the published course home page
+       * (S — course site redesign, 2026-07). All optional/additive; a course
+       * that hasn't filled them in just omits that line on the home page.
+       */
+      instructor: z.string().optional(),
+      courseNumber: z.string().optional(),
+      department: z.string().optional(),
     })
     .default({}),
   license: LicenseSchema,

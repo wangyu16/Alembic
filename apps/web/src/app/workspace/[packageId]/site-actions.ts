@@ -3,10 +3,9 @@
 import { redirect } from "next/navigation";
 import { serializeStudyGuide } from "@alembic/package-contract";
 import {
+  chapterPracticePath,
   chapterSlidesPath,
-  listArtifacts,
   listChapters,
-  loadArtifactContent,
   loadSlidesDeck,
   loadStudyGuide,
   releaseGates,
@@ -15,14 +14,12 @@ import {
   buildCourseSite,
   themeScheme,
   type CourseChapter,
-  type CoursePractice,
   type SiteFile,
 } from "@alembic/renderer";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
 import { supabaseEventLogger } from "@/lib/events";
 import { clientForUser } from "@/lib/github";
-import { slugForFile } from "@/lib/export";
 import { getRenderTheme } from "@/lib/theme";
 import { generateSelfContainedFile } from "@/lib/worker-client";
 
@@ -129,6 +126,22 @@ export async function publishSiteAction(
           /* omit the slides link for this chapter */
         }
         try {
+          // Practice questions are an AUTHORED per-chapter document, same lean-
+          // source model as the study guide — publish only chapters that
+          // actually have one (practice/NN.md); no auto-derived fallback.
+          const practiceDoc = await loadStudyGuide(store, packageId, chapterPracticePath(ch.slug));
+          const practiceMarkdown = serializeStudyGuide(practiceDoc.preamble, practiceDoc.blocks);
+          if (practiceMarkdown.trim()) {
+            const practiceTheme = record!.manifest.themes?.["practice"] ?? mdTheme;
+            const practiceHtml = await generateSelfContainedFile({ kind: "md", markdown: practiceMarkdown, title: `${ch.title} — Practice questions`, theme: practiceTheme, delivery: "cdn" });
+            const practiceHref = `practice/${ch.slug}.md.html`;
+            pageFiles.push({ path: practiceHref, content: practiceHtml });
+            chapter.practiceHref = practiceHref;
+          }
+        } catch {
+          /* omit the practice link for this chapter */
+        }
+        try {
           const pagedHtml = await generateSelfContainedFile({ kind: "paged", markdown, title: ch.title, delivery: "cdn" });
           const pagedHref = `paged/${ch.slug}.paged.html`;
           pageFiles.push({ path: pagedHref, content: pagedHtml });
@@ -143,33 +156,14 @@ export async function publishSiteAction(
       }
     }
 
-    const practice: CoursePractice[] = [];
-    for (const a of await listArtifacts(store, packageId)) {
-      const loaded = await loadArtifactContent(store, packageId, a.record.artifactId);
-      if (!loaded) continue;
-      const slug = `${slugForFile(a.record.title)}-${a.record.artifactId.slice(4, 10)}`;
-      const viewHref = `worksheets/${slug}.md.html`;
-      try {
-        const html = await generateSelfContainedFile({
-          kind: "md",
-          markdown: loaded.content,
-          title: a.record.title,
-          theme: mdTheme,
-          delivery: "cdn",
-        });
-        pageFiles.push({ path: viewHref, content: html });
-        practice.push({ title: a.record.title, viewHref });
-      } catch {
-        /* skip this practice page */
-      }
-    }
-
     const files = [
       ...buildCourseSite({
         title: record!.title,
         description: record!.manifest.description || undefined,
+        instructor: record!.manifest.courseContext?.instructor,
+        courseNumber: record!.manifest.courseContext?.courseNumber,
+        department: record!.manifest.courseContext?.department,
         chapters,
-        practice,
         builtAt: new Date().toISOString(),
         // The published site's hub matches the course theme's dark/light scheme.
         theme: hubScheme,

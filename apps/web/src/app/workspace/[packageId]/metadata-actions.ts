@@ -69,6 +69,57 @@ export async function setCourseThemeAction(
   }
 }
 
+export interface CourseInfo {
+  instructor?: string;
+  courseNumber?: string;
+  department?: string;
+}
+
+/**
+ * Persist the course-identity fields shown on the published home page
+ * (instructor, course number, department/institute). Additive manifest fields
+ * under `courseContext`; empty strings clear a field rather than being stored
+ * as "". No-op (no commit) when nothing actually changed.
+ */
+export async function setCourseInfoAction(
+  packageId: string,
+  info: CourseInfo,
+): Promise<{ ok: boolean; error?: string }> {
+  const { supabase, user } = await requireUser();
+  const store = new SupabaseSandboxStore(supabase);
+  try {
+    const record = await store.getPackage(packageId);
+    if (!record) return { ok: false, error: "Package not found." };
+    const clean = (s?: string) => {
+      const t = s?.trim();
+      return t ? t : undefined;
+    };
+    const next = {
+      ...record.manifest.courseContext,
+      instructor: clean(info.instructor),
+      courseNumber: clean(info.courseNumber),
+      department: clean(info.department),
+    };
+    const current = record.manifest.courseContext;
+    const unchanged =
+      current.instructor === next.instructor &&
+      current.courseNumber === next.courseNumber &&
+      current.department === next.department;
+    if (unchanged) return { ok: true };
+    const manifest = parseManifest({ ...record.manifest, courseContext: next });
+    await supabase.from("packages").update({ manifest }).eq("id", packageId);
+    await syncFilesToGitHub(
+      supabase, store, user.id, packageId,
+      [{ path: "alembic.json", content: JSON.stringify(manifest, null, 2) + "\n" }],
+      "Set course info (Alembic)",
+    );
+    revalidatePath(`/workspace/${packageId}`);
+    return { ok: true };
+  } catch {
+    return { ok: false, error: "Couldn't save the course info. Please try again." };
+  }
+}
+
 /** The current canonical course description markdown (metadata/course.md). */
 export async function loadCourseDescriptionAction(
   packageId: string,

@@ -67,6 +67,14 @@ function CheckIcon() {
     </svg>
   );
 }
+function EyeIcon() {
+  return (
+    <svg viewBox="0 0 16 16" className={ico} fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden>
+      <path d="M1 8s2.5-4.5 7-4.5S15 8 15 8s-2.5 4.5-7 4.5S1 8 1 8Z" strokeLinejoin="round" />
+      <circle cx="8" cy="8" r="1.8" />
+    </svg>
+  );
+}
 
 /** Icon-forward control: prominent icon, small supplementary label. */
 function Control({
@@ -232,6 +240,15 @@ export function PublishHeader({
   return (
     <div className="flex flex-col items-end gap-1.5">
       <div className="flex flex-wrap items-center justify-end gap-1.5">
+        {/* Preview the public home page — available anytime, even unpublished */}
+        <Control
+          icon={<EyeIcon />}
+          label="Preview site"
+          tone="ghost"
+          href={`/workspace/${packageId}/site-preview`}
+          title="See what the published course home page will look like"
+        />
+
         {/* ① Save to GitHub */}
         {published ? (
           <Control

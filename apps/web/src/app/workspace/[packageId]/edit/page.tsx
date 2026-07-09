@@ -188,6 +188,11 @@ export default async function EditShellPage({
         doc ? { preamble: doc.preamble, blocks: doc.blocks } : null
       }
       courseDescription={courseDescription}
+      courseInfo={{
+        instructor: record.manifest.courseContext.instructor,
+        courseNumber: record.manifest.courseContext.courseNumber,
+        department: record.manifest.courseContext.department,
+      }}
       categoryFile={categoryFile}
       assets={assets.map((a) => ({ path: a.path, kind: a.kind }))}
       assetDocs={assetDocs}
