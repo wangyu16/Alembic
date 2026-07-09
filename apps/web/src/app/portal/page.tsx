@@ -23,7 +23,7 @@ export default async function PortalPage({
     const { data } = await supabase
       .from("portal_registrations")
       .select(
-        "package_id, title, description, discipline, license, public_repo_url, site_url, registered_at, accessibility_status",
+        "package_id, title, description, keywords, discipline, license, public_repo_url, site_url, registered_at, accessibility_status",
       )
       .order("registered_at", { ascending: false });
     registrations = (data as Registration[] | null) ?? [];
@@ -47,6 +47,7 @@ export default async function PortalPage({
               discipline: r.discipline || undefined,
               url: r.site_url || undefined,
               accessibility: r.accessibility_status,
+              keywords: r.keywords?.length ? r.keywords : undefined,
             });
             return { "@type": "ListItem", position: i + 1, item };
           }),

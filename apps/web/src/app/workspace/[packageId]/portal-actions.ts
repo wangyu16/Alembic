@@ -49,6 +49,7 @@ export async function registerPackageAction(
     owner_id: user.id,
     title: record!.title,
     description: record!.manifest.description ?? "",
+    keywords: record!.manifest.keywords ?? [],
     discipline: record!.manifest.discipline ?? "chemistry",
     license: record!.manifest.license,
     public_repo_url: `https://github.com/${repo.owner}/${repo.name}`,

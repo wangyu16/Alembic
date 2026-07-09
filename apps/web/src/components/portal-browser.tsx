@@ -1,13 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { reportPackageAction } from "@/app/portal/actions";
 
 export interface PortalRegistration {
   package_id: string;
   title: string;
   description: string;
+  /** Tags/keywords (`manifest.keywords`) — searched, not necessarily shown. */
+  keywords: string[];
   discipline: string;
   license: string;
   public_repo_url: string;
@@ -29,12 +31,65 @@ function unique(values: string[]): string[] {
   return [...new Set(values.filter(Boolean))].sort();
 }
 
+function tokenize(s: string): string[] {
+  return s.toLowerCase().split(/\s+/).filter(Boolean);
+}
+
+/**
+ * A course description clamped to 2 lines with a "Show more" toggle that
+ * only appears when the text actually overflows (measured after mount/resize
+ * — not a length heuristic, since wrap depends on viewport width and font).
+ * While expanded, the overflow check is skipped so the toggle doesn't
+ * disappear the moment the clamp lifts (its own un-clamped height always
+ * equals its scrollHeight).
+ */
+function ClampedDescription({ text }: { text: string }) {
+  const ref = useRef<HTMLParagraphElement>(null);
+  const [expanded, setExpanded] = useState(false);
+  const [overflowing, setOverflowing] = useState(false);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || expanded) return;
+    const check = () => setOverflowing(el.scrollHeight > el.clientHeight + 2);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, [text, expanded]);
+
+  return (
+    <div>
+      <p
+        ref={ref}
+        className={`mt-1 text-sm leading-relaxed text-muted ${expanded ? "" : "line-clamp-2"}`}
+      >
+        {text}
+      </p>
+      {overflowing && (
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="mt-0.5 text-xs font-medium text-[var(--accent)] hover:text-[var(--accent-hover)] hover:underline"
+        >
+          {expanded ? "Show less" : "Show more"}
+        </button>
+      )}
+    </div>
+  );
+}
+
 /**
  * M32 — searchable/filterable discovery hub over the portal index. Client-side
- * (the index is small): text search over title/description + discipline /
+ * (the index is small): text search over title/description/tags + discipline /
  * license / accessibility facets. Each result links to the live site + source,
  * and to the workspace where it can be adapted (the M31 AdaptPanel lists portal
  * sources).
+ *
+ * Search (2026-07-09, owner request): the query is tokenized and every token
+ * must appear somewhere in title, description, or keywords/tags — a token-set
+ * match rather than one brittle exact-phrase substring, so "acid base" finds
+ * a course whose title says "Acids & Bases I" and description mentions
+ * "equilibrium" even though the words aren't adjacent or in query order.
  */
 export function PortalBrowser({ registrations }: { registrations: PortalRegistration[] }) {
   const [q, setQ] = useState("");
@@ -45,16 +100,27 @@ export function PortalBrowser({ registrations }: { registrations: PortalRegistra
   const disciplines = useMemo(() => unique(registrations.map((r) => r.discipline)), [registrations]);
   const licenses = useMemo(() => unique(registrations.map((r) => r.license)), [registrations]);
 
+  const corpus = useMemo(
+    () =>
+      new Map(
+        registrations.map((r) => [
+          r.package_id,
+          `${r.title} ${r.description} ${r.keywords.join(" ")}`.toLowerCase(),
+        ]),
+      ),
+    [registrations],
+  );
+
   const filtered = useMemo(() => {
-    const needle = q.trim().toLowerCase();
+    const tokens = tokenize(q);
     return registrations.filter(
       (r) =>
-        (!needle || `${r.title} ${r.description}`.toLowerCase().includes(needle)) &&
+        tokens.every((t) => corpus.get(r.package_id)!.includes(t)) &&
         (!discipline || r.discipline === discipline) &&
         (!license || r.license === license) &&
         (!a11y || r.accessibility_status === a11y),
     );
-  }, [registrations, q, discipline, license, a11y]);
+  }, [registrations, corpus, q, discipline, license, a11y]);
 
   return (
     <>
@@ -62,7 +128,7 @@ export function PortalBrowser({ registrations }: { registrations: PortalRegistra
         <input
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          placeholder="Search title or description…"
+          placeholder="Search title, description, or tags…"
           className="field min-w-0 flex-1 text-sm"
           aria-label="Search packages"
         />
@@ -96,9 +162,7 @@ export function PortalBrowser({ registrations }: { registrations: PortalRegistra
                 <h2 className="font-serif text-xl text-ink">{r.title}</h2>
                 <span className="chip shrink-0">{r.license}</span>
               </div>
-              {r.description && (
-                <p className="mt-1 text-sm leading-relaxed text-muted">{r.description}</p>
-              )}
+              {r.description && <ClampedDescription text={r.description} />}
               <div className="mt-2 flex flex-wrap items-center gap-4 text-sm">
                 <span className="text-xs text-faint">{r.discipline}</span>
                 {A11Y_BADGE[r.accessibility_status] && (

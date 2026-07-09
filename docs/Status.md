@@ -63,7 +63,15 @@ theme-in-save).
 
 These are the only things blocking full production parity with the code:
 
-1. **Migration `0013_drop_portal_eligible` is pending** (drops the now-unused `profiles.portal_eligible` column — optional cleanup, apply anytime after this deploys; no code references it). Migrations 0005–0012 **and 0014** (documents) are applied; **0013** is the only pending one. Config notes: 0007's budget stays dormant until `AI_TOKEN_BUDGET` is set; portal listing is now open to all educators (the `portal_eligible` gate + admin toggle were removed); to reach `/admin`, **flag yourself `is_admin=true`** (dashboard) and set **`SUPABASE_SECRET_KEY`** (service-role reads) — optionally `RESEARCH_EXPORT_SALT`.
+1. **Migration `0015_portal_keywords` is PENDING and REQUIRED before/with
+   this deploy** (adds `portal_registrations.keywords text[]`) — unlike
+   0013 below, this one isn't optional cleanup: `registerPackageAction`
+   now writes to the column and `/portal` now selects it, so until it's
+   applied, registering/updating a Discover listing fails (a caught,
+   user-facing error, not a crash) and the `/portal` page's own read
+   degrades to an empty list (also caught, not a crash) rather than
+   showing real listings.
+2. **Migration `0013_drop_portal_eligible` is pending** (drops the now-unused `profiles.portal_eligible` column — optional cleanup, apply anytime after this deploys; no code references it). Migrations 0005–0012 **and 0014** (documents) are applied; **0013 and 0015** (the latter required, see above) are the only ones pending. Config notes: 0007's budget stays dormant until `AI_TOKEN_BUDGET` is set; portal listing is now open to all educators (the `portal_eligible` gate + admin toggle were removed); to reach `/admin`, **flag yourself `is_admin=true`** (dashboard) and set **`SUPABASE_SECRET_KEY`** (service-role reads) — optionally `RESEARCH_EXPORT_SALT`.
 2. ✅ **Done** — Vercel build command is `node ../../scripts/fetch-vendor.mjs && next build`; Plotly is vendored and the plot editor (M11b) works live.
 3. **Interactive verification passes** (can't run in CI): slides render (M13), the in-file hosted editors (`.md.html`/`.slides.html`/`.paged.html` save round-trip via the worker tier), and the AI/reconcile live runs (M18 coherence agent, M9.6 draft-from-plan, M20 reconcile, M23 question generation, M26–M28 adapt/pull/suggest-back) once Portkey is on Vercel. Ketcher (M11) and plots (M11b) are verified live.
 4. **Set the Portkey env vars in Vercel** (`AI_GATEWAY_URL=https://api.portkey.ai/v1`, `AI_GATEWAY_API_KEY`, `AI_MODEL_DEFAULT/FAST/STRONG` = `@<provider-slug>/<model>`) to verify the **M18 coherence agent** live. Local dev can't reach Portkey from this machine (the dev Mac's security/firewall blocks the `node` binary's outbound — `curl` works, `node` ETIMEDOUTs — not an app issue); Vercel's egress is clean. See [ai-architecture.md](specs/ai-architecture.md).
@@ -1025,6 +1033,34 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
   *published* `orz-paged`/`orz-paged-browser@0.4.0` pair is in sync with
   each other and CDN-verified (200, correct file), matching
   `packages/generators`' `^0.4.0` pin — no action needed there.
+- **Discover: 2-line clamped description + tag/token search (2026-07-09,
+  owner request).** `PortalRegistration` gains `keywords: string[]`; new
+  migration `0015_portal_keywords.sql` adds `portal_registrations.keywords
+  text[] not null default '{}'` (same pattern as `accessibility_status`,
+  0006), backfilling existing rows to `{}` automatically. `registerPackageAction`
+  now writes `manifest.keywords` into it. `PortalBrowser`'s description
+  under the title is now a new `ClampedDescription` component — 2 lines
+  (`line-clamp-2`) with a "Show more"/"Show less" toggle that only
+  appears when the text actually overflows (measured post-mount +
+  on resize, the same reliable technique as the course-home clamp,
+  translated into a React ref/effect rather than vanilla JS). **Search**
+  changed from one brittle exact-phrase substring check to tokenized
+  matching: the query splits on whitespace and every token must appear
+  somewhere in title, description, *or* keywords — so a query matches
+  regardless of word order and now genuinely searches tags, not just
+  title/description. Verified live (real browser, not just unit-style
+  checks): built a throwaway `/scratch-portal-test` route (deleted after)
+  mounting `PortalBrowser` with 3 fabricated registrations — confirmed
+  the clamp shows/hides the toggle correctly per description length,
+  expand/collapse works, a query matching *only* a keyword (not present
+  in title or description at all) correctly found its course, and a
+  multi-word query in reversed order still matched via token-set
+  semantics. Along the way, corrupted the local Turbopack dev cache by
+  deleting `apps/web/.next` while the dev server was still running and
+  writing to it (unrelated to this change — a `rm -rf` timing mistake);
+  recovered by stopping the server and restarting clean. Green (typecheck
+  across all 13 workspaces + full test suite + web build). **Pending
+  operator action**: apply migration `0015` (see the pending list above).
 - **Course details card gains description + tags; the old free-text editor
   becomes "Course concept map" (2026-07-09, owner decision).** Reworks
   the split introduced earlier the same day (fullDescription/clamp): the
