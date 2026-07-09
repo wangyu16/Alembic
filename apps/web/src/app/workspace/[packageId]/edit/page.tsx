@@ -3,7 +3,7 @@ import {
   listAssets,
   listChapters,
   loadStudyGuide,
-  loadCourseDescription,
+  loadCourseConceptMap,
 } from "@alembic/package-ops";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
@@ -65,8 +65,8 @@ export default async function EditShellPage({
     category === "content" && activeChapter
       ? await loadStudyGuide(store, packageId, activeChapter.path)
       : null;
-  const courseDescription =
-    category === "course" ? await loadCourseDescription(store, packageId) : null;
+  const courseConceptMap =
+    category === "course" ? await loadCourseConceptMap(store, packageId) : null;
 
   // Single-file-per-chapter markdown categories (read the file's current content).
   let categoryFile: { path: string; repo: "public" | "private"; content: string } | null = null;
@@ -172,11 +172,13 @@ export default async function EditShellPage({
       content={
         doc ? { preamble: doc.preamble, blocks: doc.blocks } : null
       }
-      courseDescription={courseDescription}
+      courseConceptMap={courseConceptMap}
       courseInfo={{
         instructor: record.manifest.courseContext.instructor,
         courseNumber: record.manifest.courseContext.courseNumber,
         department: record.manifest.courseContext.department,
+        description: record.manifest.description,
+        keywords: record.manifest.keywords,
       }}
       categoryFile={categoryFile}
       assets={assets.map((a) => ({ path: a.path, kind: a.kind }))}

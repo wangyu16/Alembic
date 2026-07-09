@@ -37,34 +37,33 @@ describe("buildCourseSite — course home hub", () => {
     expect(index.content).not.toContain("chapters/atoms.html"); // no bare-render page
   });
 
-  it("renders the course intro when a description is given", () => {
+  it("renders the course intro as escaped plain text, not markdown", () => {
     const index = buildCourseSite({
       ...course,
-      description: "A **first** course in chemistry.",
+      description: "A course on *acids* & bases.",
     }).find((f) => f.path === "index.html")!;
     expect(index.content).toContain('<div class="course-intro">');
-    expect(index.content).toContain("<strong>first</strong>");
-  });
-
-  it("prefers the full description over the short one, with a toggle that starts hidden", () => {
-    const index = buildCourseSite({
-      ...course,
-      description: "A short summary.",
-      fullDescription: "A **much longer** version of the intro, with real detail.",
-    }).find((f) => f.path === "index.html")!;
-    expect(index.content).toContain("<strong>much longer</strong>");
-    expect(index.content).not.toContain("A short summary.");
+    // Literal asterisks/ampersand — not rendered as markdown emphasis.
+    expect(index.content).toContain("A course on *acids* &amp; bases.");
+    expect(index.content).not.toContain("<em>acids</em>");
     // Runtime-checked (overflow depends on viewport/fonts) — starts hidden.
     expect(index.content).toContain('id="intro-toggle" hidden');
     expect(index.content).toContain('aria-controls="intro-body"');
   });
 
-  it("falls back to the short description when no full description is given", () => {
+  it("collapses internal newlines to a single paragraph", () => {
     const index = buildCourseSite({
       ...course,
-      description: "Just the short one.",
+      description: "Line one.\nLine two.",
     }).find((f) => f.path === "index.html")!;
-    expect(index.content).toContain("Just the short one.");
+    expect(index.content).toContain("Line one. Line two.");
+  });
+
+  it("omits the intro entirely when there is no description", () => {
+    const index = buildCourseSite({ ...course, description: undefined }).find(
+      (f) => f.path === "index.html",
+    )!;
+    expect(index.content).not.toContain('class="course-intro"');
   });
 
   it("carries its own light/dark identity (not a reused orz-markdown theme)", () => {

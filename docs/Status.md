@@ -1025,7 +1025,47 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
   *published* `orz-paged`/`orz-paged-browser@0.4.0` pair is in sync with
   each other and CDN-verified (200, correct file), matching
   `packages/generators`' `^0.4.0` pin — no action needed there.
-- **Course home: expandable description (2026-07-09, owner report).** The
+- **Course details card gains description + tags; the old free-text editor
+  becomes "Course concept map" (2026-07-09, owner decision).** Reworks
+  the split introduced earlier the same day (fullDescription/clamp): the
+  "Course details" card (Instructor/Course number/Department) now also
+  has **Course description** (one paragraph, plain text, soft-capped at
+  200 words — `manifest.description` is directly authored here, no
+  longer derived from a markdown file) and **Tags/keywords**
+  (comma-separated → `manifest.keywords: string[]`, additive). Both feed
+  the published home page, Discover/portal, and LRMI JSON-LD (`keywords`
+  added to `learningResource()`). The section that used to be titled
+  "Course description" (full markdown, Source/Preview, AI) is **renamed
+  "Course concept map"** and repurposed: free-form notes — concepts/
+  topics, correlations, course-level learning objectives, any structure —
+  that **never** reach the published page or Discover (confirmed by
+  removing the `fullDescription` wiring added earlier the same day, and
+  by a `setCourseConceptMap` test asserting it never touches
+  `manifest.description`/`keywords`). Same file path
+  (`metadata/course.md`) and save mechanics, renamed for clarity
+  (`COURSE_DESCRIPTION_PATH` → `COURSE_CONCEPT_MAP_PATH`,
+  `setCourseDescription`/`loadCourseDescription` →
+  `setCourseConceptMap`/`loadCourseConceptMap`, actions renamed to match).
+  Removed the now-incoherent `draft-description` AI op (drafting "the
+  course description from title + chapters" no longer has a home — the
+  new description field is a plain manual field, and the concept map
+  isn't a course blurb) along with its sole implementation,
+  `@alembic/ai-assist`'s `generateCourseDescription`/
+  `COURSE_METADATA_SYSTEM` (both fully unused after removal — deleted
+  rather than left dead). The `generate-concept-map` op stays
+  `status:"planned"` (unrelated, deferred, structured-data feature) but
+  is now a coherent fit for this section once built. Caught mid-build: a
+  `"use server"` file may only export async functions — an
+  `export const COURSE_DESCRIPTION_MAX_WORDS` broke the *entire*
+  `metadata-actions.ts` module ("has no exported member") until made
+  module-private. Verified live: generated a real published-page sample
+  with `*asterisks*` and `&` in the description and confirmed they render
+  as literal escaped text (not markdown `<em>`), and that `keywords`
+  reaches the LRMI JSON-LD. Green (typecheck across all 13 workspaces +
+  full test suite + web build). Not done: no DB migration to surface
+  `keywords` in the Discover/portal search UI itself (LRMI-only for
+  now) — flagged, not built, out of scope for "add the field."
+- **Course home: expandable description (2026-07-09, owner report).** [Superseded same day, above — the fullDescription/concept-map split it introduced was reworked into the description+keywords/concept-map design.] The
   published course home only ever showed `manifest.description` — a
   short, truncated LRMI/portal derivation (first paragraph, 300 chars) —
   as the visible intro, with no way to read the rest. `buildCourseSite`

@@ -5,7 +5,6 @@ import {
   chapterPracticePath,
   chapterSlidesPath,
   listChapters,
-  loadCourseDescription,
   loadSlidesDeck,
   loadStudyGuide,
 } from "@alembic/package-ops";
@@ -56,11 +55,9 @@ export default async function SitePreviewPage({
 
   const cookie = await getRenderTheme();
   const orzTheme = record.manifest.theme ?? undefined;
-  const fullDescription = await loadCourseDescription(store, packageId);
   const files = buildCourseSite({
     title: record.title,
     description: record.manifest.description || undefined,
-    fullDescription: fullDescription || undefined,
     instructor: record.manifest.courseContext?.instructor,
     courseNumber: record.manifest.courseContext?.courseNumber,
     department: record.manifest.courseContext?.department,

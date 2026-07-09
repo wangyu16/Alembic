@@ -56,7 +56,6 @@ describe("AI operations registry", () => {
     expect(course).toContain("check-spelling-grammar");
     expect(course).toContain("improve-language");
     expect(course).toContain("check-accessibility");
-    expect(course).toContain("draft-description");
     expect(course).toContain("generate-concept-map");
 
     const content = operationsForCategory("content").map((o) => o.id);

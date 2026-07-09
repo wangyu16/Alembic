@@ -32,7 +32,6 @@
  * `buildSite` (single-page callers) is untouched.
  */
 
-import { md } from "orz-markdown";
 import { rendererVersion } from "./index";
 import { escapeHtml, themedDocument } from "./document";
 import { learningResourceJsonLd, type LearningResourceMeta } from "./learning-resource";
@@ -88,16 +87,12 @@ export interface CourseChapter {
 
 export interface CourseSiteInput {
   title: string;
-  /** Short course intro shown on the home page (markdown). Also feeds the
-   *  LRMI/portal summary (`meta.description`) — keep it short for that. */
+  /** The course description — one paragraph, PLAIN TEXT (not markdown),
+   *  authored directly in the "Course details" card. Rendered as the visible
+   *  intro (escaped, not markdown-rendered) and feeds the LRMI/portal summary
+   *  (`meta.description`). Clamped to a few lines by default with a "Show
+   *  full description" toggle when it overflows a narrow viewport. */
   description?: string;
-  /** The full canonical course description (markdown), when it differs from
-   *  the short `description` above. Rendered as the visible intro, clamped to
-   *  a few lines by default with a "Show full description" toggle when it
-   *  overflows — `description` alone is a truncated derivation meant for
-   *  LRMI/portal, not a satisfying read on the home page itself. Falls back
-   *  to `description` when absent (e.g. older builds that don't pass it). */
-  fullDescription?: string;
   /** Course-identity line under the title — instructor / course number /
    *  department, each optional; present fields join with " · ", the line is
    *  omitted entirely when none are set. */
@@ -257,15 +252,18 @@ export function buildCourseSite(input: CourseSiteInput): SiteFile[] {
   const metaLine = metaParts.length
     ? `\n<p class="course-meta">${metaParts.join('<span class="sep">·</span>')}</p>`
     : "";
-  // The full description is the satisfying read; `description` alone is a
-  // truncated LRMI/portal derivation and would just repeat a partial version
-  // of the same first paragraph. Clamped to a few lines by default (CSS) with
-  // a "Show full description" toggle that only appears when there's actually
-  // more to reveal (checked at runtime — server-side text measurement isn't
-  // reliable across viewport widths/fonts).
-  const introText = input.fullDescription || input.description;
+  // Plain text (not markdown) — one paragraph, authored directly in the
+  // "Course details" card. Escaped and collapsed to a single paragraph.
+  // Clamped to a few lines by default (CSS) with a "Show full description"
+  // toggle that only appears when there's actually more to reveal (checked at
+  // runtime — server-side text measurement isn't reliable across viewport
+  // widths/fonts).
+  const introText = input.description?.trim();
+  const introHtml = introText
+    ? `<p>${escapeHtml(introText).replace(/\s*\n+\s*/g, " ")}</p>`
+    : "";
   const intro = introText
-    ? `\n<div class="course-intro"><div class="intro-body" id="intro-body">${md.render(introText)}</div><button type="button" class="intro-toggle" id="intro-toggle" hidden aria-expanded="false" aria-controls="intro-body">Show full description</button></div>
+    ? `\n<div class="course-intro"><div class="intro-body" id="intro-body">${introHtml}</div><button type="button" class="intro-toggle" id="intro-toggle" hidden aria-expanded="false" aria-controls="intro-body">Show full description</button></div>
 <script>(function(){var b=document.getElementById('intro-body'),t=document.getElementById('intro-toggle');if(!b||!t)return;function chk(){if(b.scrollHeight>b.clientHeight+2){t.hidden=false;t.addEventListener('click',function(){var ex=b.classList.toggle('expanded');t.textContent=ex?'Show less':'Show full description';t.setAttribute('aria-expanded',String(ex));});}}function ready(){requestAnimationFrame(chk);}if(document.readyState==='complete')ready();else window.addEventListener('load',ready);})();</script>`
     : "";
   const hero = `<header class="course-hero">\n<h1>${escapeHtml(input.title)}</h1>${metaLine}${intro}\n</header>`;

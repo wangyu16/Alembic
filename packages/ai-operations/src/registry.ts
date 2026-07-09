@@ -122,21 +122,6 @@ export const AI_OPERATIONS: readonly AIOperation[] = [
     status: "available",
   },
   {
-    id: "draft-description",
-    title: "Draft description",
-    summary:
-      "Draft the course description from the course title and chapter outline.",
-    appliesTo: ["course"],
-    mode: "generate",
-    surface: "assistant",
-    routingKind: "course-metadata",
-    changeKind: "draft-section",
-    event: "ai.draft.requested",
-    skill: "draft-description",
-    entitlement: "ai",
-    status: "available",
-  },
-  {
     id: "generate-concept-map",
     title: "Generate concept map",
     summary:

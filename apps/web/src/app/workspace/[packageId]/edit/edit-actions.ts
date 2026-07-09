@@ -2,9 +2,9 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { applyEditorEdit, listChapters } from "@alembic/package-ops";
+import { applyEditorEdit } from "@alembic/package-ops";
 import type { RepoKind } from "@alembic/package-contract";
-import { editFile, generateCourseDescription } from "@alembic/ai-assist";
+import { editFile } from "@alembic/ai-assist";
 import { operationById, PLATFORM_SCOPE } from "@alembic/ai-operations";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
@@ -118,33 +118,9 @@ export async function runGenerateOperationAction(
   packageId: string,
   operationId: string,
 ): Promise<ProposeEditResult> {
-  const { supabase, user } = await requireUser();
+  await requireUser();
+  void packageId;
   const op = operationById(operationId);
   if (!op || op.mode !== "generate") return { ok: false, error: "Unknown AI operation." };
-  const store = new SupabaseSandboxStore(supabase);
-  try {
-    const provider = governedProvider(supabase, { userId: user.id, packageId, kind: op.routingKind });
-
-    if (op.id === "draft-description") {
-      const record = await store.getPackage(packageId);
-      if (!record) return { ok: false, error: "Package not found." };
-      const chapters = await listChapters(store, packageId);
-      const outline = chapters.map((c) => `- ${c.title}`).join("\n");
-      const { markdown } = await generateCourseDescription(provider, {
-        title: record.title,
-        discipline: record.manifest.discipline,
-        content: outline,
-        scope: "course",
-        focus: PLATFORM_SCOPE,
-      });
-      return { ok: true, proposed: markdown };
-    }
-
-    return { ok: false, error: "This AI operation isn't available yet." };
-  } catch (e) {
-    if (e instanceof RateLimitError || e instanceof BudgetExceededError) {
-      return { ok: false, error: e.message };
-    }
-    return { ok: false, error: "Couldn't generate that. Please try again." };
-  }
+  return { ok: false, error: "This AI operation isn't available yet." };
 }

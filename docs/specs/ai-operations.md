@@ -59,11 +59,14 @@ catalogs it bridges.
   `proposeEditAction` → before/after diff → apply. The three universal aids
   (`check-spelling-grammar`, `improve-language`, `check-accessibility`) are edit
   ops offered on every page (`appliesTo: "*"`).
-- **`generate`** — produce new content. `draft-description` (course page) is wired
-  and assistant-surfaced: `runGenerateOperationAction` dispatches by op id,
-  composes `PLATFORM_SCOPE`, routes by `routingKind`, and returns a proposed draft
-  the educator reviews then applies (replacing the standalone "Generate with AI"
-  button). `generate-concept-map` is declared+gated, `planned`.
+- **`generate`** — produce new content. `runGenerateOperationAction` dispatches
+  by op id, composes `PLATFORM_SCOPE`, routes by `routingKind`, and returns a
+  proposed draft the educator reviews then applies. `generate-concept-map` is
+  declared+gated, `planned` — its target is the "Course concept map" section
+  (`metadata/course.md`, free-form; 2026-07-09 owner decision). `draft-description`
+  (drafting the course description from title+chapters) was removed the same
+  day: the course description is now a plain, manually-authored field
+  (≤200 words) in the "Course details" card, not a generated document.
 - **`analyze`** — report only, no write (e.g. a future accessibility audit).
 
 ### Rules: skill-primary + platform supplement
@@ -137,10 +140,13 @@ concept map, or a provided draft) and marked `planned`; the example skill
   routing/change/event/skill from the row + composing `PLATFORM_SCOPE`):
   `draftSectionAction`, `generateQuestions`,
   `suggestA11yFixAction`/`suggestStructureAltText`, the coherence agent.
-  *(`course-metadata`/`draft-description` is migrated — assistant-surfaced +
-  dispatched. `generateWorksheetAction` — the pre-authored-practice worksheet
-  generator this bullet used to also name — was removed 2026-07-09 as dead
-  code, superseded by the authored `practice` space.)*
+  *(`course-metadata`/`draft-description` — and the `generateCourseDescription`
+  function/`COURSE_METADATA_SYSTEM` prompt it was the only caller of — were
+  removed entirely 2026-07-09: the course description became a plain,
+  manually-authored field, so there was nothing left for it to draft.
+  `generateWorksheetAction` — the pre-authored-practice worksheet generator
+  this bullet used to also name — was removed 2026-07-09 as dead code,
+  superseded by the authored `practice` space.)*
 - **Route edit-op persistence through `changeKind`/tier** rather than the current
   direct `saveFileAction` after the diff, so `editor-ai-edit`/`a11y-fix` land in
   the Tier-2 review queue where the tier says they should.

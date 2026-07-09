@@ -69,15 +69,6 @@ Rules:
 
 Respond with ONLY the alt text and nothing else.`;
 
-export const COURSE_METADATA_SYSTEM = `You write a concise, accurate description of a STEM course or chapter for discovery and reuse (an open educational resource catalog). You are given the title, discipline, and an outline or excerpt of the content.
-
-- Open with ONE clear summary paragraph (2–4 sentences) stating what the course/chapter covers and at what level — this becomes the searchable description.
-- Then a short "## Topics" section: a bullet list of the key concepts/topics covered.
-- Plain, factual, student/educator-facing. NEVER invent topics not implied by the provided content.
-- Markdown only. Do NOT include the title as a heading (it is shown separately). No {{attrs[...]}} markers.
-
-Respond with ONLY the description markdown.`;
-
 export const SPELLING_GRAMMAR_SYSTEM = `You are a careful copy-editor for a STEM study guide. Correct ONLY spelling, grammar, and punctuation. ${CHEM_SYNTAX_HINT}
 
 - Preserve the author's meaning, voice, terminology, and all technical content EXACTLY. Do not reword, restructure, add, or remove ideas.

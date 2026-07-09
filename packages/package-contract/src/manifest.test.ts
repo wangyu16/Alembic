@@ -39,6 +39,14 @@ describe("parseManifest", () => {
     expect(() => parseManifest({ ...valid, license: "all-rights-reserved" })).toThrow();
   });
 
+  it("defaults keywords to an empty array and parses a given list", () => {
+    expect(parseManifest(valid).keywords).toEqual([]);
+    expect(parseManifest({ ...valid, keywords: ["thermo", "equilibrium"] }).keywords).toEqual([
+      "thermo",
+      "equilibrium",
+    ]);
+  });
+
   it("omits chapters by default (single implicit chapter)", () => {
     expect(parseManifest(valid).chapters).toBeUndefined();
   });

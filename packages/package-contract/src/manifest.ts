@@ -137,7 +137,17 @@ export const PackageManifestSchema = z.object({
   /** Stable platform-wide package ID (not the repo name). */
   packageId: z.string().min(1),
   title: z.string().min(1),
+  /**
+   * The course description: one paragraph of plain text (not markdown),
+   * authored directly in the "Course details" card — soft-capped at 200
+   * words at the write path (`setCourseInfoAction`), not enforced here so
+   * older data always still parses. Shown on the published course home page,
+   * the Discover/portal listing, and the LRMI JSON-LD.
+   */
   description: z.string().default(""),
+  /** Discovery tags/keywords, authored alongside `description`. Additive;
+   *  feeds the published page's LRMI JSON-LD `keywords`. */
+  keywords: z.array(z.string()).default([]),
   discipline: z.string().default("chemistry"),
   courseContext: z
     .object({

@@ -23,7 +23,7 @@ import {
   type OperationGateContext,
 } from "@alembic/ai-operations";
 import { saveStudyGuideAction } from "../actions";
-import { saveCourseDescriptionAction, setCourseInfoAction, type CourseInfo } from "../metadata-actions";
+import { saveCourseConceptMapAction, setCourseInfoAction, type CourseInfo } from "../metadata-actions";
 import { saveFileAction, proposeEditAction, runGenerateOperationAction } from "./edit-actions";
 import { importFileAction } from "../import-actions";
 import { shareFileAction } from "../share-actions";
@@ -112,7 +112,7 @@ export function StudioShell({
   activePath,
   category,
   content,
-  courseDescription,
+  courseConceptMap,
   courseInfo,
   categoryFile,
   assets,
@@ -128,7 +128,7 @@ export function StudioShell({
   activePath: string | null;
   category: StudioCategory | "course";
   content: { preamble: string; blocks: StudyGuideBlock[] } | null;
-  courseDescription: string | null;
+  courseConceptMap: string | null;
   courseInfo: CourseInfo;
   categoryFile: { path: string; repo: "public" | "private"; content: string } | null;
   assets: AssetItem[];
@@ -377,7 +377,7 @@ export function StudioShell({
               key="course"
               packageId={packageId}
               title={title}
-              initial={courseDescription}
+              initial={courseConceptMap}
               courseInfo={courseInfo}
               published={published}
               onDirty={setDirty}
@@ -461,32 +461,30 @@ function useReportDirty(dirty: boolean, onDirty?: (d: boolean) => void) {
   useEffect(() => () => onDirty?.(false), [onDirty]);
 }
 
-/* ── Course home: the canonical description (G6) ─────────────────────────── */
-/* Empty-state scaffold shown when a course has no description yet — the fields
-   we want instructors to fill (and that Discover meta-extraction will later
-   read). Personalized with the real course title. */
-function courseDescriptionTemplate(title: string): string {
-  return `# ${title}
+/* ── Course home: details card + concept map (G6) ─────────────────────────── */
+/* Empty-state scaffold for the concept map — free-form notes, so this is just
+   a light nudge toward a useful shape, not a required structure. */
+function conceptMapTemplate(title: string): string {
+  return `# ${title} — concept map
 
-- **Instructor:**
-- **Institute:**
-
-## Description
-
-A short overview of the course — this first paragraph is what other educators see on Discover.
-
-## Tags / keywords
-
-
-
-## Objectives
+## Key concepts
 
 -
 
-## Topics and concept map
+## Correlations
 
-Outline the major topics. Once every chapter has a concept map, AI can draft this section for you.
+-
+
+## Course-level learning objectives
+
+-
 `;
+}
+
+const DESCRIPTION_MAX_WORDS = 200;
+function wordCount(s: string): number {
+  const t = s.trim();
+  return t ? t.split(/\s+/).length : 0;
 }
 
 function CourseHome({
@@ -505,22 +503,30 @@ function CourseHome({
   onDirty?: (d: boolean) => void;
 }) {
   const hasInitial = !!(initial && initial.trim());
-  const [md, setMd] = useState(hasInitial ? initial! : courseDescriptionTemplate(title));
+  const [md, setMd] = useState(hasInitial ? initial! : conceptMapTemplate(title));
   const [dirty, setDirty] = useState(false);
   const [pending, start] = useTransition();
   const [note, setNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<CourseInfo>(courseInfo);
+  const [keywordsText, setKeywordsText] = useState((courseInfo.keywords ?? []).join(", "));
   const [infoDirty, setInfoDirty] = useState(false);
   const [infoPending, startInfo] = useTransition();
   const [infoNote, setInfoNote] = useState<string | null>(null);
   const [infoError, setInfoError] = useState<string | null>(null);
+  const descriptionWords = wordCount(info.description ?? "");
+  const descriptionOverLimit = descriptionWords > DESCRIPTION_MAX_WORDS;
 
   const saveInfo = () => {
     setInfoNote(null);
     setInfoError(null);
+    if (descriptionOverLimit) {
+      setInfoError(`Keep the course description to ${DESCRIPTION_MAX_WORDS} words or fewer.`);
+      return;
+    }
     startInfo(async () => {
-      const r = await setCourseInfoAction(packageId, info);
+      const keywords = keywordsText.split(",").map((k) => k.trim()).filter(Boolean);
+      const r = await setCourseInfoAction(packageId, { ...info, keywords });
       if (!r.ok) setInfoError(r.error ?? "That didn't save.");
       else {
         setInfoDirty(false);
@@ -528,8 +534,8 @@ function CourseHome({
       }
     });
   };
-  // Source ⇄ rendered toggle, mirroring the concept-map FileEditor. The preview
-  // renders on switch, not per keystroke.
+  // Source ⇄ rendered toggle for the concept map, mirroring the per-chapter
+  // FileEditor. The preview renders on switch, not per keystroke.
   const [mode, setMode] = useState<"source" | "preview">("source");
   const [previewHtml, setPreviewHtml] = useState("");
   useUnsavedGuard(dirty);
@@ -636,11 +642,42 @@ function CourseHome({
             />
           </label>
         </div>
+        <label className="mt-2 block text-xs">
+          <span className="mb-1 flex items-center justify-between text-muted">
+            <span>Course description</span>
+            <span className={descriptionOverLimit ? "text-danger" : "text-faint"}>
+              {descriptionWords} / {DESCRIPTION_MAX_WORDS} words
+            </span>
+          </span>
+          <textarea
+            value={info.description ?? ""}
+            onChange={(e) => {
+              setInfo((v) => ({ ...v, description: e.target.value }));
+              setInfoDirty(true);
+            }}
+            placeholder="One paragraph describing the course — shown on the published home page and Discover."
+            rows={4}
+            className="field w-full resize-y"
+          />
+        </label>
+        <label className="mt-2 block text-xs">
+          <span className="mb-1 block text-muted">Tags / keywords</span>
+          <input
+            value={keywordsText}
+            onChange={(e) => {
+              setKeywordsText(e.target.value);
+              setInfoDirty(true);
+            }}
+            placeholder="thermochemistry, equilibrium, general chemistry"
+            className="field w-full"
+          />
+          <span className="mt-1 block text-faint">Comma-separated.</span>
+        </label>
         {infoNote && <p className="mt-2 text-xs text-ok">{infoNote}</p>}
         {infoError && <p className="mt-2 text-sm text-danger">{infoError}</p>}
       </div>
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="font-serif text-lg text-ink">Course description</h2>
+        <h2 className="font-serif text-lg text-ink">Course concept map</h2>
         <div className="flex flex-wrap items-center gap-2">
           {dirty && <span className="text-xs text-warn">Unsaved</span>}
           <div className="flex items-center rounded-lg border border-edge p-0.5 text-xs">
@@ -671,7 +708,7 @@ function CourseHome({
             gateContext={{ conceptMapsReady: false, draftProvided: false }}
           />
           <button
-            onClick={() => run(() => saveCourseDescriptionAction(packageId, md), "Saved.")}
+            onClick={() => run(() => saveCourseConceptMapAction(packageId, md), "Saved.")}
             disabled={pending}
             className="btn btn-primary btn-sm"
           >
@@ -680,10 +717,11 @@ function CourseHome({
         </div>
       </div>
       <p className="max-w-prose text-xs text-faint">
-        The canonical course summary (shown on Discover). Markdown; the short
-        public description is derived from the first paragraph.
-        {hasInitial ? "" : " Not started yet — fill in the suggested fields."}
-        {published ? "" : " Saved online when you publish."}
+        Free-form notes for you — concepts/topics, how they relate, and
+        course-level learning objectives, in any structure you like. Markdown.
+        Never published: it doesn&apos;t appear on the course home page or
+        Discover.
+        {hasInitial ? "" : " Not started yet — the outline below is just a suggestion."}
       </p>
       {mode === "source" ? (
         <textarea
@@ -697,7 +735,7 @@ function CourseHome({
         />
       ) : (
         <iframe
-          title="Course description preview"
+          title="Course concept map preview"
           srcDoc={previewHtml}
           className="min-h-[55vh] w-full flex-1 rounded-xl border border-[var(--border)] bg-[var(--bg)]"
         />

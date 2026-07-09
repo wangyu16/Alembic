@@ -26,6 +26,8 @@ export interface LearningResourceMeta {
   datePublished?: string;
   /** Accessibility audit status — drives schema.org accessibility hints. */
   accessibility?: "pass" | "warn" | "fail" | "unknown";
+  /** Discovery tags/keywords (schema.org `keywords`). */
+  keywords?: string[];
 }
 
 /** JSON-encode safely for embedding in a <script> element (escape `<`). */
@@ -50,6 +52,7 @@ export function learningResource(meta: LearningResourceMeta): Record<string, unk
   if (meta.educationalLevel) ld["educationalLevel"] = meta.educationalLevel;
   if (meta.url) ld["url"] = meta.url;
   if (meta.datePublished) ld["datePublished"] = meta.datePublished;
+  if (meta.keywords?.length) ld["keywords"] = meta.keywords;
   // schema.org accessibility: a passing audit asserts conformance + features.
   if (meta.accessibility === "pass") {
     ld["accessMode"] = ["textual", "visual"];
