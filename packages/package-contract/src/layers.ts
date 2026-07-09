@@ -10,6 +10,7 @@
 
 export const PACKAGE_LAYERS = [
   "study-guide",
+  "practice",
   "concepts",
   "objectives",
   "materials",
@@ -27,6 +28,7 @@ export type RepoKind = "public" | "private";
 /** Which repository each layer is stored in. */
 export const LAYER_REPO: Record<PackageLayer, RepoKind> = {
   "study-guide": "public",
+  practice: "public",
   concepts: "public",
   objectives: "public",
   materials: "public",
@@ -40,6 +42,7 @@ export const LAYER_REPO: Record<PackageLayer, RepoKind> = {
 /** Top-level directory for each layer inside its repository. */
 export const LAYER_DIR: Record<PackageLayer, string> = {
   "study-guide": "study-guide",
+  practice: "practice",
   concepts: "concepts",
   objectives: "objectives",
   materials: "materials",

@@ -427,14 +427,15 @@ export function StudioShell({
               chapterTitle={chapters.find((c) => c.slug === activeSlug)?.title ?? title}
               kind="slides"
             />
-          ) : category === "practice" ? (
-            <ArtifactView
+          ) : category === "practice" && activePath ? (
+            <HostedStudyGuideEditor
+              key={`practice:${activePath}`}
               packageId={packageId}
-              activePath={activePath}
-              kind="worksheet"
-              label="Practice questions"
-              items={artifacts.filter((a) => a.kind === "worksheet")}
-              blockIds={chapterBlockIds}
+              path={practicePathFor(activePath)}
+              chapterTitle={`${chapters.find((c) => c.slug === activeSlug)?.title ?? title} · Practice`}
+              initial={{ preamble: "", blocks: [] }}
+              emptyTemplate={PRACTICE_TEMPLATE}
+              onDirty={setDirty}
             />
           ) : category === "current" ? (
             <CurrentSpace />
@@ -656,6 +657,31 @@ const HOSTED_STUDY_GUIDE_AI_OPS = operationsForCategory("content")
   .filter((o) => o.selection && o.surface === "assistant")
   .map((o) => ({ id: o.id, title: o.title, selection: true }));
 
+/* Practice questions live in the `practice` space as a per-chapter document —
+   the same hosted `.md.html` framework as the study guide, at a sibling path. */
+const practicePathFor = (studyGuidePath: string) =>
+  studyGuidePath.replace(/^study-guide\//, "practice/");
+
+/* Starter scaffold shown when a chapter's practice document is first created. */
+const PRACTICE_TEMPLATE = `# Practice questions
+
+Questions for this chapter, organized by **learning objective** (from the concept
+map). Add multiple questions per objective, and label each with its intended
+level: **assignment · discussion · quiz · exam**.
+
+## Objective 1 — <state the objective>
+
+**Assignment.** <a homework-level question>
+
+**Quiz.** <a shorter check-for-understanding question>
+
+## Objective 2 — <state the objective>
+
+**Discussion.** <an open-ended prompt for class discussion>
+
+**Exam.** <an exam-level question>
+`;
+
 /* ── E3: host the chapter's .md.html in-file editor ───────────────────────────
  * The study guide is edited through the self-contained file's OWN editor. We
  * generate the `.md.html` on demand (worker) as the editing surface, host it via
@@ -667,9 +693,11 @@ function HostedStudyGuideEditor(props: {
   path: string;
   chapterTitle: string;
   initial: { preamble: string; blocks: StudyGuideBlock[] };
+  /** Starter markdown used when the file doesn't exist yet (e.g. Practice). */
+  emptyTemplate?: string;
   onDirty?: (d: boolean) => void;
 }) {
-  const { packageId, path, chapterTitle, onDirty } = props;
+  const { packageId, path, chapterTitle, onDirty, emptyTemplate } = props;
   const [state, setState] = useState<
     { s: "loading" } | { s: "hosted"; html: string } | { s: "fallback" }
   >({ s: "loading" });
@@ -677,7 +705,7 @@ function HostedStudyGuideEditor(props: {
   useEffect(() => {
     let cancelled = false;
     setState({ s: "loading" });
-    generateChapterHtmlAction(packageId, path, chapterTitle)
+    generateChapterHtmlAction(packageId, path, chapterTitle, emptyTemplate)
       .then((r) => {
         if (cancelled) return;
         setState(r.ok && r.editable && r.html ? { s: "hosted", html: r.html } : { s: "fallback" });
@@ -686,7 +714,7 @@ function HostedStudyGuideEditor(props: {
     return () => {
       cancelled = true;
     };
-  }, [packageId, path, chapterTitle]);
+  }, [packageId, path, chapterTitle, emptyTemplate]);
 
   if (state.s === "loading") {
     return (

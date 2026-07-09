@@ -19,6 +19,13 @@ export function chapterStudyGuidePath(slug: string): string {
   return `study-guide/${slug}.md`;
 }
 
+/** Repo path for a chapter's practice-questions document (the `practice` space).
+ *  Sibling of the chapter's study guide; same block-structured markdown, edited
+ *  through the same hosted `.md.html` framework. */
+export function chapterPracticePath(slug: string): string {
+  return `practice/${slug}.md`;
+}
+
 /** Default single-chapter study-guide path for v0.1 packages. */
 export const DEFAULT_STUDY_GUIDE_PATH =
   chapterStudyGuidePath("01-getting-started");

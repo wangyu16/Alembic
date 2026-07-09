@@ -45,6 +45,7 @@ export async function generateChapterHtmlAction(
   packageId: string,
   path: string,
   title?: string,
+  emptyTemplate?: string,
 ): Promise<ChapterHtmlResult> {
   const { supabase } = await requireUser();
   if (!workerConfigured()) return { ok: true, editable: false };
@@ -52,7 +53,9 @@ export async function generateChapterHtmlAction(
     const store = new SupabaseSandboxStore(supabase);
     const record = await store.getPackage(packageId);
     const doc = await loadStudyGuide(store, packageId, path);
-    const markdown = serializeStudyGuide(doc.preamble, doc.blocks);
+    let markdown = serializeStudyGuide(doc.preamble, doc.blocks);
+    // A freshly-created document (no file yet) opens with a starter template.
+    if (!markdown.trim() && emptyTemplate) markdown = emptyTemplate;
     // Open the editing surface in the course theme, so the in-file theme picker
     // reflects the current global choice (and a change persists on save).
     const html = await generateEditableFile({ kind: "md", markdown, title, theme: record?.manifest.theme });
