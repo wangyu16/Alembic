@@ -146,7 +146,11 @@ export default async function EditShellPage({
   const publishing = {
     configured: Boolean(cfg),
     connected: Boolean(profile?.github_installation_id),
-    published: record.storage === "github",
+    // Both must hold — `storage` alone can be stale (e.g. after the manifest
+    // split-brain bug); `publicRepoUrl` is what "Save to GitHub"/"Update page"
+    // actually need, so gate the UI's "already published" state on it too, or
+    // the button goes inert with nothing to click.
+    published: record.storage === "github" && Boolean(pub),
     publicRepoUrl: pub ? `https://github.com/${pub.owner}/${pub.name}` : null,
     installUrl: cfg ? installUrl(cfg.appSlug, packageId) : null,
     versions: [],

@@ -562,6 +562,10 @@ function CourseHome({
     },
   });
 
+  // The one remaining caller is the Save button (AI generation now applies
+  // through AIAssistant's own onApply, not through here). saveCourseDescriptionAction
+  // echoes `markdown` back on every success — it is not a signal that the save
+  // is somehow still unsaved, so a successful save always clears `dirty`.
   const run = (fn: () => Promise<{ ok: boolean; markdown?: string; error?: string }>, label: string) => {
     setNote(null);
     setError(null);
@@ -569,14 +573,7 @@ function CourseHome({
       const r = await fn();
       if (!r.ok) setError(r.error ?? "That didn't complete.");
       else {
-        // Generate returns fresh markdown (now unsaved); save returns none.
-        if (r.markdown !== undefined) {
-          setMd(r.markdown);
-          setDirty(true);
-          setMode("source");
-        } else {
-          setDirty(false);
-        }
+        setDirty(false);
         setNote(label);
       }
     });

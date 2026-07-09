@@ -1025,6 +1025,32 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
   *published* `orz-paged`/`orz-paged-browser@0.4.0` pair is in sync with
   each other and CDN-verified (200, correct file), matching
   `packages/generators`' `^0.4.0` pin — no action needed there.
+- **Two follow-on fixes from the same owner report, on "Chem 320" and a
+  second, freshly-published course (2026-07-09).** (a) The "① Save to
+  GitHub" control had no way to re-trigger once `manifest.publicRepo` was
+  wiped by the split-brain bug below: `edit/page.tsx` computed `published`
+  from `record.storage === "github"` alone, so the header showed the inert
+  "Saved online" checkmark (no `href`, no `onClick`) instead of the
+  actionable button — publishing looked unrecoverable even though clicking
+  "Save to GitHub" would have safely self-healed it (deterministic repo
+  names ⇒ 422-tolerant reuse, never a duplicate). Fixed: `published` now
+  also requires `manifest.publicRepo` to be present, matching what the
+  server actions actually check. (b) On a second course, saving the course
+  description showed a "Saved." confirmation but the header's "● Unsaved"
+  dot never cleared: `CourseHome`'s save handler (`studio-shell.tsx`)
+  branched on whether the action's response included a `markdown` field to
+  decide "was this a save or a fresh AI generation" — but
+  `saveCourseDescriptionAction` echoes `markdown` back on **every**
+  success, so every save mis-hit the "just generated, still unsaved"
+  branch and set `dirty` back to `true` right after clearing it. That
+  branch is dead code now anyway (AI generation applies through
+  `AIAssistant`'s own `onApply`, not through this handler) — simplified to
+  always clear `dirty` on a successful save. Still under investigation:
+  the same report's third symptom, a "study guide section" publish-gate
+  false negative on a chapter the owner says was saved — no root cause
+  found yet by static tracing (`listChapters`/`loadStudyGuide`/the hosted
+  editor's save path all read/write the same path consistently); needs a
+  repro to pin down. Green (typecheck + full test + web build).
 - **Fixed a manifest split-brain bug that silently unpublished live
   packages (2026-07-09, owner report on "Chem 320").** Editing the course
   description saved locally but wouldn't sync to GitHub, and "Update page"
