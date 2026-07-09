@@ -20,13 +20,20 @@ A **course = one package = one static website.** Within it:
   - chapter **concept map** + **objectives**;
   - **study guide** — the chapter's authoritative prose; **one chapter = one
     student webpage**;
-  - **slides** — derived from the study guide;
+  - **slides** — authored independently (2026-07-09 revision; a fresh deck
+    starts from a minimal scaffold, not derived from the study guide);
+  - **practice questions** — authored independently, per learning objective,
+    in the same block-structured editor as the study guide;
   - **question templates** — how to ask questions about each topic/concept for
     different purposes (assignment, discussion, quiz, exam, …); private answer
     keys stay in the private repo.
 
-The study guide remains the spine; slides and question generation derive from
-its blocks and stay traceable to them (study-guide-centered principle).
+The study guide remains the spine for planning (the concept map/objectives
+every other document is checked against), but slides and practice questions
+are each their own authored document, not generated from its blocks —
+revised from the original study-guide-centered generation principle below,
+kept for history: ~~slides and question generation derive from its blocks
+and stay traceable to them~~.
 
 ## Repository layout (multi-chapter)
 

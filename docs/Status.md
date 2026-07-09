@@ -7,7 +7,7 @@ same commit as the work it tracks. Statuses: ✅ done · 🔄 partially shipped 
 
 **Built framework — Phases 0–7 cores complete.** Phase 7 (research ops & study readiness) core is built — M34 de-identified export, M35 admin/ops module, M36 usage dashboard + centrally-managed credits + FERPA/IRB review (M37 institution-managed mode ⏸ deferred post-pilot). Phase 6 (portal & discovery: LRMI, **cross-owner adapt + suggest-back**, searchable portal, governance) complete; Phases 2–5 cores complete. v0.1 is deployed (not yet *shipped* — 2 of 6 release criteria pending the M8.3 pilot). **Only Phase 8 (hardening & sustainability) remains** — or the pilot-readiness pass (the **scaffolding is now done**: [PilotReadiness.md](PilotReadiness.md) runbook, refreshed [Deployment.md](Deployment.md), worked [DemoContent.md](DemoContent.md), M8.1 ✅). Remaining work is operator/deployed: the **live passes** (need Portkey on Vercel; `SUPABASE_SECRET_KEY` + `is_admin` for `/admin`) — the AI/reconcile/adaptation flows (M18, M9.6, M20, M23, M26–M28, M31) + a structured-data-tester check for M30 — then the M8.3 pilot itself. Heavier deferrals (worker tier: PDF/foreign-import/agent-exec/one-click remediation; studio editing/local projects; M29 Zenodo DOI; M37) remain tracked below. See [LocalSetup.md](LocalSetup.md) + [GitHubAppSetup.md](GitHubAppSetup.md).
 
-> **Current direction — self-contained editing (owner-locked, 2026-07).** Editing and viewing both live *in the files*: the workspace **hosts** the in-file editors of `.md.html` / `.slides.html` / `.paged.html` (orz-family) and **builds no editor of its own**; a chapter's source of record **is** its `.md.html` file; published pages **are** those self-contained files (thin CDN delivery — study guide ~74 KB, framework from jsDelivr, verified live 2026-07-06); every file gets a permalink. Authoritative docs: [SteeringNote.md](SteeringNote.md), [self-contained-editing.md](specs/self-contained-editing.md), [workspace-framework.md](specs/workspace-framework.md), and the module-based [Roadmap.md](Roadmap.md) (Modules R/E/P/T/I/S/W — supersedes the phase-based plan). **Code state today:** the classic editor is **retired** (~2.2k lines removed; `/workspace/[id]` redirects to `/edit`); the local **Studio (`/studio`) is removed**, replaced by `/guide`; the workspace three-pane shell now *hosts* the in-file editors (`HostedStudyGuideEditor` for study guide + practice; `HostedSlidesEditor` for authored slide decks). The durable guardrails **G1–G8** (two-repo reference enforcement, block-ID reconcile on import, whole-package fork, single-source course metadata, AI-entitlement seam) that the earlier editor-overhaul design drove all **landed + tested**.
+> **Current direction — self-contained editing (owner-locked, 2026-07).** Editing and viewing both live *in the files*: the workspace **hosts** the in-file editors of `.md.html` / `.slides.html` / `.paged.html` (orz-family) and **builds no editor of its own**; published pages **are** those self-contained files (thin CDN delivery — study guide ~74 KB, framework from jsDelivr, verified live 2026-07-06); every file gets a permalink. **Committed source of record (revised, 2026-07-08 — "lean-source model"):** a chapter's study guide, slides, and practice questions are each committed as lean markdown (`study-guide/`, `slides/`, `practice/` — `.md`, not `.md.html`); the self-contained `.md.html`/`.slides.html` is generated on demand, purely as the editing/viewing surface, and never itself committed. This supersedes the original plan (below, and in the specs) of `.md.html` as the committed source — the specs haven't all been updated to match yet; this line is authoritative until they are. Authoritative docs: [SteeringNote.md](SteeringNote.md), [self-contained-editing.md](specs/self-contained-editing.md), [workspace-framework.md](specs/workspace-framework.md), and the module-based [Roadmap.md](Roadmap.md) (Modules R/E/P/T/I/S/W — supersedes the phase-based plan). **Code state today:** the classic editor is **retired** (~2.2k lines removed; `/workspace/[id]` redirects to `/edit`); the local **Studio (`/studio`) is removed**, replaced by `/guide`; the workspace three-pane shell now *hosts* the in-file editors (`HostedStudyGuideEditor` for study guide + practice; `HostedSlidesEditor` for authored slide decks). The durable guardrails **G1–G8** (two-repo reference enforcement, block-ID reconcile on import, whole-package fork, single-source course metadata, AI-entitlement seam) that the earlier editor-overhaul design drove all **landed + tested**.
 
 **Pilot UI/UX pass (in progress):** walkthrough to make core flows coherent and intuitive. Landed: homepage rewrite (condensed, open-package-management framing); **workspace package lifecycle** — rename (all), delete (trial, permanent), archive/restore (published; unlists from portal), and GitHub-deletion reconciliation purge ([package-lifecycle.md](specs/package-lifecycle.md), migration `0012`); **publish-flow fixes** — install→publish auto-resume + correct repo owner, idempotent repo creation, and template-init (409) retry; **editor publish header** — publishing moved to an icon-forward header cluster by the title: two explicit steps (① Save to GitHub, ② Publish web page), always-copyable public link, History dropdown (versions/restore split out), and List publicly; **whole-package snapshot + citation moved to the workspace package list** (`_components/package-snapshots.tsx`, published rows only) — the editor's "Publish & share" side group is gone, so the editor is purely authoring + the publish header ([workspace-framework.md](specs/workspace-framework.md)); portal listing left open to all educators with the `portal_eligible` admin gate removed (migration `0013` drops the column); **chapter management overhaul** — per-package unit term (chapter/module/lesson/unit/week, `manifest.unitTerm`, additive), independent **page name** (file/URL) vs **title** with a slug-rename that moves all slug-keyed files, the **chapter title rendered as the page h1** (published build + editor preview), and a switcher + **Manage** dialog (reorder/rename/page-name/delete/add) replacing the old chapter bar ([course-structure.md](specs/course-structure.md)); **History is now per-chapter** — moved out of the publish header to sit next to Save, with the version list scoped to the active chapter's file (`listCommits` path filter) and restore writing that one file forward (one chapter restores independently; no whole-repo rollback, no history rewrite). **Two follow-up fixes:** (a) restore / chapter ops / citation / initial-publish now **record the synced SHA** after their commits, so Alembic's own commits no longer trip the external-edit reconcile warning; (b) the publish header's ② is **re-runnable as "Update page"** once the site is live — saving commits source only, so the public Pages site redeploys (incl. new chapters) when ② runs again. Educator-facing "study guide" wording to be unified to "course content" when the editor is revised. **Trial-storage policy (decision):** trial packages live only in Supabase (a hint now says so in the list + editor); binary asset upload (image/PDF/audio) will be **gated to published packages** so trial content stays text-only in Postgres — no object-store tier needed ([carriers-and-assets.md](specs/carriers-and-assets.md) §5; forward constraint, no binary-upload UI yet).
 
@@ -34,22 +34,30 @@ description's standalone "Generate with AI" button is folded in as the
 dispatch). See [ai-operations.md](specs/ai-operations.md). **Selection AI (v1):**
 highlight a passage in a plain-text editor → a floating "Improve selection" chip
 runs a selection-capable op (spelling/grammar, language) on just the selection and
-splices the reviewed result back. The hosted editors (study guide / slides /
-paged) get the same via the planned **[orz-host-ai@1](specs/orz-host-ai.md)**
-bridge (upstream, so any host can plug in AI). **Format-aware ops** added,
+splices the reviewed result back. The hosted editors (study guide / slides) get
+the same via **[orz-host-ai@1](specs/orz-host-ai.md)** (upstream, so any host can
+plug in AI) — **live** for both as of orz-mdhtml@0.7.1 and orz-slides@0.6.1;
+**paged** still gets it via the plain-text selection-AI path only (its in-file
+editor hasn't been built, so the bridge has nothing to attach to yet). **Format-aware ops** added,
 driven by the formats' upstream authoring skills: `enrich-formatting`
 (orz-markdown callouts/columns/tabs/TOC — surfaces on the study-guide editor),
-`suggest-slide-layout` (orz-slides layout grammar), `suggest-page-settings`
-(orz-paged page model) — educators change layout/formatting without memorizing
-syntax. Slides/paged ops light up when those in-file editors get the bridge.
-**Live (orz-mdhtml@0.7.1, worker redeployed):** the study-guide `.md.html` editor
-gains a **page-wide AI button** (whole-document ops) beside the selection chip; a
-**theme picked in the study guide is captured on save** as the course-global
-default (`manifest.theme` = orz theme id; last write wins across chapters) and used
-for the editing surface, published pages, and downloads; and every generated
-`.md.html` carries an **invisible agent guide** (how to fetch the official skill +
-edit correctly) so external AI apps edit it properly. orz-slides/orz-paged carry
-the agent guide too (held from npm until they also get the AI button + theme-in-save).
+`suggest-slide-layout` (orz-slides layout grammar, live), `suggest-page-settings`
+(orz-paged page model, planned) — educators change layout/formatting without
+memorizing syntax.
+**Live (orz-mdhtml@0.7.1 + orz-slides@0.6.1, worker redeployed):** the study-guide
+`.md.html` editor and the slides `.slides.html` editor each gain a **page-wide AI
+button** (whole-document/whole-slide ops) beside the selection chip; a **theme
+picked in-file is captured on save** as that space's global default
+(`manifest.theme` for study guide, `manifest.themes[space]` for slides/practice —
+orz theme id; last write wins across chapters) and used for the editing surface,
+published pages, and downloads — for slides specifically, the deck's own
+`<!-- deck ... -->` config is the source of truth (orz-slides writes the pick
+back into it on every change) and theme capture reads it straight from there
+rather than a separate protocol field; and every generated `.md.html`/`.slides.html`
+carries an **invisible agent guide** (how to fetch the official skill + edit
+correctly) so external AI apps edit it properly. orz-paged carries the agent
+guide too (held from npm until it also gets an in-file editor + the AI button +
+theme-in-save).
 
 ### Pending operator actions (human-in-the-loop)
 
@@ -900,6 +908,89 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
   redeployed**. The theme picker's source write-back is now live end-to-end —
   the `payload.theme` fallback stays in place (harmless, cheap) as a safety
   net for any deck saved before this rollout.
+- **Coherence audit (2026-07-09, two parallel agents) surfaced a real gap:
+  authored practice questions never reached the published site.** The
+  publish pipeline's "Practice" section still read from the pre-authored
+  `listArtifacts()` derived-worksheet system (M13-era), whose only UI entry
+  point (`ArtifactView` in studio-shell) had already gone unreachable once
+  slides/practice became authored documents — so a course could have a full
+  practice-questions section written in the workspace and publish with an
+  **empty or absent Practice area**, silently. Same audit flagged the whole
+  worksheet/derived-slides-artifact system as substantially dead code (see
+  cleanup entry below), plus doc drift covered further down.
+- **Public site redesign (S — course home page, 2026-07-09).** Fixed the gap
+  above and rebuilt the published home page around it:
+  - **Practice publish fix.** `site-actions.ts` and `/site-preview` now
+    generate each chapter's `.md.html` from its authored `practice/<slug>.md`
+    (present only if that chapter has one) instead of the old artifact
+    system; `CoursePractice`/the flat "Practice" section is gone —
+    `CourseChapter` gains `practiceHref` alongside `slidesHref`/`pagedHref`,
+    matching how practice is actually authored (per chapter, not a
+    course-wide list).
+  - **Course-identity fields.** `manifest.courseContext` gains `instructor`
+    / `courseNumber` / `department` (additive; the field existed but had
+    zero UI or readers before today) + a "Course details" form in the
+    course-description pane (`setCourseInfoAction`).
+  - **Home page rebuilt** (`packages/renderer/src/course-site.ts`, via the
+    impeccable skill, register: brand): a hero (title + instructor/course
+    number/department + description) and a numbered module list per chapter
+    (study guide always; slides/practice links only when that chapter
+    authored one), plus a placeholder "This term" section (the `current`
+    collection isn't finalized). Built to inhabit the *existing*
+    dark-elegant/light-academic identity (Cinzel/Source-Serif-4 and
+    Alegreya/Lato, vendored from orz-markdown — see `theme-css.ts`) rather
+    than invent a third visual system, since the home page is the front
+    door to documents already styled that way. Verified live in both themes
+    + empty state + mobile (375px) via real browser screenshots (a scratch
+    static server + the Preview tools, `buildCourseSite` called directly
+    with representative data) — caught and fixed a genuine overflow bug (the
+    dark theme's uppercase, letter-spaced h1 clipping a long course title on
+    narrow viewports) and a CSS-specificity miss that left module titles
+    underlined against intent.
+  - **`/site-preview` revived**: fixed (same practice/slides checks as
+    site-actions.ts) and relinked from the workspace via a new "Preview
+    site" control in the publish header (previously orphaned — no link
+    anywhere reached it).
+  Green (typecheck + full test + web build; 4 new `course-site` tests for
+  the meta line/numbering/current-term, plus a `deckThemeFromSource`-style
+  regenerated-samples check for the home page).
+- **Dead-code cleanup: the worksheet / derived-slides-artifact system
+  (2026-07-09).** Removed, after exhaustively grepping every symbol for
+  live callers first: `ArtifactView` (studio-shell — confirmed never
+  rendered), `slides-actions.ts` (`generateSlidesAction`), the
+  `/workspace/[packageId]/artifact/[artifactId]` viewer + export route
+  (both reachable only through `ArtifactView`), the `artifacts`/
+  `chapterBlockIds` props threaded from `page.tsx` purely to feed it (a
+  **wasted live query** on every Slides/Practice pane load —
+  `listArtifacts()` walked and parsed every package file, plus a second
+  `loadStudyGuide` call, for a UI path nothing rendered), `ai-actions.ts`'s
+  `generateWorksheetAction`/`regenerateWorksheetAction`/
+  `keepWorksheetMineAction`, and `package-ops/src/worksheets.ts` in full
+  (`generateWorksheetArtifact`, `listArtifacts`, `loadArtifactContent`, …).
+  `package-ops/src/slides.ts` trimmed to only the live authored-deck
+  helpers (`chapterSlidesPath`/`loadSlidesDeck`/`saveSlidesDeck`); the
+  derived `generateSlidesArtifact` half and its now-dead test file are
+  gone. Dropped `listArtifacts` from the `packageOps()` facade (`ops.ts`)
+  too — no caller through it either. Contract-level primitives
+  (`DerivedArtifactRecordSchema`, `artifactRecordPath`, …) are untouched —
+  verified `assets.ts` still depends on them for an unrelated, live
+  feature. This resolves the naming-collision hazard the audit flagged:
+  "slides" named three things and "practice" named two, any of which a
+  future edit could land in by mistake. Green (typecheck + full test + web
+  build; package-ops test count 200→191, the two deleted dead-code test
+  files).
+- **Docs coherence pass (2026-07-09)**, prompted by the same audit: fixed
+  the banner above (was still asserting `.md.html` as the chapter's
+  committed source of record, superseded by the lean-source model — see
+  the still-open cross-doc drift note at the end of this file) and the
+  orz-host-ai/AI-ops paragraph (was still calling the bridge "planned" for
+  slides and saying orz-slides was "held from npm" — both live since
+  0.6.1). `docs/specs/document-model.md`, `course-structure.md`,
+  `package-contract-v2.md`, `package-layout.md`, `self-contained-editing.md`,
+  and `ai-operations.md` still contain some of the same superseded claims
+  (`.md.html`-as-source, "slides derived from the study guide") and were
+  **not** individually rewritten in this pass — flagged, not fixed, at the
+  end of this file so they aren't lost.
 - **E3 bugfix: hosted editor showed blank + the pencil did nothing.** The
   hosted-carrier iframe sandbox was `allow-scripts` WITHOUT `allow-same-origin`,
   giving the file an opaque origin. But the self-contained file renders its
@@ -1645,3 +1736,43 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
 - **M9 multi-chapter courses — done.** Built via two concurrent subagents (package-ops chapter CRUD; renderer `buildCourseSite`) on the committed contract foundation (chapters index), integrated by hand: editor ChapterBar (add/select/rename/reorder/delete), per-chapter edit+save, GitHub-backed packages sync chapter files + manifest, and site build + in-app preview render the multi-chapter course (index TOC + per-chapter pages + prev/next). Fully additive — single-chapter packages unchanged. 134 package tests green; web typecheck + build pass. Follow-ups: `.md.html` export currently covers the active chapter only; the standalone no-lock-in build concatenates chapters rather than per-chapter pages.
 - **M14 accessibility — done (14.1/14.2/14.3).** New pure `@alembic/a11y` package (built by subagent; 33 tests) audits *rendered HTML* — never a second markdown parser — for img-alt, heading-order, empty-heading, link-text, table-header, with educator-facing messages and per-block locations. ai-assist gained `suggestA11yFix` (subagent; alt/link-text remediation, 17 ai-assist tests). Web: editor "Accessibility" panel (findings + locations + "Fix with AI" → Tier-2 queue), `accessibility` manifest field (additive; "Re-check & record" rolls up all chapters), portal badge (`portal_registrations.accessibility_status`, migration 0006, set at register). AI fixes reuse the M10 Tier-2 queue (`a11y-fix` kind) — reviewable, never auto-applied; accept applies a located source rewrite. Contrast is theme-guaranteed (dark-elegant = AA), so not a per-content check. 195 package tests green; web typecheck + build pass. Migrations 0005 + 0006 applied to production (2026-06-16) — tier queue + a11y features live.
 - **M10 risk-tiered approvals — done (10.1/10.2/10.4/10.5; 10.3 deferred to feature milestones).** Contract foundation (`change-tiers.ts`: `BASE_TIER`, `effectiveTier`=max(base,minTier), `canAutoApply`; Tier-3 pinned, never lowerable; 6 tests) + tidy transform (`tidyStudyGuide`, 15 tests, subagent). Infra: `package_changes` table + `packages.review_all` (migration 0005, applied to production 2026-06-16), event taxonomy (`tier1.auto-applied`/`change.undone`/`review.queued` kept separate from human `ai.suggestion.accepted`/`rejected`). Web "Changes & review" panel: **Tier-1** tidy auto-applies and is undoable (restores stored inverse); **Tier-2** queue holds AI drafts (no inline apply) with per-item Accept/Reject + Accept-all (commits deduped per path); **policy** "Review all AI changes" toggle routes even tidy into the queue. All mutating actions sync to the public repo for GitHub-backed packages. 154 package tests green; web typecheck + build pass.
+
+## Known doc drift (2026-07-09 audit)
+
+A coherence audit (two parallel read-only agents + direct verification)
+found several specs describing superseded behavior. Fixed directly in this
+pass: `docs/specs/document-model.md` (§1 principles + the per-chapter table
+— study guide/slides/practice now correctly show `.md` committed /
+`.md.html`+`.slides.html` generated, and slides is marked independently
+authored, not derived), `docs/specs/course-structure.md` (same slides
+correction + practice added to the chapter breakdown),
+`docs/specs/ai-operations.md` and `docs/specs/orz-host-ai.md` (hosted-editor
+AI bridge status — live for study guide + slides, only paged still pending;
+`orz-slides@0.6.0`→`0.6.1` release history added), and the `generateWorksheetAction`
+mention in `ai-operations.md`'s migration list (removed as dead code
+2026-07-09).
+
+**Not fixed in this pass** — flagged so the drift isn't lost:
+
+- **`.md.html` as the committed source of record** — still stated in
+  `docs/specs/package-contract-v2.md` ("Study guide = one `.md.html` file")
+  and `docs/specs/package-layout.md`, and implicitly in
+  `docs/specs/self-contained-editing.md`. Actual model (owner decision,
+  2026-07-08, "lean-source"): the committed source is lean markdown
+  (`study-guide/`, `slides/`, `practice/` — `.md`); the self-contained file is
+  generated on demand, purely as the editing/viewing surface, never itself
+  committed. These three are more foundational/architectural than
+  `document-model.md`/`course-structure.md` (which code comments cite
+  directly) and would benefit from a careful full pass rather than a
+  targeted edit — deferred.
+- **No single current page states "these are the chapter's document types
+  and how each works."** `document-model.md` §2's table is the closest
+  candidate and is now current (per the fixes above), but it's still one
+  candidate among several partially-overlapping docs (this file's banner,
+  `course-structure.md`, `self-contained-editing.md`) rather than a single
+  canonical source — a docs-organization gap, independent of any one
+  factual error, worth a real consolidation pass later.
+
+None of the above are code bugs — the code (verified via typecheck/test/
+build + live browser checks throughout this session) matches what this file
+and the fixed specs say, not what the three still-stale specs say.

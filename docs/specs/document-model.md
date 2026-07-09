@@ -13,10 +13,15 @@ remain there until the specs rebuild reaches it).
 ## 1. Principles
 
 - **The file is the atom.** Every shareable thing is a file with its own
-  version history and permalink. The chapter study guide is one `.md.html`
-  file; sections are internal structure, not storage units. Block IDs are
-  optional in-file anchors (citation, provenance, AI merge assistance) — not
-  units of editing or sharing.
+  version history and permalink. Sections are internal structure, not
+  storage units. Block IDs are optional in-file anchors (citation,
+  provenance, AI merge assistance) — not units of editing or sharing.
+  **Committed vs. surface (revised 2026-07-08, "lean-source model"):** a
+  chapter's study guide, slides, and practice questions are each committed
+  as lean markdown (`.md`); the self-contained `.md.html`/`.slides.html` is
+  generated on demand purely as the editing/viewing surface and is never
+  itself committed. Earlier language in this doc describing `.md.html` as
+  the committed file predates that decision.
 - **Two share levels.** Individual files (each versioned + permalinked) and
   whole packages (united version control via named snapshots + one share
   point). A package snapshot pins every file at once.
@@ -41,10 +46,10 @@ remain there until the specs rebuild reaches it).
 | # | Item | Format | Function | Visibility | Adapt |
 |---|---|---|---|---|---|
 | 1 | Chapter concept map | `.md` | Chapter-level topics/concepts/objectives + correlations | Public repo, not on website | Included |
-| 2 | **Study guide** (name flexible: lecture note, handout, …) | `.md.html` | Complete description of topics/concepts/objectives with illustrations, tables, examples; concise companion when a textbook exists, textbook-grade detail when not. **Includes everything; the chapter's source of truth.** | Public-facing | Included |
-| 3 | Slides | `.slides.html` | Deck derived from the study guide — same outline, concise bullets, reuses its graphics/tables | Public-facing | Included |
+| 2 | **Study guide** (name flexible: lecture note, handout, …) | `.md` committed (`.md.html` generated for editing/publish) | Complete description of topics/concepts/objectives with illustrations, tables, examples; concise companion when a textbook exists, textbook-grade detail when not. **Includes everything; the chapter's source of truth.** | Public-facing | Included |
+| 3 | Slides | `.md` deck source committed (`.slides.html` generated) | Authored independently (2026-07-09) — a fresh deck starts from a minimal scaffold, not derived from the study guide; the educator writes it directly in the in-file editor | Public-facing | Included |
 | 4 | Assessment guide | `.md` | *How* to assess each topic/concept: question kinds and phrasing, differentiation across assignment/discussion/quiz/exam, example question ideas per objective. Methods, not a question pool — **public-safe by definition; answer keys and concrete high-stakes items always live in `private`**, never here. | Public repo, **not** on the course website (not private); `discoverable: false` by default | **Automatically included** when adapted (visible in the adapt preview; excludable there) |
-| 5 | Example & practice questions | `.md.html` | Questions created per the assessment guide, showing students what to expect | Public-facing | Included |
+| 5 | Practice questions | `.md` committed (`.md.html` generated) | Per-chapter, organized by learning objective (multiple questions per objective, labeled by level: assignment/discussion/quiz/exam); authored independently in the same block-structured editor as the study guide, in the spirit of the assessment guide's methods | Public-facing | Included |
 | 6 | **Assets** (space, not a file) | any (images, reaction schemes, plots, diagrams, markdown-source pieces, pdf/docx/pptx, …) | Individual reusable elements; each file searchable and adaptable on its own | Public repo; per-file discoverable | Per-file |
 | 7 | **Current** (space) | any; prefer `.paged.html` for exam sheets/handouts | Current teaching cycle: this semester's assignment list, completed exams with keys for student review, …. Newest set shown on the website; on semester turnover the old set is archived. | Public-facing (website shows newest set; inclusion per instructor) | **Not** auto-included |
 | 8 | **Private** (space) | any; prefer `.paged.html` for exams/handouts | Confidential (exam questions with keys), personal notes, unfinished drafts | **Private repo** — no public link, not discoverable, not adaptable | Never |

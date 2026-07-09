@@ -1,10 +1,12 @@
 # `orz-host-ai@1` — an AI bridge for the self-contained editors
 
-**Status:** **LIVE** end-to-end for the study guide (2026-07-08). Host half +
-orz-mdhtml file half implemented, published (`orz-mdhtml@0.6.0` /
-`orz-mdhtml-browser@0.6.0`), Alembic `generators` dep bumped to `^0.6.0`, and the
-**Fly worker redeployed** (health OK) so newly generated `.md.html` editing
-surfaces embed the assistant. Slides/paged file half deferred.
+**Status:** **LIVE** end-to-end for the study guide (orz-mdhtml@0.7.1,
+2026-07-08) and slides (orz-slides@0.6.1, 2026-07-09). Host half + both file
+halves implemented, published, Alembic `generators` bumped to match each
+(`^0.7.1` / `^0.6.1`), and the **Fly worker redeployed** after each so newly
+generated `.md.html`/`.slides.html` editing surfaces embed the assistant.
+Paged file half still deferred — no in-file editor exists for `.paged.html`
+yet, so there's nothing for the bridge to attach to there.
 **Mirrors:** [`orz-host-save@1`](../../packages/editor-kit/src/host-save-client.ts)
 (the save bridge). **Related:** [ai-operations.md](ai-operations.md).
 
@@ -91,12 +93,23 @@ modules (Ketcher/Plotly) can call `requestAI` directly and skip the transport.
   `runAIOperation` → `proposeEditAction` (registry op + `PLATFORM_SCOPE`).
 - ✅ **orz-mdhtml file half** — `assets/app.js` in-file assistant + `PROTOCOL.md`
   (`orz-host-ai@1`); verified valid + embedded in generated `.md.html`.
-- ✅ **Release (done):** published `orz-mdhtml@0.6.0` + `orz-mdhtml-browser@0.6.0`;
-  bumped Alembic's `orz-mdhtml` dep to `^0.6.0` (typecheck + generators tests +
-  web build green); **redeployed the Fly worker** (health OK). The bridge is live
-  for the study-guide `.md.html` editor.
-- ⬜ **orz-slides / orz-paged file half** — deferred (Alembic treats slides/paged
-  as derived views today; wire when they become independently authored).
+- ✅ **Release (done):** published `orz-mdhtml@0.6.0` + `orz-mdhtml-browser@0.6.0`
+  (later `0.7.1`); bumped Alembic's `orz-mdhtml` dep to match (typecheck +
+  generators tests + web build green); **redeployed the Fly worker** (health
+  OK) each time. The bridge is live for the study-guide `.md.html` editor.
+- ✅ **orz-slides file half** (2026-07-09) — `assets/app.js` in-file assistant
+  ported to orz-slides, scoped to the current slide's buffer (the toolbar
+  button and selection chip operate on the active slide / deck config, not
+  the whole deck); published `orz-slides@0.6.0` then `0.6.1` (the latter also
+  fixed the theme picker to write its pick back into the deck's own
+  `<!-- deck ... -->` config, making the deck genuinely self-describing);
+  bumped Alembic's `orz-slides` dep to match; redeployed the Fly worker.
+  Slides became an independently authored document the same day (E3d,
+  Status.md), which is what made wiring the bridge to it make sense.
+- ⬜ **orz-paged file half** — still deferred. Paged has no in-file editor at
+  all yet (Alembic still treats it as a derived view), so there's nothing
+  for the bridge to attach to; wire it if/when paged becomes independently
+  authored and gets an editor, following the same pattern as slides.
 
 ## Implementation plan (original — for reference)
 

@@ -135,10 +135,12 @@ concept map, or a provided draft) and marked `planned`; the example skill
 - **Migrate the remaining generative actions** to declare + dispatch through the
   registry as `surface: "panel"` ops (invoked from their own UI, but reading
   routing/change/event/skill from the row + composing `PLATFORM_SCOPE`):
-  `draftSectionAction`, `generateWorksheetAction`, `generateQuestions`,
+  `draftSectionAction`, `generateQuestions`,
   `suggestA11yFixAction`/`suggestStructureAltText`, the coherence agent.
   *(`course-metadata`/`draft-description` is migrated — assistant-surfaced +
-  dispatched.)*
+  dispatched. `generateWorksheetAction` — the pre-authored-practice worksheet
+  generator this bullet used to also name — was removed 2026-07-09 as dead
+  code, superseded by the authored `practice` space.)*
 - **Route edit-op persistence through `changeKind`/tier** rather than the current
   direct `saveFileAction` after the diff, so `editor-ai-edit`/`a11y-fix` land in
   the Tier-2 review queue where the tier says they should.
@@ -146,11 +148,15 @@ concept map, or a provided draft) and marked `planned`; the example skill
   maps or an uploaded draft; accessibility audit).
 - **Author the remaining skills** — one per operation — and keep `instruction` +
   `ai-assist/prompts.ts` compiled from them.
-- **Hosted-editor AI** (study guide / slides / paged): the self-contained files'
-  in-file editors get the assistant + selection AI via the
-  **[`orz-host-ai@1`](orz-host-ai.md)** bridge (editor-kit host client + the three
-  orz repos + a coordinated republish). Alembic's host half maps requests onto
-  this registry, so hosted-editor AI flows through the same ops + `PLATFORM_SCOPE`
-  + governance. *(The plain-text editors have selection AI already, in-app.)*
+- **Hosted-editor AI** (paged only — study guide and slides are done): the
+  self-contained files' in-file editors get the assistant + selection AI via
+  the **[`orz-host-ai@1`](orz-host-ai.md)** bridge (editor-kit host client +
+  the orz repos + a coordinated republish). **Live** for study guide
+  (orz-mdhtml@0.7.1) and slides (orz-slides@0.6.1) since 2026-07-08/09 —
+  Alembic's host half maps requests onto this registry, so hosted-editor AI
+  flows through the same ops + `PLATFORM_SCOPE` + governance. Paged has no
+  in-file editor yet, so the bridge has nothing to attach to there. *(The
+  plain-text editors — concept map, assessment guide, private — have
+  selection AI already, in-app.)*
 - **Promote `OperationCategory`** to the shared source the workspace
   `StudioCategory` imports, removing the 1:1 duplication.
