@@ -72,7 +72,6 @@ export type StudioCategory =
   | "concept-map"
   | "content"
   | "slides"
-  | "paged"
   | "assessment-guide"
   | "practice"
   | "assets"
@@ -83,7 +82,6 @@ const CATEGORY_LABELS: Record<StudioCategory, string> = {
   "concept-map": "Concept map",
   content: "Study guide",
   slides: "Slides",
-  paged: "Print / handout",
   "assessment-guide": "Assessment guide",
   practice: "Practice questions",
   assets: "Assets",
@@ -91,13 +89,18 @@ const CATEGORY_LABELS: Record<StudioCategory, string> = {
   private: "Private",
 };
 
-const CATEGORY_ORDER: StudioCategory[] = [
+/* The category rail. Single-document categories first — planning (concept map,
+   assessment guide), a separator, then the deliverables (study guide, slides,
+   practice) — then a separator and the collections (assets, current, private).
+   `"sep"` renders a divider. */
+const CATEGORY_RAIL: (StudioCategory | "sep")[] = [
   "concept-map",
+  "assessment-guide",
+  "sep",
   "content",
   "slides",
-  "paged",
-  "assessment-guide",
   "practice",
+  "sep",
   "assets",
   "current",
   "private",
@@ -354,23 +357,27 @@ export function StudioShell({
           <div className="px-2 pb-1 text-xs text-faint">
             {optCat === "course" ? "Course" : optSlug ? `${forms.Singular}` : ""}
           </div>
-          {CATEGORY_ORDER.map((cat) => (
-            <Link
-              key={cat}
-              href={href({ cat })}
-              onClick={() => {
-                setOptCat(cat);
-                closeDrawers();
-              }}
-              className={`mt-0.5 block rounded-md px-2 py-1.5 text-sm ${
-                cat === optCat
-                  ? "bg-accent text-[var(--accent-ink)]"
-                  : "text-muted hover:bg-elevated hover:text-ink"
-              }`}
-            >
-              {CATEGORY_LABELS[cat]}
-            </Link>
-          ))}
+          {CATEGORY_RAIL.map((cat, i) =>
+            cat === "sep" ? (
+              <div key={`sep-${i}`} className="my-1.5 border-t border-edge" />
+            ) : (
+              <Link
+                key={cat}
+                href={href({ cat })}
+                onClick={() => {
+                  setOptCat(cat);
+                  closeDrawers();
+                }}
+                className={`mt-0.5 block rounded-md px-2 py-1.5 text-sm ${
+                  cat === optCat
+                    ? "bg-accent text-[var(--accent-ink)]"
+                    : "text-muted hover:bg-elevated hover:text-ink"
+                }`}
+              >
+                {CATEGORY_LABELS[cat]}
+              </Link>
+            ),
+          )}
         </nav>
         )}
 
@@ -419,14 +426,6 @@ export function StudioShell({
               path={activePath}
               chapterTitle={chapters.find((c) => c.slug === activeSlug)?.title ?? title}
               kind="slides"
-            />
-          ) : category === "paged" && activePath ? (
-            <HostedChapterView
-              key={`paged:${activePath}`}
-              packageId={packageId}
-              path={activePath}
-              chapterTitle={chapters.find((c) => c.slug === activeSlug)?.title ?? title}
-              kind="paged"
             />
           ) : category === "practice" ? (
             <ArtifactView
