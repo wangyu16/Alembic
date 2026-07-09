@@ -895,9 +895,11 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
   the extracted markdown — genuinely nothing to parse). Paged likely has the
   same inline-config shape as slides (owner: "paged does have all settings in
   source code") and could follow the same pattern once activated.
-  **Requires an orz-slides 0.6.1 release + worker redeploy** for the
-  write-back fix to take effect live (until then the fallback keeps saves
-  working, just without the self-describing guarantee).
+  **orz-slides 0.6.1 released** (npm + GitHub, 2026-07-09) and wired in
+  (`packages/generators` bumped `^0.6.0`→`^0.6.1`, reinstalled); **Fly worker
+  redeployed**. The theme picker's source write-back is now live end-to-end —
+  the `payload.theme` fallback stays in place (harmless, cheap) as a safety
+  net for any deck saved before this rollout.
 - **E3 bugfix: hosted editor showed blank + the pencil did nothing.** The
   hosted-carrier iframe sandbox was `allow-scripts` WITHOUT `allow-same-origin`,
   giving the file an opaque origin. But the self-contained file renders its
