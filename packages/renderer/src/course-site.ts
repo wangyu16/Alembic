@@ -15,12 +15,19 @@
  *   build-info.json, .nojekyll
  *
  * The chapter/slides/practice/paged pages themselves (self-contained files)
- * are added to the file set by the caller after generation. Copy-as-source,
- * themes, and math all come from the self-contained files' own runtime — and
- * the home itself is `themedDocument`, so it carries the orz runtime too.
- * Home chrome (siteStyle) is layered on the chosen orz theme (dark-elegant /
- * light-academic, theme-css.ts) rather than inventing a third visual identity
- * — the home is the front door to documents styled in that same system.
+ * are added to the file set by the caller after generation, each in the
+ * educator's own theme choice **for that category** (study guide/practice can
+ * use any orz-mdhtml theme; slides any orz-slides theme — not limited to two).
+ * **Home chrome is its own identity (revised 2026-07-09), not a reused
+ * orz-markdown theme:** content across categories can each be a different
+ * orz theme, so there's no longer one specific theme for the home to visually
+ * "belong to" — it now carries Alembic's own brand (copper accent, the same
+ * tokens as the workspace app, `homeCss` below), with exactly one light and
+ * one dark variant, auto-selected from the study guide's scheme (`theme`
+ * param — light or dark, never a specific orz theme id). Copy-as-source and
+ * math still come from the self-contained files' own runtime; the home itself
+ * is `themedDocument` with a `css` override, so it still carries the orz
+ * runtime script (copy-as-markdown) even though the visual theme is its own.
  *
  * `buildSite` (single-page callers) is untouched.
  */
@@ -67,61 +74,110 @@ export interface CourseSiteInput {
 }
 
 /**
- * Home chrome, layered on top of the chosen orz theme (dark-elegant /
- * light-academic — see theme-css.ts). Structure and spacing are shared; the
- * one accent color is resolved per theme so it matches that theme's own link
- * color exactly (the two themes name their CSS custom properties differently,
- * so a literal is more robust here than trying to share one var name across
- * both) — everything else stays opacity-based grey, same principle the
- * original home chrome used, so it never clashes with either theme.
+ * Alembic's own home-page identity — light + dark, decoupled from every
+ * orz-markdown/orz-slides built-in theme (content categories can each be a
+ * *different* one of those; the home can't coherently "belong to" any single
+ * one). Same tokens as the workspace app (`apps/web/src/app/globals.css` /
+ * DESIGN.md): cool neutrals + one decoration color (copper), Source Serif 4
+ * for display type over a system sans for body/UI — WCAG-verified pairs
+ * (body ≥4.5:1, muted ≥4.5:1 too since it carries real metadata, not just
+ * decoration). A full, self-sufficient stylesheet (base elements included)
+ * since it no longer inherits `.markdown-body` styling from a vendored theme.
  */
-function siteStyle(theme: RenderTheme = "dark"): string {
-  const accent = theme === "light" ? "#1a1add" : "#5f8cff";
-  return `<style>
-:root{--home-accent:${accent}}
-.course-hero{margin-bottom:clamp(2rem,5vw,3.5rem)}
-/* dark-elegant's h1 is uppercase + letter-spaced for prose section headers —
-   a long course title (one long word, or a title that just doesn't wrap
-   favorably) can overflow its card at narrow widths without this. */
-.course-hero h1{overflow-wrap:break-word;word-break:break-word;hyphens:auto}
-@media (max-width:480px){
-  .course-hero h1{font-size:1.5rem;letter-spacing:.02em;padding-left:.3em;padding-right:.3em}
+function homeCss(theme: RenderTheme = "dark"): string {
+  const dark = theme !== "light";
+  const t = dark
+    ? {
+        canvas: "#0c0e16", surface: "#12151f", elevated: "#1a1e2c",
+        edge: "#272b3d", edgeSoft: "#1c2030", ink: "#e6eaf3", muted: "#9aa3b8",
+        accent: "#d99a6c", accentHover: "#e5ad84", accentInk: "#1c1108",
+        accentSoft: "rgba(217,154,108,.16)",
+      }
+    : {
+        canvas: "#fbfbfd", surface: "#ffffff", elevated: "#f3f4f8",
+        edge: "#dee1ea", edgeSoft: "#eaecf2", ink: "#1b2030", muted: "#5a6276",
+        accent: "#a4551e", accentHover: "#8a4a1c", accentInk: "#ffffff",
+        accentSoft: "rgba(164,85,30,.10)",
+      };
+  return `@import url('https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;0,8..60,700;1,8..60,400&display=swap');
+:root{
+  --canvas:${t.canvas};--surface:${t.surface};--elevated:${t.elevated};
+  --edge:${t.edge};--edge-soft:${t.edgeSoft};--ink:${t.ink};--muted:${t.muted};
+  --accent:${t.accent};--accent-hover:${t.accentHover};--accent-ink:${t.accentInk};
+  --accent-soft:${t.accentSoft};
+  color-scheme:${theme};
 }
-.course-meta{margin:.4rem 0 0;font-size:.95rem;opacity:.7;letter-spacing:.01em;text-align:left;hyphens:none}
-.course-meta .sep{margin:0 .55em;opacity:.5}
-.course-intro{margin-top:1.35rem;opacity:.92}
+*,*::before,*::after{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  margin:0;background:var(--canvas);color:var(--ink);
+  font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+  line-height:1.65;padding:clamp(1.5rem,5vw,3.5rem) 1rem;
+}
+.markdown-body{
+  max-width:52rem;margin:0 auto;background:var(--surface);
+  border:1px solid var(--edge);border-radius:1rem;
+  padding:clamp(1.75rem,6vw,3.25rem);
+}
+h1,h2,h3{font-family:'Source Serif 4',Georgia,serif;color:var(--ink);
+  line-height:1.2;text-wrap:balance;margin:0 0 .5em}
+h1{font-size:clamp(1.9rem,4.5vw,2.75rem);letter-spacing:-.01em;
+  overflow-wrap:break-word;word-break:break-word;hyphens:auto}
+h2{font-size:clamp(1.3rem,3vw,1.6rem);letter-spacing:-.005em}
+p{margin:0 0 1em}
+p:last-child{margin-bottom:0}
+a{color:var(--accent);text-decoration:none}
+a:hover{color:var(--accent-hover);text-decoration:underline}
+strong,b{color:var(--ink);font-weight:600}
+em,i{font-style:italic}
+ul,ol{margin:0 0 1em;padding-left:1.4em}
+li{margin-bottom:.3em}
+blockquote{margin:1em 0;padding:.6em 1em;border-left:3px solid var(--accent-soft);
+  background:var(--elevated);color:var(--muted);font-style:italic}
+code{font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:.9em;
+  background:var(--elevated);border:1px solid var(--edge-soft);border-radius:.3em;
+  padding:.1em .4em}
+hr{border:none;border-top:1px solid var(--edge);margin:1.5em 0}
+
+.course-hero{margin-bottom:clamp(2rem,5vw,3.5rem)}
+@media (max-width:480px){ .course-hero h1{font-size:1.6rem} }
+.course-meta{margin:.4rem 0 0;font-size:.95rem;color:var(--muted);
+  letter-spacing:.01em;text-align:left;hyphens:none}
+.course-meta .sep{margin:0 .55em;opacity:.6}
+.course-intro{margin-top:1.35rem;color:var(--ink);opacity:.92}
 
 .modules{margin:clamp(2.5rem,6vw,4rem) 0;text-align:left}
-.modules-head{display:flex;align-items:baseline;justify-content:space-between;gap:1rem .75rem;flex-wrap:wrap}
-.modules-count{font-size:.8rem;opacity:.55;white-space:nowrap}
+.modules-head{display:flex;align-items:baseline;justify-content:space-between;
+  gap:1rem .75rem;flex-wrap:wrap}
+.modules-count{font-size:.8rem;color:var(--muted)}
 .module-list{list-style:none;padding:0;margin:1.1rem 0 0}
-.module-row{display:flex;gap:clamp(1rem,3vw,1.75rem);align-items:baseline;padding:1.15rem 0;border-bottom:1px solid rgba(128,128,128,.22)}
-.module-row:first-child{border-top:1px solid rgba(128,128,128,.22)}
-.module-num{flex:0 0 auto;min-width:1.7em;font-variant-numeric:tabular-nums;font-size:.95rem;font-weight:600;color:var(--home-accent);opacity:.85}
-.module-main{flex:1;min-width:0;display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:.4rem 1.5rem}
-a.module-title{font-weight:600;font-size:1.05rem;text-decoration:none}
+.module-row{display:flex;gap:clamp(1rem,3vw,1.75rem);align-items:baseline;
+  padding:1.15rem 0;border-bottom:1px solid var(--edge-soft)}
+.module-row:first-child{border-top:1px solid var(--edge-soft)}
+.module-num{flex:0 0 auto;min-width:1.7em;font-variant-numeric:tabular-nums;
+  font-size:.95rem;font-weight:600;color:var(--accent)}
+.module-main{flex:1;min-width:0;display:flex;flex-wrap:wrap;align-items:baseline;
+  justify-content:space-between;gap:.4rem 1.5rem}
+a.module-title{font-weight:600;font-size:1.05rem;color:var(--ink);text-decoration:none}
+a.module-title:hover{color:var(--accent)}
 .module-formats{display:flex;gap:1.1rem;flex-wrap:wrap;font-size:.82rem}
-.module-formats a{text-decoration:none;opacity:.78}
-.module-formats a:hover,a.module-title:hover{opacity:.8}
-.modules-empty{opacity:.65;font-style:italic}
+.module-formats a{text-decoration:none;color:var(--muted)}
+.module-formats a:hover{color:var(--accent)}
+.modules-empty{color:var(--muted);font-style:italic}
 
-.current-term{margin:clamp(2.5rem,6vw,4rem) 0;padding:1.5rem 1.75rem;border:1px dashed rgba(128,128,128,.4);border-radius:.75rem;text-align:left}
-.current-term h2{margin-top:0 !important}
-.current-note{opacity:.68;margin:0}
+.current-term{margin:clamp(2.5rem,6vw,4rem) 0;padding:1.5rem 1.75rem;
+  border:1px dashed var(--edge);border-radius:.75rem;text-align:left}
+.current-term h2{margin-top:0}
+.current-note{color:var(--muted);margin:0}
 
-.site-footer{margin-top:3rem;padding-top:1rem;border-top:1px solid rgba(128,128,128,.2);font-size:.8rem;opacity:.6;text-align:left}
+.site-footer{margin-top:3rem;padding-top:1rem;border-top:1px solid var(--edge-soft);
+  font-size:.8rem;color:var(--muted);text-align:left}
 
 @media (max-width:640px){
   .module-row{flex-direction:column;gap:.4rem}
   .module-num{min-width:0}
 }
-</style>`;
-}
-
-/** Combine the home style with any extra head HTML (e.g. JSON-LD). */
-function head(theme: RenderTheme | undefined, extra?: string): string {
-  const style = siteStyle(theme);
-  return extra ? `${style}\n${extra}` : style;
+`;
 }
 
 /**
@@ -130,7 +186,7 @@ function head(theme: RenderTheme | undefined, extra?: string): string {
  */
 export function buildCourseSite(input: CourseSiteInput): SiteFile[] {
   const files: SiteFile[] = [];
-  const indexHead = head(input.theme, input.meta ? learningResourceJsonLd(input.meta) : undefined);
+  const indexHead = input.meta ? learningResourceJsonLd(input.meta) : undefined;
 
   const metaParts = [input.instructor, input.courseNumber, input.department]
     .filter((s): s is string => Boolean(s && s.trim()))
@@ -184,7 +240,13 @@ ${modulesBody}
 
   files.push({
     path: "index.html",
-    content: themedDocument({ title: input.title, bodyHtml: body, headHtml: indexHead, theme: input.theme }),
+    content: themedDocument({
+      title: input.title,
+      bodyHtml: body,
+      headHtml: indexHead,
+      theme: input.theme,
+      css: homeCss(input.theme),
+    }),
   });
 
   files.push({

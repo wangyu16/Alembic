@@ -46,15 +46,24 @@ describe("buildCourseSite — course home hub", () => {
     expect(index.content).toContain("<strong>first</strong>");
   });
 
-  it("threads the selected render theme (default dark)", () => {
-    expect(buildCourseSite(course).find((f) => f.path === "index.html")!.content).toContain(
-      "Cinzel",
-    ); // dark-elegant
+  it("carries its own light/dark identity (not a reused orz-markdown theme)", () => {
+    const dark = buildCourseSite(course).find((f) => f.path === "index.html")!;
     const light = buildCourseSite({ ...course, theme: "light" }).find(
       (f) => f.path === "index.html",
     )!;
-    expect(light.content).toContain("Alegreya"); // light-academic
-    expect(light.content).not.toContain("Cinzel");
+    // Distinct canvas colors per scheme — proves theme actually threads through.
+    expect(dark.content).toContain("--canvas:#0c0e16");
+    expect(light.content).toContain("--canvas:#fbfbfd");
+    expect(dark.content).not.toContain("--canvas:#fbfbfd");
+    // Never the vendored orz-markdown theme CSS (dark-elegant / light-academic) —
+    // the home has its own identity now, decoupled from any single content theme.
+    for (const doc of [dark, light]) {
+      expect(doc.content).not.toContain("Dark Elegant Theme");
+      expect(doc.content).not.toContain("light-academic-1.css");
+    }
+    // Same display face in both — only the palette changes.
+    expect(dark.content).toContain("Source Serif 4");
+    expect(light.content).toContain("Source Serif 4");
   });
 
   it("inlines orz-markdown's browser runtime on the home (copy-as-source)", async () => {

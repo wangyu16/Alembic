@@ -936,17 +936,29 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
     number/department + description) and a numbered module list per chapter
     (study guide always; slides/practice links only when that chapter
     authored one), plus a placeholder "This term" section (the `current`
-    collection isn't finalized). Built to inhabit the *existing*
-    dark-elegant/light-academic identity (Cinzel/Source-Serif-4 and
-    Alegreya/Lato, vendored from orz-markdown — see `theme-css.ts`) rather
-    than invent a third visual system, since the home page is the front
-    door to documents already styled that way. Verified live in both themes
-    + empty state + mobile (375px) via real browser screenshots (a scratch
-    static server + the Preview tools, `buildCourseSite` called directly
-    with representative data) — caught and fixed a genuine overflow bug (the
-    dark theme's uppercase, letter-spaced h1 clipping a long course title on
-    narrow viewports) and a CSS-specificity miss that left module titles
-    underlined against intent.
+    collection isn't finalized). **Revised same day, owner correction:**
+    the first pass reused the vendored dark-elegant/light-academic CSS
+    verbatim, reasoning the home page was "the front door to documents
+    already styled that way" — but study guide/slides/practice each carry
+    their *own* independently-selected theme per category (any orz-mdhtml
+    theme for study guide/practice, any orz-slides theme for slides — never
+    clamped to just two; confirmed by tracing `site-actions.ts` →
+    `worker-client.ts` → the worker → the real `orz-mdhtml`/`orz-slides`
+    packages, no coercion at any hop), so there's no single content theme
+    left for the home to coherently "belong to." The home now carries
+    **Alembic's own identity** (`homeCss` — the same copper-accent,
+    Source-Serif-4-over-system-sans tokens as the workspace app, from
+    `DESIGN.md`), a genuinely independent light + dark pair (not one of the
+    orz-markdown/orz-slides built-in themes), auto-picked from the study
+    guide's scheme via the existing `themeScheme()`/`hubScheme` plumbing
+    (unchanged). `document.ts`'s `themedDocument` gained a `css` override
+    param (additive) so a caller can supply its own full stylesheet instead
+    of the vendored orz theme CSS. Verified live in both themes + empty
+    state + mobile (375px) via real browser screenshots (a scratch static
+    server + the Preview tools, `buildCourseSite` called directly with
+    representative data) — caught and fixed a genuine overflow bug (a long
+    course title clipping at narrow viewports) and a CSS-specificity miss
+    that left module titles underlined against intent.
   - **`/site-preview` revived**: fixed (same practice/slides checks as
     site-actions.ts) and relinked from the workspace via a new "Preview
     site" control in the publish header (previously orphaned — no link

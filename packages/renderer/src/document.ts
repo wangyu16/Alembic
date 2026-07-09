@@ -40,6 +40,10 @@ export interface ThemedDocOptions {
   headHtml?: string;
   /** Rendered theme — dark-elegant (default) or light-academic. */
   theme?: RenderTheme;
+  /** Override the theme CSS entirely (e.g. a caller with its own independent
+   *  light/dark identity, not one of the vendored orz-markdown themes). `theme`
+   *  still governs the `color-scheme`/`data-theme` meta. */
+  css?: string;
 }
 
 /** Wrap rendered HTML in a self-contained themed document (dark-elegant by default). */
@@ -55,7 +59,7 @@ export function themedDocument(opts: ThemedDocOptions): string {
 <meta name="generator" content="Alembic (${escapeHtml(rendererVersion())})">
 <link rel="stylesheet" href="${KATEX_CSS}">
 <style>
-${themeCss(theme)}
+${opts.css ?? themeCss(theme)}
 </style>${opts.headHtml ? `\n${opts.headHtml}` : ""}
 </head>
 <body>
