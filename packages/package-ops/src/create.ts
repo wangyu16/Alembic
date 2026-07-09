@@ -34,7 +34,9 @@ export interface CreatedPackage {
 
 function welcomeChapter(title: string): string {
   const id = newBlockId();
-  return `## Getting started{{attrs[#${id}]}}
+  return `# ${title}
+
+## Getting started{{attrs[#${id}]}}
 
 Welcome to **${title}**. This is your first study-guide section — replace it
 with your own material. Each section keeps a permanent invisible label (the

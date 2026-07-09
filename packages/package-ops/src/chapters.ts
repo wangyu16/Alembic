@@ -124,7 +124,9 @@ function uniqueSlug(base: string, existing: Set<string>): string {
 /** Minimal seed content for a new chapter, carrying a native block id. */
 function seedChapter(title: string): string {
   const id = newBlockId();
-  return `## ${title}{{attrs[#${id}]}}
+  return `# ${title}
+
+## Section 1{{attrs[#${id}]}}
 
 Welcome to **${title}**. Replace this with your own material.
 `;

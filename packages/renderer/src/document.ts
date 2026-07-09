@@ -72,11 +72,16 @@ ${RUNTIME_SCRIPT}
 `;
 }
 
+/** A leading "# Heading" line — the source already supplies its own h1. */
+const STARTS_WITH_H1 = /^\s*#[^#]/;
+
 /**
  * Render orz-markdown source to a full themed document (preview / viewer).
- * `heading`, when given, becomes the page h1 above the content — mirroring the
- * published chapter page, where the chapter title is the h1 (not in the
- * markdown, since blocks are h2).
+ * `heading`, when given, becomes the page h1 above the content — for content
+ * whose own source starts directly at "## section" level (blocks are h2, no
+ * h1 of their own). Skipped when `markdown` already opens with its own "#"
+ * line, so a study guide that types its own leading title doesn't get a
+ * second, duplicate h1 stacked above it.
  */
 export function renderDocument(
   title: string,
@@ -84,7 +89,7 @@ export function renderDocument(
   theme: RenderTheme = "dark",
   heading?: string,
 ): string {
-  const h1 = heading ? `<h1>${escapeHtml(heading)}</h1>\n` : "";
+  const h1 = heading && !STARTS_WITH_H1.test(markdown) ? `<h1>${escapeHtml(heading)}</h1>\n` : "";
   return themedDocument({ title, bodyHtml: h1 + md.render(markdown), theme });
 }
 
@@ -108,7 +113,7 @@ export function renderPlainDocument(
   markdown: string,
   heading?: string,
 ): string {
-  const h1 = heading ? `<h1>${escapeHtml(heading)}</h1>\n` : "";
+  const h1 = heading && !STARTS_WITH_H1.test(markdown) ? `<h1>${escapeHtml(heading)}</h1>\n` : "";
   return `<!doctype html>
 <html lang="en">
 <head>

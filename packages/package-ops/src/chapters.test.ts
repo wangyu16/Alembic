@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BLOCK_ID_PATTERN, parseManifest } from "@alembic/package-contract";
+import { BLOCK_ID_PATTERN, parseManifest, parseStudyGuide } from "@alembic/package-contract";
 import { createSandboxPackage } from "./create";
 import { MemoryPackageStore } from "./memory-store";
 import {
@@ -88,6 +88,16 @@ describe("createChapter", () => {
     const match = file!.content.match(/\{\{attrs\[#([^\]]+)\]\}\}/);
     expect(match).not.toBeNull();
     expect(match![1]).toMatch(BLOCK_ID_PATTERN);
+  });
+
+  it("seeds a '# Title' preamble line plus a real '##' section — not preamble-only", async () => {
+    const { store, packageId } = await seeded();
+    const created = await createChapter(store, packageId, { title: "Enthalpy" });
+    const files = await store.listFiles(packageId);
+    const file = files.find((f) => f.repo === "public" && f.path === created.path)!;
+    expect(file.content.startsWith("# Enthalpy")).toBe(true);
+    const parsed = parseStudyGuide(file.content);
+    expect(parsed.blocks.length).toBeGreaterThan(0);
   });
 
   it("derives a slug from the title", async () => {

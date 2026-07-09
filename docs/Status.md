@@ -1025,6 +1025,29 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
   *published* `orz-paged`/`orz-paged-browser@0.4.0` pair is in sync with
   each other and CDN-verified (200, correct file), matching
   `packages/generators`' `^0.4.0` pin — no action needed there.
+- **Adopted the owner's proposed authoring convention: "# Title" then "##
+  Section" (2026-07-09).** Following up on the gate false-negative below —
+  `parseStudyGuide`'s design already anticipated an optional leading H1
+  (its own doc comment: preamble "may be ... e.g. an H1 chapter title"),
+  so no parser or gate change was needed, just the starter content. Traced
+  one real risk first: `renderDocument`/`renderPlainDocument`
+  (`packages/renderer/document.ts`, the **preview**-only path — confirmed
+  the actual published `.md.html` never auto-inserts a title, since
+  orz-mdhtml's `template.ts` only uses `title` for the `<title>` tag, not
+  a body heading) unconditionally prepended `<h1>{chapterTitle}</h1>`
+  above the rendered source — if the source itself now opens with its own
+  `# Title`, that would have doubled up. Guarded both functions to skip
+  the injected heading when the source already starts with its own `#`
+  line (new `document.test.ts`, 6 tests). Updated both starter-content
+  generators to the new shape — `welcomeChapter()` (`create.ts`, the
+  package's first/implicit chapter) and `seedChapter()` (`chapters.ts`,
+  chapters added via "Manage") now open with `# {title}` before their
+  first `##` section, instead of reusing the title as the section's own
+  heading text. New tests in `create.test.ts`/`chapters.test.ts` pin the
+  invariant that mattered here: seeded content always parses to at least
+  one real block, so a fresh course/chapter clears the study-guide release
+  gate immediately. Green (typecheck across all 13 workspaces + full test
+  suite, 193 package-ops tests + 50 renderer tests + web build).
 - **Root-caused the third symptom from the same report: a "study guide
   section" publish-gate false negative (2026-07-09).** Not a bug in the
   strict sense — `parseStudyGuide` (`package-contract/block-source.ts`)
