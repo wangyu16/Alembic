@@ -966,6 +966,28 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
   Green (typecheck + full test + web build; 4 new `course-site` tests for
   the meta line/numbering/current-term, plus a `deckThemeFromSource`-style
   regenerated-samples check for the home page).
+- **Course-home footer credits + Alembic homepage footer link (2026-07-09).**
+  The published course-home footer ("Published with Alembic") now links to
+  `alembic.orz.how`; a new "Powered by orz-markdown" credit links to
+  `markdown.orz.how`. Both are preceded by the orz family seal — the same
+  asset already used in the workspace app's own header
+  (`apps/web/public/orz.svg`), inlined once as an SVG `<symbol>` and
+  referenced via `<use>` from both credits (never hotlinked — the published
+  page stays fully self-contained). Separately, Alembic's own homepage
+  footer (`apps/web/src/app/page.tsx`) got the matching fix — its
+  `orz-markdown@<version>` credit now links to `markdown.orz.how` too — and
+  **`PACKAGE_SCHEMA_VERSION` bumped 1→2** (owner decision; new packages are
+  now stamped `schemaVersion: 2`, so the same footer's "package schema v1"
+  became "v2"). This is a **label bump only**: `spaces.ts`/`isV2Manifest`
+  still aren't wired into any live write path — `package-ops` validates and
+  writes through the v1 layer model (`layers.ts`) unconditionally regardless
+  of `schemaVersion`; a real v2 activation (switching the write path over)
+  remains a separate, larger migration. Old v1 packages are unaffected and
+  keep parsing exactly as before (`SUPPORTED_SCHEMA_VERSIONS` still accepts
+  both). `manifest.test.ts`'s schema-version tests updated to match (one now
+  explicitly constructs a literal `schemaVersion: 1` manifest to keep testing
+  real v1 backward-compat, rather than relying on the shared fixture, which
+  now stamps the current default). Green (typecheck + full test + web build).
 - **Dead-code cleanup: the worksheet / derived-slides-artifact system
   (2026-07-09).** Removed, after exhaustively grepping every symbol for
   live callers first: `ArtifactView` (studio-shell — confirmed never

@@ -90,13 +90,17 @@ describe("parseManifest", () => {
 });
 
 describe("schema version awareness (contract v2)", () => {
-  it("keeps the creation default at 1 (new packages stay v1)", () => {
-    expect(PACKAGE_SCHEMA_VERSION).toBe(1);
+  it("stamps new packages at the current creation default (2)", () => {
+    expect(PACKAGE_SCHEMA_VERSION).toBe(2);
     expect(SUPPORTED_SCHEMA_VERSIONS).toEqual([1, 2]);
+    // `valid` stamps schemaVersion from the constant, like a real new package.
+    const m = parseManifest(valid);
+    expect(m.schemaVersion).toBe(2);
+    expect(isV2Manifest(m)).toBe(true);
   });
 
-  it("parses a v1 manifest unchanged", () => {
-    const m = parseManifest(valid);
+  it("still parses an old v1 manifest unchanged (backward compat)", () => {
+    const m = parseManifest({ ...valid, schemaVersion: 1 });
     expect(m.schemaVersion).toBe(1);
     expect(isV2Manifest(m)).toBe(false);
   });

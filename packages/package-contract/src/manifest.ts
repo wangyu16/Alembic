@@ -7,18 +7,22 @@
 import { z } from "zod";
 
 /**
- * Schema version stamped on NEWLY CREATED packages. Bump only with an explicit,
- * documented migration. Old versions stay readable. Held at 1 until the E3
- * migration gate lands elsewhere — the schema already ACCEPTS v2 (see
- * `SUPPORTED_SCHEMA_VERSIONS`) so a migrated v2 package validates.
+ * Schema version stamped on NEWLY CREATED packages (owner: bumped to 2,
+ * 2026-07-09). Bump only with an explicit, documented migration. Old
+ * version-1 packages stay readable and unaffected — this only changes what
+ * *new* packages are stamped with. Note this is a **label bump only**: the
+ * v2 space model (`spaces.ts`, `isV2Manifest`) isn't wired into any live
+ * write path yet — `package-ops` still validates/writes through the v1
+ * layer model (`layers.ts`) unconditionally, regardless of `schemaVersion`.
+ * A real v2 activation (switching the write path to `spaces.ts`) is a
+ * separate, larger migration.
  */
-export const PACKAGE_SCHEMA_VERSION = 1;
+export const PACKAGE_SCHEMA_VERSION = 2;
 
 /**
  * Schema versions the manifest parser accepts. Contract v2 (package-contract-v2.md
  * §7) is a staged, one-way migration: a v2 manifest (`schemaVersion: 2`) must
- * validate alongside v1 while new packages stay v1 until the migration gate flips
- * the creation default. Additive — v1 packages parse byte-for-byte as before.
+ * validate alongside v1. Additive — v1 packages parse byte-for-byte as before.
  */
 export const SUPPORTED_SCHEMA_VERSIONS = [1, 2] as const;
 
@@ -116,7 +120,9 @@ export const PackageManifestSchema = z.object({
   /**
    * Contract schema version. Accepts 1 (v1) or 2 (v2); other values reject so a
    * package from an unknown/future schema fails closed rather than parsing
-   * loosely. New packages are stamped `PACKAGE_SCHEMA_VERSION` (still 1).
+   * loosely. New packages are stamped `PACKAGE_SCHEMA_VERSION` (2, as of
+   * 2026-07-09 — see that constant's doc comment for what the label bump
+   * does and doesn't mean).
    */
   schemaVersion: z
     .number()
