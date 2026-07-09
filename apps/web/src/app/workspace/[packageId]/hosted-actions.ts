@@ -56,9 +56,12 @@ export async function generateChapterHtmlAction(
     let markdown = serializeStudyGuide(doc.preamble, doc.blocks);
     // A freshly-created document (no file yet) opens with a starter template.
     if (!markdown.trim() && emptyTemplate) markdown = emptyTemplate;
-    // Open the editing surface in the course theme, so the in-file theme picker
-    // reflects the current global choice (and a change persists on save).
-    const html = await generateEditableFile({ kind: "md", markdown, title, theme: record?.manifest.theme });
+    // Open the editing surface in the SPACE's global theme (study guide vs
+    // practice can differ), so the in-file theme picker reflects that space's
+    // current choice and a change persists to it on save.
+    const space = path.split("/")[0];
+    const theme = record?.manifest.themes?.[space] ?? record?.manifest.theme;
+    const html = await generateEditableFile({ kind: "md", markdown, title, theme });
     return { ok: true, editable: true, html };
   } catch {
     // No reachable worker / generation error — degrade to the block editor.
@@ -139,8 +142,9 @@ export async function hostSaveStudyGuideAction(
   // course-wide default (last write wins across chapters; no-op if unchanged).
   // Best-effort — a theme-persist hiccup never fails the study-guide save.
   if (res.ok && payload.theme) {
+    const space = path.split("/")[0]; // study-guide vs practice: independent themes
     try {
-      await setCourseThemeAction(packageId, payload.theme);
+      await setCourseThemeAction(packageId, payload.theme, space);
     } catch {
       /* keep the save even if the theme couldn't persist */
     }

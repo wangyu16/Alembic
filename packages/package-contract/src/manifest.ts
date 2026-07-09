@@ -165,6 +165,14 @@ export const PackageManifestSchema = z.object({
    * to defaults at generation. Optional + additive; absent = the editor default.
    */
   theme: z.string().optional(),
+  /**
+   * Per-space theme overrides (orz theme id), so a space can carry its own
+   * global theme independent of the study guide — e.g. practice-question lists
+   * can use a different theme from the study guides. Keyed by space id
+   * (`practice`, …); a space absent here falls back to `theme`. Captured from
+   * each document's own theme picker on save (last write wins across chapters).
+   */
+  themes: z.record(z.string(), z.string()).optional(),
   /** Last accessibility audit result. Optional and additive (absent = unknown). */
   accessibility: AccessibilityStatusSchema.optional(),
   /**

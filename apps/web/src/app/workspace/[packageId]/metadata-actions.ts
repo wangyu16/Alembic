@@ -32,21 +32,30 @@ export interface DescriptionResult {
 }
 
 /**
- * Set the course's single viewing theme (manifest-level, so every generated
- * view is consistent — not the transient editor cookie or per-file settings).
- * Persists to the manifest row + commits alembic.json.
+ * Set a space's global viewing theme (manifest-level, so every chapter in that
+ * space is consistent — not the transient editor cookie or per-file settings).
+ * The study-guide space is stored as the canonical `manifest.theme` (also the
+ * course default); other spaces (e.g. `practice`) get an independent override in
+ * `manifest.themes[space]`. Persists to the manifest row + commits alembic.json.
  */
 export async function setCourseThemeAction(
   packageId: string,
   theme: string,
+  space: string = "study-guide",
 ): Promise<{ ok: boolean; error?: string }> {
   const { supabase, user } = await requireUser();
   const store = new SupabaseSandboxStore(supabase);
   try {
     const record = await store.getPackage(packageId);
     if (!record) return { ok: false, error: "Package not found." };
-    if (record.manifest.theme === theme) return { ok: true }; // unchanged — no commit
-    const manifest = parseManifest({ ...record.manifest, theme });
+    const isDefault = space === "study-guide";
+    const current = isDefault ? record.manifest.theme : record.manifest.themes?.[space];
+    if (current === theme) return { ok: true }; // unchanged — no commit
+    const manifest = parseManifest(
+      isDefault
+        ? { ...record.manifest, theme }
+        : { ...record.manifest, themes: { ...record.manifest.themes, [space]: theme } },
+    );
     await supabase.from("packages").update({ manifest }).eq("id", packageId);
     await syncFilesToGitHub(
       supabase, store, user.id, packageId,
