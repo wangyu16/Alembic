@@ -90,6 +90,17 @@ describe("buildCourseSite — course home hub", () => {
     expect(index.content).toContain("No modules published yet.");
   });
 
+  it("credits Alembic and orz-markdown in the footer, each with the orz mark", () => {
+    const index = buildCourseSite(course).find((f) => f.path === "index.html")!;
+    expect(index.content).toContain('<a href="https://alembic.orz.how">Published with Alembic</a>');
+    expect(index.content).toContain('<a href="https://markdown.orz.how">Powered by orz-markdown</a>');
+    // The mark is inlined once as a <symbol> (no external image request) and
+    // referenced twice via <use> — one per credit link.
+    expect(index.content).toContain('<symbol id="orz-icon"');
+    expect(index.content.match(/<use href="#orz-icon"\/>/g)).toHaveLength(2);
+    expect(index.content).not.toContain("raw.githubusercontent.com");
+  });
+
   it("stamps the renderer version in build-info and includes .nojekyll", () => {
     const files = buildCourseSite(course);
     const info = files.find((f) => f.path === "build-info.json")!;
