@@ -988,6 +988,43 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
   explicitly constructs a literal `schemaVersion: 1` manifest to keep testing
   real v1 backward-compat, rather than relying on the shared fixture, which
   now stamps the current default). Green (typecheck + full test + web build).
+- **Footer consolidated to one icon + a dot separator, links open in a new
+  tab (2026-07-09).** Course-home footer restructured from two icon+link
+  pairs to a single shared orz mark (`<use href="#orz-icon"/>`, still just
+  one inlined `<symbol>`) in front of both credits, separated by
+  `<span class="sep">·</span>`; both links and Alembic's own homepage
+  `orz-markdown` credit now carry `target="_blank" rel="noreferrer"`. Fixed a
+  collateral test failure (`course-site.test.ts`'s course-meta-line
+  separator check was matching the whole page, which now always contains the
+  footer's own separator — rescoped to just the `<p class="course-meta">`
+  substring). 44 renderer tests green.
+- **Published slides were blank in production — root cause: `orz-slides` and
+  `orz-slides-browser` fell out of lockstep on npm (2026-07-09).** orz-slides
+  ships two packages that must publish together at the same version: the
+  main package and `-browser` (the prebuilt in-browser engine, loaded from
+  jsDelivr for `delivery:'cdn'` — the mode the published site uses).
+  Earlier work this session bumped and published `orz-slides` to 0.6.0 then
+  0.6.1, but never published a matching `orz-slides-browser` — it was still
+  live at npm's old `0.4.0`, so every published `.slides.html` requested a
+  nonexistent `orz-slides-browser@0.6.1/orz-slides.browser.js` (404), leaving
+  the deck engine undefined. The static HTML/CSS toolbar (pencil icon) still
+  rendered since it has no JS dependency, matching the reported symptom
+  exactly. **Fixed**: rebuilt the bundle, bumped `browser/package.json` to
+  `0.6.1`, and published `orz-slides-browser@0.6.1` to npm/jsDelivr.
+  Cross-checked orz-mdhtml (the study guide's own CDN path) for the same bug
+  class — false alarm on my end (wrong assumed filename,
+  `orzmd.browser.js` is correct, not `orz-mdhtml.browser.js`) but confirmed
+  actually healthy at the already-published `orz-mdhtml-browser@0.7.1`.
+  Verified end-to-end: generated a real CDN-mode deck from the fixed
+  packages and drove it through a real browser (Preview tools) — deck
+  renders, edit pencil opens a working CodeMirror editor with a functional
+  theme picker. **Lesson applied to orz-paged in the same audit pass**: its
+  local `0.5.0` (agent-guide) bump is uncommitted-to-npm by design, not an
+  oversight — the commit itself says "held from npm until page-wide AI +
+  theme-in-save land here" (same as line 58's note above), and the currently
+  *published* `orz-paged`/`orz-paged-browser@0.4.0` pair is in sync with
+  each other and CDN-verified (200, correct file), matching
+  `packages/generators`' `^0.4.0` pin — no action needed there.
 - **Dead-code cleanup: the worksheet / derived-slides-artifact system
   (2026-07-09).** Removed, after exhaustively grepping every symbol for
   live callers first: `ArtifactView` (studio-shell — confirmed never
