@@ -1,6 +1,5 @@
 import { notFound, redirect } from "next/navigation";
 import {
-  listArtifacts,
   listAssets,
   listChapters,
   loadStudyGuide,
@@ -85,7 +84,7 @@ export default async function EditShellPage({
     categoryFile = { path: single.path, repo: single.repo, content: f?.content ?? "" };
   }
 
-  // Carrier categories: assets list, and slides/worksheet artifacts.
+  // Carrier categories: assets list.
   const assets = category === "assets" ? await listAssets(store, packageId) : [];
   // Registry rows for the assets pane: docId + sharing state per path (P2).
   let assetDocs: Record<
@@ -111,24 +110,6 @@ export default async function EditShellPage({
       assetDocs = {};
     }
   }
-  const artifacts =
-    category === "slides" || category === "practice"
-      ? (await listArtifacts(store, packageId)).map((a) => ({
-          artifactId: a.record.artifactId,
-          kind: a.record.kind,
-          title: a.record.title,
-          path: a.record.path,
-          stale: a.stale,
-        }))
-      : [];
-  // Worksheet generation needs the chapter's block ids.
-  const chapterBlockIds =
-    category === "practice" && activeChapter
-      ? (await loadStudyGuide(store, packageId, activeChapter.path)).blocks
-          .map((b) => b.id)
-          .filter((id): id is string => Boolean(id))
-      : [];
-
   // Publishing state for the header (Save to GitHub / Publish page / List
   // publicly) — mirrors the classic editor's page. `versions` isn't needed here
   // (history is per-chapter elsewhere), so we skip the commit listing.
@@ -196,8 +177,6 @@ export default async function EditShellPage({
       categoryFile={categoryFile}
       assets={assets.map((a) => ({ path: a.path, kind: a.kind }))}
       assetDocs={assetDocs}
-      artifacts={artifacts}
-      chapterBlockIds={chapterBlockIds}
       publishing={publishing}
     />
   );

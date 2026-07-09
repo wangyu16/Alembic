@@ -18,7 +18,6 @@ import {
   type WriteAssetInput,
   type WriteAssetResult,
 } from "./assets";
-import { listArtifacts, type ArtifactStatus } from "./worksheets";
 import {
   applyProposedChangeSet,
   gatherCoherenceContext,
@@ -67,9 +66,9 @@ import type {
  * so there is exactly one validated way to change a package (see
  * docs/specs/forward-compatibility.md).
  *
- * Scope is deliberately **content I/O** (study guide, chapters, carrier assets,
- * derived-artifact listing). AI generation, GitHub sync, and governance are
- * separate concerns layered on top by the caller — not part of this surface.
+ * Scope is deliberately **content I/O** (study guide, chapters, carrier
+ * assets). AI generation, GitHub sync, and governance are separate concerns
+ * layered on top by the caller — not part of this surface.
  */
 export interface PackageOps {
   loadStudyGuide(path?: string): Promise<StudyGuideDoc>;
@@ -84,8 +83,6 @@ export interface PackageOps {
   listAssets(): Promise<AssetInfo[]>;
   readAsset(path: string): Promise<ReadAssetResult>;
   writeAsset(input: WriteAssetInput): Promise<WriteAssetResult>;
-
-  listArtifacts(): Promise<ArtifactStatus[]>;
 
   /** Hidden planning layer: concept map (topics + correlations/prerequisites). */
   loadConceptMap(scope: "course" | "chapter", slug?: string): Promise<ConceptMap>;
@@ -137,8 +134,6 @@ export function packageOps(store: PackageStore, packageId: string): PackageOps {
     listAssets: () => listAssets(store, packageId),
     readAsset: (path) => readAsset(store, packageId, path),
     writeAsset: (input) => writeAsset(store, packageId, input),
-
-    listArtifacts: () => listArtifacts(store, packageId),
 
     loadConceptMap: (scope, slug) => loadConceptMap(store, packageId, scope, slug),
     saveConceptMap: (map, slug) => saveConceptMap(store, packageId, map, slug),

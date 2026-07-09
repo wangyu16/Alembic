@@ -1,14 +1,8 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { draftSection } from "@alembic/ai-assist";
-import {
-  generateWorksheetArtifact,
-  keepWorksheetMine,
-  loadStudyGuide,
-  regenerateWorksheetArtifact,
-} from "@alembic/package-ops";
+import { loadStudyGuide } from "@alembic/package-ops";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
 import { supabaseEventLogger } from "@/lib/events";
@@ -93,96 +87,3 @@ export async function draftSectionAction(
   }
 }
 
-export interface ActionResult {
-  ok: boolean;
-  error?: string;
-}
-
-export async function generateWorksheetAction(
-  packageId: string,
-  blockIds: string[],
-): Promise<ActionResult> {
-  const { supabase, user } = await requireUser();
-  const store = new SupabaseSandboxStore(supabase);
-  const events = supabaseEventLogger(supabase);
-  try {
-    const record = await store.getPackage(packageId);
-    const provider = governedProvider(supabase, {
-      userId: user.id,
-      packageId,
-      kind: "worksheet",
-    });
-    const { record: artifact } = await generateWorksheetArtifact(store, packageId, {
-      provider,
-      blockIds,
-      packageTitle: record?.title,
-    });
-    await events.log({
-      type: "artifact.generated",
-      userId: user.id,
-      packageId,
-      detail: { kind: "worksheet", sourceCount: blockIds.length },
-      occurredAt: new Date().toISOString(),
-    });
-    void artifact;
-    revalidatePath(`/workspace/${packageId}`);
-    return { ok: true };
-  } catch (e) {
-    return { ok: false, error: friendly(e) };
-  }
-}
-
-export async function regenerateWorksheetAction(
-  packageId: string,
-  artifactId: string,
-): Promise<ActionResult> {
-  const { supabase, user } = await requireUser();
-  const store = new SupabaseSandboxStore(supabase);
-  const events = supabaseEventLogger(supabase);
-  try {
-    const record = await store.getPackage(packageId);
-    const provider = governedProvider(supabase, {
-      userId: user.id,
-      packageId,
-      kind: "worksheet",
-    });
-    await regenerateWorksheetArtifact(store, packageId, artifactId, {
-      provider,
-      packageTitle: record?.title,
-    });
-    await events.log({
-      type: "artifact.regenerated",
-      userId: user.id,
-      packageId,
-      detail: { artifactId },
-      occurredAt: new Date().toISOString(),
-    });
-    revalidatePath(`/workspace/${packageId}`);
-    return { ok: true };
-  } catch (e) {
-    return { ok: false, error: friendly(e) };
-  }
-}
-
-export async function keepWorksheetMineAction(
-  packageId: string,
-  artifactId: string,
-): Promise<ActionResult> {
-  const { supabase, user } = await requireUser();
-  const store = new SupabaseSandboxStore(supabase);
-  const events = supabaseEventLogger(supabase);
-  try {
-    await keepWorksheetMine(store, packageId, artifactId);
-    await events.log({
-      type: "artifact.kept-divergent",
-      userId: user.id,
-      packageId,
-      detail: { artifactId },
-      occurredAt: new Date().toISOString(),
-    });
-    revalidatePath(`/workspace/${packageId}`);
-    return { ok: true };
-  } catch (e) {
-    return { ok: false, error: friendly(e) };
-  }
-}

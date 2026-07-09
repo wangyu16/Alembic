@@ -42,8 +42,6 @@ import {
   saveAssetAction,
   suggestStructureAltTextAction,
 } from "../asset-actions";
-import { generateSlidesAction } from "../slides-actions";
-import { generateWorksheetAction } from "../ai-actions";
 import { ManageDialog } from "../chapter-nav";
 import { PublishHeader, type PublishingState } from "../_components/publish-header";
 
@@ -59,14 +57,6 @@ export interface AssetDocInfo {
   discoverable: boolean;
   description?: string;
 }
-interface ArtifactItem {
-  artifactId: string;
-  kind: "worksheet" | "slides";
-  title: string;
-  path: string;
-  stale: boolean;
-}
-
 /* Categories follow the document model (docs/specs/document-model.md):
    per-chapter files 1–5, then the three file spaces. */
 export type StudioCategory =
@@ -127,8 +117,6 @@ export function StudioShell({
   categoryFile,
   assets,
   assetDocs,
-  artifacts,
-  chapterBlockIds,
   publishing,
 }: {
   packageId: string;
@@ -145,8 +133,6 @@ export function StudioShell({
   categoryFile: { path: string; repo: "public" | "private"; content: string } | null;
   assets: AssetItem[];
   assetDocs?: Record<string, AssetDocInfo>;
-  artifacts: ArtifactItem[];
-  chapterBlockIds: string[];
   publishing: PublishingState;
 }) {
   const forms = unitTermForms(unitTerm);
@@ -1986,88 +1972,6 @@ function AssetEditor({
           {busy === "save" ? "Saving…" : "Save"}
         </button>
       </div>
-      {error && <p className="text-sm text-danger">{error}</p>}
-    </div>
-  );
-}
-
-/* ── Slides / Practice: generate-then-own derived artifacts ──────────────── */
-function ArtifactView({
-  packageId,
-  activePath,
-  kind,
-  label,
-  items,
-  blockIds,
-}: {
-  packageId: string;
-  activePath: string | null;
-  kind: "slides" | "worksheet";
-  label: string;
-  items: ArtifactItem[];
-  blockIds?: string[];
-}) {
-  const router = useRouter();
-  const [pending, start] = useTransition();
-  const [error, setError] = useState<string | null>(null);
-
-  const generate = () => {
-    setError(null);
-    start(async () => {
-      const r =
-        kind === "slides"
-          ? await generateSlidesAction(packageId, activePath ?? undefined)
-          : await generateWorksheetAction(packageId, blockIds ?? []);
-      if (!r.ok) setError(r.error ?? "Generation failed.");
-      else router.refresh();
-    });
-  };
-
-  const canGenerate = kind === "slides" || (blockIds?.length ?? 0) > 0;
-
-  return (
-    <div className="flex flex-col gap-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="font-serif text-lg text-ink">{label}</h2>
-        <button
-          onClick={generate}
-          disabled={pending || !canGenerate}
-          title={canGenerate ? undefined : "Add sections to this chapter first"}
-          className="btn btn-primary btn-sm"
-        >
-          {pending ? "Generating…" : `Generate from this ${kind === "slides" ? "chapter" : "chapter"}`}
-        </button>
-      </div>
-      <p className="text-xs text-faint">
-        {kind === "slides"
-          ? "A slide deck generated from the chapter content — concise bullets per slide. Owned and editable after generation (drift from the source is tracked)."
-          : "Practice/example questions generated from the chapter's sections. Owned and editable after generation."}
-      </p>
-      {items.length === 0 ? (
-        <p className="text-sm text-muted">None yet — generate one above.</p>
-      ) : (
-        <ul className="panel divide-y divide-[var(--edge-soft)]">
-          {items.map((a) => (
-            <li key={a.artifactId} className="flex items-center justify-between gap-2 px-3 py-2">
-              <span className="min-w-0 truncate text-sm">
-                {a.title}
-                {a.stale && <span className="chip ml-2 text-warn">source changed</span>}
-              </span>
-              <div className="flex shrink-0 items-center gap-2">
-                <Link href={`/workspace/${packageId}/artifact/${a.artifactId}`} className="link text-xs">
-                  Open
-                </Link>
-                <a
-                  href={`/workspace/${packageId}/artifact/${a.artifactId}/export`}
-                  className="btn btn-ghost btn-sm"
-                >
-                  Download
-                </a>
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
       {error && <p className="text-sm text-danger">{error}</p>}
     </div>
   );
