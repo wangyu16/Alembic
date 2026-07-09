@@ -8,7 +8,7 @@ import {
 } from "@alembic/package-ops";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
-import { syncFilesToGitHub, clientForUser } from "@/lib/github";
+import { syncFilesToGitHub, clientForUser, mirrorManifestToSandbox } from "@/lib/github";
 import { supabaseEventLogger } from "@/lib/events";
 
 export interface LifecycleResult {
@@ -47,6 +47,11 @@ export async function renamePackageAction(
     if (error) {
       return { ok: false, error: "Could not save the new name. Please try again." };
     }
+    // renamePackageTitle already wrote `updated` to sandbox_files (file-based),
+    // so this is a no-op today — kept for consistency with every other direct
+    // packages.manifest writer, so a future reorder in renamePackageTitle can't
+    // silently reopen the split-brain bug (2026-07-09) here too.
+    await mirrorManifestToSandbox(store, packageId, updated);
     await syncFilesToGitHub(
       supabase,
       store,

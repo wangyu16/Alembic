@@ -12,9 +12,12 @@ yet, so there's nothing for the bridge to attach to there.
 
 ## Motivation
 
-The plain-text editors (course description, concept map, assessment guide,
-private) get an in-editor AI assistant + selection AI directly, because Alembic
-owns their `<textarea>`. The **study guide, slides, and paged** documents are
+The plain-text editors (concept map, assessment guide, private) get an
+in-editor AI assistant + selection AI directly, because Alembic owns their
+`<textarea>`. (The course description field in the "Course details" card is
+a plain, unassisted `<textarea>` — no AI attached, by design: it's one
+manually-authored paragraph, ≤200 words, not a drafting surface.) The
+**study guide, slides, and paged** documents are
 edited inside the self-contained file's **own** editor, hosted in a sandboxed
 iframe (`hosted-carrier.ts`). Alembic can't reach into that iframe to add an AI
 button — and shouldn't: the point of the self-contained files is that the editor

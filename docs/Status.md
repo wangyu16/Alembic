@@ -17,7 +17,10 @@ same commit as the work it tracks. Statuses: ✅ done · 🔄 partially shipped 
 category rail toggle is disabled at course level; chapter/category selection is
 **optimistic** (nav chrome no longer lags the server round-trip); the course
 description is a **Source/Preview** editor with an empty-state field template
-(the per-course theme control was removed for now). In-editor AI is now a
+(the per-course theme control was removed for now — **superseded 2026-07-09**:
+this editor is now "Course concept map," free-form and unpublished; the
+published/Discover-facing course description became a plain ≤200-word field in
+the "Course details" card instead — see the 2026-07-09 entries below). In-editor AI is now a
 **systematic operations registry** — [`@alembic/ai-operations`](../packages/ai-operations)
 declares one typed row per AI operation (page scope, model routing, change tier,
 event, entitlement, gate, and the rules skill), reconciling the five previously
@@ -29,9 +32,11 @@ two-layer — a portable **skill** (`skills/ai-operations/<id>`) compiled into t
 op's `instruction`, plus a shared **`PLATFORM_SCOPE`** guardrail composed at
 runtime so the AI stays task-scoped to course-material building (not an open
 chatbot). The assistant is redesigned as a copper "Assistant" popover; the course
-description's standalone "Generate with AI" button is folded in as the
+description's standalone "Generate with AI" button was folded in as the
 `draft-description` generate op (first generative action migrated to registry
-dispatch). See [ai-operations.md](specs/ai-operations.md). **Selection AI (v1):**
+dispatch) — **removed 2026-07-09** along with the button itself once the course
+description became a plain manually-authored field with no drafting surface;
+see the 2026-07-09 entries below. See [ai-operations.md](specs/ai-operations.md). **Selection AI (v1):**
 highlight a passage in a plain-text editor → a floating "Improve selection" chip
 runs a selection-capable op (spelling/grammar, language) on just the selection and
 splices the reviewed result back. The hosted editors (study guide / slides) get
@@ -63,15 +68,7 @@ theme-in-save).
 
 These are the only things blocking full production parity with the code:
 
-1. **Migration `0015_portal_keywords` is PENDING and REQUIRED before/with
-   this deploy** (adds `portal_registrations.keywords text[]`) — unlike
-   0013 below, this one isn't optional cleanup: `registerPackageAction`
-   now writes to the column and `/portal` now selects it, so until it's
-   applied, registering/updating a Discover listing fails (a caught,
-   user-facing error, not a crash) and the `/portal` page's own read
-   degrades to an empty list (also caught, not a crash) rather than
-   showing real listings.
-2. **Migration `0013_drop_portal_eligible` is pending** (drops the now-unused `profiles.portal_eligible` column — optional cleanup, apply anytime after this deploys; no code references it). Migrations 0005–0012 **and 0014** (documents) are applied; **0013 and 0015** (the latter required, see above) are the only ones pending. Config notes: 0007's budget stays dormant until `AI_TOKEN_BUDGET` is set; portal listing is now open to all educators (the `portal_eligible` gate + admin toggle were removed); to reach `/admin`, **flag yourself `is_admin=true`** (dashboard) and set **`SUPABASE_SECRET_KEY`** (service-role reads) — optionally `RESEARCH_EXPORT_SALT`.
+1. **Migration `0013_drop_portal_eligible` is pending** (drops the now-unused `profiles.portal_eligible` column — optional cleanup, apply anytime after this deploys; no code references it). Migrations 0005–0012, **0014** (documents), and **0015** (portal keywords — ✅ **applied 2026-07-09**) are all applied; **0013** is the only one pending, and it's optional. Config notes: 0007's budget stays dormant until `AI_TOKEN_BUDGET` is set; portal listing is now open to all educators (the `portal_eligible` gate + admin toggle were removed); to reach `/admin`, **flag yourself `is_admin=true`** (dashboard) and set **`SUPABASE_SECRET_KEY`** (service-role reads) — optionally `RESEARCH_EXPORT_SALT`.
 2. ✅ **Done** — Vercel build command is `node ../../scripts/fetch-vendor.mjs && next build`; Plotly is vendored and the plot editor (M11b) works live.
 3. **Interactive verification passes** (can't run in CI): slides render (M13), the in-file hosted editors (`.md.html`/`.slides.html`/`.paged.html` save round-trip via the worker tier), and the AI/reconcile live runs (M18 coherence agent, M9.6 draft-from-plan, M20 reconcile, M23 question generation, M26–M28 adapt/pull/suggest-back) once Portkey is on Vercel. Ketcher (M11) and plots (M11b) are verified live.
 4. **Set the Portkey env vars in Vercel** (`AI_GATEWAY_URL=https://api.portkey.ai/v1`, `AI_GATEWAY_API_KEY`, `AI_MODEL_DEFAULT/FAST/STRONG` = `@<provider-slug>/<model>`) to verify the **M18 coherence agent** live. Local dev can't reach Portkey from this machine (the dev Mac's security/firewall blocks the `node` binary's outbound — `curl` works, `node` ETIMEDOUTs — not an app issue); Vercel's egress is clean. See [ai-architecture.md](specs/ai-architecture.md).
@@ -1033,6 +1030,76 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
   *published* `orz-paged`/`orz-paged-browser@0.4.0` pair is in sync with
   each other and CDN-verified (200, correct file), matching
   `packages/generators`' `^0.4.0` pin — no action needed there.
+- **Post-session coherence audit (2026-07-09, owner request).** Fanned out
+  6 parallel read-only subagents (dangling references from today's renames;
+  Status.md accuracy vs code; goal/Roadmap/specs coherence; the
+  assets/private/current collections' actual status; the AI-operations
+  registry end-to-end; version-control/manifest-sync maturity) over
+  everything landed today. Findings and fixes:
+  - **Real bug found and fixed**: `setUnitTermAction`
+    (`chapter-actions.ts`) wrote `manifest.unitTerm` only through the
+    file-based path (`sandbox_files`), never refreshing the
+    `packages.manifest` DB column — but `edit/page.tsx` reads
+    `record.manifest.unitTerm` straight off that column, so the editor
+    kept showing the old unit term after a change until some unrelated
+    DB-column writer happened to refresh it. Same bug family as the
+    manifest split-brain fixed earlier today, opposite direction (a
+    file-based write not mirrored back to the DB column, rather than a
+    DB-column write not mirrored to the file). Fixed by re-reading the
+    manifest after `setUnitTerm` and pushing it into the DB column too.
+  - **Defense-in-depth**: `renamePackageAction` was the one remaining
+    direct `packages.manifest` writer not calling `mirrorManifestToSandbox`
+    — audit confirmed it's currently benign (the file-based write already
+    happens first, same value), but added the call anyway so a future
+    reorder can't silently reopen the split-brain bug here too.
+  - **Dangling references cleaned up**: a stale comment in
+    `studio-shell.tsx` still named `saveCourseDescriptionAction` (renamed
+    to `saveCourseConceptMapAction` earlier today); the orphaned
+    `skills/ai-operations/draft-description/` directory (op removed
+    earlier today) was deleted and its stale listing in
+    `skills/ai-operations/README.md` removed.
+  - **Stale specs fixed**: `docs/specs/package-layout.md`'s forward-looking
+    v2 layout still described `metadata/course.md` as "canonical course
+    description" and posited a `concepts/course.md` file that was never
+    built — updated to match the actual 2026-07-09 decision (description
+    is a manifest field, not a file; `metadata/course.md` is the Course
+    concept map; per-chapter concept notes are at `concepts/<chapter>.md`,
+    distinct from the deferred structured JSON concepts/objectives model).
+    `docs/specs/orz-host-ai.md` incorrectly listed "course description" as
+    one of the AI-assisted plain-text editors — it's a plain unassisted
+    field now; fixed to name only concept map/assessment guide/private.
+  - **Status.md self-contradictions fixed**: the running summary near the
+    top (workspace-polish paragraph) still described the pre-today
+    Source/Preview course-description editor and the `draft-description`
+    "Generate with AI" button as current — annotated both as superseded.
+    A "Not done: no DB migration for Discover keyword search" note in the
+    Course-details-card entry was stale the moment the Discover entry
+    above it shipped the same day — cross-referenced instead. Migration
+    `0015` marked applied (owner confirmed) in both its own entry and the
+    pending-operator-actions list, which also had a duplicate "2." — fixed.
+  - **Verified clean, no action needed**: the assets and private
+    collections work fully end-to-end (list/upload/share/view for assets;
+    save/load through the private-repo path for notes) with zero bugs
+    found; "current" is confirmed as an intentional, self-documented
+    static placeholder — the `currentTerm` manifest field is defined but
+    genuinely unused anywhere, matching what's already flagged in
+    memory/Roadmap, not a bug. Every `status:"available"` AI operation is
+    genuinely dispatched (no orphans); `generate-concept-map` (planned) is
+    correctly disabled in the UI rather than clickable.
+  - **Informational findings for future work** (not fixed here, out of
+    scope for a coherence pass — noted for "AI enrichment" and "tighten
+    version control"): AI-op coverage is lopsided — `content`/`slides`/
+    `paged` each get 1 category-specific op beyond the 3 universal aids;
+    `course`, `concept-map`, `assessment-guide`, `practice`, `assets`,
+    `current`, `private` get zero. `restoreStudyGuideAction` (per-chapter
+    restore-to-commit) exists in code but is wired to no UI anywhere —
+    `edit/page.tsx` hardcodes `versions: []` with a stale "history is
+    per-chapter elsewhere" comment, and `PublishHeader`'s own
+    `versions`/`PackageVersion` prop is declared but never rendered.
+    Whole-package snapshots (git tags) are cite/list-only, no restore.
+    External-edit reconciliation covers the public repo only, not private.
+    No diff view or history browser exists anywhere.
+  Green (typecheck across all 13 workspaces + full test suite + web build).
 - **Discover: 2-line clamped description + tag/token search (2026-07-09,
   owner request).** `PortalRegistration` gains `keywords: string[]`; new
   migration `0015_portal_keywords.sql` adds `portal_registrations.keywords
@@ -1059,8 +1126,8 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
   deleting `apps/web/.next` while the dev server was still running and
   writing to it (unrelated to this change — a `rm -rf` timing mistake);
   recovered by stopping the server and restarting clean. Green (typecheck
-  across all 13 workspaces + full test suite + web build). **Pending
-  operator action**: apply migration `0015` (see the pending list above).
+  across all 13 workspaces + full test suite + web build). Migration
+  `0015` — ✅ **applied 2026-07-09**.
 - **Course details card gains description + tags; the old free-text editor
   becomes "Course concept map" (2026-07-09, owner decision).** Reworks
   the split introduced earlier the same day (fullDescription/clamp): the
@@ -1098,9 +1165,12 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
   with `*asterisks*` and `&` in the description and confirmed they render
   as literal escaped text (not markdown `<em>`), and that `keywords`
   reaches the LRMI JSON-LD. Green (typecheck across all 13 workspaces +
-  full test suite + web build). Not done: no DB migration to surface
-  `keywords` in the Discover/portal search UI itself (LRMI-only for
-  now) — flagged, not built, out of scope for "add the field."
+  full test suite + web build). At the time this entry was written,
+  `keywords` only reached the LRMI JSON-LD, not the Discover/portal
+  search UI itself — **done later the same day**: see the "Discover: 2-line
+  clamped description + tag/keyword search" entry above, which added
+  migration `0015_portal_keywords` and wired `keywords` into
+  `portal_registrations` and `PortalBrowser`'s search.
 - **Course home: expandable description (2026-07-09, owner report).** [Superseded same day, above — the fullDescription/concept-map split it introduced was reworked into the description+keywords/concept-map design.] The
   published course home only ever showed `manifest.description` — a
   short, truncated LRMI/portal derivation (first paragraph, 300 chars) —

@@ -12,7 +12,7 @@ import {
   reorderChapters,
   setUnitTerm,
 } from "@alembic/package-ops";
-import { UnitTermSchema } from "@alembic/package-contract";
+import { parseManifest, UnitTermSchema } from "@alembic/package-contract";
 import { commitFiles, type FileChange } from "@alembic/github-bridge";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
@@ -210,10 +210,16 @@ export async function setUnitTermAction(
   const store = new SupabaseSandboxStore(supabase);
   try {
     await setUnitTerm(store, packageId, parsed.data);
-    const manifest = await fileContent(store, packageId, "alembic.json");
-    if (manifest !== null) {
+    const manifestContent = await fileContent(store, packageId, "alembic.json");
+    if (manifestContent !== null) {
+      // setUnitTerm writes only through the file-based path (sandbox_files) —
+      // unlike chapters/content, `record.manifest.unitTerm` IS read straight off
+      // the packages.manifest DB column (edit/page.tsx), so it must be refreshed
+      // here too or the editor keeps showing the old term after this save.
+      const manifest = parseManifest(JSON.parse(manifestContent));
+      await supabase.from("packages").update({ manifest }).eq("id", packageId);
       await syncToGitHub(supabase, store, user.id, packageId, [
-        { path: "alembic.json", content: manifest },
+        { path: "alembic.json", content: manifestContent },
       ]);
     }
     revalidatePath(`/workspace/${packageId}`);

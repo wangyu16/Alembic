@@ -22,7 +22,6 @@ file *formats*, not AI *operations*.
 ## Operations
 
 - [check-spelling-grammar](check-spelling-grammar/SKILL.md) — correctness-only pass (worked example / template)
-- [draft-description](draft-description/SKILL.md) — draft the course description from title + chapters
 - [enrich-formatting](enrich-formatting/SKILL.md) — orz-markdown callouts/columns/tabs/TOC where they aid readability
 - [suggest-slide-layout](suggest-slide-layout/SKILL.md) — orz-slides layout grammar (markers, regions, notes)
 - [suggest-page-settings](suggest-page-settings/SKILL.md) — orz-paged template + page config

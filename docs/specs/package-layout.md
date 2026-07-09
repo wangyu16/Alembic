@@ -22,11 +22,24 @@ with no chapters) — the "start small" path. The manifest links the pair.
 
 ```
 alembic.json                        # manifest — the one required file
+                                     # (course description + tags/keywords
+                                     # are manifest fields now, not files —
+                                     # owner decision 2026-07-09, superseding
+                                     # this section's original "canonical
+                                     # course description (md)" framing for
+                                     # metadata/course.md below; see Status.md)
 metadata/
-  course.md                         # canonical course description (md)
+  course.md                         # "Course concept map" — free-form notes
+                                     # on concepts/topics/objectives, any
+                                     # structure; never published or shown on
+                                     # Discover
 concepts/
-  course.md                         # course concept map (plain md)
-  <chapter>.md                      # chapter concept maps (plain md)
+  <chapter>.md                      # per-chapter concept-map notes (plain md,
+                                     # the "Concept map" category rail item) —
+                                     # distinct from the structured JSON
+                                     # concept/objective records
+                                     # (packages/package-contract/src/concepts.ts,
+                                     # deferred — data layer only, no editor yet)
 study-guide/
   <chapter>.md.html                 # chapter study guide — source of truth
 slides/

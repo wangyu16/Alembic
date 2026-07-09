@@ -569,7 +569,7 @@ function CourseHome({
   });
 
   // The one remaining caller is the Save button (AI generation now applies
-  // through AIAssistant's own onApply, not through here). saveCourseDescriptionAction
+  // through AIAssistant's own onApply, not through here). saveCourseConceptMapAction
   // echoes `markdown` back on every success — it is not a signal that the save
   // is somehow still unsaved, so a successful save always clears `dirty`.
   const run = (fn: () => Promise<{ ok: boolean; markdown?: string; error?: string }>, label: string) => {
