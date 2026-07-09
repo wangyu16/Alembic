@@ -1025,6 +1025,40 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
   *published* `orz-paged`/`orz-paged-browser@0.4.0` pair is in sync with
   each other and CDN-verified (200, correct file), matching
   `packages/generators`' `^0.4.0` pin — no action needed there.
+- **Fixed a manifest split-brain bug that silently unpublished live
+  packages (2026-07-09, owner report on "Chem 320").** Editing the course
+  description saved locally but wouldn't sync to GitHub, and "Update page"
+  then failed with "Publish to GitHub first, then publish the website" —
+  on a package that had already been published, with a live Pages site.
+  **Root cause:** the trial-sandbox store keeps the manifest in **two
+  places** that must stay identical — the `packages.manifest` DB column
+  (read by `store.getPackage()`, what `site-actions.ts`/`github-actions.ts`
+  check for `publicRepo`) and a mirrored `alembic.json` row in
+  `sandbox_files` (read by every package-ops **file-based** write —
+  course description, chapters, rename, adaptation — via
+  `listFiles`/`readManifest`). Four call sites wrote the DB column directly
+  without updating the `sandbox_files` mirror: `publishToGitHubAction`
+  (sets `publicRepo`/`privateRepo` on publish), `setCourseThemeAction`,
+  `setCourseInfoAction`, and `recheckA11yAction`. The next file-based write
+  (e.g. saving the course description) then read the **stale**
+  `sandbox_files` copy — missing `publicRepo` — merged in its own change,
+  and wrote that stale-based manifest back to **both** stores, wiping
+  `publicRepo`/`privateRepo` from the DB column even though the GitHub repo
+  and its Pages site were completely intact. **Fixed**: added
+  `mirrorManifestToSandbox` (`apps/web/src/lib/github.ts`) and call it from
+  all four sites so the DB column and the sandbox file mirror can no longer
+  diverge. **Recovery for already-affected packages** (no direct DB access
+  from here to hand-repair the owner's live row): clicking "① Save to
+  GitHub" again is safe and self-healing — `publishToGitHubAction` derives
+  the repo names deterministically from the immutable `packageId` + title,
+  so it hits GitHub's "already exists" 422 on both repos, reuses them
+  (never creates a duplicate or touches existing content beyond
+  re-committing `alembic.json`), and — with this fix — now also mirrors
+  the recovered `publicRepo`/`privateRepo` into `sandbox_files`, so the
+  package stays fixed. Green (typecheck + full test + web build); no
+  apps/web test suite exists to pin this with a regression test (thin
+  client, per rule 9 — the durable logic here is the two Supabase tables
+  themselves, not covered by any package's test harness).
 - **Dead-code cleanup: the worksheet / derived-slides-artifact system
   (2026-07-09).** Removed, after exhaustively grepping every symbol for
   live callers first: `ArtifactView` (studio-shell — confirmed never

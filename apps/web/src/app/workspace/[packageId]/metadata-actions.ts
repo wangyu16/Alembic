@@ -13,7 +13,7 @@ import { generateCourseDescription } from "@alembic/ai-assist";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
 import { supabaseEventLogger } from "@/lib/events";
-import { syncFilesToGitHub } from "@/lib/github";
+import { mirrorManifestToSandbox, syncFilesToGitHub } from "@/lib/github";
 import { governedProvider, RateLimitError, BudgetExceededError } from "@/lib/ai";
 
 async function requireUser() {
@@ -57,6 +57,7 @@ export async function setCourseThemeAction(
         : { ...record.manifest, themes: { ...record.manifest.themes, [space]: theme } },
     );
     await supabase.from("packages").update({ manifest }).eq("id", packageId);
+    await mirrorManifestToSandbox(store, packageId, manifest);
     await syncFilesToGitHub(
       supabase, store, user.id, packageId,
       [{ path: "alembic.json", content: JSON.stringify(manifest, null, 2) + "\n" }],
@@ -108,6 +109,7 @@ export async function setCourseInfoAction(
     if (unchanged) return { ok: true };
     const manifest = parseManifest({ ...record.manifest, courseContext: next });
     await supabase.from("packages").update({ manifest }).eq("id", packageId);
+    await mirrorManifestToSandbox(store, packageId, manifest);
     await syncFilesToGitHub(
       supabase, store, user.id, packageId,
       [{ path: "alembic.json", content: JSON.stringify(manifest, null, 2) + "\n" }],

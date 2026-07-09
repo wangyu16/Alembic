@@ -8,6 +8,7 @@ import type { AccessibilityStatus } from "@alembic/package-contract";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
 import { supabaseEventLogger } from "@/lib/events";
+import { mirrorManifestToSandbox } from "@/lib/github";
 import { governedProvider, RateLimitError, BudgetExceededError } from "@/lib/ai";
 import { recordChange } from "@/lib/changes";
 import { auditDoc, type FixableRule } from "@/lib/a11y";
@@ -56,10 +57,9 @@ export async function recheckA11yAction(packageId: string): Promise<RecheckResul
 
     const record = await store.getPackage(packageId);
     if (record) {
-      await supabase
-        .from("packages")
-        .update({ manifest: { ...record.manifest, accessibility: status } })
-        .eq("id", packageId);
+      const manifest = { ...record.manifest, accessibility: status };
+      await supabase.from("packages").update({ manifest }).eq("id", packageId);
+      await mirrorManifestToSandbox(store, packageId, manifest);
     }
 
     await supabaseEventLogger(supabase).log({

@@ -15,6 +15,7 @@ import {
   clientForInstallation,
   clientForUser,
   githubConfig,
+  mirrorManifestToSandbox,
   recordSyncedSha,
 } from "@/lib/github";
 import { slugForFile } from "@/lib/export";
@@ -227,6 +228,8 @@ export async function publishToGitHubAction(
         manifest,
       })
       .eq("id", packageId);
+    // Keep the sandbox file mirror in step — see mirrorManifestToSandbox's doc.
+    await mirrorManifestToSandbox(store, packageId, manifest);
 
     await events.log({
       type: "publish.completed",
