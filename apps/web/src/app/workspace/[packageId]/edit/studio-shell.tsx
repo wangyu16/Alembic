@@ -751,7 +751,13 @@ function HostedStudyGuideEditor(props: {
         source={state.html}
         onDirty={onDirty}
         hostSave={async (payload) => {
-          const r = await hostSaveStudyGuideAction(packageId, path, payload);
+          // Drop `rendered` — never persisted (the surface is always
+          // regenerated server-side from source), and it's the bulk of the
+          // payload (orz-mdhtml's inline bundle alone is ~0.84 MB).
+          const r = await hostSaveStudyGuideAction(packageId, path, {
+            source: payload.source,
+            theme: payload.theme,
+          });
           return { ok: r.ok, error: r.error };
         }}
         aiOperations={HOSTED_STUDY_GUIDE_AI_OPS}
@@ -817,15 +823,22 @@ function HostedSlidesEditor(props: {
     <div className="flex h-full min-h-[75vh] flex-col gap-2">
       <p className="shrink-0 text-xs text-faint">
         Edit inline — your changes save with the <span className="text-muted">Save</span> button in
-        the deck’s toolbar. The deck starts from your study guide; edits here are their own. “Save
-        online” in the header is a separate step that publishes.
+        the deck’s toolbar. “Save online” in the header is a separate step that publishes.
       </p>
       <ModuleMount
         kind="slides"
         source={state.html}
         onDirty={onDirty}
         hostSave={async (payload) => {
-          const r = await hostSaveSlidesAction(packageId, path, payload);
+          // Drop `rendered` — orz-slides' inline bundle alone exceeds 1 MB, and
+          // it's never persisted (the surface is always regenerated server-side
+          // from source). Keep `theme` as a fallback: the action prefers reading
+          // it straight out of the deck's own config (self-describing), but
+          // still accepts this in case the deck predates that write-back.
+          const r = await hostSaveSlidesAction(packageId, path, {
+            source: payload.source,
+            theme: payload.theme,
+          });
           return { ok: r.ok, error: r.error };
         }}
         aiOperations={HOSTED_SLIDES_AI_OPS}

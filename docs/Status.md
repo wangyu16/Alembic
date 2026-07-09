@@ -859,10 +859,45 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
   **orz-slides 0.6.0 released** (npm + GitHub, 2026-07-09: `orz-host-ai@1` +
   `theme` in the save message, ported from orz-mdhtml 0.7.1 — 54/54 upstream
   tests, sample deck regenerated); `packages/generators` bumped
-  `orz-slides` `^0.4.0`→`^0.6.0` and reinstalled. **Owner action remaining: redeploy
-  the Fly worker** to pick up 0.6.0 (until then, the deployed worker's older
-  orz-slides still has `orz-host-save` so render+save work, but no AI/theme
-  capture in the live app).
+  `orz-slides` `^0.4.0`→`^0.6.0` and reinstalled; **Fly worker redeployed**
+  (2026-07-09).
+- **Bugfix: slides generate/save 500'd in production.** Root cause: the
+  hosted-editor round trip (generate the editable file, then save
+  `{source, rendered, theme}` back) carries the FULL self-contained document
+  through a Next.js Server Action, which caps the body at 1 MB by default.
+  Study guide's inline orz-mdhtml bundle (~0.84 MB, measured) stays under that;
+  orz-slides' inline bundle (reveal.js + orz-markdown + themes, ~1.03 MB even
+  for a near-empty deck) doesn't — every slides generate and save 500'd, while
+  study guide happened to work purely by staying under the cap. Fix: set
+  `experimental.serverActions.bodySizeLimit: "10mb"` in
+  [next.config.ts](../apps/web/next.config.ts) for headroom as decks grow and
+  orz-paged joins this path.
+- **Simplified the hosted-editor save payload** (`rendered` was always dead
+  weight — Alembic never persists it, the editable surface is always
+  regenerated server-side from `source`): `hostSaveStudyGuideAction` and
+  `hostSaveSlidesAction` now take `{source, theme?}`, not
+  `{source, rendered, theme?}` — this alone shrinks a slides save from >1 MB to
+  a few KB, independent of the body-size bump above (which still covers the
+  one-time generate/load response). For slides specifically, theme is no
+  longer a meaningfully separate concern either: the deck's own leading
+  `<!-- deck ... -->` config block already states its theme, and **orz-slides'
+  theme picker now rewrites that line back into the deck source on every
+  pick** (`rewriteDeckTheme` in `assets/app.js`, orz-slides — previously
+  `setTheme()` only set a runtime variable + DOM attribute, so a picked theme
+  never reached the saved source; verified live in a real browser: pick a
+  theme → the embedded `<script id="orz-deck">` island AND the open "deck
+  settings" CodeMirror buffer both update immediately). `saveSlidesDeck`
+  reads theme straight out of the just-saved `source`
+  (`deckThemeFromSource`, `@alembic/renderer`, 4 new tests) — `payload.theme`
+  is kept only as a fallback for decks saved by a pre-write-back orz-slides
+  build, so nothing breaks mid-rollout. mdhtml keeps its separate `theme`
+  field (its theme lives in the regenerated `<html data-theme>` shell, not in
+  the extracted markdown — genuinely nothing to parse). Paged likely has the
+  same inline-config shape as slides (owner: "paged does have all settings in
+  source code") and could follow the same pattern once activated.
+  **Requires an orz-slides 0.6.1 release + worker redeploy** for the
+  write-back fix to take effect live (until then the fallback keeps saves
+  working, just without the self-describing guarantee).
 - **E3 bugfix: hosted editor showed blank + the pencil did nothing.** The
   hosted-carrier iframe sandbox was `allow-scripts` WITHOUT `allow-same-origin`,
   giving the file an opaque origin. But the self-contained file renders its

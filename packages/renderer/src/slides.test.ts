@@ -5,7 +5,30 @@ import {
   splitSlides,
   buildSlidesHtml,
   extractSlides,
+  deckThemeFromSource,
 } from "./slides";
+
+describe("deckThemeFromSource", () => {
+  it("reads theme: from a leading deck config block", () => {
+    const source = "<!-- deck\ntitle: Demo\ntheme: paper\nratio: 16:9\n-->\n\n<!-- slide -->\n## A\n";
+    expect(deckThemeFromSource(source)).toBe("paper");
+  });
+
+  it("finds theme: regardless of its position in the block", () => {
+    const source = "<!-- deck\ntheme: dark-elegant-1\ntitle: Demo\n-->\n";
+    expect(deckThemeFromSource(source)).toBe("dark-elegant-1");
+  });
+
+  it("returns undefined when the deck block has no theme: line", () => {
+    const source = "<!-- deck\ntitle: Demo\nratio: 16:9\n-->\n";
+    expect(deckThemeFromSource(source)).toBeUndefined();
+  });
+
+  it("returns undefined when there is no deck block at all", () => {
+    expect(deckThemeFromSource("<!-- slide -->\n## A\n")).toBeUndefined();
+    expect(deckThemeFromSource("")).toBeUndefined();
+  });
+});
 
 describe("slidesSourceFromBlocks", () => {
   it("turns each block into an orz-slides slide (marker + ## title)", () => {

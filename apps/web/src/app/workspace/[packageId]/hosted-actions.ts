@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { parseStudyGuide, serializeStudyGuide } from "@alembic/package-contract";
 import { loadStudyGuide, loadSlidesDeck, saveSlidesDeck } from "@alembic/package-ops";
-import { slidesSourceFromBlocks } from "@alembic/renderer";
+import { slidesSourceFromBlocks, deckThemeFromSource } from "@alembic/renderer";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
 import { generateEditableFile, generateSelfContainedFile, workerConfigured } from "@/lib/worker-client";
@@ -148,13 +148,19 @@ export async function generateSlidesHtmlAction(
  * Persist a save the hosted `.slides.html` editor initiated (orz-host-save). The
  * committed source of record is the deck markdown itself (`slides/NN.md`), saved
  * verbatim through the validated `saveSlidesDeck` path (two-repo invariant +
- * public-reference guard), then committed to GitHub best-effort. The educator's
- * theme pick is captured as the `slides` space's global default.
+ * public-reference guard), then committed to GitHub best-effort. Never persists
+ * the file's `rendered` HTML — the editable surface is always regenerated
+ * server-side from source, so shipping it back over the wire is dead weight
+ * (orz-slides' inline bundle alone exceeds 1 MB). Theme resolves from the deck's
+ * own `<!-- deck ... -->` config block (orz-slides writes the picked theme back
+ * into it on every change — `deckThemeFromSource`), which is the self-describing
+ * source of truth going forward; `payload.theme` is kept only as a fallback for
+ * decks produced by an orz-slides build that predates that write-back.
  */
 export async function hostSaveSlidesAction(
   packageId: string,
   path: string,
-  payload: { source: string; rendered: string; theme?: string },
+  payload: { source: string; theme?: string },
 ): Promise<HostSaveResult> {
   const { supabase, user } = await requireUser();
   if (!payload.source.trim()) {
@@ -179,9 +185,10 @@ export async function hostSaveSlidesAction(
   }
   // Capture the deck's theme as the slides space's global default (independent
   // of the study-guide theme; last write wins across chapters; no-op if same).
-  if (payload.theme) {
+  const theme = deckThemeFromSource(payload.source) ?? payload.theme;
+  if (theme) {
     try {
-      await setCourseThemeAction(packageId, payload.theme, "slides");
+      await setCourseThemeAction(packageId, theme, "slides");
     } catch {
       /* keep the save even if the theme couldn't persist */
     }
@@ -241,16 +248,20 @@ export interface HostSaveResult {
 }
 
 /**
- * Persist a save the hosted `.md.html` editor initiated (orz-host-save). The
- * file hands back both its markdown `source` and the full `rendered` document;
- * per the lean-source model we persist ONLY the extracted markdown, parsed and
- * written through `saveStudyGuideAction` (block-ID validation + reconcile-first
- * GitHub sync). The full file is the editing surface, never committed.
+ * Persist a save the hosted `.md.html` editor initiated (orz-host-save). Takes
+ * ONLY the extracted markdown `source` (+ `theme`) — never the file's `rendered`
+ * HTML, which the lean-source model never persists anyway (the editable surface
+ * is always regenerated server-side from source). `source` is parsed and written
+ * through `saveStudyGuideAction` (block-ID validation + reconcile-first GitHub
+ * sync). Unlike slides, mdhtml's theme lives OUTSIDE the extracted markdown (as
+ * a `data-theme` attribute on the regenerated `<html>` shell, not in the source
+ * text), so it still needs its own protocol field rather than being parseable
+ * out of `source`.
  */
 export async function hostSaveStudyGuideAction(
   packageId: string,
   path: string,
-  payload: { source: string; rendered: string; theme?: string },
+  payload: { source: string; theme?: string },
 ): Promise<HostSaveResult> {
   await requireUser();
   if (!payload.source.trim()) {

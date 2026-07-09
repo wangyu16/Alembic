@@ -34,6 +34,24 @@ const SLIDE_MARKER_RE = /^<!--\s*slide\b[^>]*-->$/;
 /** Placeholder slide used when no usable blocks exist. */
 const EMPTY_DECK_SLIDE = `${SLIDE_MARKER}\n## Untitled deck\n\nThis deck has no slides yet.`;
 
+/** The leading `<!-- deck ... -->` config block (title/theme/ratio/footer). */
+const DECK_BLOCK_RE = /^[ \t]*<!--\s*deck\b([\s\S]*?)-->/;
+
+/**
+ * Read the `theme:` value from a deck's leading `<!-- deck ... -->` config
+ * block, if present. orz-slides rewrites this line back into the source every
+ * time its own theme picker is used (self-reproducing — the picked theme is
+ * never state that lives only in the DOM), so the deck source is the single
+ * source of truth for "what theme did the educator last pick" — no separate
+ * side-channel field needed to capture it.
+ */
+export function deckThemeFromSource(source: string): string | undefined {
+  const block = source.match(DECK_BLOCK_RE);
+  if (!block) return undefined;
+  const line = block[1]!.match(/(^|\n)[ \t]*theme[ \t]*:[ \t]*([^\n]+)/);
+  return line ? line[2]!.trim() : undefined;
+}
+
 export interface SlideBlock {
   title: string;
   body: string;
