@@ -49,11 +49,15 @@ export async function releaseGates(
     message: "Choose a license before publishing so others know how they may reuse your work.",
   });
 
-  // 2. Study guide has content (in any chapter).
+  // 2. Study guide has content (in any chapter). A "section" is text under a
+  // "## Heading" line specifically — a single "#" is reserved for the
+  // chapter's own auto-rendered title, so text above the first "##" doesn't
+  // count even though it saved.
   checks.push({
     name: "Study guide",
     ok: blocks.length > 0,
-    message: "Add at least one study-guide section before publishing.",
+    message:
+      'Add at least one study-guide section before publishing — start it with a "## Heading" line (not a single "#", which is reserved for the page title).',
   });
 
   // 3. Section identifiers valid (across all chapters; IDs are globally unique).

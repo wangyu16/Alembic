@@ -939,6 +939,7 @@ function ContentEditor({
   const [dirty, setDirty] = useState(false);
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [warning, setWarning] = useState<string | null>(null);
   useUnsavedGuard(dirty);
   useReportDirty(dirty, onDirty);
 
@@ -986,6 +987,7 @@ function ContentEditor({
 
   const save = () => {
     setError(null);
+    setWarning(null);
     start(async () => {
       const r = await saveStudyGuideAction(packageId, {
         path,
@@ -996,6 +998,7 @@ function ContentEditor({
       else {
         if (r.blocks) setBlocks(r.blocks.map((b, i) => ({ ...b, key: `b${i}` })));
         setDirty(false);
+        if (r.warning) setWarning(r.warning);
       }
     });
   };
@@ -1076,6 +1079,7 @@ function ContentEditor({
             + Add section
           </button>
           {error && <p className="text-sm text-danger">{error}</p>}
+          {warning && <p className="text-sm text-warn">{warning}</p>}
         </div>
         {/* assembled preview */}
         <div className="flex min-h-0 flex-col gap-1">

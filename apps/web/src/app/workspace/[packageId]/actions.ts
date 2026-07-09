@@ -59,9 +59,19 @@ export async function saveStudyGuideAction(
     occurredAt: new Date().toISOString(),
   });
 
+  // A section only exists once it sits under a "## Heading" line (H1 is
+  // reserved for the chapter's own auto-rendered title) — content typed
+  // above the first "##" saves fine but becomes preamble, not a section, and
+  // silently doesn't count toward "has study-guide content" at publish time.
+  // Flag it here, at the moment it happens, rather than only at the
+  // publish-gate message the educator sees much later.
+  let warning: string | undefined =
+    blocks.length === 0 && doc.preamble.trim()
+      ? 'Saved — but this needs a "## Heading" line above your text to count as a section. A single "#" is reserved for the page title; add "##" (or a lower level) before your first section.'
+      : undefined;
+
   // For GitHub-backed packages, the save is also a commit to the public repo.
   // Best-effort: the projection is already saved; surface a warning on failure.
-  let warning: string | undefined;
   const record = await store.getPackage(packageId);
   const repo = record?.storage === "github" ? record.manifest.publicRepo : null;
   if (repo) {

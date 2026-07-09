@@ -1025,6 +1025,31 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
   *published* `orz-paged`/`orz-paged-browser@0.4.0` pair is in sync with
   each other and CDN-verified (200, correct file), matching
   `packages/generators`' `^0.4.0` pin — no action needed there.
+- **Root-caused the third symptom from the same report: a "study guide
+  section" publish-gate false negative (2026-07-09).** Not a bug in the
+  strict sense — `parseStudyGuide` (`package-contract/block-source.ts`)
+  only treats text under a `##` (H2) line as a "section"; a single `#` is
+  reserved for the chapter's own auto-rendered page title (chapter-mgmt
+  overhaul, above). The owner's module opened blank (an old/pre-seed
+  package — new packages seed `## Getting started…` via `welcomeChapter()`
+  in `create.ts`) and they typed `# Module 01` — an H1, so `parseStudyGuide`
+  filed it as unstructured `preamble`, not a block; the text saved
+  correctly, it just didn't count as a "section." The real gap: nothing
+  said so at save time, and the eventual gate message didn't mention heading
+  level at all. Fixed two ways: (1) `saveStudyGuideAction`
+  (`apps/web/.../actions.ts`) now returns a `warning` the moment a save
+  produces zero blocks from non-empty preamble, wired into the block-editor
+  fallback's (`ContentEditor`) UI; (2) the release-gate message
+  (`release-gates.ts`) now spells out the `##`-vs-`#` rule. **Known
+  limitation, not shipped**: the save-time warning does NOT yet reach the
+  primary path — the **hosted** in-file editor (orz-mdhtml) — because
+  `orz-host-save@1`'s ack (`editor-kit/host-save-client.ts`) only carries
+  an `error` field on `ok:false`; a successful save's ack is bare
+  `{ok:true}`, so a warning has nowhere to ride. Surfacing it there needs
+  an additive protocol field plus an orz-mdhtml `app.js` update (cross-repo,
+  version bump + republish + worker redeploy) — not done; the improved gate
+  message is the fallback until that lands. Green (typecheck + full test +
+  web build).
 - **Two follow-on fixes from the same owner report, on "Chem 320" and a
   second, freshly-published course (2026-07-09).** (a) The "① Save to
   GitHub" control had no way to re-trigger once `manifest.publicRepo` was
