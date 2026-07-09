@@ -1025,6 +1025,32 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
   *published* `orz-paged`/`orz-paged-browser@0.4.0` pair is in sync with
   each other and CDN-verified (200, correct file), matching
   `packages/generators`' `^0.4.0` pin — no action needed there.
+- **Course home: expandable description (2026-07-09, owner report).** The
+  published course home only ever showed `manifest.description` — a
+  short, truncated LRMI/portal derivation (first paragraph, 300 chars) —
+  as the visible intro, with no way to read the rest. `buildCourseSite`
+  gains `fullDescription` (the canonical `metadata/course.md`, loaded via
+  `loadCourseDescription` and threaded through both `site-actions.ts`
+  publish and `/site-preview`); it's now what renders, clamped to ~5
+  lines with a bottom fade and a "Show full description" toggle that
+  reveals the rest (`manifest.description` still feeds LRMI/portal
+  unchanged — that use case genuinely wants short). **Two rounds of real
+  browser verification caught real bugs a unit test alone would have
+  missed**: (1) the first CSS approach (`-webkit-line-clamp`, a legacy
+  flexbox display mode) doesn't compose reliably with the
+  `scrollHeight`-vs-`clientHeight` overflow check used to decide whether
+  the toggle should even appear — confirmed live, it showed the toggle
+  for a genuinely one-line description. Switched to a plain
+  `max-height`/`overflow:hidden` clamp, which gives a fully reliable
+  comparison. (2) The overflow check running synchronously in an inline
+  `<script>` raced the page's own layout/paint — confirmed by a transient
+  0-width/mis-measured read immediately after navigation — so it now
+  waits for `load` + one `requestAnimationFrame` before measuring.
+  Reverified in a real browser after both fixes: long descriptions clamp
+  correctly with the toggle appearing and expanding/collapsing on click;
+  short ones never show a toggle at all; confirmed at both desktop and
+  375px mobile widths. 3 new renderer tests. Green (typecheck across all
+  13 workspaces + full test suite, 56 renderer tests + web build).
 - **Fixed inconsistent slide themes across a published course's chapters
   (2026-07-09, owner report).** Root cause: orz-slides always prefers a
   deck's OWN embedded `<!-- deck ... theme: X ... -->` config over the

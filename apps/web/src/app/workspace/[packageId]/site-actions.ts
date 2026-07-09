@@ -6,6 +6,7 @@ import {
   chapterPracticePath,
   chapterSlidesPath,
   listChapters,
+  loadCourseDescription,
   loadSlidesDeck,
   loadStudyGuide,
   releaseGates,
@@ -164,10 +165,13 @@ export async function publishSiteAction(
       }
     }
 
+    const fullDescription = await loadCourseDescription(store, packageId);
+
     const files = [
       ...buildCourseSite({
         title: record!.title,
         description: record!.manifest.description || undefined,
+        fullDescription: fullDescription || undefined,
         instructor: record!.manifest.courseContext?.instructor,
         courseNumber: record!.manifest.courseContext?.courseNumber,
         department: record!.manifest.courseContext?.department,

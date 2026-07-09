@@ -46,6 +46,27 @@ describe("buildCourseSite — course home hub", () => {
     expect(index.content).toContain("<strong>first</strong>");
   });
 
+  it("prefers the full description over the short one, with a toggle that starts hidden", () => {
+    const index = buildCourseSite({
+      ...course,
+      description: "A short summary.",
+      fullDescription: "A **much longer** version of the intro, with real detail.",
+    }).find((f) => f.path === "index.html")!;
+    expect(index.content).toContain("<strong>much longer</strong>");
+    expect(index.content).not.toContain("A short summary.");
+    // Runtime-checked (overflow depends on viewport/fonts) — starts hidden.
+    expect(index.content).toContain('id="intro-toggle" hidden');
+    expect(index.content).toContain('aria-controls="intro-body"');
+  });
+
+  it("falls back to the short description when no full description is given", () => {
+    const index = buildCourseSite({
+      ...course,
+      description: "Just the short one.",
+    }).find((f) => f.path === "index.html")!;
+    expect(index.content).toContain("Just the short one.");
+  });
+
   it("carries its own light/dark identity (not a reused orz-markdown theme)", () => {
     const dark = buildCourseSite(course).find((f) => f.path === "index.html")!;
     const light = buildCourseSite({ ...course, theme: "light" }).find(
