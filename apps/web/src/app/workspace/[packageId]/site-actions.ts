@@ -3,9 +3,11 @@
 import { redirect } from "next/navigation";
 import { serializeStudyGuide } from "@alembic/package-contract";
 import {
+  chapterSlidesPath,
   listArtifacts,
   listChapters,
   loadArtifactContent,
+  loadSlidesDeck,
   loadStudyGuide,
   releaseGates,
 } from "@alembic/package-ops";
@@ -91,6 +93,9 @@ export async function publishSiteAction(
     const orzTheme = record!.manifest.theme ?? undefined;
     const mdTheme = orzTheme ?? cookie;
     const hubScheme = orzTheme ? themeScheme(orzTheme) : cookie;
+    // Slides carry their OWN theme (orz-slides ids), independent of the reading
+    // theme; absent → orz-slides' built-in default.
+    const slidesTheme = record!.manifest.themes?.["slides"];
 
     // Owner decision: the student-site VIEWS are the self-contained files
     // themselves, delivered `cdn` (small committed files that pull the framework
@@ -111,8 +116,13 @@ export async function publishSiteAction(
         const chapter: CourseChapter = { slug: ch.slug, title: ch.title, viewHref };
 
         try {
-          const deck = slidesSourceFromBlocks(guide.blocks.map((b) => ({ title: b.title, body: b.body })));
-          const slidesHtml = await generateSelfContainedFile({ kind: "slides", markdown: deck, title: ch.title, delivery: "cdn" });
+          // Prefer the chapter's AUTHORED deck (`slides/NN.md`); fall back to a
+          // deck seeded from the study guide when none has been authored yet.
+          const authored = await loadSlidesDeck(store, packageId, chapterSlidesPath(ch.slug));
+          const deck = authored.source.trim()
+            ? authored.source
+            : slidesSourceFromBlocks(guide.blocks.map((b) => ({ title: b.title, body: b.body })));
+          const slidesHtml = await generateSelfContainedFile({ kind: "slides", markdown: deck, title: ch.title, theme: slidesTheme, delivery: "cdn" });
           const slidesHref = `slides/${ch.slug}.slides.html`;
           pageFiles.push({ path: slidesHref, content: slidesHtml });
           chapter.slidesHref = slidesHref;

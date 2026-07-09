@@ -8,15 +8,18 @@ import {
 } from "./slides";
 
 describe("slidesSourceFromBlocks", () => {
-  it("turns each block into a slide, joined by a thematic break", () => {
+  it("turns each block into an orz-slides slide (marker + ## title)", () => {
     const source = slidesSourceFromBlocks([
       { title: "Intro", body: "Welcome to the course." },
       { title: "Kinetics", body: "Rate laws and orders." },
     ]);
-    expect(source).toContain("# Intro");
-    expect(source).toContain("# Kinetics");
-    // Exactly one separator between the two slides.
-    expect(source.match(/^---$/gm)?.length).toBe(1);
+    // Titles become the slide title band (## h2), not # h1.
+    expect(source).toContain("## Intro");
+    expect(source).toContain("## Kinetics");
+    // Every slide begins with a `<!-- slide -->` marker — one per slide.
+    expect(source.match(/<!--\s*slide\b[^>]*-->/g)?.length).toBe(2);
+    // No bare `---` separators (that is not the orz-slides grammar).
+    expect(source).not.toMatch(/^---$/m);
     expect(splitSlides(source)).toHaveLength(2);
   });
 
@@ -27,31 +30,41 @@ describe("slidesSourceFromBlocks", () => {
       { title: "  ", body: "  " },
     ]);
     expect(splitSlides(source)).toHaveLength(1);
-    expect(source).toContain("# Kept");
+    expect(source).toContain("## Kept");
   });
 
   it("returns a single placeholder slide when no usable blocks exist", () => {
     const source = slidesSourceFromBlocks([{ title: "", body: "" }]);
     expect(splitSlides(source)).toHaveLength(1);
-    expect(source.length).toBeGreaterThan(0);
+    expect(source).toContain("<!-- slide -->");
   });
 });
 
 describe("splitSlides", () => {
-  it("splits on a line that is exactly ---", () => {
+  it("splits on a `<!-- slide -->` marker line and drops the marker", () => {
+    const chunks = splitSlides(
+      "<!-- slide -->\n## A\n\nbody a\n<!-- slide -->\n## B\n\nbody b\n<!-- slide -->\n## C",
+    );
+    expect(chunks).toHaveLength(3);
+    expect(chunks[0]).toBe("## A\n\nbody a");
+    expect(chunks[2]).toBe("## C");
+  });
+
+  it("still honors a bare --- line for legacy decks", () => {
     const chunks = splitSlides("# A\n\nbody a\n\n---\n\n# B\n\nbody b\n\n---\n\n# C");
     expect(chunks).toHaveLength(3);
     expect(chunks[0]).toBe("# A\n\nbody a");
     expect(chunks[2]).toBe("# C");
   });
 
-  it("yields a single empty slide for empty source", () => {
-    expect(splitSlides("")).toEqual([""]);
+  it("yields no slides for empty source", () => {
+    expect(splitSlides("")).toEqual([]);
   });
 });
 
 describe("buildSlidesHtml", () => {
-  const SOURCE = "# Intro\n\nWelcome.\n\n---\n\n# Kinetics\n\nRate $k$.\n\n---\n\n# End\n\nDone.";
+  const SOURCE =
+    "<!-- slide -->\n## Intro\n\nWelcome.\n<!-- slide -->\n## Kinetics\n\nRate $k$.\n<!-- slide -->\n## End\n\nDone.";
 
   it("renders one <section> per slide chunk", () => {
     const html = buildSlidesHtml({ title: "Deck", source: SOURCE });

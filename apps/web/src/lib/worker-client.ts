@@ -53,7 +53,15 @@ async function callWorker(input: GenerateFileInput): Promise<string> {
       kind: input.kind,
       markdown: input.markdown,
       title: input.title,
-      theme: input.kind === "md" ? orzThemeId(input.theme) : undefined,
+      // `md` uses orz-mdhtml theme ids (map legacy dark/light); `slides` uses
+      // orz-slides' own theme ids (paper, …) — pass through as-is. Paged has no
+      // theme knob yet.
+      theme:
+        input.kind === "md"
+          ? orzThemeId(input.theme)
+          : input.kind === "slides"
+            ? input.theme
+            : undefined,
       delivery: input.delivery,
     }),
   });

@@ -2,13 +2,19 @@
 
 import { redirect } from "next/navigation";
 import { parseStudyGuide, serializeStudyGuide } from "@alembic/package-contract";
-import { loadStudyGuide } from "@alembic/package-ops";
+import { loadStudyGuide, loadSlidesDeck, saveSlidesDeck } from "@alembic/package-ops";
 import { slidesSourceFromBlocks } from "@alembic/renderer";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
 import { generateEditableFile, generateSelfContainedFile, workerConfigured } from "@/lib/worker-client";
+import { syncFilesToGitHub } from "@/lib/github";
 import { saveStudyGuideAction } from "./actions";
 import { setCourseThemeAction } from "./metadata-actions";
+
+/** Map a chapter's authored-slides path (`slides/NN.md`) to its study guide. */
+function studyGuidePathForSlides(slidesPath: string): string {
+  return slidesPath.replace(/^slides\//, "study-guide/");
+}
 
 /**
  * E3 — hosted study-guide editing. The chapter's committed source of record
@@ -67,6 +73,90 @@ export async function generateChapterHtmlAction(
     // No reachable worker / generation error — degrade to the block editor.
     return { ok: true, editable: false };
   }
+}
+
+/**
+ * E3d — generate a chapter's AUTHORED slide deck (`slides/NN.md`) as an editable
+ * `.slides.html` (orz-slides, protocol-bearing). On first open the committed
+ * deck is empty, so it is SEEDED from the chapter's study guide
+ * (`slidesSourceFromBlocks`); thereafter the deck is its own document and edits
+ * persist through `hostSaveSlidesAction`. The deck opens in the `slides` space's
+ * own theme (orz-slides theme namespace, independent of the course theme).
+ * Returns `editable:false` (no html) when no worker is configured or generation
+ * fails — the caller degrades gracefully rather than mounting a view-only file.
+ */
+export async function generateSlidesHtmlAction(
+  packageId: string,
+  path: string,
+  title?: string,
+): Promise<ChapterHtmlResult> {
+  const { supabase } = await requireUser();
+  if (!workerConfigured()) return { ok: true, editable: false };
+  try {
+    const store = new SupabaseSandboxStore(supabase);
+    const record = await store.getPackage(packageId);
+    const deck = await loadSlidesDeck(store, packageId, path);
+    let source = deck.source;
+    if (!source.trim()) {
+      // First open: seed the deck from the chapter's study-guide blocks.
+      const guide = await loadStudyGuide(store, packageId, studyGuidePathForSlides(path));
+      source = slidesSourceFromBlocks(
+        guide.blocks.map((b) => ({ title: b.title, body: b.body })),
+      );
+    }
+    // Slides carry their OWN theme (orz-slides ids like `paper`), independent of
+    // the study-guide/course theme; absent → orz-slides' built-in default.
+    const theme = record?.manifest.themes?.["slides"];
+    const html = await generateEditableFile({ kind: "slides", markdown: source, title, theme });
+    return { ok: true, editable: true, html };
+  } catch {
+    return { ok: true, editable: false };
+  }
+}
+
+/**
+ * Persist a save the hosted `.slides.html` editor initiated (orz-host-save). The
+ * committed source of record is the deck markdown itself (`slides/NN.md`), saved
+ * verbatim through the validated `saveSlidesDeck` path (two-repo invariant +
+ * public-reference guard), then committed to GitHub best-effort. The educator's
+ * theme pick is captured as the `slides` space's global default.
+ */
+export async function hostSaveSlidesAction(
+  packageId: string,
+  path: string,
+  payload: { source: string; rendered: string; theme?: string },
+): Promise<HostSaveResult> {
+  const { supabase, user } = await requireUser();
+  if (!payload.source.trim()) {
+    return { ok: false, error: "The deck arrived empty — nothing was saved." };
+  }
+  const store = new SupabaseSandboxStore(supabase);
+  try {
+    await saveSlidesDeck(store, packageId, { path, source: payload.source });
+  } catch {
+    return { ok: false, error: "Your slides couldn’t be saved. Please try again." };
+  }
+  // Commit to GitHub — best-effort; the local save already landed.
+  let warning: string | undefined;
+  try {
+    await syncFilesToGitHub(
+      supabase, store, user.id, packageId,
+      [{ path, content: payload.source }],
+      `Update ${path}`,
+    );
+  } catch {
+    warning = "Saved here, but syncing to GitHub didn't complete.";
+  }
+  // Capture the deck's theme as the slides space's global default (independent
+  // of the study-guide theme; last write wins across chapters; no-op if same).
+  if (payload.theme) {
+    try {
+      await setCourseThemeAction(packageId, payload.theme, "slides");
+    } catch {
+      /* keep the save even if the theme couldn't persist */
+    }
+  }
+  return { ok: true, error: warning };
 }
 
 export interface ChapterViewResult {

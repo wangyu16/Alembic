@@ -20,11 +20,19 @@ import { rendererVersion } from "./index";
 /** The format version this module writes for the "slides" kind. */
 export const SLIDES_FORMAT_VERSION = getKind("slides")?.formatVersion ?? 1;
 
-/** Separator between slides in a deck source: a `---` thematic break alone. */
-const SLIDE_SEPARATOR = "\n\n---\n\n";
+/**
+ * Marker that begins every slide in an orz-slides deck. The marker IS the slide
+ * separator — orz-slides splits the deck on `<!-- slide … -->` (there is no bare
+ * `---`, and content before the first marker is read as deck preamble, not a
+ * slide). The leading `## h2` after a marker becomes the slide's title band.
+ */
+const SLIDE_MARKER = "<!-- slide -->";
+
+/** Matches a slide marker (`<!-- slide … -->`) alone on its line, after trim. */
+const SLIDE_MARKER_RE = /^<!--\s*slide\b[^>]*-->$/;
 
 /** Placeholder slide used when no usable blocks exist. */
-const EMPTY_DECK_SLIDE = "# Untitled deck\n\nThis deck has no slides yet.";
+const EMPTY_DECK_SLIDE = `${SLIDE_MARKER}\n## Untitled deck\n\nThis deck has no slides yet.`;
 
 export interface SlideBlock {
   title: string;
@@ -32,8 +40,9 @@ export interface SlideBlock {
 }
 
 /**
- * Derive a deck source from study-guide blocks: each block → one slide
- * (`# {title}\n\n{body}`). Blocks whose title AND body are both empty (after
+ * Derive an orz-slides deck source from study-guide blocks: each block → one
+ * slide, `<!-- slide -->` marker + `## {title}` heading (the heading becomes the
+ * slide's title band) + body. Blocks whose title AND body are both empty (after
  * trimming) are skipped. If no usable blocks remain, returns a single
  * placeholder slide so the deck is never empty.
  */
@@ -43,29 +52,36 @@ export function slidesSourceFromBlocks(blocks: Array<SlideBlock>): string {
     const title = (block.title ?? "").trim();
     const body = (block.body ?? "").trim();
     if (title === "" && body === "") continue;
-    slides.push(`# ${title}\n\n${body}`);
+    const heading = title ? `## ${title}` : "";
+    slides.push([SLIDE_MARKER, heading, body].filter(Boolean).join("\n\n"));
   }
   if (slides.length === 0) return EMPTY_DECK_SLIDE;
-  return slides.join(SLIDE_SEPARATOR);
+  return slides.join("\n\n");
 }
 
 /**
- * Split a deck source into per-slide markdown chunks on a line that is exactly
- * `---` (a thematic break alone on its line, after trim). Leading/trailing
- * blank lines are trimmed per chunk. An empty source yields a single empty
- * slide.
+ * Split a deck source into per-slide markdown chunks. A slide boundary is a
+ * `<!-- slide … -->` marker alone on its line (the orz-slides grammar); a bare
+ * `---` line is still honored for legacy decks. The marker line itself is
+ * dropped from the chunk. Content before the first marker is its own leading
+ * chunk. Leading/trailing blank lines are trimmed per chunk.
  */
 export function splitSlides(source: string): string[] {
   const lines = source.split(/\r?\n/);
   const chunks: string[][] = [[]];
   for (const line of lines) {
-    if (line.trim() === "---") {
+    const t = line.trim();
+    if (SLIDE_MARKER_RE.test(t)) {
+      chunks.push([]); // marker starts a new slide; the marker line is dropped
+    } else if (t === "---") {
       chunks.push([]);
     } else {
       chunks[chunks.length - 1]!.push(line);
     }
   }
-  return chunks.map((chunkLines) => chunkLines.join("\n").replace(/^\s*\n/, "").replace(/\n\s*$/, "").trim());
+  return chunks
+    .map((chunkLines) => chunkLines.join("\n").replace(/^\s*\n/, "").replace(/\n\s*$/, "").trim())
+    .filter((chunk) => chunk !== ""); // drop the empty pre-first-marker lead chunk
 }
 
 /** Deck-specific CSS layered on top of the shared dark-elegant theme. */

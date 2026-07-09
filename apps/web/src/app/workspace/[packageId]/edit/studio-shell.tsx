@@ -31,7 +31,8 @@ import { adaptElementAction } from "../adapt-actions";
 import {
   generateChapterHtmlAction,
   hostSaveStudyGuideAction,
-  generateChapterViewAction,
+  generateSlidesHtmlAction,
+  hostSaveSlidesAction,
 } from "../hosted-actions";
 import { useUnsavedGuard } from "@/lib/use-unsaved-guard";
 import type { EditorHandle } from "@alembic/editor-kit";
@@ -420,12 +421,12 @@ export function StudioShell({
           ) : category === "assets" ? (
             <AssetsView key="assets" packageId={packageId} activePath={activePath} assets={assets} assetDocs={assetDocs} onDirty={setDirty} />
           ) : category === "slides" && activePath ? (
-            <HostedChapterView
+            <HostedSlidesEditor
               key={`slides:${activePath}`}
               packageId={packageId}
-              path={activePath}
-              chapterTitle={chapters.find((c) => c.slug === activeSlug)?.title ?? title}
-              kind="slides"
+              path={slidesPathFor(activePath)}
+              chapterTitle={`${chapters.find((c) => c.slug === activeSlug)?.title ?? title} · Slides`}
+              onDirty={setDirty}
             />
           ) : category === "practice" && activePath ? (
             <HostedStudyGuideEditor
@@ -662,6 +663,18 @@ const HOSTED_STUDY_GUIDE_AI_OPS = operationsForCategory("content")
 const practicePathFor = (studyGuidePath: string) =>
   studyGuidePath.replace(/^study-guide\//, "practice/");
 
+/* Slide decks live in the `slides` space as a per-chapter document, edited
+   through the hosted `.slides.html` (orz-slides) framework at a sibling path;
+   the deck is seeded from the study guide on first open, then authored freely. */
+const slidesPathFor = (studyGuidePath: string) =>
+  studyGuidePath.replace(/^study-guide\//, "slides/");
+
+/* Selection-capable ops advertised to the hosted slides editor's in-file
+ * assistant (orz-host-ai@1): the three universal aids + orz-slides layout. */
+const HOSTED_SLIDES_AI_OPS = operationsForCategory("slides")
+  .filter((o) => o.selection && o.surface === "assistant")
+  .map((o) => ({ id: o.id, title: o.title, selection: true }));
+
 /* Starter scaffold shown when a chapter's practice document is first created. */
 const PRACTICE_TEMPLATE = `# Practice questions
 
@@ -754,86 +767,80 @@ function HostedStudyGuideEditor(props: {
   );
 }
 
-/* ── E3b/E3c: host a DERIVED view (slides / paged) of the chapter ─────────────
- * Slides and paged are generated from the chapter's study guide and hosted for
- * presenting / printing (owner decision: derived views for now). The single
- * authored source is the study guide; these regenerate from it. The `hostSave`
- * stub below is the ONE seam that turns these into independently-authored,
- * persisted documents later: swap it to write a committed per-document source
- * (slides in the `slides` space; paged would need a home) — generation + hosting
- * are unchanged. */
-function HostedChapterView({
-  packageId,
-  path,
-  chapterTitle,
-  kind,
-}: {
+/* ── E3d: host the chapter's AUTHORED slide deck (.slides.html) ───────────────
+ * Slides are their own per-chapter document in the `slides` space, edited through
+ * orz-slides' in-file editor. We generate the `.slides.html` on demand (worker) —
+ * seeded from the study guide on first open — host it via ModuleMount, and persist
+ * the edited deck source on save. When no editable file can be produced (no worker
+ * / generation error) we show a short notice rather than a view-only file (slides
+ * have no block-editor fallback). */
+function HostedSlidesEditor(props: {
   packageId: string;
   path: string;
   chapterTitle: string;
-  kind: "slides" | "paged";
+  onDirty?: (d: boolean) => void;
 }) {
+  const { packageId, path, chapterTitle, onDirty } = props;
   const [state, setState] = useState<
-    { s: "loading" } | { s: "ready"; html: string } | { s: "error"; msg: string }
+    { s: "loading" } | { s: "hosted"; html: string } | { s: "unavailable" }
   >({ s: "loading" });
 
   useEffect(() => {
     let cancelled = false;
     setState({ s: "loading" });
-    generateChapterViewAction(packageId, path, kind, chapterTitle)
+    generateSlidesHtmlAction(packageId, path, chapterTitle)
       .then((r) => {
         if (cancelled) return;
-        setState(
-          r.ok && r.html
-            ? { s: "ready", html: r.html }
-            : { s: "error", msg: r.error ?? "Couldn't prepare this view." },
-        );
+        setState(r.ok && r.editable && r.html ? { s: "hosted", html: r.html } : { s: "unavailable" });
       })
-      .catch(() => !cancelled && setState({ s: "error", msg: "Couldn't prepare this view." }));
+      .catch(() => !cancelled && setState({ s: "unavailable" }));
     return () => {
       cancelled = true;
     };
-  }, [packageId, path, kind, chapterTitle]);
+  }, [packageId, path, chapterTitle]);
 
-  const noun = kind === "slides" ? "slides" : "print view";
   if (state.s === "loading") {
     return (
       <div className="flex h-full min-h-[60vh] items-center justify-center text-sm text-muted">
-        Preparing the {noun}…
+        Preparing the slides…
       </div>
     );
   }
-  if (state.s === "error") {
+  if (state.s === "unavailable") {
     return (
       <div className="flex h-full min-h-[40vh] items-center justify-center px-6 text-center text-sm text-muted">
-        {state.msg}
+        The slide editor isn’t available right now. Please try again in a moment.
       </div>
     );
   }
   return (
     <div className="flex h-full min-h-[75vh] flex-col gap-2">
-      <p className="text-xs text-faint">
-        {kind === "slides"
-          ? "Slides are generated from this chapter's study guide. Edit the study guide to change them; use the file's own Download to keep a copy."
-          : "A print-ready view generated from this chapter's study guide. Use the file's Print / Download; edit the study guide to change the content."}
+      <p className="shrink-0 text-xs text-faint">
+        Edit inline — your changes save with the <span className="text-muted">Save</span> button in
+        the deck’s toolbar. The deck starts from your study guide; edits here are their own. “Save
+        online” in the header is a separate step that publishes.
       </p>
       <ModuleMount
-        kind={kind}
+        kind="slides"
         source={state.html}
-        // Derived view: file-initiated saves aren't persisted (the study guide is
-        // the source). This is the seam to make slides/paged authored later.
-        hostSave={async () => ({
-          ok: false,
-          error:
-            kind === "slides"
-              ? "Slides are generated from your study guide — edit the chapter to change them. Use Download to keep this copy."
-              : "This print view is generated from your study guide — edit the chapter to change it. Use Print / Download to keep this copy.",
-        })}
-        className="min-h-[70vh] w-full flex-1"
+        onDirty={onDirty}
+        hostSave={async (payload) => {
+          const r = await hostSaveSlidesAction(packageId, path, payload);
+          return { ok: r.ok, error: r.error };
+        }}
+        aiOperations={HOSTED_SLIDES_AI_OPS}
+        runAIOperation={(req) =>
+          proposeEditAction(packageId, req.text, {
+            operationId: req.op,
+            selection: req.selection,
+          })
+        }
+        className="w-full flex-1"
       />
     </div>
   );
 }
+
 
 function ContentEditor({
   packageId,
