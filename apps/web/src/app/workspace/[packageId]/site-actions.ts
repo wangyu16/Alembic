@@ -13,7 +13,6 @@ import {
 } from "@alembic/package-ops";
 import {
   buildCourseSite,
-  slidesSourceFromBlocks,
   themeScheme,
   type CourseChapter,
   type CoursePractice,
@@ -116,16 +115,16 @@ export async function publishSiteAction(
         const chapter: CourseChapter = { slug: ch.slug, title: ch.title, viewHref };
 
         try {
-          // Prefer the chapter's AUTHORED deck (`slides/NN.md`); fall back to a
-          // deck seeded from the study guide when none has been authored yet.
+          // Slides are an AUTHORED document — publish only the decks the educator
+          // actually created (`slides/NN.md`); a chapter with no deck simply omits
+          // its slides link (no auto-derived deck).
           const authored = await loadSlidesDeck(store, packageId, chapterSlidesPath(ch.slug));
-          const deck = authored.source.trim()
-            ? authored.source
-            : slidesSourceFromBlocks(guide.blocks.map((b) => ({ title: b.title, body: b.body })));
-          const slidesHtml = await generateSelfContainedFile({ kind: "slides", markdown: deck, title: ch.title, theme: slidesTheme, delivery: "cdn" });
-          const slidesHref = `slides/${ch.slug}.slides.html`;
-          pageFiles.push({ path: slidesHref, content: slidesHtml });
-          chapter.slidesHref = slidesHref;
+          if (authored.source.trim()) {
+            const slidesHtml = await generateSelfContainedFile({ kind: "slides", markdown: authored.source, title: ch.title, theme: slidesTheme, delivery: "cdn" });
+            const slidesHref = `slides/${ch.slug}.slides.html`;
+            pageFiles.push({ path: slidesHref, content: slidesHtml });
+            chapter.slidesHref = slidesHref;
+          }
         } catch {
           /* omit the slides link for this chapter */
         }

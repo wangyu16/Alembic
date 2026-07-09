@@ -11,9 +11,44 @@ import { syncFilesToGitHub } from "@/lib/github";
 import { saveStudyGuideAction } from "./actions";
 import { setCourseThemeAction } from "./metadata-actions";
 
-/** Map a chapter's authored-slides path (`slides/NN.md`) to its study guide. */
-function studyGuidePathForSlides(slidesPath: string): string {
-  return slidesPath.replace(/^slides\//, "study-guide/");
+/**
+ * Minimal starter deck for a freshly-created chapter slide set: a deck config
+ * (NO `theme:` — the theme is a GLOBAL setting applied at generation, so a
+ * baked-in deck theme would override it), a title slide, two content slides, and
+ * a closing slide. Authored freely thereafter; NOT derived from the study guide.
+ * Mirrors orz-slides' own `examples/demo.md` structure, pared down.
+ */
+function slidesTemplate(title: string): string {
+  const t = title.trim() || "Slides";
+  return `<!-- deck
+title: ${t}
+ratio: 16:9
+-->
+
+<!-- slide template=title -->
+# ${t}
+## <subtitle>
+**<your name>**
+
+<!-- slide -->
+## <First topic>
+
+- <key point>
+- <key point>
+- <key point>
+
+<!-- slide -->
+## <Second topic>
+
+- <key point>
+- <key point>
+- <key point>
+
+<!-- slide template=closing -->
+# Thank you
+
+Questions?
+`;
 }
 
 /**
@@ -96,14 +131,9 @@ export async function generateSlidesHtmlAction(
     const store = new SupabaseSandboxStore(supabase);
     const record = await store.getPackage(packageId);
     const deck = await loadSlidesDeck(store, packageId, path);
-    let source = deck.source;
-    if (!source.trim()) {
-      // First open: seed the deck from the chapter's study-guide blocks.
-      const guide = await loadStudyGuide(store, packageId, studyGuidePathForSlides(path));
-      source = slidesSourceFromBlocks(
-        guide.blocks.map((b) => ({ title: b.title, body: b.body })),
-      );
-    }
+    // First open starts from a minimal deck scaffold (title · 2 content ·
+    // closing); the educator authors it freely (not derived from the study guide).
+    const source = deck.source.trim() ? deck.source : slidesTemplate(title ?? "Slides");
     // Slides carry their OWN theme (orz-slides ids like `paper`), independent of
     // the study-guide/course theme; absent → orz-slides' built-in default.
     const theme = record?.manifest.themes?.["slides"];

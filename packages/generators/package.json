@@ -13,7 +13,7 @@
   },
   "dependencies": {
     "orz-mdhtml": "^0.7.1",
-    "orz-slides": "^0.4.0",
+    "orz-slides": "^0.6.0",
     "orz-paged": "^0.4.0"
   },
   "devDependencies": {

@@ -833,23 +833,36 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
   through the validated write path; two-repo + public-reference guards still
   gate it). A new **`HostedSlidesEditor`** hosts orz-slides' in-file editor
   (`ModuleMount kind="slides"`) with a persisting `hostSaveSlidesAction`;
-  `generateSlidesHtmlAction` **seeds the deck from the study guide on first
-  open** (`slidesSourceFromBlocks`), then it is authored independently. Deck
-  format bug fixed: `slidesSourceFromBlocks` now emits orz-slides grammar
-  (`<!-- slide -->` markers + `## title`), so decks actually render (was `#`+
-  `---`, which orz-slides read as one preamble blob → blank). Slides carry their
-  **own theme** (orz-slides theme ids in `manifest.themes.slides`, independent of
-  the course reading theme), captured on save and applied to the published
-  `.slides.html`. The in-file **AI assistant** (three universal aids +
-  `suggest-slide-layout`) rides the `orz-host-ai@1` bridge. The dead
-  `HostedChapterView` (derived slides/paged) was removed; paged has no rail entry
-  (Print/handout was deleted earlier). Green (typecheck + full test + web build).
-  **Requires an orz-slides 0.6.0 release + worker redeploy** for the AI + theme
-  capture (deployed orz-slides has `orz-host-save` so render+save work now; AI +
-  the save-message `theme` field are 0.6.0): publish orz-slides 0.6.0 → bump
-  `orz-slides` in `packages/generators/package.json` (`^0.4.0`→`^0.6.0`) →
-  `pnpm install` → redeploy the Fly worker. orz-slides 0.6.0 code is staged
-  (uncommitted) in the sibling repo.
+  `generateSlidesHtmlAction` seeds a fresh chapter's deck from a **minimal
+  scaffold** (`slidesTemplate`: deck config with NO baked-in `theme:` + a
+  `template=title` slide + two content slides + a `template=closing` slide,
+  matching orz-slides' own `examples/demo.md` shape pared down), then it is
+  authored independently — not derived from the study guide (that seed source
+  was tried first, then replaced per owner direction: fresh slides should start
+  minimal, not import guide content). Deck format bug fixed:
+  `slidesSourceFromBlocks` (still used by the legacy renderer path) now emits
+  orz-slides grammar (`<!-- slide -->` markers + `## title`) so decks render
+  correctly wherever it's used. Slides carry their **own theme** (orz-slides
+  theme ids in `manifest.themes.slides`, independent of the course reading
+  theme — the *same last-write-wins global mechanism as the study guide*),
+  captured on save (`hostSaveSlidesAction` → `setCourseThemeAction(…, "slides")`)
+  and applied at generation/publish; the deck template deliberately omits a
+  baked-in `theme:` so the global setting always wins. The in-file **AI
+  assistant** (three universal aids + `suggest-slide-layout`) rides the
+  `orz-host-ai@1` bridge, scoped to the **current slide's buffer** (per-slide,
+  not whole-deck — acceptable for now per owner; a whole-deck mode is a small
+  follow-up in orz-slides if wanted later). Publish only emits a chapter's
+  `.slides.html` when it has an authored deck (no auto-derived fallback). The
+  dead `HostedChapterView` (derived slides/paged) was removed; paged has no
+  rail entry (Print/handout was deleted earlier; paged is slated to serve
+  Assets/Private/Current next). Green (typecheck + full test + web build).
+  **orz-slides 0.6.0 released** (npm + GitHub, 2026-07-09: `orz-host-ai@1` +
+  `theme` in the save message, ported from orz-mdhtml 0.7.1 — 54/54 upstream
+  tests, sample deck regenerated); `packages/generators` bumped
+  `orz-slides` `^0.4.0`→`^0.6.0` and reinstalled. **Owner action remaining: redeploy
+  the Fly worker** to pick up 0.6.0 (until then, the deployed worker's older
+  orz-slides still has `orz-host-save` so render+save work, but no AI/theme
+  capture in the live app).
 - **E3 bugfix: hosted editor showed blank + the pencil did nothing.** The
   hosted-carrier iframe sandbox was `allow-scripts` WITHOUT `allow-same-origin`,
   giving the file an opaque origin. But the self-contained file renders its
