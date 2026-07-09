@@ -90,14 +90,20 @@ describe("buildCourseSite — course home hub", () => {
     expect(index.content).toContain("No modules published yet.");
   });
 
-  it("credits Alembic and orz-markdown in the footer, each with the orz mark", () => {
+  it("credits Alembic and orz-markdown in the footer, opening in a new tab", () => {
     const index = buildCourseSite(course).find((f) => f.path === "index.html")!;
-    expect(index.content).toContain('<a href="https://alembic.orz.how">Published with Alembic</a>');
-    expect(index.content).toContain('<a href="https://markdown.orz.how">Powered by orz-markdown</a>');
+    expect(index.content).toContain(
+      '<a href="https://alembic.orz.how" target="_blank" rel="noreferrer">Published with Alembic</a>',
+    );
+    expect(index.content).toContain(
+      '<a href="https://markdown.orz.how" target="_blank" rel="noreferrer">Powered by orz-markdown</a>',
+    );
+    // A single center-dot separator between the two links.
+    expect(index.content).toContain('<span class="sep">·</span>');
     // The mark is inlined once as a <symbol> (no external image request) and
-    // referenced twice via <use> — one per credit link.
+    // shown once, in front of both links — not duplicated per link.
     expect(index.content).toContain('<symbol id="orz-icon"');
-    expect(index.content.match(/<use href="#orz-icon"\/>/g)).toHaveLength(2);
+    expect(index.content.match(/<use href="#orz-icon"\/>/g)).toHaveLength(1);
     expect(index.content).not.toContain("raw.githubusercontent.com");
   });
 
@@ -124,12 +130,14 @@ describe("buildCourseSite — course home hub", () => {
     const withoutInfo = buildCourseSite(course).find((f) => f.path === "index.html")!;
     expect(withoutInfo.content).not.toContain('<p class="course-meta">');
 
-    // A single field is enough to show the line, with no stray separators.
+    // A single field is enough to show the line, with no stray separators
+    // (scoped to the meta line itself — the footer has its own separator).
     const partial = buildCourseSite({ ...course, instructor: "Dr. Yu Wang" }).find(
       (f) => f.path === "index.html",
     )!;
     expect(partial.content).toContain("Dr. Yu Wang");
-    expect(partial.content).not.toContain('<span class="sep">');
+    const metaLine = partial.content.match(/<p class="course-meta">([\s\S]*?)<\/p>/)![1];
+    expect(metaLine).not.toContain('<span class="sep">');
   });
 
   it("numbers modules in order and shows a count", () => {

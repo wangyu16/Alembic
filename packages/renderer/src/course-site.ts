@@ -203,10 +203,10 @@ a.module-title:hover{color:var(--accent)}
 .current-note{color:var(--muted);margin:0}
 
 .site-footer{margin-top:3rem;padding-top:1rem;border-top:1px solid var(--edge-soft);
-  display:flex;flex-wrap:wrap;align-items:center;gap:.4rem .9rem;
+  display:flex;flex-wrap:wrap;align-items:center;gap:.5rem;
   font-size:.8rem;color:var(--muted);text-align:left}
-.site-credit{display:inline-flex;align-items:center;gap:.4rem}
 .orz-mark{width:1.6em;height:.89em;flex:none}
+.site-footer .sep{margin:0 .1em;opacity:.6}
 .site-footer a{color:var(--muted)}
 .site-footer a:hover{color:var(--accent)}
 
@@ -274,8 +274,10 @@ ${modulesBody}
 </section>`;
 
   const footer = `<footer class="site-footer">
-<span class="site-credit"><svg class="orz-mark" aria-hidden="true"><use href="#orz-icon"/></svg><a href="https://alembic.orz.how">Published with Alembic</a></span>
-<span class="site-credit"><svg class="orz-mark" aria-hidden="true"><use href="#orz-icon"/></svg><a href="https://markdown.orz.how">Powered by orz-markdown</a></span>
+<svg class="orz-mark" aria-hidden="true"><use href="#orz-icon"/></svg>
+<a href="https://alembic.orz.how" target="_blank" rel="noreferrer">Published with Alembic</a>
+<span class="sep">·</span>
+<a href="https://markdown.orz.how" target="_blank" rel="noreferrer">Powered by orz-markdown</a>
 </footer>`;
 
   const body = `${ORZ_ICON_SYMBOL}\n${hero}\n${modules}\n${currentTerm}\n${footer}`;
