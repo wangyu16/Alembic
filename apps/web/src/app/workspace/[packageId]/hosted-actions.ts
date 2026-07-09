@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { parseStudyGuide, serializeStudyGuide } from "@alembic/package-contract";
 import { loadStudyGuide, loadSlidesDeck, saveSlidesDeck } from "@alembic/package-ops";
-import { slidesSourceFromBlocks, deckThemeFromSource } from "@alembic/renderer";
+import { slidesSourceFromBlocks, deckThemeFromSource, withDeckTheme } from "@alembic/renderer";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
 import { generateEditableFile, generateSelfContainedFile, workerConfigured } from "@/lib/worker-client";
@@ -133,10 +133,15 @@ export async function generateSlidesHtmlAction(
     const deck = await loadSlidesDeck(store, packageId, path);
     // First open starts from a minimal deck scaffold (title · 2 content ·
     // closing); the educator authors it freely (not derived from the study guide).
-    const source = deck.source.trim() ? deck.source : slidesTemplate(title ?? "Slides");
+    const seeded = deck.source.trim() ? deck.source : slidesTemplate(title ?? "Slides");
     // Slides carry their OWN theme (orz-slides ids like `paper`), independent of
-    // the study-guide/course theme; absent → orz-slides' built-in default.
+    // the study-guide/course theme; absent → orz-slides' built-in default. The
+    // course-wide default wins over whatever this specific deck's own config
+    // happens to have saved (orz-slides otherwise always prefers the deck's own
+    // `theme:` line — see withDeckTheme's doc) so every chapter's slides open
+    // and publish under the SAME theme until the educator re-picks one here.
     const theme = record?.manifest.themes?.["slides"];
+    const source = theme ? withDeckTheme(seeded, theme) : seeded;
     const html = await generateEditableFile({ kind: "slides", markdown: source, title, theme });
     return { ok: true, editable: true, html };
   } catch {

@@ -6,6 +6,7 @@ import {
   buildSlidesHtml,
   extractSlides,
   deckThemeFromSource,
+  withDeckTheme,
 } from "./slides";
 
 describe("deckThemeFromSource", () => {
@@ -27,6 +28,38 @@ describe("deckThemeFromSource", () => {
   it("returns undefined when there is no deck block at all", () => {
     expect(deckThemeFromSource("<!-- slide -->\n## A\n")).toBeUndefined();
     expect(deckThemeFromSource("")).toBeUndefined();
+  });
+});
+
+describe("withDeckTheme", () => {
+  it("replaces an existing theme: line, leaving the rest of the block intact", () => {
+    const source = "<!-- deck\ntitle: Demo\ntheme: paper\nratio: 16:9\n-->\n\n<!-- slide -->\n## A\n";
+    const next = withDeckTheme(source, "dark-elegant-1");
+    expect(deckThemeFromSource(next)).toBe("dark-elegant-1");
+    expect(next).toContain("title: Demo");
+    expect(next).toContain("ratio: 16:9");
+    expect(next).toContain("<!-- slide -->\n## A\n");
+  });
+
+  it("inserts a theme: line into a deck block that has none", () => {
+    const source = "<!-- deck\ntitle: Demo\n-->\n\n<!-- slide -->\n## A\n";
+    const next = withDeckTheme(source, "paper");
+    expect(deckThemeFromSource(next)).toBe("paper");
+    expect(next).toContain("title: Demo");
+  });
+
+  it("prepends a deck block when the source has none at all", () => {
+    const source = "<!-- slide -->\n## A\n";
+    const next = withDeckTheme(source, "paper");
+    expect(deckThemeFromSource(next)).toBe("paper");
+    expect(next).toContain("<!-- slide -->\n## A\n");
+  });
+
+  it("preserves everything after the deck block byte-for-byte", () => {
+    const body = "\n\n<!-- slide -->\n## A\n\nBody text.\n";
+    const source = `<!-- deck\ntheme: paper\n-->${body}`;
+    const next = withDeckTheme(source, "dark-elegant-1");
+    expect(next.endsWith(body)).toBe(true);
   });
 });
 

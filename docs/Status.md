@@ -1025,6 +1025,30 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
   *published* `orz-paged`/`orz-paged-browser@0.4.0` pair is in sync with
   each other and CDN-verified (200, correct file), matching
   `packages/generators`' `^0.4.0` pin — no action needed there.
+- **Fixed inconsistent slide themes across a published course's chapters
+  (2026-07-09, owner report).** Root cause: orz-slides always prefers a
+  deck's OWN embedded `<!-- deck ... theme: X ... -->` config over the
+  `theme` option a caller passes in (`deck.config.theme || opts.theme ||
+  'paper'`, confirmed in orz-slides' `lib.ts`) — by design for orz-slides
+  as a standalone tool, but it defeats Alembic's course-wide
+  `manifest.themes.slides` default: only chapters whose deck was itself
+  saved *after* the instructor last picked a theme get it; every other
+  chapter's deck keeps whatever it had baked in from whenever it was last
+  touched, so published slides render inconsistently across chapters.
+  Verified directly against the real `orz-slides` package (not just a
+  string-rewrite unit test): the same deck + `opts.theme:'architect'`
+  rendered `data-theme="paper"` before the fix and `data-theme="architect"`
+  after. **Fixed** with a new `withDeckTheme(source, theme)`
+  (`packages/renderer/src/slides.ts`, companion to `deckThemeFromSource`):
+  rewrites/inserts the deck config's `theme:` line to force the course-wide
+  default, applied to the **in-memory** copy right before generating —
+  never persisted back to the chapter's own committed `slides/NN.md`, so
+  re-picking a theme *in that specific deck* still writes back exactly as
+  before. Wired into both `site-actions.ts` (publish) and
+  `hosted-actions.ts`'s `generateSlidesHtmlAction` (the editing/preview
+  surface), so what an educator sees while editing now always matches what
+  publishes. 4 new renderer tests. Green (typecheck across all 13
+  workspaces + full test suite, 54 renderer tests + web build).
 - **Adopted the owner's proposed authoring convention: "# Title" then "##
   Section" (2026-07-09).** Following up on the gate false-negative below —
   `parseStudyGuide`'s design already anticipated an optional leading H1

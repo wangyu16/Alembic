@@ -13,6 +13,7 @@ import {
 import {
   buildCourseSite,
   themeScheme,
+  withDeckTheme,
   type CourseChapter,
   type SiteFile,
 } from "@alembic/renderer";
@@ -117,7 +118,14 @@ export async function publishSiteAction(
           // its slides link (no auto-derived deck).
           const authored = await loadSlidesDeck(store, packageId, chapterSlidesPath(ch.slug));
           if (authored.source.trim()) {
-            const slidesHtml = await generateSelfContainedFile({ kind: "slides", markdown: authored.source, title: ch.title, theme: slidesTheme, delivery: "cdn" });
+            // The course-wide slides theme wins over this specific deck's own
+            // saved theme — otherwise a chapter whose deck predates the current
+            // pick (or was never reopened after) silently publishes under its
+            // own stale theme while other chapters show the current one
+            // (orz-slides always prefers a deck's own `theme:` line; see
+            // withDeckTheme's doc).
+            const slidesSource = slidesTheme ? withDeckTheme(authored.source, slidesTheme) : authored.source;
+            const slidesHtml = await generateSelfContainedFile({ kind: "slides", markdown: slidesSource, title: ch.title, theme: slidesTheme, delivery: "cdn" });
             const slidesHref = `slides/${ch.slug}.slides.html`;
             pageFiles.push({ path: slidesHref, content: slidesHtml });
             chapter.slidesHref = slidesHref;

@@ -52,6 +52,32 @@ export function deckThemeFromSource(source: string): string | undefined {
   return line ? line[2]!.trim() : undefined;
 }
 
+/**
+ * Force `theme` into a deck's leading `<!-- deck ... -->` config block —
+ * replacing an existing `theme:` line or inserting one. Alembic wants ONE
+ * course-wide slides theme (the manifest's `themes.slides` default,
+ * `deckThemeFromSource`'s doc above), but orz-slides itself always prefers a
+ * deck's OWN `theme:` line over any caller-supplied fallback — so a deck that
+ * was last saved under an older theme keeps showing it forever, even after
+ * the educator picks a new course-wide default elsewhere, unless something
+ * rewrites it. Used to normalize a deck's source in memory right before
+ * generating it for editing/viewing/publishing — never persisted back to the
+ * chapter's own committed source, so re-picking a theme *in that deck*
+ * (which does write back) still works exactly as before.
+ */
+export function withDeckTheme(source: string, theme: string): string {
+  const block = source.match(DECK_BLOCK_RE);
+  if (!block) {
+    return `<!-- deck\ntheme: ${theme}\n-->\n\n${source}`;
+  }
+  const inner = block[1]!;
+  const hasThemeLine = /(^|\n)[ \t]*theme[ \t]*:[ \t]*[^\n]+/.test(inner);
+  const nextInner = hasThemeLine
+    ? inner.replace(/(^|\n)([ \t]*theme[ \t]*:[ \t]*)[^\n]+/, `$1$2${theme}`)
+    : `${inner}\ntheme: ${theme}\n`;
+  return `<!-- deck${nextInner}-->` + source.slice(block[0].length);
+}
+
 export interface SlideBlock {
   title: string;
   body: string;
