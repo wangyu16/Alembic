@@ -32,6 +32,12 @@
  * `buildSite` (single-page callers) is untouched.
  */
 
+import {
+  isPublicDomainDedication,
+  licenseLabel,
+  licenseUrl,
+  type License,
+} from "@alembic/package-contract";
 import { rendererVersion } from "./index";
 import { escapeHtml, themedDocument } from "./document";
 import { learningResourceJsonLd, type LearningResourceMeta } from "./learning-resource";
@@ -100,6 +106,22 @@ export interface CourseSiteInput {
   courseNumber?: string;
   department?: string;
   chapters: CourseChapter[];
+  /**
+   * The course's license (`manifest.license`). When set, the home page carries a
+   * visible rights notice — a copyright line plus the license for the CC BY
+   * family, or a public-domain dedication for CC0. Until now the license reached
+   * only the JSON-LD, so a human reader of the published page could not see the
+   * terms they were being granted.
+   *
+   * Optional so a caller with no manifest (a bare chapter-list preview, tests)
+   * still builds; such a page simply carries no notice rather than a wrong one.
+   */
+  license?: License;
+  /**
+   * Who holds the copyright. Defaults to `instructor`. Ignored for CC0, which
+   * waives copyright rather than asserting it.
+   */
+  copyrightHolder?: string;
   /** ISO timestamp, passed in for deterministic builds. */
   builtAt: string;
   /** LRMI/schema.org metadata; when present, emitted as JSON-LD on the index (M30). */
@@ -230,6 +252,11 @@ a.module-title:hover{color:var(--accent)}
 .site-footer .sep{margin:0 .1em;opacity:.6}
 .site-footer a{color:var(--muted)}
 .site-footer a:hover{color:var(--accent)}
+/* The rights notice takes a full row of its own above the credits (the footer
+   is a flex row), so the terms never read as a footnote to "Published with
+   Alembic". Underlined because it is the one link a reader may need to act on. */
+.site-license{flex:1 0 100%;margin:0 0 .4rem}
+.site-license a{text-decoration:underline;text-underline-offset:2px}
 
 @media (max-width:640px){
   .module-row{flex-direction:column;gap:.4rem}
@@ -305,7 +332,37 @@ ${modulesBody}
 <p class="current-note">Announcements and current-term materials will appear here once available.</p>
 </section>`;
 
+  // Rights notice. Two shapes, because the licenses are two different things:
+  //
+  //   CC BY family — the educator KEEPS copyright and grants permissions, so the
+  //     notice is "© <year> <holder> · Licensed under <deed>".
+  //   CC0          — the educator WAIVES copyright, so a "©" line beside it would
+  //     assert the very right the dedication gives up. It gets a dedication
+  //     sentence and no copyright symbol at all.
+  //
+  // The year is the year of publication when we know it (`meta.datePublished`),
+  // not the rebuild time — otherwise every republish silently rewrites the
+  // copyright year. `builtAt` is the fallback.
+  const licenseNotice = ((): string => {
+    if (!input.license) return "";
+    const url = licenseUrl(input.license);
+    const label = escapeHtml(licenseLabel(input.license));
+    const deed = `<a href="${url}" rel="license noreferrer" target="_blank">${label}</a>`;
+
+    if (isPublicDomainDedication(input.license)) {
+      return `<p class="site-license">Dedicated to the public domain under ${deed}.</p>`;
+    }
+
+    const holder = (input.copyrightHolder ?? input.instructor ?? "").trim();
+    const year = new Date(input.meta?.datePublished ?? input.builtAt).getUTCFullYear();
+    // With no named holder, "© 2026" alone claims nothing useful — state the
+    // license and leave the copyright line off rather than print a bare symbol.
+    const copyright = holder ? `© ${year} ${escapeHtml(holder)} <span class="sep">·</span> ` : "";
+    return `<p class="site-license">${copyright}Licensed under ${deed}</p>`;
+  })();
+
   const footer = `<footer class="site-footer">
+${licenseNotice}
 <svg class="orz-mark" aria-hidden="true"><use href="#orz-icon"/></svg>
 <a href="https://alembic.orz.how" target="_blank" rel="noreferrer">Published with Alembic</a>
 <span class="sep">·</span>

@@ -172,6 +172,8 @@ export async function publishSiteAction(
         courseNumber: record!.manifest.courseContext?.courseNumber,
         department: record!.manifest.courseContext?.department,
         chapters,
+        // The visible rights notice on the published home page.
+        license: record!.manifest.license,
         builtAt: new Date().toISOString(),
         // The published site's hub matches the course theme's dark/light scheme.
         theme: hubScheme,

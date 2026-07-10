@@ -55,6 +55,32 @@ export function licenseUrl(license: License): string {
   return LICENSE_URLS[license];
 }
 
+/** How each license is written for a human reader (public pages, citations). */
+export const LICENSE_LABELS: Record<License, string> = {
+  "CC-BY-4.0": "CC BY 4.0",
+  "CC-BY-SA-4.0": "CC BY-SA 4.0",
+  "CC-BY-NC-4.0": "CC BY-NC 4.0",
+  "CC-BY-NC-SA-4.0": "CC BY-NC-SA 4.0",
+  "CC0-1.0": "CC0 1.0",
+};
+
+export function licenseLabel(license: License): string {
+  return LICENSE_LABELS[license];
+}
+
+/**
+ * True when the license is a public-domain **dedication** rather than a grant of
+ * permissions over a copyright the author keeps.
+ *
+ * The distinction is load-bearing wherever a notice is rendered: CC0 waives the
+ * author's copyright, so printing "© 2026 A. Educator" beside it would assert
+ * exactly the right the license gives up. Render a dedication notice for these,
+ * never a copyright line.
+ */
+export function isPublicDomainDedication(license: License): boolean {
+  return license === "CC0-1.0";
+}
+
 export const RepoRefSchema = z.object({
   owner: z.string().min(1),
   name: z.string().min(1),

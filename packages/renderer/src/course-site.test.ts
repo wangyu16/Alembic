@@ -174,3 +174,74 @@ describe("buildCourseSite — course home hub", () => {
     expect(index.content).toContain("This term");
   });
 });
+
+describe("buildCourseSite — rights notice", () => {
+  const index = (extra: Parameters<typeof buildCourseSite>[0]) =>
+    buildCourseSite(extra).find((f) => f.path === "index.html")!.content;
+
+  it("shows a copyright line and the license deed for the CC BY family", () => {
+    const html = index({ ...course, license: "CC-BY-4.0", instructor: "Dr. Yu Wang" });
+    expect(html).toContain("© 2026 Dr. Yu Wang");
+    expect(html).toContain("Licensed under");
+    expect(html).toContain("CC BY 4.0");
+    expect(html).toContain('href="https://creativecommons.org/licenses/by/4.0/"');
+    expect(html).toContain('rel="license noreferrer"');
+  });
+
+  it("NEVER prints a copyright symbol for CC0 — the dedication waives it", () => {
+    // A "© 2026 Dr. Yu Wang" beside a CC0 mark would assert exactly the right
+    // the dedication gives up. This is the regression this test exists for.
+    const html = index({ ...course, license: "CC0-1.0", instructor: "Dr. Yu Wang" });
+    expect(html).not.toContain("©");
+    expect(html).not.toContain("Licensed under");
+    expect(html).toContain("Dedicated to the public domain under");
+    expect(html).toContain("CC0 1.0");
+    expect(html).toContain('href="https://creativecommons.org/publicdomain/zero/1.0/"');
+  });
+
+  it("omits the copyright line, but keeps the license, when no holder is known", () => {
+    const html = index({ ...course, license: "CC-BY-SA-4.0" });
+    expect(html).not.toContain("©");
+    expect(html).toContain("Licensed under");
+    expect(html).toContain("CC BY-SA 4.0");
+  });
+
+  it("prefers an explicit copyrightHolder over the instructor", () => {
+    const html = index({
+      ...course,
+      license: "CC-BY-4.0",
+      instructor: "Dr. Yu Wang",
+      copyrightHolder: "University of Louisiana at Lafayette",
+    });
+    expect(html).toContain("© 2026 University of Louisiana at Lafayette");
+    expect(html).not.toContain("© 2026 Dr. Yu Wang");
+  });
+
+  it("dates the copyright from publication, not from the rebuild", () => {
+    // Otherwise every republish silently rewrites the copyright year.
+    const html = index({
+      ...course,
+      license: "CC-BY-4.0",
+      instructor: "Dr. Yu Wang",
+      builtAt: "2030-01-02T00:00:00Z",
+      meta: { name: "General Chemistry", license: "CC-BY-4.0", datePublished: "2026-09-01" },
+    });
+    expect(html).toContain("© 2026 Dr. Yu Wang");
+    expect(html).not.toContain("© 2030");
+  });
+
+  it("escapes a holder name rather than injecting markup", () => {
+    const html = index({ ...course, license: "CC-BY-4.0", instructor: '<script>x</script>' });
+    expect(html).not.toContain("<script>x</script>");
+    expect(html).toContain("&lt;script&gt;");
+  });
+
+  it("emits no notice at all when the caller has no license", () => {
+    const html = index(course);
+    // The `.site-license` CSS rule ships unconditionally (a handful of bytes);
+    // what must be absent is the notice ELEMENT and any rights claim.
+    expect(html).not.toContain('<p class="site-license">');
+    expect(html).not.toContain("©");
+    expect(html).not.toContain("Licensed under");
+  });
+});

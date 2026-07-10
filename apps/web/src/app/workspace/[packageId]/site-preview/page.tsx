@@ -62,6 +62,7 @@ export default async function SitePreviewPage({
     courseNumber: record.manifest.courseContext?.courseNumber,
     department: record.manifest.courseContext?.department,
     chapters,
+    license: record.manifest.license,
     builtAt: new Date().toISOString(),
     theme: orzTheme ? themeScheme(orzTheme) : cookie,
   });
