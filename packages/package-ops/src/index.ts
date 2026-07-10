@@ -7,6 +7,7 @@ export * from "./chapters";
 export * from "./coherence";
 export * from "./release-gates";
 export * from "./assets";
+export * from "./collections";
 export * from "./slides";
 export * from "./import";
 export * from "./citation";
