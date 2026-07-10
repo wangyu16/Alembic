@@ -8,7 +8,7 @@ import {
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
 import { clientForUser, githubConfig, installUrl } from "@/lib/github";
-import { StudioShell, type StudioCategory } from "./studio-shell";
+import { StudioShell, type StudioCategory, type AiAccess } from "./studio-shell";
 import { parseWorkspaceView } from "./nav";
 import { syncPackageRegistry } from "@/lib/register";
 import { SupabaseDocumentRegistryStore } from "@/lib/document-registry-store";
@@ -128,9 +128,19 @@ export default async function EditShellPage({
   // (history is per-chapter elsewhere), so we skip the commit listing.
   const { data: profile } = await supabase
     .from("profiles")
-    .select("github_installation_id")
+    .select("github_installation_id, ai_status")
     .eq("id", user.id)
     .maybeSingle();
+
+  // Per-account AI approval, read once for the whole shell
+  // (docs/specs/user-governance.md §4). `can_use_ai()` answers the authoritative
+  // "approved AND not banned" question; `ai_status` distinguishes the two
+  // unapproved states so the Assistant slot can show "Request access" vs
+  // "Access requested". This is UX only — GovernedProvider re-checks server-side
+  // on every model call.
+  const { data: canAi } = await supabase.rpc("can_use_ai");
+  const aiAccess: AiAccess =
+    canAi === true ? "approved" : profile?.ai_status === "requested" ? "requested" : "none";
   const cfg = githubConfig();
   const pub = record.manifest.publicRepo;
 
@@ -198,6 +208,7 @@ export default async function EditShellPage({
       assets={assets.map((a) => ({ path: a.path, kind: a.kind }))}
       assetDocs={assetDocs}
       publishing={publishing}
+      aiAccess={aiAccess}
     />
   );
 }

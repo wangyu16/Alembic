@@ -1,6 +1,6 @@
 # User governance — admin, account status, AI approval
 
-**Status:** design approved (2026-07-10), implementation in progress.
+**Status:** design approved (2026-07-10). UG0–UG5 shipped; UG6 (this doc + Status.md) done. Migrations `0016`–`0018` applied to production 2026-07-10.
 
 Alembic stays **open to everyone**: anyone can sign up with a GitHub account and
 start authoring. This spec adds three things on top of that:
@@ -284,8 +284,14 @@ first, thin client last (CLAUDE.md rule 9).
 - **UG3 — AI gate.** `GovernedProvider.generateText` fails closed unless
   `ai_status = 'approved'` and the user is not banned. Tests incl. DB-error →
   deny. Must **not** copy the fail-open rate-limit/budget neighbours.
-- **UG4 — admin users page + actions + audit + unpublished-count warning.**
-- **UG5 — educator UX** (`/suspended`, middleware ban check, Request access).
+- **UG4 — admin users page + actions + audit + unpublished-count warning.** ✅
+- **UG5 — educator UX** (`/suspended`, middleware ban check, Request access). ✅
+  The middleware ban check fails **open** on RPC error, deliberately: it is a UX
+  and defence-in-depth layer, and the RLS backstop still refuses the writes.
+  (This also made the deploy safe in either order — before `0017` existed, the
+  RPC simply errored and middleware let traffic through.) Selection-AI's overlay
+  is gated alongside the Assistant button; leaving it visible would have given an
+  unapproved educator a control whose only outcome is a server-side refusal.
 - **UG6 — docs + Status.md.**
 
 Dropped from the original plan when disabling became a login block: the

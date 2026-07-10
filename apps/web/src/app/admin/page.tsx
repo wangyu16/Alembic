@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { summarizeUsage, type InvocationRow } from "@alembic/research-events";
 import { requireAdmin } from "@/lib/admin";
 import { Reports, type ReportItem } from "./admin-client";
@@ -66,9 +67,14 @@ export default async function AdminPage() {
 
   return (
     <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-8 px-6 py-12">
-      <header>
-        <h1 className="font-serif text-3xl tracking-tight text-ink">Admin &amp; operations</h1>
-        <p className="mt-1 text-muted">Study readiness — status, research export, reports.</p>
+      <header className="flex flex-wrap items-baseline justify-between gap-2">
+        <div>
+          <h1 className="font-serif text-3xl tracking-tight text-ink">Admin &amp; operations</h1>
+          <p className="mt-1 text-muted">Study readiness — status, research export, reports.</p>
+        </div>
+        <Link href="/admin/users" className="btn btn-ghost btn-sm">
+          Users →
+        </Link>
       </header>
 
       <section className="grid grid-cols-1 gap-3 sm:grid-cols-3">

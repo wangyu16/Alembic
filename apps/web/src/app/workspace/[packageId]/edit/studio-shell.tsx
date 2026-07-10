@@ -27,6 +27,7 @@ import { saveStudyGuideAction } from "../actions";
 import { saveCourseConceptMapAction, setCourseInfoAction, type CourseInfo } from "../metadata-actions";
 import { saveFileAction, proposeEditAction, runGenerateOperationAction } from "./edit-actions";
 import { importFileAction } from "../import-actions";
+import { requestAiAccessAction } from "../../ai-access-actions";
 import { shareFileAction } from "../share-actions";
 import { adaptElementAction } from "../adapt-actions";
 import {
@@ -78,6 +79,11 @@ export interface AssetDocInfo {
   discoverable: boolean;
   description?: string;
 }
+/* Per-account AI approval state (docs/specs/user-governance.md §4). Threaded
+   from the server (edit/page.tsx) so the assistant surfaces gate as UX; the
+   real enforcement is server-side in GovernedProvider. */
+export type AiAccess = "approved" | "requested" | "none";
+
 /* Categories follow the document model (docs/specs/document-model.md):
    per-chapter files 1–5, then the three file spaces. */
 export type StudioCategory =
@@ -237,6 +243,7 @@ export function StudioShell({
   assets,
   assetDocs,
   publishing,
+  aiAccess,
 }: {
   packageId: string;
   title: string;
@@ -254,6 +261,7 @@ export function StudioShell({
   assets: AssetItem[];
   assetDocs?: Record<string, AssetDocInfo>;
   publishing: PublishingState;
+  aiAccess: AiAccess;
 }) {
   const forms = unitTermForms(unitTerm);
   const router = useRouter();
@@ -536,6 +544,7 @@ export function StudioShell({
               courseInfo={courseInfo}
               published={published}
               onDirty={setDirty}
+              aiAccess={aiAccess}
             />
           ) : view.kind === "chapter" ? (
             activeChapter ? (
@@ -573,6 +582,7 @@ export function StudioShell({
                       chapterTitle={chapters.find((c) => c.slug === activeSlug)?.title ?? title}
                       initial={content}
                       onDirty={setDirty}
+                      aiAccess={aiAccess}
                     />
                   ) : (
                     <CategoryPlaceholder label={DOC_LABELS[view.doc]} />
@@ -585,6 +595,7 @@ export function StudioShell({
                       path={slidesPathFor(activePath)}
                       chapterTitle={`${chapters.find((c) => c.slug === activeSlug)?.title ?? title} · Slides`}
                       onDirty={setDirty}
+                      aiAccess={aiAccess}
                     />
                   ) : (
                     <CategoryPlaceholder label={DOC_LABELS[view.doc]} />
@@ -599,6 +610,7 @@ export function StudioShell({
                       initial={{ preamble: "", blocks: [] }}
                       emptyTemplate={PRACTICE_TEMPLATE}
                       onDirty={setDirty}
+                      aiAccess={aiAccess}
                     />
                   ) : (
                     <CategoryPlaceholder label={DOC_LABELS[view.doc]} />
@@ -616,6 +628,7 @@ export function StudioShell({
                     }
                     file={categoryFile}
                     onDirty={setDirty}
+                    aiAccess={aiAccess}
                   />
                 ) : (
                   <CategoryPlaceholder label={DOC_LABELS[view.doc]} />
@@ -635,6 +648,7 @@ export function StudioShell({
               help="Private notes for this chapter — never published. Assignments, quizzes, exams, and answer keys live in the private repository."
               file={categoryFile}
               onDirty={setDirty}
+              aiAccess={aiAccess}
             />
           ) : (
             <CategoryPlaceholder label={CATEGORY_LABELS[view.collection]} />
@@ -946,6 +960,7 @@ function CourseHome({
   courseInfo,
   published,
   onDirty,
+  aiAccess,
 }: {
   packageId: string;
   title: string;
@@ -953,6 +968,7 @@ function CourseHome({
   courseInfo: CourseInfo;
   published: boolean;
   onDirty?: (d: boolean) => void;
+  aiAccess: AiAccess;
 }) {
   const hasInitial = !!(initial && initial.trim());
   const [md, setMd] = useState(hasInitial ? initial! : conceptMapTemplate(title));
@@ -1158,6 +1174,7 @@ function CourseHome({
               setMode("source");
             }}
             gateContext={{ conceptMapsReady: false, draftProvided: false }}
+            aiAccess={aiAccess}
           />
           <button
             onClick={() => run(() => saveCourseConceptMapAction(packageId, md), "Saved.")}
@@ -1194,7 +1211,11 @@ function CourseHome({
       )}
       {note && <p className="text-xs text-ok">{note}</p>}
       {error && <p className="text-sm text-danger">{error}</p>}
-      {sel.overlay}
+      {/* Selection AI is an AI affordance like the Assistant: hide it unless
+          the account is approved, or an unapproved educator gets a control
+          whose only outcome is a server-side refusal. (The server gate in
+          GovernedProvider remains the boundary; this is UX.) */}
+      {aiAccess === "approved" && sel.overlay}
     </div>
   );
 }
@@ -1270,8 +1291,10 @@ function HostedStudyGuideEditor(props: {
   /** Starter markdown used when the file doesn't exist yet (e.g. Practice). */
   emptyTemplate?: string;
   onDirty?: (d: boolean) => void;
+  aiAccess: AiAccess;
 }) {
-  const { packageId, path, chapterTitle, onDirty, emptyTemplate } = props;
+  const { packageId, path, chapterTitle, onDirty, emptyTemplate, aiAccess } = props;
+  const aiApproved = aiAccess === "approved";
   const [state, setState] = useState<
     { s: "loading" } | { s: "hosted"; html: string } | { s: "fallback" }
   >(() => {
@@ -1353,12 +1376,21 @@ function HostedStudyGuideEditor(props: {
           }
           return { ok: r.ok, error: r.error };
         }}
-        aiOperations={HOSTED_STUDY_GUIDE_AI_OPS}
-        runAIOperation={(req) =>
-          proposeEditAction(packageId, req.text, {
-            operationId: req.op,
-            selection: req.selection,
-          })
+        // AI is gated per account (docs/specs/user-governance.md §4): when the
+        // account isn't approved we advertise NO operations and wire no runner,
+        // so the in-file editor shows no AI affordances. This only changes prop
+        // VALUES on the existing ModuleMount — never its tree position — so the
+        // hosted iframe is not remounted (which would destroy unsaved edits).
+        // Server-side enforcement in GovernedProvider stands regardless.
+        aiOperations={aiApproved ? HOSTED_STUDY_GUIDE_AI_OPS : undefined}
+        runAIOperation={
+          aiApproved
+            ? (req) =>
+                proposeEditAction(packageId, req.text, {
+                  operationId: req.op,
+                  selection: req.selection,
+                })
+            : undefined
         }
         className="w-full flex-1"
       />
@@ -1378,8 +1410,10 @@ function HostedSlidesEditor(props: {
   path: string;
   chapterTitle: string;
   onDirty?: (d: boolean) => void;
+  aiAccess: AiAccess;
 }) {
-  const { packageId, path, chapterTitle, onDirty } = props;
+  const { packageId, path, chapterTitle, onDirty, aiAccess } = props;
+  const aiApproved = aiAccess === "approved";
   const [state, setState] = useState<
     { s: "loading" } | { s: "hosted"; html: string } | { s: "unavailable" }
   >(() => {
@@ -1465,12 +1499,18 @@ function HostedSlidesEditor(props: {
           }
           return { ok: r.ok, error: r.error };
         }}
-        aiOperations={HOSTED_SLIDES_AI_OPS}
-        runAIOperation={(req) =>
-          proposeEditAction(packageId, req.text, {
-            operationId: req.op,
-            selection: req.selection,
-          })
+        // Gated per account like the study guide above (§4): no ops advertised,
+        // no runner wired when unapproved. Prop-value change only — the deck's
+        // hosted iframe keeps its tree position and is never remounted.
+        aiOperations={aiApproved ? HOSTED_SLIDES_AI_OPS : undefined}
+        runAIOperation={
+          aiApproved
+            ? (req) =>
+                proposeEditAction(packageId, req.text, {
+                  operationId: req.op,
+                  selection: req.selection,
+                })
+            : undefined
         }
         className="w-full flex-1"
       />
@@ -1485,12 +1525,14 @@ function ContentEditor({
   chapterTitle,
   initial,
   onDirty,
+  aiAccess,
 }: {
   packageId: string;
   path: string;
   chapterTitle: string;
   initial: { preamble: string; blocks: StudyGuideBlock[] };
   onDirty?: (d: boolean) => void;
+  aiAccess: AiAccess;
 }) {
   const [blocks, setBlocks] = useState<EditBlock[]>(
     // All sections start collapsed on open — expand the ones you're editing.
@@ -1581,7 +1623,7 @@ function ContentEditor({
               {allCollapsed ? "Expand all" : "Collapse all"}
             </button>
           )}
-          <AIAssistant packageId={packageId} category="content" path={path} repo="public" current={assembled} />
+          <AIAssistant packageId={packageId} category="content" path={path} repo="public" current={assembled} aiAccess={aiAccess} />
           <a
             href={`/workspace/${packageId}/export/study-guide?chapter=${path.replace(/^.*\//, "").replace(/\.md$/, "")}`}
             className="btn btn-ghost btn-sm"
@@ -1663,6 +1705,7 @@ function FileEditor({
   help,
   file,
   onDirty,
+  aiAccess,
 }: {
   packageId: string;
   category: OperationCategory;
@@ -1670,6 +1713,7 @@ function FileEditor({
   help: string;
   file: { path: string; repo: "public" | "private"; content: string };
   onDirty?: (d: boolean) => void;
+  aiAccess: AiAccess;
 }) {
   const [text, setText] = useState(file.content);
   const [dirty, setDirty] = useState(false);
@@ -1739,7 +1783,7 @@ function FileEditor({
               Preview
             </button>
           </div>
-          <AIAssistant packageId={packageId} category={category} path={file.path} repo={file.repo} current={text} />
+          <AIAssistant packageId={packageId} category={category} path={file.path} repo={file.repo} current={text} aiAccess={aiAccess} />
           <button onClick={save} disabled={pending || !dirty} className="btn btn-primary btn-sm">
             {pending ? "Saving…" : "Save"}
           </button>
@@ -1765,7 +1809,65 @@ function FileEditor({
         />
       )}
       {error && <p className="text-sm text-danger">{error}</p>}
-      {sel.overlay}
+      {/* Selection AI is an AI affordance like the Assistant: hide it unless
+          the account is approved, or an unapproved educator gets a control
+          whose only outcome is a server-side refusal. (The server gate in
+          GovernedProvider remains the boundary; this is UX.) */}
+      {aiAccess === "approved" && sel.overlay}
+    </div>
+  );
+}
+
+/* ── AI not approved: the Assistant slot becomes a request-access control ─────
+ * Stands in for the assistant trigger when the account isn't approved
+ * (docs/specs/user-governance.md §4). Occupies the same slot with the same
+ * sparkle glyph so the surface reads consistently, but opens no popover. When
+ * the status is `none` it's an active "Request access" button; once requested
+ * it's disabled and reads "Access requested". Purely UX — the server gate in
+ * GovernedProvider is what actually stops AI calls. */
+function AiAccessButton({ aiAccess }: { aiAccess: AiAccess }) {
+  const [pending, start] = useTransition();
+  // Mirror the request locally so the label flips the moment it's sent, without
+  // waiting for the server round-trip / revalidation to land.
+  const [requested, setRequested] = useState(aiAccess === "requested");
+  const [error, setError] = useState<string | null>(null);
+
+  const request = () => {
+    setError(null);
+    start(async () => {
+      const r = await requestAiAccessAction();
+      if (r.ok) setRequested(true);
+      else setError(r.error ?? "Couldn't send your request.");
+    });
+  };
+
+  const label = pending ? "Requesting…" : requested ? "Access requested" : "Request access";
+  const disabled = requested || pending;
+
+  return (
+    <div className="relative inline-block">
+      <button
+        type="button"
+        onClick={requested ? undefined : request}
+        disabled={disabled}
+        className="group inline-flex items-center gap-1.5 rounded-full border border-edge bg-[var(--elevated)] px-3 py-1.5 text-sm font-medium text-muted shadow-sm transition-colors enabled:hover:text-ink disabled:cursor-default disabled:opacity-70"
+        title={
+          requested
+            ? "Your request is with the site owner — the AI assistant turns on once it's approved."
+            : "The AI assistant needs approval for your account. Request access to turn it on."
+        }
+      >
+        <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor" aria-hidden>
+          <path d="M12 2l1.6 4.9L18.5 8.5l-4.9 1.6L12 15l-1.6-4.9L5.5 8.5l4.9-1.6z" />
+          <path d="M18.5 13l.8 2.2L21.5 16l-2.2.8-.8 2.2-.8-2.2L15.5 16l2.2-.8z" />
+        </svg>
+        {label}
+      </button>
+      {error && (
+        <p className="absolute right-0 mt-1 whitespace-nowrap text-xs text-danger" role="alert">
+          {error}
+        </p>
+      )}
     </div>
   );
 }
@@ -1788,6 +1890,7 @@ function AIAssistant({
   repo,
   onApply,
   gateContext,
+  aiAccess,
 }: {
   packageId: string;
   category: OperationCategory;
@@ -1796,6 +1899,7 @@ function AIAssistant({
   repo?: "public" | "private";
   onApply?: (proposed: string) => void;
   gateContext?: OperationGateContext;
+  aiAccess: AiAccess;
 }) {
   const router = useRouter();
   const ops = operationsForCategory(category).filter((o) => o.surface === "assistant");
@@ -1858,6 +1962,14 @@ function AIAssistant({
       }
     });
   };
+
+  // AI is off until an admin approves the account (docs/specs/user-governance.md
+  // §4). Until then the trigger doesn't open the popover — it becomes the
+  // request-access affordance instead. This is UX only; GovernedProvider is the
+  // real gate. Placed after every hook above so hook order stays stable.
+  if (aiAccess !== "approved") {
+    return <AiAccessButton aiAccess={aiAccess} />;
+  }
 
   return (
     <div className="relative inline-block">
