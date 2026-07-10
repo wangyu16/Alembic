@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/service";
 import { installationAccountLogin } from "@/lib/github";
 
 /**
@@ -8,6 +9,13 @@ import { installationAccountLogin } from "@/lib/github";
  * We store the installation id AND the account the App was installed on, then
  * return the educator to that package with publishing resumed — so the
  * two-step "connect, then publish" flow completes in one pass.
+ *
+ * This is the only writer of `profiles.github_installation_id`, and it uses the
+ * SERVICE client: migration 0016 revoked column UPDATE from `authenticated`, so
+ * a user can no longer point their profile at somebody else's installation (and
+ * thereby borrow a GitHub App token for that account's repositories). The write
+ * is safe here because `user.id` comes from the verified session, never from the
+ * request. See docs/specs/user-governance.md §0.
  */
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
@@ -23,6 +31,14 @@ export async function GET(request: Request) {
   }
 
   if (installationId) {
+    const service = createServiceClient();
+    if (!service) {
+      // Fail closed and visibly: without the service key we cannot record the
+      // installation, and silently redirecting would leave the educator on a
+      // publish screen that never works.
+      console.error("github/installed: SUPABASE_SECRET_KEY is not configured");
+      return NextResponse.redirect(`${origin}/workspace?connected=0`);
+    }
     const id = Number(installationId);
     const update: { github_installation_id: number; github_username?: string } = {
       github_installation_id: id,
@@ -36,7 +52,7 @@ export async function GET(request: Request) {
     } catch {
       /* keep the OAuth username; publish has a fallback */
     }
-    await supabase.from("profiles").update(update).eq("id", user.id);
+    await service.from("profiles").update(update).eq("id", user.id);
   }
 
   // Return to the package and auto-resume publishing when we know which one.

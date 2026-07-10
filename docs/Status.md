@@ -5,6 +5,23 @@ same commit as the work it tracks. Statuses: ✅ done · 🔄 partially shipped 
 
 **Production:** live at https://alembic.orz.how (Vercel project `alembic`, root `apps/web`, Node 22; Cloudflare DNS; Git auto-deploy on push to `main`).
 
+> 🔴 **SECURITY — migration `0016` must be applied to production.** Found
+> 2026-07-10 while designing user governance. RLS restricts rows, not columns:
+> `"update own profile"` (`0001_init.sql:21`) let **any signed-in user** update
+> any column of their own `profiles` row, and the anon key is in the browser by
+> design. So a user could `set is_admin = true` (full `/admin` access — the
+> column has existed since `0011` and `requireAdmin()` trusts it), or point
+> `github_installation_id` at **another account's** GitHub App installation, at
+> which point `clientForUser()` mints a token for it — commit access to someone
+> else's repositories. No app code writes those columns, which is why it went
+> unnoticed. `0016` revokes blanket UPDATE and re-grants only `display_name`;
+> the one legitimate writer (`api/github/installed/route.ts`) moved to the
+> service client. **Operator actions:** apply `0016`; ensure `SUPABASE_SECRET_KEY`
+> is set on Vercel (the install callback now needs it, and fails visibly
+> without it); run `supabase/tests/0016_verify_profile_grants.sql` — §3 lists
+> every `is_admin` account, which is also the exposure audit.
+> Design: [user-governance.md](specs/user-governance.md).
+
 **Built framework — Phases 0–7 cores complete.** Phase 7 (research ops & study readiness) core is built — M34 de-identified export, M35 admin/ops module, M36 usage dashboard + centrally-managed credits + FERPA/IRB review (M37 institution-managed mode ⏸ deferred post-pilot). Phase 6 (portal & discovery: LRMI, **cross-owner adapt + suggest-back**, searchable portal, governance) complete; Phases 2–5 cores complete. v0.1 is deployed (not yet *shipped* — 2 of 6 release criteria pending the M8.3 pilot). **Only Phase 8 (hardening & sustainability) remains** — or the pilot-readiness pass (the **scaffolding is now done**: [PilotReadiness.md](PilotReadiness.md) runbook, refreshed [Deployment.md](Deployment.md), worked [DemoContent.md](DemoContent.md), M8.1 ✅). Remaining work is operator/deployed: the **live passes** (need Portkey on Vercel; `SUPABASE_SECRET_KEY` + `is_admin` for `/admin`) — the AI/reconcile/adaptation flows (M18, M9.6, M20, M23, M26–M28, M31) + a structured-data-tester check for M30 — then the M8.3 pilot itself. Heavier deferrals (worker tier: PDF/foreign-import/agent-exec/one-click remediation; studio editing/local projects; M29 Zenodo DOI; M37) remain tracked below. See [LocalSetup.md](LocalSetup.md) + [GitHubAppSetup.md](GitHubAppSetup.md).
 
 > **Current direction — self-contained editing (owner-locked, 2026-07).** Editing and viewing both live *in the files*: the workspace **hosts** the in-file editors of `.md.html` / `.slides.html` / `.paged.html` (orz-family) and **builds no editor of its own**; published pages **are** those self-contained files (thin CDN delivery — study guide ~74 KB, framework from jsDelivr, verified live 2026-07-06); every file gets a permalink. **Committed source of record (revised, 2026-07-08 — "lean-source model"):** a chapter's study guide, slides, and practice questions are each committed as lean markdown (`study-guide/`, `slides/`, `practice/` — `.md`, not `.md.html`); the self-contained `.md.html`/`.slides.html` is generated on demand, purely as the editing/viewing surface, and never itself committed. This supersedes the original plan (below, and in the specs) of `.md.html` as the committed source — the specs haven't all been updated to match yet; this line is authoritative until they are. Authoritative docs: [SteeringNote.md](SteeringNote.md), [self-contained-editing.md](specs/self-contained-editing.md), [workspace-framework.md](specs/workspace-framework.md), and the module-based [Roadmap.md](Roadmap.md) (Modules R/E/P/T/I/S/W — supersedes the phase-based plan). **Code state today:** the classic editor is **retired** (~2.2k lines removed; `/workspace/[id]` redirects to `/edit`); the local **Studio (`/studio`) is removed**, replaced by `/guide`; the workspace three-pane shell now *hosts* the in-file editors (`HostedStudyGuideEditor` for study guide + practice; `HostedSlidesEditor` for authored slide decks). The durable guardrails **G1–G8** (two-repo reference enforcement, block-ID reconcile on import, whole-package fork, single-source course metadata, AI-entitlement seam) that the earlier editor-overhaul design drove all **landed + tested**.
