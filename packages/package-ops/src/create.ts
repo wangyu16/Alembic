@@ -9,6 +9,7 @@ import {
   type UnitTerm,
 } from "@alembic/package-contract";
 import type { PackageFile, PackageRecord, PackageStore } from "./store";
+import { LICENSE_PATH, licenseFileContent } from "./license-file";
 
 export interface CreateSandboxPackageInput {
   ownerId: string;
@@ -84,6 +85,14 @@ export async function createSandboxPackage(
       repo: "public",
       path: "alembic.json",
       content: JSON.stringify(manifest, null, 2) + "\n",
+    },
+    {
+      // The verbatim legal code, so the published repository is self-describing
+      // and GitHub can detect the license. `ensureLicenseFile` keeps it honest
+      // for packages that predate this seed. See license-file.ts.
+      repo: "public",
+      path: LICENSE_PATH,
+      content: licenseFileContent(input.license),
     },
     {
       repo: "public",

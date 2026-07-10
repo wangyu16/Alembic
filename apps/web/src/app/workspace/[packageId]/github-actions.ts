@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { parseStudyGuide } from "@alembic/package-contract";
 import {
   DEFAULT_STUDY_GUIDE_PATH,
+  ensureLicenseFile,
   saveStudyGuide,
 } from "@alembic/package-ops";
 import { commitFiles, GitHubError } from "@alembic/github-bridge";
@@ -190,6 +191,10 @@ export async function publishToGitHubAction(
       publicRepo: { owner, name: publicName },
       privateRepo: { owner, name: privateName },
     };
+    // Write/refresh LICENSE before staging. Packages created before the seed
+    // existed have none, and this is the moment they gain one — no migration.
+    await ensureLicenseFile(store, packageId, manifest);
+
     const files = await store.listFiles(packageId);
     const publicChanges = files
       .filter((f) => f.repo === "public")
