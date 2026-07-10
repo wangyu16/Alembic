@@ -159,13 +159,26 @@ independently shippable and green (typecheck + tests + web build).
 - Unit tests incl. adversarial: `..` traversal, a `chapters/` folder whose slug
   is not a chapter (→ course scope, never a phantom chapter), nested depth.
 
-### Phase 1 — validator dual-mode upgrade (**prerequisite for Current only**)
+### Phase 1 — validator dual-mode upgrade (**prerequisite for Current only**) ✅ done
 
-`current/` is a v2 space with **no v1 layer**, and `github-bridge`'s
-`validateCommitPlan` plus most `package-ops` writers still call the **v1-only**
-`assertPathAllowedInRepo`. Committing anything under `current/` throws today.
+`current/` is a v2 space with **no v1 layer**, so any call site that runs it
+through the **v1-only** `assertPathAllowedInRepo` throws.
 
-- Swap those call sites to `assertPathAllowedInEitherContract`
+**Corrected scope (the call-site map, not the guess):** only the sites that
+iterate *arbitrary* files are affected — **two files, four lines**:
+- `github-bridge/src/index.ts` `validateCommitPlan` (every commit), and
+- `package-ops/src/release-gates.ts` (both loops iterate every public file, so a
+  `current/` file would have failed the publish gate).
+
+Everything else assert a *specific known v1 path* (`MANIFEST_PATH`, the
+study-guide path, `materials/…`) and can never see a `current/` path:
+`create.ts` and `adaptation.ts` validate their own locally-built v1 seed lists;
+`assets.ts`'s `layerForPath(...) !== "materials"` is a carrier-placement check,
+not a repo check. Left alone deliberately — the invariant diff stays minimal
+and reviewable. `reconcile.ts`, `editor-edit.ts`, `document-registry.ts` and
+`validateProject` were **already** dual-mode.
+
+- Swapped those call sites to `assertPathAllowedInEitherContract`
   (`packages/package-contract/src/validate.ts:38`).
 - **This touches two-repo-invariant enforcement — the highest-blast-radius code
   in the repo (architecture rule 1).** It is not a bypass: the dual-mode check
@@ -177,9 +190,13 @@ independently shippable and green (typecheck + tests + web build).
   name public in both). **Pin it with a test that enumerates `LAYER_REPO` and
   `SPACE_REPO` and asserts no dir name disagrees on repo** — otherwise a future
   space silently opens a hole.
-- Adversarial tests: `private-instructor/**` and `private/**` never accepted for
-  the public repo under either contract; unknown dirs still throw; root
-  allowlist unchanged.
+- Adversarial tests (landed): `private-instructor/**` and `private/**` never
+  accepted for the public repo under either contract, nested included; public
+  spaces rejected for the *private* repo (the invariant runs both ways);
+  unknown dirs and `..` traversal still throw; root allowlist unchanged; a plan
+  smuggling one private file among valid v2 public ones is rejected. Both new
+  "accepts v2-only public spaces" tests were **verified to fail against the old
+  v1-only code** — a test that passes either way proves nothing.
 
 ### Phase 2 — nav restructure (client only, no storage change)
 

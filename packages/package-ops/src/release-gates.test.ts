@@ -90,4 +90,35 @@ describe("releaseGates", () => {
       result.checks.find((c) => c.name === "Public/private separation")?.ok,
     ).toBe(false);
   });
+
+  // Both gates iterate EVERY public file through the repo check. They used the
+  // v1-only assert, so a native-v2 path — most urgently `current/`, which has
+  // no v1 layer at all — would have failed them and silently blocked
+  // publishing. The dual-mode swap fixes that; these guard both directions.
+  it("passes both gates for native-v2 public spaces (current/, assets/)", async () => {
+    const store = new MemoryPackageStore();
+    const { packageId } = await createSandboxPackage(store, input);
+    await store.putFiles(packageId, [
+      { repo: "public", path: "current/2026-spring/syllabus.md", content: "# Syllabus" },
+      { repo: "public", path: "assets/chapters/01-getting-started/fig.svg", content: "<svg/>" },
+    ]);
+    const result = await releaseGates(store, packageId);
+    expect(result.checks.find((c) => c.name === "Public/private separation")?.ok).toBe(true);
+    expect(result.checks.find((c) => c.name === "Answer keys & embargo")?.ok).toBe(true);
+  });
+
+  it("still fails both gates for a v2 private-space file staged public", async () => {
+    const store = new MemoryPackageStore();
+    const { packageId } = await createSandboxPackage(store, input);
+    // `private/` is the v2 private space; it must be rejected for the public
+    // repo exactly as `private-instructor/` (v1) is. The dual-mode OR must not
+    // have opened a hole on the v2 side.
+    await store.putFiles(packageId, [
+      { repo: "public", path: "private/answer-keys/quiz1.json", content: "leaked" },
+    ]);
+    const result = await releaseGates(store, packageId);
+    expect(result.ok).toBe(false);
+    expect(result.checks.find((c) => c.name === "Public/private separation")?.ok).toBe(false);
+    expect(result.checks.find((c) => c.name === "Answer keys & embargo")?.ok).toBe(false);
+  });
 });

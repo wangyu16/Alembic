@@ -7,7 +7,7 @@
  */
 
 import {
-  assertPathAllowedInRepo,
+  assertPathAllowedInEitherContract,
   type RepoKind,
 } from "@alembic/package-contract";
 import { GitHubClient, type RepoCoords } from "./client";
@@ -32,10 +32,23 @@ export interface CommitPlan {
 /**
  * Validate a commit plan against the two-repo invariant.
  * Throws RepoBoundaryViolation / PathLayerError on the first offending path.
+ *
+ * Uses the DUAL-MODE check (v1 layers OR v2 spaces) so a native-v2 path — most
+ * urgently `current/`, which has no v1 layer at all — can be committed. This
+ * is NOT a loosening of the invariant, and it is not an override (rule 1: no
+ * bypass exists, and `commitFiles` still calls this first with no opt-out):
+ * the dual-mode check fails closed, rejecting any path that BOTH contracts
+ * reject, and a private-space path (`private-instructor/…` v1, `private/…` v2)
+ * is rejected for the public repo by both.
+ *
+ * The OR is only safe because no directory is public under one contract and
+ * private under the other. That property was unstated; it is now pinned by
+ * `contract-agreement.test.ts` in package-contract, which fails loudly if a
+ * future space ever disagrees. Read that test before touching this line.
  */
 export function validateCommitPlan(plan: CommitPlan): void {
   for (const change of plan.changes) {
-    assertPathAllowedInRepo(change.path, plan.repo);
+    assertPathAllowedInEitherContract(change.path, plan.repo);
   }
 }
 

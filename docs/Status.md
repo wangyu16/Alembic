@@ -1083,6 +1083,22 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
   - **P2.1** — doc-only. `confirmDiscard` already existed and was exported (my
     premise was wrong); the blocker is **not** fixed by it. Documented why it
     exists so it isn't deleted as dead code before P2.5 wires it.
+  - **P1.2** — the dual-mode validator swap, the one change touching two-repo
+    invariant enforcement (rule 1). Done alone, supervised. **The call-site map
+    narrowed it from the plan's guess ("most package-ops writers") to two files,
+    four lines**: `github-bridge`'s `validateCommitPlan` (every commit) and
+    `release-gates.ts` (both loops iterate every public file, so a `current/`
+    file would have silently blocked publishing). Everything else asserts a
+    *specific known v1 path* and can never see `current/`; `reconcile.ts`,
+    `editor-edit.ts`, `document-registry.ts` and `validateProject` were already
+    dual-mode. Not a bypass: the check still fails closed, and `commitFiles`
+    still calls it first with no override. 10 adversarial tests — private paths
+    rejected for public under *both* contracts (nested included), public spaces
+    rejected for the private repo, traversal and unknown dirs still throw, and a
+    plan smuggling one private file among valid v2 public files rejected. **Both
+    "accepts v2-only public spaces" tests were verified to FAIL against the old
+    v1-only code** before being accepted — a test that passes either way proves
+    nothing. github-bridge 30→37 tests, package-ops 199→201.
   - **P2.2** — per-tab session memo of generated editor HTML
     (`apps/web/src/lib/editor-html-cache.ts`). No cache existed: every mount
     was a worker round-trip returning a ~0.84–1 MB inline bundle. Keyed on

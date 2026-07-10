@@ -1,5 +1,5 @@
 import {
-  assertPathAllowedInRepo,
+  assertPathAllowedInEitherContract,
   assertPublicMarkdownReferences,
   LicenseSchema,
   validateBlockIds,
@@ -72,11 +72,15 @@ export async function releaseGates(
   });
 
   // 4. Public/private separation — no public file resolves to a private layer.
+  // Dual-mode (v1 layers OR v2 spaces): a native-v2 public path (`assets/`,
+  // `current/`, …) is legitimately public and must not fail the gate, while a
+  // private-space path staged public is rejected by BOTH contracts. Fails
+  // closed exactly as before for anything neither contract recognizes.
   let separationOk = true;
   for (const f of files) {
     if (f.repo !== "public") continue;
     try {
-      assertPathAllowedInRepo(f.path, "public");
+      assertPathAllowedInEitherContract(f.path, "public");
     } catch {
       separationOk = false;
       break;
@@ -96,7 +100,7 @@ export async function releaseGates(
   for (const f of files) {
     if (f.repo !== "public") continue;
     try {
-      assertPathAllowedInRepo(f.path, "public");
+      assertPathAllowedInEitherContract(f.path, "public");
     } catch {
       answerKeysSafe = false;
       break;
