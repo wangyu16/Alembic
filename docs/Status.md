@@ -1139,9 +1139,13 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
   - **P2.5** — chapter landing list + document switcher; the rail (pane 2) is
     deleted and the main pane runs full width, which the hosted iframes want.
     A chapter now opens a **landing list** (`?chapter=<slug>`, the paramless
-    default) grouping its five documents into "Course spine · not published"
-    and "Published to the student site"; opening one shows a header with a
-    back link, a popover **switcher**, and an optional tab strip. *Every*
+    default) grouping its five documents into "Course spine · not shown to
+    students" and "Published to the student site"; each row carries its own
+    glyph. Opening one shows a header with a back link, a popover **switcher**,
+    and an optional tab strip. The spine marker is an eye-with-a-slash, **not a
+    padlock**: the concept map and assessment guide are in the *public* repo and
+    citable — they are simply not rendered on the student site. A padlock would
+    promise a confidentiality the two-repo invariant does not give them. *Every*
     navigating control — landing rows, switcher items, tabs, back, left nav —
     is an `<a>`/`<Link>`; there is no `<select>` and no `router.push` in the
     shell. Server loads are gated so a bare `?chapter=` costs no study-guide

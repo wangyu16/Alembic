@@ -9,6 +9,7 @@ import {
   useState,
   useTransition,
   type MouseEvent as ReactMouseEvent,
+  type ReactNode,
 } from "react";
 import {
   serializeStudyGuide,
@@ -128,28 +129,93 @@ function chapterLabel(index: number, title: string): string {
 
 /* The two labelled document groups, shared by the landing list, the switcher
    popover, and the tabs strip: the SPINE (concept map, assessment guide —
-   private, plain-text, the skeleton of the course) then the PUBLISHED documents
-   (study guide, slides, practice — rendered on the student site). */
+   concise, plain-text, the skeleton of the course) then the PUBLISHED documents
+   (study guide, slides, practice — rendered on the student site).
+
+   The spine is NOT secret: both files live in the public repository and are
+   citable like any other. They are simply not rendered on the student site, to
+   keep the course's scaffolding out of a student's way. So the marker for them
+   is "hidden from the site", never a padlock — a padlock would promise a
+   confidentiality the two-repo invariant does not give them. Genuinely private
+   material lives in the `private-instructor` space (the Private collection). */
 const DOC_GROUPS: { caption: string; docs: readonly ChapterDoc[] }[] = [
-  { caption: "Course spine · not published", docs: SPINE_DOCS },
+  { caption: "Course spine · not shown to students", docs: SPINE_DOCS },
   { caption: "Published to the student site", docs: PUBLISHED_DOCS },
 ];
 
-/* A small padlock, marking the non-published spine documents. */
-function LockGlyph({ className = "h-3.5 w-3.5" }: { className?: string }) {
+const GLYPH_PROPS = {
+  viewBox: "0 0 24 24",
+  fill: "none",
+  stroke: "currentColor",
+  strokeWidth: "1.8",
+  strokeLinecap: "round",
+  strokeLinejoin: "round",
+  "aria-hidden": true,
+} as const;
+
+/* One glyph per document, so a row is identifiable before its label is read.
+   A `Record` (not a switch with a default) so adding a `ChapterDoc` without a
+   glyph is a compile error rather than a silently icon-less row. */
+const DOC_GLYPH_PATHS: Record<ChapterDoc, ReactNode> = {
+  // Concept map — three linked nodes.
+  "concept-map": (
+    <>
+      <circle cx="12" cy="5" r="2.4" />
+      <circle cx="5" cy="19" r="2.4" />
+      <circle cx="19" cy="19" r="2.4" />
+      <path d="M10.4 6.9 6.4 16.8M13.6 6.9l4 9.9M7.4 19h9.2" />
+    </>
+  ),
+  // Assessment guide — a clipboard with a check.
+  "assessment-guide": (
+    <>
+      <rect x="8" y="2" width="8" height="4" rx="1" />
+      <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
+      <path d="m9 14 2 2 4-4" />
+    </>
+  ),
+  // Study guide — an open book.
+  content: (
+    <>
+      <path d="M12 7v13" />
+      <path d="M3 17V4h5a4 4 0 0 1 4 3 4 4 0 0 1 4-3h5v13h-6a3 3 0 0 0-3 2 3 3 0 0 0-3-2z" />
+    </>
+  ),
+  // Slides — a presentation screen.
+  slides: (
+    <>
+      <path d="M2 3h20" />
+      <path d="M21 3v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V3" />
+      <path d="m7 21 5-5 5 5" />
+    </>
+  ),
+  // Practice questions — a question mark.
+  practice: (
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M9.2 9.3a3 3 0 0 1 5.8 1c0 2-2.9 2.6-2.9 4" />
+      <path d="M12 17.4h.01" />
+    </>
+  ),
+};
+
+function DocGlyph({ doc, className = "h-4 w-4" }: { doc: ChapterDoc; className?: string }) {
   return (
-    <svg
-      viewBox="0 0 24 24"
-      className={className}
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <rect x="5" y="11" width="14" height="9" rx="2" />
-      <path d="M8 11V8a4 4 0 0 1 8 0v3" />
+    <svg {...GLYPH_PROPS} className={className}>
+      {DOC_GLYPH_PATHS[doc]}
+    </svg>
+  );
+}
+
+/* Marks a spine document: present in the public repo, but not rendered on the
+   student site. An eye-with-a-slash, not a padlock — see DOC_GROUPS above. */
+function HiddenGlyph({ className = "h-3.5 w-3.5" }: { className?: string }) {
+  return (
+    <svg {...GLYPH_PROPS} className={className}>
+      <path d="M9.9 9.9a3 3 0 0 0 4.2 4.2" />
+      <path d="M10.7 5.1A10.4 10.4 0 0 1 12 5c7 0 10 7 10 7a13.2 13.2 0 0 1-1.7 2.7" />
+      <path d="M6.6 6.6A13.5 13.5 0 0 0 2 12s3 7 10 7a9.7 9.7 0 0 0 5.4-1.6" />
+      <path d="m2 2 20 20" />
     </svg>
   );
 }
@@ -594,7 +660,7 @@ function ChapterLanding({
                     onClick={() => onPickDoc(doc)}
                     className="flex items-center gap-2 px-3 py-2.5 text-sm text-ink transition-colors hover:bg-elevated"
                   >
-                    {isSpineDoc(doc) && <LockGlyph className="h-3.5 w-3.5 shrink-0 text-faint" />}
+                    <DocGlyph doc={doc} className="h-4 w-4 shrink-0 text-faint" />
                     <span className="min-w-0 truncate">{DOC_LABELS[doc]}</span>
                   </Link>
                 </li>
@@ -651,9 +717,12 @@ function DocHeader({
           onPickDoc={onPickDoc}
         />
         {isSpineDoc(currentDoc) && (
-          <span className="inline-flex items-center gap-1 text-xs text-faint" title="Not published to the student site">
-            <LockGlyph className="h-3.5 w-3.5" />
-            not published
+          <span
+            className="inline-flex items-center gap-1 text-xs text-faint"
+            title="Saved in the public repository and citable, but not rendered on the student site."
+          >
+            <HiddenGlyph className="h-3.5 w-3.5" />
+            not shown to students
           </span>
         )}
         {/* Local-only toggle (no navigation) → no guard needed. */}
@@ -687,7 +756,7 @@ function DocHeader({
                       : "text-muted hover:bg-elevated hover:text-ink"
                   }`}
                 >
-                  {isSpineDoc(doc) && <LockGlyph className="h-3 w-3 shrink-0 opacity-70" />}
+                  <DocGlyph doc={doc} className="h-3.5 w-3.5 shrink-0 opacity-80" />
                   {DOC_LABELS[doc]}
                 </Link>
               ))}
@@ -725,7 +794,7 @@ function DocumentSwitcher({
         aria-expanded={open}
         title="Switch document"
       >
-        {isSpineDoc(currentDoc) && <LockGlyph className="h-3.5 w-3.5 text-faint" />}
+        <DocGlyph doc={currentDoc} className="h-4 w-4 text-muted" />
         <span className="text-ink">{DOC_LABELS[currentDoc]}</span>
         <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
           <path d="m6 9 6 6 6-6" />
@@ -766,7 +835,7 @@ function DocumentSwitcher({
                         : "text-ink hover:bg-elevated"
                     }`}
                   >
-                    {isSpineDoc(doc) && <LockGlyph className="h-3.5 w-3.5 shrink-0 opacity-70" />}
+                    <DocGlyph doc={doc} className="h-4 w-4 shrink-0 opacity-80" />
                     <span className="min-w-0 truncate">{DOC_LABELS[doc]}</span>
                     {doc === currentDoc && <span className="ml-auto text-xs" aria-hidden>●</span>}
                   </Link>
