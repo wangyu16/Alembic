@@ -67,7 +67,7 @@ COLLECTIONS
 **Opening a document** replaces the chapter's landing list with the editor:
 
 - header row: `← back` · `02 · Step-growth` · **document switcher** ·
-  `👁̶ not shown to students` (spine only) · `⋮ expand to tabs`
+  `👁̶ not shown to students` (spine only) · `⛶ focus mode`
 - the switcher is a popover of anchors — **never a `<select>`**, whose
   `onChange` would unmount a hosted iframe unguarded (§2a.1) — captioned
   `Course spine · not shown to students` / `Published to the student site` so
@@ -81,7 +81,15 @@ COLLECTIONS
   scaffolding out of a student's way. A padlock would promise a confidentiality
   the two-repo invariant does not give them; genuinely private material lives
   in `private-instructor` (the Private collection);
-- a toggle expands it into a horizontal tab strip for rapid switching;
+- a **focus-mode** toggle fills the viewport with the document, hiding the app
+  header, the publish header and the left nav, for distraction-free writing.
+  Escape and the header's exit button both leave; the header keeps the switcher
+  and an `● Unsaved` badge (the publish header, which normally carries it, is
+  hidden). It **must** stay a class/visibility change on the editor's
+  *ancestors* — moving or re-wrapping the editor subtree would unmount the
+  hosted iframe, run its `destroy()`, and lose unsaved edits (§2a.1, §2a.3).
+  Focus mode drops out automatically if the view stops being a document, so the
+  exit control can never disappear with the educator still inside it;
 - **no third column** — the editor keeps the full main-pane width, which the
   hosted `.md.html`/`.slides.html` iframes need;
 - the left nav's **collapse control lives in its own top-right corner**; when
@@ -237,8 +245,7 @@ the data-loss fix, and every later subtask depends on switching being safe.
   §2a.1), styled like the existing `AIAssistant` popover, with the spine /
   published grouping, a per-document glyph, and an eye-with-a-slash "not shown
   to students" marker on spine documents (**not** a padlock — they are public,
-  just unrendered); plus the tabs-expansion toggle (also anchors) and the
-  breadcrumb. Any control that
+  just unrendered); plus the focus-mode toggle and the breadcrumb. Any control that
   can't be an anchor calls `confirmDiscard` first — in the shipped shell none
   exists, so `confirmDiscard` stays unused there (calling it *and* letting the
   anchor interceptor run would prompt twice).

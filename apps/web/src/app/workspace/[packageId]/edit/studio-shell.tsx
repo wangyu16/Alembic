@@ -321,10 +321,31 @@ export function StudioShell({
   const activeDoc: ChapterDoc | null =
     optView.kind === "doc" ? optView.doc : view.kind === "doc" ? view.doc : null;
 
-  // Local, NON-navigating switcher UI state (doc view only): the popover menu
-  // and the tabs-strip expansion. Neither changes the URL, so neither needs the
-  // unsaved guard.
-  const [tabsOpen, setTabsOpen] = useState(false);
+  // Focus mode (doc view only): the editor fills the viewport and everything
+  // above it — app header, publish header, left nav — is hidden, for
+  // distraction-free writing. Purely a CSS/visibility change on the editor's
+  // ANCESTORS: the editor subtree keeps its exact position in the React tree,
+  // because moving or re-wrapping it would unmount the hosted `.md.html` /
+  // `.slides.html` iframe, run its `destroy()`, and silently lose unsaved
+  // edits. Never render the editor inside a conditional wrapper.
+  // Non-navigating, so it needs no unsaved guard.
+  const [focusMode, setFocusMode] = useState(false);
+  // Escape always leaves. Belt and braces with the header's exit button — a
+  // full-viewport editor with no visible way out is a trap.
+  useEffect(() => {
+    if (!focusMode) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setFocusMode(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [focusMode]);
+  // Focus mode only ever wraps a document. If the view becomes anything else
+  // (landing, course, a collection) the exit button goes with it, so drop out
+  // rather than stranding the educator in a chrome-less pane.
+  useEffect(() => {
+    if (view.kind !== "doc") setFocusMode(false);
+  }, [view.kind]);
   // Optimistically mirror a document pick so the switcher trigger/tabs update
   // in the same tick (the actual editor swaps when the navigation lands).
   const pickDoc = (doc: ChapterDoc) => {
@@ -333,8 +354,18 @@ export function StudioShell({
   };
 
   return (
-    <main className="flex h-[calc(100vh-3.5rem)] w-full flex-col gap-3 px-3 py-3">
-      <header className="flex flex-wrap items-center justify-between gap-2">
+    <main
+      className={
+        focusMode
+          ? // Covers the app header too (which lives in the layout, out of this
+            // component's reach). Class-only change — no remount below.
+            "fixed inset-0 z-50 flex h-screen w-screen flex-col gap-3 bg-[var(--bg)] px-3 py-3"
+          : "flex h-[calc(100vh-3.5rem)] w-full flex-col gap-3 px-3 py-3"
+      }
+    >
+      <header
+        className={`flex-wrap items-center justify-between gap-2 ${focusMode ? "hidden" : "flex"}`}
+      >
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           {/* The nav collapses from its OWN top-right corner; this is the way
               back. When the nav is open it is hidden above md (nothing to do)
@@ -383,7 +414,7 @@ export function StudioShell({
       <div className="relative flex min-h-0 flex-1 gap-3">
         {/* Below md the open nav overlays the editor as a single drawer; dismiss
             by picking an item, re-tapping ☰, or tapping the backdrop. */}
-        {navOpen && (
+        {navOpen && !focusMode && (
           <button
             type="button"
             aria-label="Close navigation"
@@ -393,8 +424,10 @@ export function StudioShell({
         )}
         {/* The left nav: Course · Chapters · Collections. Three groups for the
             three kinds of thing. Collections are course-wide libraries, so they
-            sit here rather than under a chapter. */}
-        {navOpen && (
+            sit here rather than under a chapter. Each `{cond && …}` is its own
+            child slot, so toggling one never shifts the editor <section>'s
+            position among these siblings (which would remount it). */}
+        {navOpen && !focusMode && (
         <nav className="panel min-h-0 w-48 shrink-0 overflow-y-auto p-2 max-md:absolute max-md:inset-y-0 max-md:left-0 max-md:z-20 max-md:w-64 max-md:shadow-xl">
           {/* The nav's own collapse control, in its top-right corner. */}
           <div className="mb-1 flex justify-end">
@@ -524,8 +557,9 @@ export function StudioShell({
                 currentDoc={activeDoc ?? view.doc}
                 chapterSlug={activeSlug}
                 chapterLabel={activeChapterLabel}
-                tabsOpen={tabsOpen}
-                onToggleTabs={() => setTabsOpen((v) => !v)}
+                focusMode={focusMode}
+                onToggleFocus={() => setFocusMode((v) => !v)}
+                dirty={dirty}
                 onPickDoc={pickDoc}
                 onBack={() => setOptView({ kind: "chapter" })}
               />
@@ -673,39 +707,66 @@ function ChapterLanding({
   );
 }
 
-/* ── Document header: breadcrumb · switcher · lock marker · tabs toggle ──────── */
+/* Enter / leave focus mode: arrows pushing out to the corners, or pulling in. */
+function FocusGlyph({ focusMode, className = "h-4 w-4" }: { focusMode: boolean; className?: string }) {
+  return (
+    <svg {...GLYPH_PROPS} className={className}>
+      {focusMode ? (
+        // Minimise — arrows pulling inward.
+        <>
+          <path d="M9 3v6H3M15 3v6h6M9 21v-6H3M15 21v-6h6" />
+        </>
+      ) : (
+        // Maximise — arrows pushing outward.
+        <>
+          <path d="M3 9V3h6M21 9V3h-6M3 15v6h6M21 15v6h-6" />
+        </>
+      )}
+    </svg>
+  );
+}
+
+/* ── Document header: breadcrumb · switcher · visibility marker · focus toggle ──
+ * In focus mode this collapses to the minimum needed to stay oriented and get
+ * out: which document, its save state, and the exit control. The back link is
+ * withheld — it navigates out of the document, and the surrounding chrome that
+ * would explain where you landed is hidden. */
 function DocHeader({
   packageId,
   currentDoc,
   chapterSlug,
   chapterLabel: label,
-  tabsOpen,
-  onToggleTabs,
+  focusMode,
+  onToggleFocus,
   onPickDoc,
   onBack,
+  dirty,
 }: {
   packageId: string;
   currentDoc: ChapterDoc;
   chapterSlug: string | null;
   chapterLabel: string;
-  tabsOpen: boolean;
-  onToggleTabs: () => void;
+  focusMode: boolean;
+  onToggleFocus: () => void;
   onPickDoc: (doc: ChapterDoc) => void;
   onBack: () => void;
+  dirty: boolean;
 }) {
   return (
     <div className="shrink-0">
       <div className="flex flex-wrap items-center gap-2">
         {/* Back to the chapter's document list — a real anchor (guarded). */}
-        <Link
-          href={buildWorkspaceHref(packageId, { kind: "chapter" }, chapterSlug)}
-          onClick={onBack}
-          className="btn btn-ghost btn-sm"
-          title="Back to this chapter's documents"
-          aria-label="Back to the chapter's documents"
-        >
-          ←
-        </Link>
+        {!focusMode && (
+          <Link
+            href={buildWorkspaceHref(packageId, { kind: "chapter" }, chapterSlug)}
+            onClick={onBack}
+            className="btn btn-ghost btn-sm"
+            title="Back to this chapter's documents"
+            aria-label="Back to the chapter's documents"
+          >
+            ←
+          </Link>
+        )}
         <span className="truncate text-sm text-muted">{label}</span>
         <span className="text-faint" aria-hidden>
           /
@@ -725,45 +786,39 @@ function DocHeader({
             not shown to students
           </span>
         )}
-        {/* Local-only toggle (no navigation) → no guard needed. */}
-        <button
-          onClick={onToggleTabs}
-          aria-pressed={tabsOpen}
-          className={`btn btn-ghost btn-sm ml-auto ${tabsOpen ? "text-ink" : "text-muted"}`}
-          title={tabsOpen ? "Collapse the document tabs" : "Expand into document tabs"}
-        >
-          <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-            <rect x="3" y="5" width="7" height="14" rx="1" />
-            <rect x="14" y="5" width="7" height="14" rx="1" />
-          </svg>
-        </button>
-      </div>
-
-      {tabsOpen && (
-        <div className="mt-2 flex flex-wrap items-center gap-1 rounded-lg border border-edge p-1">
-          {DOC_GROUPS.map((group, gi) => (
-            <div key={group.caption} className="flex flex-wrap items-center gap-1">
-              {gi > 0 && <span className="mx-1 h-4 w-px bg-[var(--edge)]" aria-hidden />}
-              {group.docs.map((doc) => (
-                <Link
-                  key={doc}
-                  href={buildWorkspaceHref(packageId, { kind: "doc", doc }, chapterSlug)}
-                  onClick={() => onPickDoc(doc)}
-                  aria-current={doc === currentDoc ? "page" : undefined}
-                  className={`inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-sm transition-colors ${
-                    doc === currentDoc
-                      ? "bg-accent text-[var(--accent-ink)]"
-                      : "text-muted hover:bg-elevated hover:text-ink"
-                  }`}
-                >
-                  <DocGlyph doc={doc} className="h-3.5 w-3.5 shrink-0 opacity-80" />
-                  {DOC_LABELS[doc]}
-                </Link>
-              ))}
-            </div>
-          ))}
+        {/* The publish header carries the save state, and focus mode hides it —
+            so surface it here, or the educator loses sight of unsaved edits at
+            exactly the moment they are writing the most. */}
+        {focusMode && dirty && (
+          <span
+            className="shrink-0 rounded-full bg-[var(--accent-soft)] px-2 py-0.5 text-xs font-medium text-[var(--accent)]"
+            title="You have unsaved edits — use the Save button in the editor"
+          >
+            ● Unsaved
+          </span>
+        )}
+        <div className="ml-auto flex items-center gap-2">
+          {focusMode && (
+            <span className="hidden text-xs text-faint sm:inline" aria-hidden>
+              Esc to exit
+            </span>
+          )}
+          {/* Local-only toggle (no navigation) → no unsaved guard needed. */}
+          <button
+            onClick={onToggleFocus}
+            aria-pressed={focusMode}
+            className={`btn btn-ghost btn-sm ${focusMode ? "text-ink" : "text-muted"}`}
+            title={
+              focusMode
+                ? "Leave focus mode (Esc)"
+                : "Focus mode — fill the screen with this document"
+            }
+            aria-label={focusMode ? "Leave focus mode" : "Enter focus mode"}
+          >
+            <FocusGlyph focusMode={focusMode} />
+          </button>
         </div>
-      )}
+      </div>
     </div>
   );
 }

@@ -1142,7 +1142,14 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
     default) grouping its five documents into "Course spine · not shown to
     students" and "Published to the student site"; each row carries its own
     glyph. Opening one shows a header with a back link, a popover **switcher**,
-    and an optional tab strip. The spine marker is an eye-with-a-slash, **not a
+    and a **focus-mode** toggle that fills the viewport with the document
+    (hiding app header, publish header and nav; Escape or the exit button
+    leaves; it auto-exits if the view stops being a document, so the exit
+    control can never vanish while the educator is inside). Focus mode is a
+    class change on the editor's *ancestors* only — verified by tagging the
+    editor's DOM node and confirming it survives the toggle, since re-wrapping
+    the subtree would unmount the hosted iframe and lose unsaved edits. The
+    spine marker is an eye-with-a-slash, **not a
     padlock**: the concept map and assessment guide are in the *public* repo and
     citable — they are simply not rendered on the student site. A padlock would
     promise a confidentiality the two-repo invariant does not give them. *Every*
