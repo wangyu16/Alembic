@@ -43,49 +43,82 @@ export function confirmDiscard(dirty: boolean): boolean {
   return typeof window === "undefined" ? true : window.confirm(UNSAVED_MESSAGE);
 }
 
+/**
+ * ONE listener pair for the whole app, refcounted.
+ *
+ * Several components are legitimately dirty at once: the active editor owns its
+ * local `dirty`, and StudioShell mirrors it (lifted, so the publish header can
+ * block publishing — and so the *hosted* iframe editors, which arm no guard of
+ * their own, are still covered). If every `useUnsavedGuard` installed its own
+ * `document` capture listener, one link click would prompt once per dirty
+ * component: `stopPropagation()` does not stop other listeners on the SAME
+ * node (that is `stopImmediatePropagation`), and the `defaultPrevented`
+ * early-return only masks it on the CANCEL path. Accepting the discard showed
+ * the dialog twice. Refcounting a single listener makes the prompt fire exactly
+ * once however many components are dirty.
+ */
+let armedCount = 0;
+let installed = false;
+
+function onBeforeUnload(e: BeforeUnloadEvent) {
+  e.preventDefault();
+  // Legacy Chrome requires a returnValue to trigger the native prompt.
+  e.returnValue = "";
+}
+
+function onClickCapture(e: MouseEvent) {
+  if (
+    e.defaultPrevented ||
+    e.button !== 0 ||
+    e.metaKey ||
+    e.ctrlKey ||
+    e.shiftKey ||
+    e.altKey
+  ) {
+    return;
+  }
+  const target = e.target as HTMLElement | null;
+  const anchor = target?.closest?.("a") as HTMLAnchorElement | null;
+  if (!anchor) return;
+  const href = anchor.getAttribute("href");
+  if (!href || href.startsWith("#") || href.startsWith("mailto:") || href.startsWith("tel:")) {
+    return;
+  }
+  // Don't guard links that don't navigate away from the editor.
+  if (anchor.target === "_blank" || anchor.hasAttribute("download")) return;
+  if (href.includes("/export") || href.includes("/api/")) return;
+
+  if (!window.confirm(UNSAVED_MESSAGE)) {
+    e.preventDefault();
+    e.stopPropagation();
+  }
+}
+
+function install() {
+  if (installed) return;
+  window.addEventListener("beforeunload", onBeforeUnload);
+  document.addEventListener("click", onClickCapture, true);
+  installed = true;
+}
+
+function uninstall() {
+  if (!installed) return;
+  window.removeEventListener("beforeunload", onBeforeUnload);
+  document.removeEventListener("click", onClickCapture, true);
+  installed = false;
+}
+
 export function useUnsavedGuard(dirty: boolean): void {
   useEffect(() => {
     if (!dirty) return;
-
-    const onBeforeUnload = (e: BeforeUnloadEvent) => {
-      e.preventDefault();
-      // Legacy Chrome requires a returnValue to trigger the native prompt.
-      e.returnValue = "";
-    };
-
-    const onClickCapture = (e: MouseEvent) => {
-      if (
-        e.defaultPrevented ||
-        e.button !== 0 ||
-        e.metaKey ||
-        e.ctrlKey ||
-        e.shiftKey ||
-        e.altKey
-      ) {
-        return;
-      }
-      const target = e.target as HTMLElement | null;
-      const anchor = target?.closest?.("a") as HTMLAnchorElement | null;
-      if (!anchor) return;
-      const href = anchor.getAttribute("href");
-      if (!href || href.startsWith("#") || href.startsWith("mailto:") || href.startsWith("tel:")) {
-        return;
-      }
-      // Don't guard links that don't navigate away from the editor.
-      if (anchor.target === "_blank" || anchor.hasAttribute("download")) return;
-      if (href.includes("/export") || href.includes("/api/")) return;
-
-      if (!window.confirm(UNSAVED_MESSAGE)) {
-        e.preventDefault();
-        e.stopPropagation();
-      }
-    };
-
-    window.addEventListener("beforeunload", onBeforeUnload);
-    document.addEventListener("click", onClickCapture, true);
+    armedCount += 1;
+    install();
     return () => {
-      window.removeEventListener("beforeunload", onBeforeUnload);
-      document.removeEventListener("click", onClickCapture, true);
+      armedCount -= 1;
+      if (armedCount <= 0) {
+        armedCount = 0;
+        uninstall();
+      }
     };
   }, [dirty]);
 }

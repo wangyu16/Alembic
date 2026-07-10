@@ -226,14 +226,24 @@ the data-loss fix, and every later subtask depends on switching being safe.
   §2a.1), styled like the existing `AIAssistant` popover, with the spine /
   published grouping and a `lock` marker on spine documents; plus the
   tabs-expansion toggle (also anchors) and the breadcrumb. Any control that
-  can't be an anchor calls `confirmDiscard` first.
+  can't be an anchor calls `confirmDiscard` first — in the shipped shell none
+  exists, so `confirmDiscard` stays unused there (calling it *and* letting the
+  anchor interceptor run would prompt twice).
+  **Guard invariant discovered here:** `useUnsavedGuard` must install exactly
+  **one** listener pair process-wide. Several components are dirty at once by
+  design (the editor owns `dirty`; the shell mirrors it so the publish header
+  can block, and so the hosted iframes — which arm no guard — are covered).
+  Per-hook listeners meant one prompt *per dirty component* on the accept path:
+  `stopPropagation()` does not stop other listeners on the same node, and the
+  `defaultPrevented` early-return only masks it when the user cancels. It is
+  now refcounted. Do not reintroduce per-hook listeners.
 - **P2.6 — preserve, do not regress**: `PublishHeader`; the `dirty` plumbing
   (`useUnsavedGuard` + `useReportDirty`, incl. hosted-iframe `onDirty`);
-  `ManageDialog` (gear in the chapters group); optimistic nav
-  (`optCat`/`optSlug` → `optDoc`/`optCollection`) and the `navigating`
-  indicator; the `key={}` remount strategy — **keyed on identity only**
-  (§2a.3); `AIAssistant` + `useSelectionAI` mount points; "← Workspace"; the
-  `● Unsaved` badge.
+  `ManageDialog` (gear in the chapters group); optimistic nav (`optView` +
+  `optSlug`, reconciled on a stable `viewKey(view)` string) and the
+  `navigating` indicator; the `key={}` remount strategy — **keyed on identity
+  only** (§2a.3); `AIAssistant` + `useSelectionAI` mount points;
+  "← Workspace"; the `● Unsaved` badge.
 
 Browser-verify P2 at 375 / 768 / 1280 px in both themes, and explicitly test:
 open a hosted document, type without saving, then attempt each of (a) document

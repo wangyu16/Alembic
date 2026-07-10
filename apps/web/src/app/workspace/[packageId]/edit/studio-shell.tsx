@@ -40,8 +40,13 @@ import {
   COLLECTIONS,
   COLLECTION_LABELS,
   COURSE_SCOPE,
-  DEFAULT_DOC,
+  DOC_LABELS,
+  DOC_OPERATION_CATEGORY,
+  PUBLISHED_DOCS,
+  SPINE_DOCS,
+  isSpineDoc,
   type ChapterDoc,
+  type Collection,
   type WorkspaceView,
 } from "./nav";
 import {
@@ -95,43 +100,58 @@ const CATEGORY_LABELS: Record<StudioCategory, string> = {
   private: "Private",
 };
 
-/* The chapter-document rail (P2.4: collections left it for the left nav, where
-   they belong — they are course-wide libraries, not per-chapter documents).
-   The SPINE first (concept map, assessment guide: private, plain-text, the
-   skeleton of the course), a separator, then the PUBLISHED documents (study
-   guide, slides, practice). `"sep"` renders a divider. P2.5 replaces this rail
-   with a chapter landing list + a document switcher above the editor. */
-const CATEGORY_RAIL: (StudioCategory | "sep")[] = [
-  "concept-map",
-  "assessment-guide",
-  "sep",
-  "content",
-  "slides",
-  "practice",
-];
-
 interface Chapter {
   slug: string;
   title: string;
 }
 
-/**
- * Bridge from the shell's flat category to the view model (P2.3). The shell's
- * panes still switch on `StudioCategory`; P2.4/P2.5 replace that with the view
- * model directly and this function disappears. Keeping it here means the URL
- * scheme changed in one place, with no UI churn.
- */
-function viewForCategory(cat: StudioCategory | "course"): WorkspaceView {
-  if (cat === "course") return { kind: "course" };
-  const collection = COLLECTIONS.find((c) => c === cat);
-  if (collection) return { kind: "collection", collection, scope: COURSE_SCOPE };
-  return { kind: "doc", doc: cat as ChapterDoc };
+/** Stable value-key for a view, so optimistic-nav effects and the `navigating`
+ *  indicator can compare views without an object identity that changes each
+ *  render (`parseWorkspaceView` builds a fresh object every time). */
+function viewKey(v: WorkspaceView): string {
+  switch (v.kind) {
+    case "course":
+      return "course";
+    case "chapter":
+      return "chapter";
+    case "doc":
+      return `doc:${v.doc}`;
+    case "collection":
+      return `collection:${v.collection}:${v.scope}`;
+  }
 }
 
-/** True when the category is one of a chapter's five documents — i.e. not the
- *  course view and not a course-wide collection. Only these show the rail. */
-function isChapterDocCategory(cat: StudioCategory | "course"): boolean {
-  return cat !== "course" && !COLLECTIONS.some((c) => c === cat);
+/** Two-digit chapter number · title, e.g. "03 · Step-growth". */
+function chapterLabel(index: number, title: string): string {
+  return `${String(index + 1).padStart(2, "0")} · ${title}`;
+}
+
+/* The two labelled document groups, shared by the landing list, the switcher
+   popover, and the tabs strip: the SPINE (concept map, assessment guide —
+   private, plain-text, the skeleton of the course) then the PUBLISHED documents
+   (study guide, slides, practice — rendered on the student site). */
+const DOC_GROUPS: { caption: string; docs: readonly ChapterDoc[] }[] = [
+  { caption: "Course spine · not published", docs: SPINE_DOCS },
+  { caption: "Published to the student site", docs: PUBLISHED_DOCS },
+];
+
+/* A small padlock, marking the non-published spine documents. */
+function LockGlyph({ className = "h-3.5 w-3.5" }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <rect x="5" y="11" width="14" height="9" rx="2" />
+      <path d="M8 11V8a4 4 0 0 1 8 0v3" />
+    </svg>
+  );
 }
 
 export function StudioShell({
@@ -142,6 +162,7 @@ export function StudioShell({
   chapters,
   activeSlug,
   activePath,
+  view,
   category,
   content,
   courseConceptMap,
@@ -158,6 +179,7 @@ export function StudioShell({
   chapters: Chapter[];
   activeSlug: string | null;
   activePath: string | null;
+  view: WorkspaceView;
   category: StudioCategory | "course";
   content: { preamble: string; blocks: StudyGuideBlock[] } | null;
   courseConceptMap: string | null;
@@ -175,76 +197,73 @@ export function StudioShell({
   const [dirty, setDirty] = useState(false);
   // Shell-level unsaved guard so navigating away warns for EVERY editing
   // surface — including the hosted in-file editors, which (unlike the block
-  // editor) have no guard of their own.
+  // editor) have no guard of their own. It works ONLY because every navigating
+  // control below is a real `<a href>` (capture-phase click interceptor).
   useUnsavedGuard(dirty);
-  // The left nav (Course · Chapters · Collections) is the primary navigation,
-  // so it starts OPEN and collapses from its own top-right corner to give a
-  // hosted editor the full width. The document rail applies only to a chapter
-  // document — not to the course view, and not to a collection (a course-wide
-  // library). Below md both render as overlay drawers: they start closed, only
-  // one opens at a time, and picking an item closes them.
-  const [showChapters, setShowChapters] = useState(true);
-  const [showRail, setShowRail] = useState(isChapterDocCategory(category));
-  // Optimistic selection. Picking a chapter/category navigates via the URL —
-  // a server round-trip that is not instant. Mirror the target here so the
-  // header toggle, the active highlights, and the rail all flip in the SAME
-  // tick as the click, instead of the rail (instant local state) racing ahead
-  // of the button styling (derived from the server-sent `category` prop). The
-  // editor pane still renders the real props, so it updates when content lands.
-  const [optCat, setOptCat] = useState<StudioCategory | "course">(category);
+  // One left nav now (Course · Chapters · Collections). It starts OPEN on the
+  // desktop and collapses from its own top-right corner to give a hosted editor
+  // the full width. Below md it is a single overlay drawer.
+  const [navOpen, setNavOpen] = useState(true);
+
+  // Optimistic selection. Picking a destination navigates via the URL — a
+  // server round-trip that is not instant. Mirror the target here so the active
+  // highlights flip in the SAME tick as the click, instead of trailing the
+  // server-sent props. The editor pane still renders the real props, so its
+  // content updates only when the navigation lands.
+  const currentViewKey = viewKey(view);
+  const [optView, setOptView] = useState<WorkspaceView>(view);
   const [optSlug, setOptSlug] = useState<string | null>(activeSlug);
   // When the navigation lands, the props are the source of truth again.
   useEffect(() => {
-    setOptCat(category);
+    setOptView(view);
     setOptSlug(activeSlug);
-  }, [category, activeSlug]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentViewKey, activeSlug]);
   // Self-clearing: true only while the click's navigation is still in flight
   // (the props haven't caught up to the optimistic target yet).
-  const navigating = optCat !== category || optSlug !== activeSlug;
+  const navigating = viewKey(optView) !== currentViewKey || optSlug !== activeSlug;
+
   const isNarrow = () =>
     typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches;
-  // Below md both panes are overlay drawers, so neither may start open.
+  // Below md the nav is an overlay drawer, so it must not start open.
   useEffect(() => {
-    if (isNarrow()) {
-      setShowChapters(false);
-      setShowRail(false);
-    }
+    if (isNarrow()) setNavOpen(false);
   }, []);
-  // The rail belongs to a chapter document; the course view and the course-wide
-  // collections have no per-chapter documents to switch between.
-  useEffect(() => {
-    if (!isChapterDocCategory(category)) setShowRail(false);
-    else if (!isNarrow()) setShowRail(true);
-  }, [category]);
-  const toggleChapters = () =>
-    setShowChapters((v) => {
-      if (!v && isNarrow()) setShowRail(false);
-      return !v;
-    });
-  const toggleRail = () =>
-    setShowRail((v) => {
-      if (!v && isNarrow()) setShowChapters(false);
-      return !v;
-    });
   const closeDrawers = () => {
-    if (isNarrow()) {
-      setShowChapters(false);
-      setShowRail(false);
-    }
+    if (isNarrow()) setNavOpen(false);
   };
 
-  /**
-   * Build a link for a destination, carrying the chapter along. `cat` is the
-   * shell's still-flat notion of "where we are" (P2.4/P2.5 split the UI); it is
-   * translated into the real view model here, so every link the shell emits
-   * already speaks the new URL scheme (`?doc=` / `?collection=` / `?view=`).
-   * Every navigation affordance stays an `<a href>` — that is what arms the
-   * unsaved-changes guard for the hosted editors (see use-unsaved-guard.ts).
-   */
-  const href = (next: { chapter?: string | null; cat?: string }) => {
-    const c = next.chapter !== undefined ? next.chapter : optSlug;
-    const cat = (next.cat ?? optCat) as StudioCategory | "course";
-    return buildWorkspaceHref(packageId, viewForCategory(cat), c ?? null);
+  // Optimistic active-state helpers, driven off `optView`/`optSlug`.
+  const isCourseActive = optView.kind === "course";
+  const inChapter = (slug: string) =>
+    optSlug === slug && (optView.kind === "chapter" || optView.kind === "doc");
+  const isCollectionActive = (c: Collection) =>
+    optView.kind === "collection" && optView.collection === c;
+
+  // Every href carries the active chapter (so returning to a chapter lands
+  // where you left it). Course drops it; a chapter/doc pins it to that chapter.
+  const hrefFor = (target: WorkspaceView, slug: string | null) =>
+    buildWorkspaceHref(packageId, target, slug);
+
+  const activeIndex = chapters.findIndex((c) => c.slug === activeSlug);
+  const activeChapter = activeIndex >= 0 ? chapters[activeIndex] : null;
+  const activeChapterLabel = activeChapter
+    ? chapterLabel(activeIndex, activeChapter.title)
+    : title;
+  // The document to MARK active in the switcher/tabs — optimistic so the pick
+  // flips instantly, falling back to the server-sent view when mid-transition.
+  const activeDoc: ChapterDoc | null =
+    optView.kind === "doc" ? optView.doc : view.kind === "doc" ? view.doc : null;
+
+  // Local, NON-navigating switcher UI state (doc view only): the popover menu
+  // and the tabs-strip expansion. Neither changes the URL, so neither needs the
+  // unsaved guard.
+  const [tabsOpen, setTabsOpen] = useState(false);
+  // Optimistically mirror a document pick so the switcher trigger/tabs update
+  // in the same tick (the actual editor swaps when the navigation lands).
+  const pickDoc = (doc: ChapterDoc) => {
+    setOptView({ kind: "doc", doc });
+    closeDrawers();
   };
 
   return (
@@ -256,33 +275,13 @@ export function StudioShell({
               but stays below md, where the nav is an overlay drawer and this is
               its opener. */}
           <button
-            onClick={toggleChapters}
-            className={`btn btn-ghost btn-sm ${showChapters ? "text-ink md:hidden" : "text-muted"}`}
-            title={showChapters ? "Hide navigation" : "Show navigation"}
-            aria-expanded={showChapters}
-            aria-label={showChapters ? "Hide navigation" : "Show navigation"}
+            onClick={() => setNavOpen((v) => !v)}
+            className={`btn btn-ghost btn-sm ${navOpen ? "text-ink md:hidden" : "text-muted"}`}
+            title={navOpen ? "Hide navigation" : "Show navigation"}
+            aria-expanded={navOpen}
+            aria-label={navOpen ? "Hide navigation" : "Show navigation"}
           >
             ☰
-          </button>
-          <button
-            onClick={toggleRail}
-            disabled={!isChapterDocCategory(optCat)}
-            className={`btn btn-ghost btn-sm ${
-              !isChapterDocCategory(optCat)
-                ? "cursor-not-allowed text-faint opacity-50"
-                : showRail
-                  ? "text-ink"
-                  : "text-muted"
-            }`}
-            title={
-              !isChapterDocCategory(optCat)
-                ? `Documents belong to a ${forms.singular} — pick one first`
-                : `${showRail ? "Hide" : "Show"} documents`
-            }
-            aria-pressed={isChapterDocCategory(optCat) ? showRail : undefined}
-            aria-disabled={!isChapterDocCategory(optCat)}
-          >
-            ▤ Documents
           </button>
           <Link href="/workspace" className="ml-1 text-sm text-muted hover:text-ink">
             ← Workspace
@@ -316,9 +315,9 @@ export function StudioShell({
       </header>
 
       <div className="relative flex min-h-0 flex-1 gap-3">
-        {/* Below md an open pane overlays the editor as a drawer; dismiss by
-            picking an item, re-tapping its toggle, or tapping the backdrop. */}
-        {(showChapters || showRail) && (
+        {/* Below md the open nav overlays the editor as a single drawer; dismiss
+            by picking an item, re-tapping ☰, or tapping the backdrop. */}
+        {navOpen && (
           <button
             type="button"
             aria-label="Close navigation"
@@ -326,15 +325,15 @@ export function StudioShell({
             className="absolute inset-0 z-10 bg-black/40 md:hidden"
           />
         )}
-        {/* Pane 1 — the left nav: Course · Chapters · Collections. Three groups
-            for the three kinds of thing. Collections are course-wide libraries,
-            so they sit here rather than under a chapter (P2.4). */}
-        {showChapters && (
+        {/* The left nav: Course · Chapters · Collections. Three groups for the
+            three kinds of thing. Collections are course-wide libraries, so they
+            sit here rather than under a chapter. */}
+        {navOpen && (
         <nav className="panel min-h-0 w-48 shrink-0 overflow-y-auto p-2 max-md:absolute max-md:inset-y-0 max-md:left-0 max-md:z-20 max-md:w-64 max-md:shadow-xl">
           {/* The nav's own collapse control, in its top-right corner. */}
           <div className="mb-1 flex justify-end">
             <button
-              onClick={() => setShowChapters(false)}
+              onClick={() => setNavOpen(false)}
               className="rounded-md p-1 text-muted transition-colors hover:bg-elevated hover:text-ink"
               title="Hide navigation"
               aria-label="Hide navigation"
@@ -346,15 +345,14 @@ export function StudioShell({
           </div>
 
           <Link
-            href={href({ chapter: null, cat: "course" })}
+            href={hrefFor({ kind: "course" }, null)}
             onClick={() => {
               setOptSlug(null);
-              setOptCat("course");
-              setShowRail(false);
+              setOptView({ kind: "course" });
               closeDrawers();
             }}
             className={`block rounded-md px-2 py-1.5 text-sm ${
-              optCat === "course" ? "bg-accent text-[var(--accent-ink)]" : "text-muted hover:bg-elevated hover:text-ink"
+              isCourseActive ? "bg-accent text-[var(--accent-ink)]" : "text-muted hover:bg-elevated hover:text-ink"
             }`}
           >
             ⊙ Course
@@ -387,15 +385,14 @@ export function StudioShell({
           {chapters.map((c, i) => (
             <Link
               key={c.slug}
-              href={href({ chapter: c.slug, cat: isChapterDocCategory(optCat) ? optCat : DEFAULT_DOC })}
+              href={hrefFor({ kind: "chapter" }, c.slug)}
               onClick={() => {
                 setOptSlug(c.slug);
-                setOptCat((prev) => (isChapterDocCategory(prev) ? prev : DEFAULT_DOC));
-                if (!isNarrow()) setShowRail(true);
+                setOptView({ kind: "chapter" });
                 closeDrawers();
               }}
               className={`mt-0.5 block truncate rounded-md px-2 py-1.5 text-sm ${
-                c.slug === optSlug && isChapterDocCategory(optCat)
+                inChapter(c.slug)
                   ? "bg-elevated text-ink"
                   : "text-muted hover:bg-elevated hover:text-ink"
               }`}
@@ -410,14 +407,13 @@ export function StudioShell({
           {COLLECTIONS.map((c) => (
             <Link
               key={c}
-              href={href({ cat: c })}
+              href={hrefFor({ kind: "collection", collection: c, scope: COURSE_SCOPE }, optSlug)}
               onClick={() => {
-                setOptCat(c);
-                setShowRail(false);
+                setOptView({ kind: "collection", collection: c, scope: COURSE_SCOPE });
                 closeDrawers();
               }}
               className={`mt-0.5 block truncate rounded-md px-2 py-1.5 text-sm ${
-                optCat === c
+                isCollectionActive(c)
                   ? "bg-accent text-[var(--accent-ink)]"
                   : "text-muted hover:bg-elevated hover:text-ink"
               }`}
@@ -428,39 +424,11 @@ export function StudioShell({
         </nav>
         )}
 
-        {/* Pane 2 — category rail (collapsible) */}
-        {showRail && (
-        <nav className="panel min-h-0 w-52 shrink-0 overflow-y-auto p-2 max-md:absolute max-md:inset-y-0 max-md:left-0 max-md:z-20 max-md:w-64 max-md:shadow-xl">
-          <div className="px-2 pb-1 text-xs text-faint">
-            {optSlug ? forms.Singular : ""}
-          </div>
-          {CATEGORY_RAIL.map((cat, i) =>
-            cat === "sep" ? (
-              <div key={`sep-${i}`} className="my-1.5 border-t border-edge" />
-            ) : (
-              <Link
-                key={cat}
-                href={href({ cat })}
-                onClick={() => {
-                  setOptCat(cat);
-                  closeDrawers();
-                }}
-                className={`mt-0.5 block rounded-md px-2 py-1.5 text-sm ${
-                  cat === optCat
-                    ? "bg-accent text-[var(--accent-ink)]"
-                    : "text-muted hover:bg-elevated hover:text-ink"
-                }`}
-              >
-                {CATEGORY_LABELS[cat]}
-              </Link>
-            ),
-          )}
-        </nav>
-        )}
-
-        {/* Pane 3 — editor (fills remaining width) */}
+        {/* The main pane — full width (no third column). The hosted
+            `.md.html`/`.slides.html` iframes need it, so a document opens with a
+            switcher above the editor rather than beside it. */}
         <section className="panel min-h-0 min-w-0 flex-1 overflow-y-auto p-4">
-          {category === "course" ? (
+          {view.kind === "course" ? (
             <CourseHome
               key="course"
               packageId={packageId}
@@ -470,57 +438,106 @@ export function StudioShell({
               published={published}
               onDirty={setDirty}
             />
-          ) : category === "content" && activePath && content ? (
-            <HostedStudyGuideEditor
-              key={`content:${activePath}`}
-              packageId={packageId}
-              path={activePath}
-              chapterTitle={chapters.find((c) => c.slug === activeSlug)?.title ?? title}
-              initial={content}
-              onDirty={setDirty}
-            />
+          ) : view.kind === "chapter" ? (
+            activeChapter ? (
+              <ChapterLanding
+                key={`chapter:${activeChapter.slug}`}
+                packageId={packageId}
+                chapterSlug={activeChapter.slug}
+                heading={`${activeIndex + 1}. ${activeChapter.title}`}
+                forms={forms}
+                onPickDoc={pickDoc}
+              />
+            ) : (
+              <CategoryPlaceholder label={forms.Plural} />
+            )
+          ) : view.kind === "doc" ? (
+            <div className="flex h-full min-h-0 flex-col gap-3">
+              <DocHeader
+                packageId={packageId}
+                currentDoc={activeDoc ?? view.doc}
+                chapterSlug={activeSlug}
+                chapterLabel={activeChapterLabel}
+                tabsOpen={tabsOpen}
+                onToggleTabs={() => setTabsOpen((v) => !v)}
+                onPickDoc={pickDoc}
+                onBack={() => setOptView({ kind: "chapter" })}
+              />
+              <div className="min-h-0 flex-1">
+                {view.doc === "content" ? (
+                  activePath && content ? (
+                    <HostedStudyGuideEditor
+                      key={`content:${activePath}`}
+                      packageId={packageId}
+                      path={activePath}
+                      chapterTitle={chapters.find((c) => c.slug === activeSlug)?.title ?? title}
+                      initial={content}
+                      onDirty={setDirty}
+                    />
+                  ) : (
+                    <CategoryPlaceholder label={DOC_LABELS[view.doc]} />
+                  )
+                ) : view.doc === "slides" ? (
+                  activePath ? (
+                    <HostedSlidesEditor
+                      key={`slides:${activePath}`}
+                      packageId={packageId}
+                      path={slidesPathFor(activePath)}
+                      chapterTitle={`${chapters.find((c) => c.slug === activeSlug)?.title ?? title} · Slides`}
+                      onDirty={setDirty}
+                    />
+                  ) : (
+                    <CategoryPlaceholder label={DOC_LABELS[view.doc]} />
+                  )
+                ) : view.doc === "practice" ? (
+                  activePath ? (
+                    <HostedStudyGuideEditor
+                      key={`practice:${activePath}`}
+                      packageId={packageId}
+                      path={practicePathFor(activePath)}
+                      chapterTitle={`${chapters.find((c) => c.slug === activeSlug)?.title ?? title} · Practice`}
+                      initial={{ preamble: "", blocks: [] }}
+                      emptyTemplate={PRACTICE_TEMPLATE}
+                      onDirty={setDirty}
+                    />
+                  ) : (
+                    <CategoryPlaceholder label={DOC_LABELS[view.doc]} />
+                  )
+                ) : categoryFile ? (
+                  <FileEditor
+                    key={`${view.doc}:${categoryFile.path}`}
+                    packageId={packageId}
+                    category={DOC_OPERATION_CATEGORY[view.doc]}
+                    label={DOC_LABELS[view.doc]}
+                    help={
+                      view.doc === "concept-map"
+                        ? "The chapter's concept map + learning objectives (markdown). Public-repo but not shown on the student site; the coherence agent checks content against it."
+                        : "How each concept/topic should be assessed across homework, discussion, quiz, and exam — instructions, not a question bank. Markdown."
+                    }
+                    file={categoryFile}
+                    onDirty={setDirty}
+                  />
+                ) : (
+                  <CategoryPlaceholder label={DOC_LABELS[view.doc]} />
+                )}
+              </div>
+            </div>
+          ) : view.collection === "assets" ? (
+            <AssetsView key="assets" packageId={packageId} activePath={activePath} assets={assets} assetDocs={assetDocs} onDirty={setDirty} />
+          ) : view.collection === "current" ? (
+            <CurrentSpace />
           ) : categoryFile ? (
             <FileEditor
-              key={`${category}:${categoryFile.path}`}
+              key={`${view.collection}:${categoryFile.path}`}
               packageId={packageId}
-              category={category}
-              label={CATEGORY_LABELS[category as StudioCategory]}
-              help={
-                category === "private"
-                  ? "Private notes for this chapter — never published. Assignments, quizzes, exams, and answer keys live in the private repository."
-                  : category === "concept-map"
-                    ? "The chapter's concept map + learning objectives (markdown). Public-repo but not shown on the student site; the coherence agent checks content against it."
-                    : "How each concept/topic should be assessed across homework, discussion, quiz, and exam — instructions, not a question bank. Markdown."
-              }
+              category={category as OperationCategory}
+              label={CATEGORY_LABELS[view.collection]}
+              help="Private notes for this chapter — never published. Assignments, quizzes, exams, and answer keys live in the private repository."
               file={categoryFile}
               onDirty={setDirty}
             />
-          ) : category === "assets" ? (
-            <AssetsView key="assets" packageId={packageId} activePath={activePath} assets={assets} assetDocs={assetDocs} onDirty={setDirty} />
-          ) : category === "slides" && activePath ? (
-            <HostedSlidesEditor
-              key={`slides:${activePath}`}
-              packageId={packageId}
-              path={slidesPathFor(activePath)}
-              chapterTitle={`${chapters.find((c) => c.slug === activeSlug)?.title ?? title} · Slides`}
-              onDirty={setDirty}
-            />
-          ) : category === "practice" && activePath ? (
-            <HostedStudyGuideEditor
-              key={`practice:${activePath}`}
-              packageId={packageId}
-              path={practicePathFor(activePath)}
-              chapterTitle={`${chapters.find((c) => c.slug === activeSlug)?.title ?? title} · Practice`}
-              initial={{ preamble: "", blocks: [] }}
-              emptyTemplate={PRACTICE_TEMPLATE}
-              onDirty={setDirty}
-            />
-          ) : category === "current" ? (
-            <CurrentSpace />
           ) : (
-            <CategoryPlaceholder
-              label={CATEGORY_LABELS[category as StudioCategory]}
-            />
+            <CategoryPlaceholder label={CATEGORY_LABELS[view.collection]} />
           )}
         </section>
       </div>
@@ -537,6 +554,229 @@ export function StudioShell({
         />
       )}
     </main>
+  );
+}
+
+/* ── Chapter landing: the chapter's five documents, none opened yet ────────────
+ * The spine (concept map, assessment guide) stays one click from view — it is
+ * NOT hidden behind the study guide. Every row is a real `<a href>`, so the
+ * shell-level unsaved guard covers a switch away from an in-progress edit. */
+function ChapterLanding({
+  packageId,
+  chapterSlug,
+  heading,
+  forms,
+  onPickDoc,
+}: {
+  packageId: string;
+  chapterSlug: string;
+  heading: string;
+  forms: ReturnType<typeof unitTermForms>;
+  onPickDoc: (doc: ChapterDoc) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-4">
+      <div>
+        <h2 className="font-serif text-lg text-ink">{heading}</h2>
+        <p className="mt-0.5 text-xs text-faint">
+          Choose a document for this {forms.singular} to open its editor.
+        </p>
+      </div>
+      <div className="panel overflow-hidden rounded-xl border border-edge">
+        {DOC_GROUPS.map((group, gi) => (
+          <div key={group.caption} className={gi > 0 ? "border-t border-edge-soft" : ""}>
+            <p className="px-3 pb-1 pt-2.5 text-xs text-faint">{group.caption}</p>
+            <ul className="divide-y divide-[var(--edge-soft)]">
+              {group.docs.map((doc) => (
+                <li key={doc}>
+                  <Link
+                    href={buildWorkspaceHref(packageId, { kind: "doc", doc }, chapterSlug)}
+                    onClick={() => onPickDoc(doc)}
+                    className="flex items-center gap-2 px-3 py-2.5 text-sm text-ink transition-colors hover:bg-elevated"
+                  >
+                    {isSpineDoc(doc) && <LockGlyph className="h-3.5 w-3.5 shrink-0 text-faint" />}
+                    <span className="min-w-0 truncate">{DOC_LABELS[doc]}</span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ── Document header: breadcrumb · switcher · lock marker · tabs toggle ──────── */
+function DocHeader({
+  packageId,
+  currentDoc,
+  chapterSlug,
+  chapterLabel: label,
+  tabsOpen,
+  onToggleTabs,
+  onPickDoc,
+  onBack,
+}: {
+  packageId: string;
+  currentDoc: ChapterDoc;
+  chapterSlug: string | null;
+  chapterLabel: string;
+  tabsOpen: boolean;
+  onToggleTabs: () => void;
+  onPickDoc: (doc: ChapterDoc) => void;
+  onBack: () => void;
+}) {
+  return (
+    <div className="shrink-0">
+      <div className="flex flex-wrap items-center gap-2">
+        {/* Back to the chapter's document list — a real anchor (guarded). */}
+        <Link
+          href={buildWorkspaceHref(packageId, { kind: "chapter" }, chapterSlug)}
+          onClick={onBack}
+          className="btn btn-ghost btn-sm"
+          title="Back to this chapter's documents"
+          aria-label="Back to the chapter's documents"
+        >
+          ←
+        </Link>
+        <span className="truncate text-sm text-muted">{label}</span>
+        <span className="text-faint" aria-hidden>
+          /
+        </span>
+        <DocumentSwitcher
+          packageId={packageId}
+          currentDoc={currentDoc}
+          chapterSlug={chapterSlug}
+          onPickDoc={onPickDoc}
+        />
+        {isSpineDoc(currentDoc) && (
+          <span className="inline-flex items-center gap-1 text-xs text-faint" title="Not published to the student site">
+            <LockGlyph className="h-3.5 w-3.5" />
+            not published
+          </span>
+        )}
+        {/* Local-only toggle (no navigation) → no guard needed. */}
+        <button
+          onClick={onToggleTabs}
+          aria-pressed={tabsOpen}
+          className={`btn btn-ghost btn-sm ml-auto ${tabsOpen ? "text-ink" : "text-muted"}`}
+          title={tabsOpen ? "Collapse the document tabs" : "Expand into document tabs"}
+        >
+          <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <rect x="3" y="5" width="7" height="14" rx="1" />
+            <rect x="14" y="5" width="7" height="14" rx="1" />
+          </svg>
+        </button>
+      </div>
+
+      {tabsOpen && (
+        <div className="mt-2 flex flex-wrap items-center gap-1 rounded-lg border border-edge p-1">
+          {DOC_GROUPS.map((group, gi) => (
+            <div key={group.caption} className="flex flex-wrap items-center gap-1">
+              {gi > 0 && <span className="mx-1 h-4 w-px bg-[var(--edge)]" aria-hidden />}
+              {group.docs.map((doc) => (
+                <Link
+                  key={doc}
+                  href={buildWorkspaceHref(packageId, { kind: "doc", doc }, chapterSlug)}
+                  onClick={() => onPickDoc(doc)}
+                  aria-current={doc === currentDoc ? "page" : undefined}
+                  className={`inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-sm transition-colors ${
+                    doc === currentDoc
+                      ? "bg-accent text-[var(--accent-ink)]"
+                      : "text-muted hover:bg-elevated hover:text-ink"
+                  }`}
+                >
+                  {isSpineDoc(doc) && <LockGlyph className="h-3 w-3 shrink-0 opacity-70" />}
+                  {DOC_LABELS[doc]}
+                </Link>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── Document switcher: a popover menu of `<a href>` links ─────────────────────
+ * Modelled on the AIAssistant popover in this file — a trigger toggles the menu;
+ * a full-screen transparent button behind it closes on an outside click. NOT a
+ * `<select>` and NOT navigating `<button>`s: only real anchors arm the unsaved
+ * guard for the hosted editors (use-unsaved-guard.ts). */
+function DocumentSwitcher({
+  packageId,
+  currentDoc,
+  chapterSlug,
+  onPickDoc,
+}: {
+  packageId: string;
+  currentDoc: ChapterDoc;
+  chapterSlug: string | null;
+  onPickDoc: (doc: ChapterDoc) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="relative inline-block">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="btn btn-ghost btn-sm inline-flex items-center gap-1.5"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        title="Switch document"
+      >
+        {isSpineDoc(currentDoc) && <LockGlyph className="h-3.5 w-3.5 text-faint" />}
+        <span className="text-ink">{DOC_LABELS[currentDoc]}</span>
+        <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+          <path d="m6 9 6 6 6-6" />
+        </svg>
+      </button>
+
+      {open && (
+        <button
+          type="button"
+          aria-label="Close document switcher"
+          onClick={() => setOpen(false)}
+          className="fixed inset-0 z-20 cursor-default"
+        />
+      )}
+
+      {open && (
+        <div
+          role="menu"
+          className="absolute left-0 z-30 mt-2 w-64 overflow-hidden rounded-xl border border-edge bg-[var(--surface)] shadow-xl"
+        >
+          {DOC_GROUPS.map((group, gi) => (
+            <div key={group.caption} className={gi > 0 ? "border-t border-edge-soft" : ""}>
+              <p className="px-3 pb-1 pt-2 text-xs text-faint">{group.caption}</p>
+              <div className="p-1.5 pt-0">
+                {group.docs.map((doc) => (
+                  <Link
+                    key={doc}
+                    role="menuitem"
+                    href={buildWorkspaceHref(packageId, { kind: "doc", doc }, chapterSlug)}
+                    onClick={() => {
+                      onPickDoc(doc);
+                      setOpen(false);
+                    }}
+                    aria-current={doc === currentDoc ? "page" : undefined}
+                    className={`flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm transition-colors ${
+                      doc === currentDoc
+                        ? "bg-accent text-[var(--accent-ink)]"
+                        : "text-ink hover:bg-elevated"
+                    }`}
+                  >
+                    {isSpineDoc(doc) && <LockGlyph className="h-3.5 w-3.5 shrink-0 opacity-70" />}
+                    <span className="min-w-0 truncate">{DOC_LABELS[doc]}</span>
+                    {doc === currentDoc && <span className="ml-auto text-xs" aria-hidden>●</span>}
+                  </Link>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 

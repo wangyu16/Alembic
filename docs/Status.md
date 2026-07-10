@@ -1057,8 +1057,14 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
   save). It guards via `beforeunload` — which **does not fire on client-side
   Next navigation** — and a click interceptor matching **only `<a>` elements**.
   A `<select>`/`<button>` document switcher bypasses both: the iframe
-  unmounts, `destroy()` runs, edits vanish silently. The switcher must be
-  anchors *and* call `confirmDiscard`. **Still open** — lands in P2.5.
+  unmounts, `destroy()` runs, edits vanish silently. **CLOSED in P2.5**: every
+  navigating control in the workspace is a real anchor, so the existing
+  interceptor covers all of them; `confirmDiscard` therefore stays unused by
+  the shell (adding it to an anchor would double-prompt) and remains for any
+  future control that cannot be an anchor. Verified in a browser, not by
+  inspection: dirty + cancel → 1 prompt, no navigation, and the optimistic
+  highlight does **not** flip; dirty + accept → 1 prompt, navigates; clean →
+  0 prompts.
   **Shipped so far** (each independently verifiable, separately revertible):
   - **P1.1** — a test pinning the property `assertPathAllowedInEitherContract`'s
     safety rests on but never stated: *no directory is public under one
@@ -1127,9 +1133,36 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
     mounts the **saved** document, never a stale pre-save one; a theme change
     clears the memo. Bounded LRU (6 entries); never persisted (a ~1 MB blob
     per document would blow storage quota and outlive deploys).
-  **Next:** P1.2 (dual-mode validators — touches two-repo-invariant
-  enforcement, runs alone and supervised), then P2.3–P2.6 (nav), P3 (Assets),
-  P4 (Private), P5 (Current, needs P1.2). P3/P4 do not depend on P1.2.
+  - **P2.4** — left nav becomes one unified pane: Course / Chapters /
+    Collections, with the collapse control in the nav's own top-right and a
+    single mobile drawer (the shell previously had two independent overlays).
+  - **P2.5** — chapter landing list + document switcher; the rail (pane 2) is
+    deleted and the main pane runs full width, which the hosted iframes want.
+    A chapter now opens a **landing list** (`?chapter=<slug>`, the paramless
+    default) grouping its five documents into "Course spine · not published"
+    and "Published to the student site"; opening one shows a header with a
+    back link, a popover **switcher**, and an optional tab strip. *Every*
+    navigating control — landing rows, switcher items, tabs, back, left nav —
+    is an `<a>`/`<Link>`; there is no `<select>` and no `router.push` in the
+    shell. Server loads are gated so a bare `?chapter=` costs no study-guide
+    read. **Fixed a pre-existing bug the browser pass exposed**: five
+    components each called `useUnsavedGuard`, and since the shell mirrors the
+    active editor's `dirty`, two `document` capture listeners were armed at
+    once. `stopPropagation()` does not stop other listeners on the *same* node
+    (that is `stopImmediatePropagation`), and the `defaultPrevented`
+    early-return only masked it on the cancel path — so **accepting** the
+    discard prompted twice. `use-unsaved-guard.ts` now refcounts a single
+    shared listener pair. Also added the first tests for `apps/web`
+    (`vitest.config.ts` pinned to `src/`, so the generated `.next/` tree can
+    never gate CI): 29 tests over `nav.ts`, including a build→parse
+    round-trip for every view and the legacy `?cat=` mappings. The three that
+    pin the new landing default were **verified to fail against the old
+    fallback** before being accepted; the legacy-mapping tests pass under
+    both, which is what proves the change didn't widen them.
+  **Next:** P2.6 (the remaining preserve-don't-regress items that need a
+  signed-in session: the base-route redirect's query-forwarding, and the
+  hosted-editor unsaved paths), then P3 (Assets), P4 (Private), P5 (Current,
+  needs P1.2 — now done). P3/P4 do not depend on P1.2.
 - **Post-session coherence audit (2026-07-09, owner request).** Fanned out
   6 parallel read-only subagents (dangling references from today's renames;
   Status.md accuracy vs code; goal/Roadmap/specs coherence; the

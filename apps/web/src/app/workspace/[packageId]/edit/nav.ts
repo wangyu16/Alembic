@@ -72,11 +72,10 @@ export const COLLECTION_OPERATION_CATEGORY: Record<Collection, OperationCategory
 /** Scope value meaning "the whole course" (vs a chapter slug). */
 export const COURSE_SCOPE = "course";
 
-/** Opened when a chapter is selected without naming a document. */
-export const DEFAULT_DOC: ChapterDoc = "content";
-
 export type WorkspaceView =
   | { kind: "course" }
+  /** A chapter's landing list — its five documents, none opened yet. */
+  | { kind: "chapter" }
   | { kind: "doc"; doc: ChapterDoc }
   | { kind: "collection"; collection: Collection; scope: string };
 
@@ -101,8 +100,10 @@ function asCollection(v: string | undefined): Collection | undefined {
 
 /**
  * Resolve the current view from search params. New params win; `cat=` is
- * mapped forward for old links. Unknown values fall back to the chapter's
- * default document rather than erroring — a bad URL should never 404 an editor.
+ * mapped forward for old links. With no view/collection/doc (and no legacy
+ * `cat`) the destination is the chapter's LANDING LIST — the spine must stay
+ * one click from view, not hidden behind the study guide. Unknown values fall
+ * through to that landing rather than erroring — a bad URL should never 404.
  */
 export function parseWorkspaceView(p: WorkspaceParams): WorkspaceView {
   if (p.view === "course") return { kind: "course" };
@@ -115,7 +116,8 @@ export function parseWorkspaceView(p: WorkspaceParams): WorkspaceView {
   const doc = asDoc(p.doc);
   if (doc) return { kind: "doc", doc };
 
-  // Legacy `cat=` — one param that could mean any of the three kinds.
+  // Legacy `cat=` — one param that could mean any of the three kinds. Preserved
+  // exactly: old links land where they always did (a document, not the list).
   if (p.cat === "course") return { kind: "course" };
   const legacyCollection = asCollection(p.cat);
   if (legacyCollection) {
@@ -124,7 +126,7 @@ export function parseWorkspaceView(p: WorkspaceParams): WorkspaceView {
   const legacyDoc = asDoc(p.cat);
   if (legacyDoc) return { kind: "doc", doc: legacyDoc };
 
-  return { kind: "doc", doc: DEFAULT_DOC };
+  return { kind: "chapter" };
 }
 
 /**
@@ -142,6 +144,9 @@ export function buildWorkspaceHref(
   switch (view.kind) {
     case "course":
       qs.set("view", "course");
+      break;
+    case "chapter":
+      // Just `?chapter=<slug>` — the landing list is the paramless default.
       break;
     case "doc":
       qs.set("doc", view.doc);

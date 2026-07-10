@@ -58,18 +58,24 @@ export default async function EditShellPage({
   const chapters = await listChapters(store, packageId);
   const activeChapter = chapters.find((c) => c.slug === chapter) ?? chapters[0] ?? null;
   const view = parseWorkspaceView(sp);
-  // The render switch still keys off the flat category (P2.4/P2.5 rebuild it).
-  // Deriving it here keeps this subtask to types + URLs, with no UI change.
+  // The shell renders by `view.kind`; the server-side data loads below still
+  // key off this flat category (per-document + per-collection). A chapter
+  // LANDING view opens no document, so its category is inert — every load
+  // below is gated to skip it.
   const category: StudioCategory | "course" =
     view.kind === "course"
       ? "course"
-      : view.kind === "doc"
-        ? view.doc
-        : view.collection;
+      : view.kind === "collection"
+        ? view.collection
+        : view.kind === "doc"
+          ? view.doc
+          : "content";
 
-  // Load only what the active pane needs.
+  // Load only what the active pane needs. The study guide loads only for the
+  // `content` DOCUMENT — never for a chapter's landing list (which shows no
+  // editor), so a bare `?chapter=` costs no study-guide read.
   const doc =
-    category === "content" && activeChapter
+    view.kind === "doc" && view.doc === "content" && activeChapter
       ? await loadStudyGuide(store, packageId, activeChapter.path)
       : null;
   const courseConceptMap =
@@ -175,6 +181,7 @@ export default async function EditShellPage({
       chapters={chapters.map((c) => ({ slug: c.slug, title: c.title }))}
       activeSlug={activeChapter?.slug ?? null}
       activePath={activeChapter?.path ?? null}
+      view={view}
       category={category}
       content={
         doc ? { preamble: doc.preamble, blocks: doc.blocks } : null

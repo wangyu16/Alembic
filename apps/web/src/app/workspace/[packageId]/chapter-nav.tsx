@@ -12,7 +12,7 @@ import {
   reorderChaptersAction,
   setUnitTermAction,
 } from "./chapter-actions";
-import { buildWorkspaceHref, DEFAULT_DOC } from "./edit/nav";
+import { buildWorkspaceHref } from "./edit/nav";
 
 interface Chapter {
   slug: string;
@@ -45,7 +45,7 @@ export function ChapterNav({
       {chapters.map((c) => (
         <Link
           key={c.slug}
-          href={buildWorkspaceHref(packageId, { kind: "doc", doc: DEFAULT_DOC }, c.slug)}
+          href={buildWorkspaceHref(packageId, { kind: "chapter" }, c.slug)}
           aria-disabled={dirty}
           onClick={(e) => {
             if (dirty && !window.confirm(`Switch ${forms.singular}? Unsaved changes will be lost.`)) {
@@ -249,7 +249,7 @@ function ChapterRow({
       (slug) => {
         setEditing(false);
         if (slugChanged && isActive && slug) {
-          router.push(buildWorkspaceHref(packageId, { kind: "doc", doc: DEFAULT_DOC }, slug));
+          router.push(buildWorkspaceHref(packageId, { kind: "chapter" }, slug));
         }
       },
     );
@@ -370,7 +370,7 @@ function CreateRow({
       (slug) => {
         setTitle("");
         setPageName("");
-        if (slug) router.push(buildWorkspaceHref(packageId, { kind: "doc", doc: DEFAULT_DOC }, slug));
+        if (slug) router.push(buildWorkspaceHref(packageId, { kind: "chapter" }, slug));
       },
     );
   };
