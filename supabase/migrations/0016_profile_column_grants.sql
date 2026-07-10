@@ -21,9 +21,9 @@
 --
 -- After this migration `authenticated` may update ONLY `display_name` on its own
 -- row (the row restriction still comes from the RLS policy). Everything else —
--- is_admin, github_username, github_installation_id, and the account-status
--- columns added in 0017 — is writable only by the service role, i.e. only by
--- server code running behind an explicit gate.
+-- is_admin, github_username, github_installation_id, and the ai_status columns
+-- added in 0017 — is writable only by the service role, i.e. only by server code
+-- running behind an explicit gate.
 
 -- Blanket UPDATE is what the default `grant all ... to authenticated` handed out.
 revoke update on public.profiles from authenticated, anon;
@@ -44,4 +44,4 @@ create policy "update own profile" on public.profiles
   with check ((select auth.uid()) = id);
 
 comment on table public.profiles is
-  'One row per platform user. authenticated may UPDATE only display_name (column grant, 0016); is_admin/status/ai_status/github_* are service-role only.';
+  'One row per platform user. authenticated may UPDATE only display_name (column grant, 0016); is_admin/ai_status/github_* are service-role only.';

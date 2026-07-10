@@ -45,6 +45,18 @@ export class AINotEntitledError extends Error {
 }
 
 /**
+ * The AI assistant is off until an admin approves the account
+ * (docs/specs/user-governance.md). Distinct from AINotEntitledError so the UI
+ * can offer "Request access" rather than a dead end.
+ */
+export class AINotApprovedError extends Error {
+  constructor() {
+    super("The AI assistant hasn't been approved for your account yet.");
+    this.name = "AINotApprovedError";
+  }
+}
+
+/**
  * Choose the AI provider from env — provider-swappable (CLAUDE.md rule 6).
  * Prefer an OpenAI-compatible gateway (Portkey/OpenRouter/…) when configured;
  * otherwise the dev-phase Gemini provider. Returns null if neither is set.
@@ -145,6 +157,20 @@ class GovernedProvider implements AIProvider {
   }
 
   async generateText(options: GenerateOptions): Promise<GenerateResult> {
+    // Per-account AI approval. This gate FAILS CLOSED — deliberately unlike the
+    // rate-limit and budget checks below it, which fail open so a flaky check
+    // cannot disable all AI. Here the safe direction is the opposite: if we
+    // cannot confirm the account is approved and unbanned, we must not call the
+    // model. `can_use_ai()` answers both halves in one round trip so the rule
+    // cannot drift from the RLS policies that share its definition.
+    // See docs/specs/user-governance.md §2.3.
+    const { data: approved, error: approvalError } = await this.supabase.rpc("can_use_ai");
+    if (approvalError) {
+      console.error(`[ai] approval check failed, DENYING request: ${approvalError.message}`);
+      throw new AINotApprovedError();
+    }
+    if (approved !== true) throw new AINotApprovedError();
+
     // Rate limit and budget both fail OPEN: if the check itself errors we allow
     // the request rather than block all AI, but surface the failure to logs.
     const { data: count, error: countError } = await this.supabase.rpc(
