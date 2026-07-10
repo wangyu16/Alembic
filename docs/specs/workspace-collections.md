@@ -92,6 +92,56 @@ links exist outside the shell: `chapter-nav.tsx` (L47/251/372),
 `api/github/installed/route.ts` (L47, `?publish=1`), and
 `export/study-guide/route.ts` (reads `?chapter=`).
 
+## 2a. Hosted-editor constraints (non-negotiable)
+
+Alembic ships **no editor of its own** for the main documents: it generates
+self-contained `.md.html` / `.slides.html` via the sibling orz packages and
+hosts each file's **own** in-file editor in a sandboxed iframe, talking to it
+over `orz-host-save@1` / `orz-host-ai@1`. Audited 2026-07-09 against this
+restructure. The sibling contract is **safe** — nothing in the orz files reads
+the host's URL, DOM, or pane structure; generation receives only
+`{markdown, title, theme, delivery}`; the handshake is per-mount. The coupling
+boundary is five files (`editor-kit/host-save-client.ts`, `host-ai-client.ts`,
+`hosted-carrier.ts`, `generators/index.ts` + `package.json`,
+`worker-client.ts`), none of which this restructure touches.
+
+But the restructure introduces four real hazards inside Alembic:
+
+1. **BLOCKER — a `<select>`/`<button>` switcher silently destroys unsaved work.**
+   `useUnsavedGuard` is the *only* protection for hosted editors (they have
+   none of their own; there is no save-on-unmount, and the host cannot command
+   a save — saves are file-initiated). It guards via (a) `beforeunload`, which
+   **does not fire on client-side Next navigation**, and (b) a capture-phase
+   click interceptor that **only matches `<a>` elements**
+   (`use-unsaved-guard.ts`, `target.closest("a")`). Today's prompt fires purely
+   because chapter/category switches are `<Link>` anchors. A dropdown that
+   calls `router.push` bypasses both; `destroy()` runs and edits vanish silently.
+   → **The document switcher must be anchors** (a popover menu of `<a href>`,
+   matching the existing `AIAssistant` popover pattern), **and** call the
+   already-existing-but-unused `confirmDiscard(dirty)` imperatively.
+2. **SERIOUS — no generation cache anywhere.** Every mount is a fresh worker
+   round-trip returning a ~0.84–1 MB inline bundle, plus a handshake (400 ms
+   cadence, 20 s give-up). Making switching one click turns deliberate page-navs
+   into rapid-fire regenerations with "Preparing the editor…" stalls.
+   → Memoize generated HTML per `(packageId, path, theme)` for the session.
+3. **SERIOUS — the mount key must be identity-only.** Keys today are
+   `content:${activePath}` etc. A save runs `revalidatePath`; if the new key
+   ever derives from saved content or theme, that refresh remounts the iframe
+   mid-session and loses in-progress edits. Key on `doc` + `path`, never on
+   mutated state.
+4. **MINOR — preserve an explicit `doc → OperationCategory` map.**
+   `HOSTED_STUDY_GUIDE_AI_OPS` / `HOSTED_SLIDES_AI_OPS` are
+   `operationsForCategory("content"|"slides")`. If the new `?doc=` ids don't map
+   back cleanly, the handshake still completes but advertises empty ops and AI
+   silently disappears.
+
+Also true, and load-bearing: the iframe's `allow-same-origin` sandbox flag must
+stay (orz-mdhtml renders its preview into a *nested* iframe via
+`contentDocument`; an opaque origin yields a blank file and a dead pencil). The
+workspace editing surface is `delivery:"inline"`, so the CDN `-browser` lockstep
+trap affects only the published site. `orz-paged` is registered but mounted
+nowhere in the workspace — no paged editor pane is required.
+
 ## 3. Phases
 
 Durable logic first, thin client last (architecture rule 9). Each phase is
@@ -133,24 +183,45 @@ independently shippable and green (typecheck + tests + web build).
 
 ### Phase 2 — nav restructure (client only, no storage change)
 
-- Split `StudioCategory` into `ChapterDoc` (`concept-map`, `assessment-guide`,
-  `content`, `slides`, `practice`) and `Collection` (`assets`, `current`,
-  `private`). Delete `CATEGORY_RAIL`.
-- Rebuild `StudioShell`'s panes: unified left nav (3 groups) + main pane. Mobile
+Split into independently verifiable subtasks. **P2.1 must land first** — it is
+the data-loss fix, and every later subtask depends on switching being safe.
+
+- **P2.1 — unsaved-edit safety (do first, alone).** Extend `useUnsavedGuard`
+  with an exported imperative `confirmDiscard(dirty)` gate (it already exists,
+  unused) and add a regression test proving a **non-anchor** switch is guarded.
+  Verifiable on today's UI before any nav change.
+- **P2.2 — generation memo.** Cache generated editor HTML per
+  `(packageId, path, theme)` for the session, so a document switch that returns
+  to a previously-opened document is instant and costs no worker call. Verify by
+  observing a single worker call across two switches.
+- **P2.3 — types + URL scheme.** Split `StudioCategory` into `ChapterDoc`
+  (`concept-map`, `assessment-guide`, `content`, `slides`, `practice`) and
+  `Collection` (`assets`, `current`, `private`); delete `CATEGORY_RAIL`; add the
+  explicit `doc → OperationCategory` map. New params with `?cat=` back-compat;
+  update the external link builders (`chapter-nav.tsx` L47/251/372,
+  `api/github/installed/route.ts:47`, `export/study-guide/route.ts`).
+- **P2.4 — left nav.** Unified nav (Course / Chapters / Collections), collapse
+  control in the nav's own top-right, expand button in the header row. Mobile
   collapses from **two** overlay drawers to **one** (`max-md` drawer, backdrop
-  `z-10`/drawer `z-20`, `md:` = 768px per DESIGN.md).
-- Add the chapter landing list, breadcrumb header, document `<select>`
-  (`className="field text-xs"` — `.field` sets no font-size; every real select
-  in the app is `text-xs`), and the tabs toggle.
-- Move the collapse control into the nav's top-right; add the expand button.
-- **Preserve, do not regress**: `PublishHeader`; the `dirty` plumbing
-  (`useUnsavedGuard` + `useReportDirty`, incl. hosted-iframe `onDirty` — the
-  shell-level guard is the *only* guard for hosted editors); `ManageDialog`
-  (gear in the chapters group); optimistic nav (`optCat`/`optSlug` → now
-  `optDoc`/`optCollection`) and the `navigating` indicator; the `key={}` remount
-  strategy per file/document; `AIAssistant` + `useSelectionAI` mount points; the
-  "← Workspace" link; the `● Unsaved` badge.
-- Back-compat: map `?cat=` → the new params.
+  `z-10` / drawer `z-20`, `md:` = 768px per DESIGN.md).
+- **P2.5 — chapter landing list + document switcher.** The switcher is a
+  **popover menu of `<a href>` links** (not a `<select>`, not buttons — see
+  §2a.1), styled like the existing `AIAssistant` popover, with the spine /
+  published grouping and a `lock` marker on spine documents; plus the
+  tabs-expansion toggle (also anchors) and the breadcrumb. Any control that
+  can't be an anchor calls `confirmDiscard` first.
+- **P2.6 — preserve, do not regress**: `PublishHeader`; the `dirty` plumbing
+  (`useUnsavedGuard` + `useReportDirty`, incl. hosted-iframe `onDirty`);
+  `ManageDialog` (gear in the chapters group); optimistic nav
+  (`optCat`/`optSlug` → `optDoc`/`optCollection`) and the `navigating`
+  indicator; the `key={}` remount strategy — **keyed on identity only**
+  (§2a.3); `AIAssistant` + `useSelectionAI` mount points; "← Workspace"; the
+  `● Unsaved` badge.
+
+Browser-verify P2 at 375 / 768 / 1280 px in both themes, and explicitly test:
+open a hosted document, type without saving, then attempt each of (a) document
+switch, (b) chapter switch, (c) collection switch, (d) tab close — all four must
+warn.
 
 ### Phase 3 — Assets collection
 
