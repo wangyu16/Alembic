@@ -38,7 +38,9 @@ import { useUnsavedGuard } from "@/lib/use-unsaved-guard";
 import {
   buildWorkspaceHref,
   COLLECTIONS,
+  COLLECTION_LABELS,
   COURSE_SCOPE,
+  DEFAULT_DOC,
   type ChapterDoc,
   type WorkspaceView,
 } from "./nav";
@@ -93,10 +95,12 @@ const CATEGORY_LABELS: Record<StudioCategory, string> = {
   private: "Private",
 };
 
-/* The category rail. Single-document categories first — planning (concept map,
-   assessment guide), a separator, then the deliverables (study guide, slides,
-   practice) — then a separator and the collections (assets, current, private).
-   `"sep"` renders a divider. */
+/* The chapter-document rail (P2.4: collections left it for the left nav, where
+   they belong — they are course-wide libraries, not per-chapter documents).
+   The SPINE first (concept map, assessment guide: private, plain-text, the
+   skeleton of the course), a separator, then the PUBLISHED documents (study
+   guide, slides, practice). `"sep"` renders a divider. P2.5 replaces this rail
+   with a chapter landing list + a document switcher above the editor. */
 const CATEGORY_RAIL: (StudioCategory | "sep")[] = [
   "concept-map",
   "assessment-guide",
@@ -104,10 +108,6 @@ const CATEGORY_RAIL: (StudioCategory | "sep")[] = [
   "content",
   "slides",
   "practice",
-  "sep",
-  "assets",
-  "current",
-  "private",
 ];
 
 interface Chapter {
@@ -126,6 +126,12 @@ function viewForCategory(cat: StudioCategory | "course"): WorkspaceView {
   const collection = COLLECTIONS.find((c) => c === cat);
   if (collection) return { kind: "collection", collection, scope: COURSE_SCOPE };
   return { kind: "doc", doc: cat as ChapterDoc };
+}
+
+/** True when the category is one of a chapter's five documents — i.e. not the
+ *  course view and not a course-wide collection. Only these show the rail. */
+function isChapterDocCategory(cat: StudioCategory | "course"): boolean {
+  return cat !== "course" && !COLLECTIONS.some((c) => c === cat);
 }
 
 export function StudioShell({
@@ -171,14 +177,14 @@ export function StudioShell({
   // surface — including the hosted in-file editors, which (unlike the block
   // editor) have no guard of their own.
   useUnsavedGuard(dirty);
-  // Left panes are collapsible to give the editor the full width. The chapter
-  // list starts collapsed; the category rail starts open — except at course
-  // level, where categories don't apply (only the course description/concept
-  // map), so the rail auto-collapses. Below md the panes render as overlay
-  // drawers, so on small screens they start closed, only one opens at a
-  // time, and picking an item closes them.
-  const [showChapters, setShowChapters] = useState(false);
-  const [showRail, setShowRail] = useState(category !== "course");
+  // The left nav (Course · Chapters · Collections) is the primary navigation,
+  // so it starts OPEN and collapses from its own top-right corner to give a
+  // hosted editor the full width. The document rail applies only to a chapter
+  // document — not to the course view, and not to a collection (a course-wide
+  // library). Below md both render as overlay drawers: they start closed, only
+  // one opens at a time, and picking an item closes them.
+  const [showChapters, setShowChapters] = useState(true);
+  const [showRail, setShowRail] = useState(isChapterDocCategory(category));
   // Optimistic selection. Picking a chapter/category navigates via the URL —
   // a server round-trip that is not instant. Mirror the target here so the
   // header toggle, the active highlights, and the rail all flip in the SAME
@@ -197,9 +203,19 @@ export function StudioShell({
   const navigating = optCat !== category || optSlug !== activeSlug;
   const isNarrow = () =>
     typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches;
+  // Below md both panes are overlay drawers, so neither may start open.
   useEffect(() => {
-    if (isNarrow()) setShowRail(false);
+    if (isNarrow()) {
+      setShowChapters(false);
+      setShowRail(false);
+    }
   }, []);
+  // The rail belongs to a chapter document; the course view and the course-wide
+  // collections have no per-chapter documents to switch between.
+  useEffect(() => {
+    if (!isChapterDocCategory(category)) setShowRail(false);
+    else if (!isNarrow()) setShowRail(true);
+  }, [category]);
   const toggleChapters = () =>
     setShowChapters((v) => {
       if (!v && isNarrow()) setShowRail(false);
@@ -235,33 +251,38 @@ export function StudioShell({
     <main className="flex h-[calc(100vh-3.5rem)] w-full flex-col gap-3 px-3 py-3">
       <header className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
+          {/* The nav collapses from its OWN top-right corner; this is the way
+              back. When the nav is open it is hidden above md (nothing to do)
+              but stays below md, where the nav is an overlay drawer and this is
+              its opener. */}
           <button
             onClick={toggleChapters}
-            className={`btn btn-ghost btn-sm ${showChapters ? "text-ink" : "text-muted"}`}
-            title={`${showChapters ? "Hide" : "Show"} ${forms.plural}`}
-            aria-pressed={showChapters}
+            className={`btn btn-ghost btn-sm ${showChapters ? "text-ink md:hidden" : "text-muted"}`}
+            title={showChapters ? "Hide navigation" : "Show navigation"}
+            aria-expanded={showChapters}
+            aria-label={showChapters ? "Hide navigation" : "Show navigation"}
           >
-            ☰ {forms.Plural}
+            ☰
           </button>
           <button
             onClick={toggleRail}
-            disabled={optCat === "course"}
+            disabled={!isChapterDocCategory(optCat)}
             className={`btn btn-ghost btn-sm ${
-              optCat === "course"
+              !isChapterDocCategory(optCat)
                 ? "cursor-not-allowed text-faint opacity-50"
                 : showRail
                   ? "text-ink"
                   : "text-muted"
             }`}
             title={
-              optCat === "course"
-                ? `Categories apply to a ${forms.singular} — pick one first`
-                : `${showRail ? "Hide" : "Show"} categories`
+              !isChapterDocCategory(optCat)
+                ? `Documents belong to a ${forms.singular} — pick one first`
+                : `${showRail ? "Hide" : "Show"} documents`
             }
-            aria-pressed={optCat === "course" ? undefined : showRail}
-            aria-disabled={optCat === "course"}
+            aria-pressed={isChapterDocCategory(optCat) ? showRail : undefined}
+            aria-disabled={!isChapterDocCategory(optCat)}
           >
-            ▤ Categories
+            ▤ Documents
           </button>
           <Link href="/workspace" className="ml-1 text-sm text-muted hover:text-ink">
             ← Workspace
@@ -305,13 +326,28 @@ export function StudioShell({
             className="absolute inset-0 z-10 bg-black/40 md:hidden"
           />
         )}
-        {/* Pane 1 — chapters (collapsible) */}
+        {/* Pane 1 — the left nav: Course · Chapters · Collections. Three groups
+            for the three kinds of thing. Collections are course-wide libraries,
+            so they sit here rather than under a chapter (P2.4). */}
         {showChapters && (
-        <nav className="panel min-h-0 w-44 shrink-0 overflow-y-auto p-2 max-md:absolute max-md:inset-y-0 max-md:left-0 max-md:z-20 max-md:w-64 max-md:shadow-xl">
+        <nav className="panel min-h-0 w-48 shrink-0 overflow-y-auto p-2 max-md:absolute max-md:inset-y-0 max-md:left-0 max-md:z-20 max-md:w-64 max-md:shadow-xl">
+          {/* The nav's own collapse control, in its top-right corner. */}
+          <div className="mb-1 flex justify-end">
+            <button
+              onClick={() => setShowChapters(false)}
+              className="rounded-md p-1 text-muted transition-colors hover:bg-elevated hover:text-ink"
+              title="Hide navigation"
+              aria-label="Hide navigation"
+            >
+              <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden>
+                <path d="M15 5v14M4 12h7m0 0-2.5-2.5M11 12l-2.5 2.5" />
+              </svg>
+            </button>
+          </div>
+
           <Link
             href={href({ chapter: null, cat: "course" })}
             onClick={() => {
-              // Course level has no per-chapter categories — collapse the rail.
               setOptSlug(null);
               setOptCat("course");
               setShowRail(false);
@@ -323,8 +359,9 @@ export function StudioShell({
           >
             ⊙ Course
           </Link>
-          <div className="mt-2 flex items-center justify-between px-2">
-            <span className="text-xs text-faint">{forms.Plural}</span>
+
+          <div className="mt-3 flex items-center justify-between px-2">
+            <span className="text-xs uppercase tracking-wide text-faint">{forms.Plural}</span>
             <button
               onClick={() => setManageOpen(true)}
               className="rounded-md p-1 text-[var(--accent)] transition-colors hover:bg-elevated hover:text-[var(--accent-hover)]"
@@ -350,22 +387,42 @@ export function StudioShell({
           {chapters.map((c, i) => (
             <Link
               key={c.slug}
-              href={href({ chapter: c.slug, cat: optCat === "course" ? "content" : optCat })}
+              href={href({ chapter: c.slug, cat: isChapterDocCategory(optCat) ? optCat : DEFAULT_DOC })}
               onClick={() => {
-                // A chapter has categories — bring the rail back (drawers
-                // still close on narrow screens).
                 setOptSlug(c.slug);
-                setOptCat((prev) => (prev === "course" ? "content" : prev));
+                setOptCat((prev) => (isChapterDocCategory(prev) ? prev : DEFAULT_DOC));
                 if (!isNarrow()) setShowRail(true);
                 closeDrawers();
               }}
               className={`mt-0.5 block truncate rounded-md px-2 py-1.5 text-sm ${
-                c.slug === optSlug && optCat !== "course"
+                c.slug === optSlug && isChapterDocCategory(optCat)
                   ? "bg-elevated text-ink"
                   : "text-muted hover:bg-elevated hover:text-ink"
               }`}
             >
               {i + 1}. {c.title}
+            </Link>
+          ))}
+
+          <div className="mt-3 px-2">
+            <span className="text-xs uppercase tracking-wide text-faint">Collections</span>
+          </div>
+          {COLLECTIONS.map((c) => (
+            <Link
+              key={c}
+              href={href({ cat: c })}
+              onClick={() => {
+                setOptCat(c);
+                setShowRail(false);
+                closeDrawers();
+              }}
+              className={`mt-0.5 block truncate rounded-md px-2 py-1.5 text-sm ${
+                optCat === c
+                  ? "bg-accent text-[var(--accent-ink)]"
+                  : "text-muted hover:bg-elevated hover:text-ink"
+              }`}
+            >
+              {COLLECTION_LABELS[c]}
             </Link>
           ))}
         </nav>
@@ -375,7 +432,7 @@ export function StudioShell({
         {showRail && (
         <nav className="panel min-h-0 w-52 shrink-0 overflow-y-auto p-2 max-md:absolute max-md:inset-y-0 max-md:left-0 max-md:z-20 max-md:w-64 max-md:shadow-xl">
           <div className="px-2 pb-1 text-xs text-faint">
-            {optCat === "course" ? "Course" : optSlug ? `${forms.Singular}` : ""}
+            {optSlug ? forms.Singular : ""}
           </div>
           {CATEGORY_RAIL.map((cat, i) =>
             cat === "sep" ? (
