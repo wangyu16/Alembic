@@ -1099,6 +1099,24 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
     "accepts v2-only public spaces" tests were verified to FAIL against the old
     v1-only code** before being accepted — a test that passes either way proves
     nothing. github-bridge 30→37 tests, package-ops 199→201.
+  - **P2.3** — nav model + URL scheme. New `edit/nav.ts` (pure): `ChapterDoc` vs
+    `Collection` types, spine/published split, labels, and an explicit
+    `DOC_OPERATION_CATEGORY` `Record` — a missing entry is now a compile error,
+    because a `doc` id that stopped mapping to a real `OperationCategory` would
+    let the `orz-host-ai` handshake succeed while the in-file AI silently
+    offered nothing. URLs are now `?chapter=&doc=` / `?view=course` /
+    `?collection=&scope=`, with the legacy `?cat=` mapped forward for old
+    bookmarks. The render switch still keys off the flat category (derived), so
+    this subtask changed no UI. **Fixed a pre-existing bug found on the way**:
+    `/workspace/<id>` redirected to `/edit` *dropping the query string*, so
+    `chapter-nav.tsx`'s `router.push('/workspace/<id>?chapter=<slug>')` silently
+    lost the chapter selection; the redirect now forwards the query and those
+    call sites build proper `/edit` hrefs. Verified the pure nav logic by
+    exercising all 22 cases (every legacy `cat=` mapping, garbage params
+    falling back rather than 404ing, build→parse round-trips). The redirect's
+    query-forwarding could **not** be exercised without a session — middleware
+    intercepts unauthenticated `/workspace/*` — so it rests on typecheck/build
+    until P2.6's browser pass.
   - **P2.2** — per-tab session memo of generated editor HTML
     (`apps/web/src/lib/editor-html-cache.ts`). No cache existed: every mount
     was a worker round-trip returning a ~0.84–1 MB inline bundle. Keyed on

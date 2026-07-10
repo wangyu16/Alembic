@@ -9,36 +9,38 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
 import { clientForUser, githubConfig, installUrl } from "@/lib/github";
 import { StudioShell, type StudioCategory } from "./studio-shell";
+import { parseWorkspaceView } from "./nav";
 import { syncPackageRegistry } from "@/lib/register";
 import { SupabaseDocumentRegistryStore } from "@/lib/document-registry-store";
 
 export const dynamic = "force-dynamic";
 
-const CATEGORIES: StudioCategory[] = [
-  "concept-map",
-  "content",
-  "slides",
-  "assessment-guide",
-  "practice",
-  "assets",
-  "current",
-  "private",
-];
-
 /**
- * The workspace editor (2026-07 framework): three panes — chapters |
- * category rail (document-model.md order) | editor. The classic editor is
- * retired; /workspace/[packageId] redirects here.
+ * The workspace editor (2026-07 framework). Navigation is modelled in
+ * `./nav.ts`: a course view, per-chapter documents (`?chapter=&doc=`), and
+ * course-wide collections (`?collection=&scope=`). The legacy single `?cat=`
+ * param is mapped forward there for old links. The classic editor is retired;
+ * /workspace/[packageId] redirects here, preserving its query.
  */
 export default async function EditShellPage({
   params,
   searchParams,
 }: {
   params: Promise<{ packageId: string }>;
-  searchParams: Promise<{ chapter?: string; cat?: string; publish?: string }>;
+  searchParams: Promise<{
+    chapter?: string;
+    doc?: string;
+    view?: string;
+    collection?: string;
+    scope?: string;
+    /** Legacy; mapped forward by `parseWorkspaceView`. */
+    cat?: string;
+    publish?: string;
+  }>;
 }) {
   const { packageId } = await params;
-  const { chapter, cat, publish: publishParam } = await searchParams;
+  const sp = await searchParams;
+  const { chapter, publish: publishParam } = sp;
   const supabase = await createSupabaseServerClient();
   const {
     data: { user },
@@ -55,10 +57,15 @@ export default async function EditShellPage({
 
   const chapters = await listChapters(store, packageId);
   const activeChapter = chapters.find((c) => c.slug === chapter) ?? chapters[0] ?? null;
+  const view = parseWorkspaceView(sp);
+  // The render switch still keys off the flat category (P2.4/P2.5 rebuild it).
+  // Deriving it here keeps this subtask to types + URLs, with no UI change.
   const category: StudioCategory | "course" =
-    cat === "course"
+    view.kind === "course"
       ? "course"
-      : (CATEGORIES.find((c) => c === cat) ?? "content");
+      : view.kind === "doc"
+        ? view.doc
+        : view.collection;
 
   // Load only what the active pane needs.
   const doc =

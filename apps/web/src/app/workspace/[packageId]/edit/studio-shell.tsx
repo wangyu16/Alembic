@@ -36,6 +36,13 @@ import {
 } from "../hosted-actions";
 import { useUnsavedGuard } from "@/lib/use-unsaved-guard";
 import {
+  buildWorkspaceHref,
+  COLLECTIONS,
+  COURSE_SCOPE,
+  type ChapterDoc,
+  type WorkspaceView,
+} from "./nav";
+import {
   peekEditorHtml,
   touchEditorHtml,
   storeEditorHtml,
@@ -106,6 +113,19 @@ const CATEGORY_RAIL: (StudioCategory | "sep")[] = [
 interface Chapter {
   slug: string;
   title: string;
+}
+
+/**
+ * Bridge from the shell's flat category to the view model (P2.3). The shell's
+ * panes still switch on `StudioCategory`; P2.4/P2.5 replace that with the view
+ * model directly and this function disappears. Keeping it here means the URL
+ * scheme changed in one place, with no UI churn.
+ */
+function viewForCategory(cat: StudioCategory | "course"): WorkspaceView {
+  if (cat === "course") return { kind: "course" };
+  const collection = COLLECTIONS.find((c) => c === cat);
+  if (collection) return { kind: "collection", collection, scope: COURSE_SCOPE };
+  return { kind: "doc", doc: cat as ChapterDoc };
 }
 
 export function StudioShell({
@@ -197,13 +217,18 @@ export function StudioShell({
     }
   };
 
+  /**
+   * Build a link for a destination, carrying the chapter along. `cat` is the
+   * shell's still-flat notion of "where we are" (P2.4/P2.5 split the UI); it is
+   * translated into the real view model here, so every link the shell emits
+   * already speaks the new URL scheme (`?doc=` / `?collection=` / `?view=`).
+   * Every navigation affordance stays an `<a href>` — that is what arms the
+   * unsaved-changes guard for the hosted editors (see use-unsaved-guard.ts).
+   */
   const href = (next: { chapter?: string | null; cat?: string }) => {
     const c = next.chapter !== undefined ? next.chapter : optSlug;
-    const cat = next.cat ?? optCat;
-    const qs = new URLSearchParams();
-    if (c) qs.set("chapter", c);
-    qs.set("cat", cat);
-    return `/workspace/${packageId}/edit?${qs.toString()}`;
+    const cat = (next.cat ?? optCat) as StudioCategory | "course";
+    return buildWorkspaceHref(packageId, viewForCategory(cat), c ?? null);
   };
 
   return (
@@ -761,7 +786,14 @@ interface EditBlock extends StudyGuideBlock {
 
 /* Selection-capable ops advertised to the hosted study-guide editor's in-file
  * assistant over the `orz-host-ai@1` bridge (once the upstream `.md.html` editor
- * speaks it). Same registry ops as the plain-text selection AI. */
+ * speaks it). Same registry ops as the plain-text selection AI.
+ *
+ * NOTE: the practice-questions editor reuses this same set rather than
+ * `operationsForCategory("practice")`. That is deliberate — practice is the
+ * same `.md.html` markdown framework as the study guide, and the registry has
+ * no practice-specific ops, so keying it off `content` keeps `enrich-formatting`
+ * available there. `DOC_OPERATION_CATEGORY` (nav.ts) is the general doc→category
+ * map; this is the one place that intentionally departs from it. */
 const HOSTED_STUDY_GUIDE_AI_OPS = operationsForCategory("content")
   .filter((o) => o.selection && o.surface === "assistant")
   .map((o) => ({ id: o.id, title: o.title, selection: true }));
