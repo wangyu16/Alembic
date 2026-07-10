@@ -17,7 +17,27 @@ import { useEffect } from "react";
 export const UNSAVED_MESSAGE =
   "You have unsaved changes. Leave without saving? Your edits since the last save will be lost.";
 
-/** Imperative guard for actions that aren't link clicks (open a file, new note). */
+/**
+ * Imperative unsaved-changes gate for controls that are NOT `<a>` link clicks —
+ * e.g. a document/chapter switcher rendered as a `<button>` or `<select>` that
+ * calls `router.push`, "open another file", "new note", etc.
+ *
+ * Why this exists (do NOT delete as unused before the nav redesign wires it up):
+ * `useUnsavedGuard` cannot cover these. Its two mechanisms both miss non-anchor
+ * client-side navigation —
+ *   1. `beforeunload` does not fire on client-side Next.js router navigation, and
+ *   2. the capture-phase click interceptor early-returns unless the click lands
+ *      inside an `<a>` (`target.closest("a")`).
+ * Hosted self-contained editors (the sandboxed `.md.html`/`.slides.html`
+ * iframes) have no unsaved guard of their own, there is no save-on-unmount, and
+ * the host cannot command a save (saves are file-initiated). So any non-anchor
+ * control that triggers an iframe unmount runs `destroy()` and loses the
+ * educator's edits silently. Such controls MUST call this before navigating.
+ *
+ * Returns `true` when it is safe to proceed (not dirty, or the user confirmed
+ * discarding); `false` when the user cancelled and navigation must be aborted.
+ * Uses the same confirmation copy as the anchor interceptor for consistency.
+ */
 export function confirmDiscard(dirty: boolean): boolean {
   if (!dirty) return true;
   return typeof window === "undefined" ? true : window.confirm(UNSAVED_MESSAGE);
