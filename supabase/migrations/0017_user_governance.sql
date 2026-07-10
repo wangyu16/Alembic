@@ -52,7 +52,11 @@ as $$
 $$;
 
 revoke all on function public.is_active_user() from public;
-grant execute on function public.is_active_user() to authenticated;
+-- `anon` too: a policy expression that calls a function the current role cannot
+-- EXECUTE raises "permission denied for function" instead of failing the policy
+-- cleanly. For an anonymous caller auth.uid() is null, so this returns false and
+-- the write is rejected on its merits.
+grant execute on function public.is_active_user() to authenticated, anon;
 
 comment on function public.is_active_user() is
   'True when the caller exists and is not banned. Used in write RLS policies; always call as (select public.is_active_user()) so Postgres hoists it to an InitPlan instead of re-evaluating per row.';
