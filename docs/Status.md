@@ -39,7 +39,14 @@ same commit as the work it tracks. Statuses: ✅ done · 🔄 partially shipped 
 > also why no `requireActiveUser()` consolidation is needed. AI is off for every
 > account (`ai_status='none'`) until approved; `wangyu16` is bootstrapped as
 > admin + approved. Verify with `supabase/tests/0018_verify_ban_backstop.sql`.
-> **Not yet built:** the admin users page, Request-access, `/suspended` (UG4–UG6).
+>
+> **Shipped (UG0–UG6, 2026-07-10):** migrations `0016`–`0018` applied;
+> `/admin/users` (approve/withdraw the assistant, suspend/restore, audit trail in
+> `admin_audit`, unpublished-course count shown before a suspension is
+> confirmed); `requestAiAccessAction`; `/suspended`; the middleware ban check.
+> An admin cannot suspend themselves or another admin. **Remaining operator
+> action:** run `0018_verify_ban_backstop.sql` against a non-admin account —
+> block `2b` must fail with *new row violates row-level security*.
 
 **Built framework — Phases 0–7 cores complete.** Phase 7 (research ops & study readiness) core is built — M34 de-identified export, M35 admin/ops module, M36 usage dashboard + centrally-managed credits + FERPA/IRB review (M37 institution-managed mode ⏸ deferred post-pilot). Phase 6 (portal & discovery: LRMI, **cross-owner adapt + suggest-back**, searchable portal, governance) complete; Phases 2–5 cores complete. v0.1 is deployed (not yet *shipped* — 2 of 6 release criteria pending the M8.3 pilot). **Only Phase 8 (hardening & sustainability) remains** — or the pilot-readiness pass (the **scaffolding is now done**: [PilotReadiness.md](PilotReadiness.md) runbook, refreshed [Deployment.md](Deployment.md), worked [DemoContent.md](DemoContent.md), M8.1 ✅). Remaining work is operator/deployed: the **live passes** (need Portkey on Vercel; `SUPABASE_SECRET_KEY` + `is_admin` for `/admin`) — the AI/reconcile/adaptation flows (M18, M9.6, M20, M23, M26–M28, M31) + a structured-data-tester check for M30 — then the M8.3 pilot itself. Heavier deferrals (worker tier: PDF/foreign-import/agent-exec/one-click remediation; studio editing/local projects; M29 Zenodo DOI; M37) remain tracked below. See [LocalSetup.md](LocalSetup.md) + [GitHubAppSetup.md](GitHubAppSetup.md).
 
