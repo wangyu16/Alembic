@@ -74,6 +74,13 @@ export interface ChapterHtmlResult {
   editable?: boolean;
   /** The self-contained `.md.html` to host (present only when editable). */
   html?: string;
+  /**
+   * The theme resolved SERVER-side and baked into `html` (undefined → the
+   * framework's built-in default). The client can't derive this itself, so it
+   * is returned for the session HTML memo to key/invalidate honestly — see
+   * `@/lib/editor-html-cache` and docs/specs/workspace-collections.md §2a.
+   */
+  theme?: string;
   error?: string;
 }
 
@@ -103,7 +110,7 @@ export async function generateChapterHtmlAction(
     const space = path.split("/")[0];
     const theme = record?.manifest.themes?.[space] ?? record?.manifest.theme;
     const html = await generateEditableFile({ kind: "md", markdown, title, theme });
-    return { ok: true, editable: true, html };
+    return { ok: true, editable: true, html, theme };
   } catch {
     // No reachable worker / generation error — degrade to the block editor.
     return { ok: true, editable: false };
@@ -143,7 +150,7 @@ export async function generateSlidesHtmlAction(
     const theme = record?.manifest.themes?.["slides"];
     const source = theme ? withDeckTheme(seeded, theme) : seeded;
     const html = await generateEditableFile({ kind: "slides", markdown: source, title, theme });
-    return { ok: true, editable: true, html };
+    return { ok: true, editable: true, html, theme };
   } catch {
     return { ok: true, editable: false };
   }

@@ -1030,6 +1030,72 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
   *published* `orz-paged`/`orz-paged-browser@0.4.0` pair is in sync with
   each other and CDN-verified (200, correct file), matching
   `packages/generators`' `^0.4.0` pin — no action needed there.
+- **Workspace collections + nav restructure — design approved, foundations
+  landing (2026-07-09).** Full plan in
+  [workspace-collections.md](specs/workspace-collections.md). Collections
+  (Assets/Current/Private) become course-wide destinations with a scope
+  filter (course-wide = space root; chapter-scoped = a reserved
+  `chapters/<slug>/` subtree); the per-chapter category rail is replaced by a
+  document switcher above a full-width editor. Design validated against
+  clickable mockups before any code.
+  **Two investigations corrected the plan before it was written:**
+  - Nesting `chapters/<slug>/` inside a space needs **no contract change** —
+    both v1 `layers.ts` and v2 `spaces.ts` classify by *first path segment
+    only*. Assets/Private are unblocked today. But `current/` **is** blocked:
+    it's a v2-only space, and `github-bridge`'s `validateCommitPlan` plus most
+    `package-ops` writers still use the v1-only `assertPathAllowedInRepo`.
+  - The **orz-family coupling is safe**: nothing in the sibling files reads
+    Alembic's URL, DOM, or pane structure; generation receives only
+    `{markdown,title,theme,delivery}`; the handshake is per-mount. The
+    boundary is five files, none of which the restructure touches. Recorded
+    hazards: `allow-same-origin` is load-bearing (orz-mdhtml renders its
+    preview into a *nested* iframe); the CDN `-browser` lockstep trap affects
+    only the published site; `orz-paged` is registered but mounted nowhere.
+  **Found a data-loss blocker the approved design would have shipped:**
+  `useUnsavedGuard` is the ONLY protection for the hosted iframes (they have
+  no guard of their own, no save-on-unmount, and the host cannot command a
+  save). It guards via `beforeunload` — which **does not fire on client-side
+  Next navigation** — and a click interceptor matching **only `<a>` elements**.
+  A `<select>`/`<button>` document switcher bypasses both: the iframe
+  unmounts, `destroy()` runs, edits vanish silently. The switcher must be
+  anchors *and* call `confirmDiscard`. **Still open** — lands in P2.5.
+  **Shipped so far** (each independently verifiable, separately revertible):
+  - **P1.1** — a test pinning the property `assertPathAllowedInEitherContract`'s
+    safety rests on but never stated: *no directory is public under one
+    contract and private under the other*. Verified true today
+    (`private-instructor` v1-only private, `private` v2-only private,
+    `materials` v1-only public, `assets`/`current` v2-only public, the seven
+    shared names public in both). Walks the layer/space keys through
+    `LAYER_DIR`/`SPACE_DIR` so it pins real directory *strings*, and includes
+    an anti-vacuous guard so a refactor that made the contracts disjoint can't
+    let it pass trivially. Prerequisite for P1.2.
+  - **P0.1** — `packages/package-contract/src/scope.ts`: `scopeForPath`,
+    `chapterScopedPath`, `CHAPTER_SCOPE_DIR`. Pure, 21 tests. Load-bearing
+    invariant tested: a `chapters/<slug>/` subtree whose slug is not a live
+    chapter resolves to **course** scope, never a phantom chapter.
+  - **P0.2** — `packages/package-ops/src/collections.ts`: `listCollection`
+    (scope-annotated, deterministic order) + `collectionItemPath`
+    (write-target builder). Fixed a defect found in review: the course branch
+    could emit a space-escaping path (`../private-instructor/…`) while the
+    chapter branch correctly threw — not exploitable (writers reject `..`) but
+    a write-target builder must never hand one back. Both branches now fail
+    closed, with adversarial tests.
+  - **P2.1** — doc-only. `confirmDiscard` already existed and was exported (my
+    premise was wrong); the blocker is **not** fixed by it. Documented why it
+    exists so it isn't deleted as dead code before P2.5 wires it.
+  - **P2.2** — per-tab session memo of generated editor HTML
+    (`apps/web/src/lib/editor-html-cache.ts`). No cache existed: every mount
+    was a worker round-trip returning a ~0.84–1 MB inline bundle. Keyed on
+    `(packageId, path, title)`; the generate action now **returns the
+    server-resolved theme** so the entry can be invalidated honestly rather
+    than blindly. A save overwrites the entry with the file's own `rendered`
+    bytes (kept client-side; still dropped server-ward), so switching back
+    mounts the **saved** document, never a stale pre-save one; a theme change
+    clears the memo. Bounded LRU (6 entries); never persisted (a ~1 MB blob
+    per document would blow storage quota and outlive deploys).
+  **Next:** P1.2 (dual-mode validators — touches two-repo-invariant
+  enforcement, runs alone and supervised), then P2.3–P2.6 (nav), P3 (Assets),
+  P4 (Private), P5 (Current, needs P1.2). P3/P4 do not depend on P1.2.
 - **Post-session coherence audit (2026-07-09, owner request).** Fanned out
   6 parallel read-only subagents (dangling references from today's renames;
   Status.md accuracy vs code; goal/Roadmap/specs coherence; the

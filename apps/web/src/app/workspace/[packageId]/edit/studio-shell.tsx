@@ -35,6 +35,12 @@ import {
   hostSaveSlidesAction,
 } from "../hosted-actions";
 import { useUnsavedGuard } from "@/lib/use-unsaved-guard";
+import {
+  peekEditorHtml,
+  touchEditorHtml,
+  storeEditorHtml,
+  recordEditorSave,
+} from "@/lib/editor-html-cache";
 import type { EditorHandle } from "@alembic/editor-kit";
 import { ModuleMount } from "@/lib/editor-modules/module-mount";
 import {
@@ -815,15 +821,34 @@ function HostedStudyGuideEditor(props: {
   const { packageId, path, chapterTitle, onDirty, emptyTemplate } = props;
   const [state, setState] = useState<
     { s: "loading" } | { s: "hosted"; html: string } | { s: "fallback" }
-  >({ s: "loading" });
+  >(() => {
+    // Session memo: a document we've already generated this session mounts
+    // instantly — no "Preparing…" flash, no worker round-trip. Pure peek (no
+    // MRU reorder) so this initializer stays render-safe.
+    const cached = peekEditorHtml(packageId, path, chapterTitle);
+    return cached ? { s: "hosted", html: cached } : { s: "loading" };
+  });
 
   useEffect(() => {
     let cancelled = false;
+    const cached = peekEditorHtml(packageId, path, chapterTitle);
+    if (cached) {
+      touchEditorHtml(packageId, path, chapterTitle);
+      setState({ s: "hosted", html: cached });
+      return () => {
+        cancelled = true;
+      };
+    }
     setState({ s: "loading" });
     generateChapterHtmlAction(packageId, path, chapterTitle, emptyTemplate)
       .then((r) => {
         if (cancelled) return;
-        setState(r.ok && r.editable && r.html ? { s: "hosted", html: r.html } : { s: "fallback" });
+        if (r.ok && r.editable && r.html) {
+          storeEditorHtml(packageId, path, chapterTitle, r.html, r.theme);
+          setState({ s: "hosted", html: r.html });
+        } else {
+          setState({ s: "fallback" });
+        }
       })
       .catch(() => !cancelled && setState({ s: "fallback" }));
     return () => {
@@ -853,13 +878,26 @@ function HostedStudyGuideEditor(props: {
         source={state.html}
         onDirty={onDirty}
         hostSave={async (payload) => {
-          // Drop `rendered` — never persisted (the surface is always
+          // Drop `rendered` SERVER-ward — never persisted (the surface is always
           // regenerated server-side from source), and it's the bulk of the
           // payload (orz-mdhtml's inline bundle alone is ~0.84 MB).
           const r = await hostSaveStudyGuideAction(packageId, path, {
             source: payload.source,
             theme: payload.theme,
           });
+          // …but keep `rendered` CLIENT-side: it's the file's own serialization
+          // of the just-saved state, so caching it makes switching away and back
+          // mount the SAVED document (not a stale pre-save one). Also invalidates
+          // the memo if this save changed the theme.
+          if (r.ok) {
+            recordEditorSave({
+              packageId,
+              path,
+              title: chapterTitle,
+              rendered: payload.rendered,
+              theme: payload.theme,
+            });
+          }
           return { ok: r.ok, error: r.error };
         }}
         aiOperations={HOSTED_STUDY_GUIDE_AI_OPS}
@@ -891,15 +929,33 @@ function HostedSlidesEditor(props: {
   const { packageId, path, chapterTitle, onDirty } = props;
   const [state, setState] = useState<
     { s: "loading" } | { s: "hosted"; html: string } | { s: "unavailable" }
-  >({ s: "loading" });
+  >(() => {
+    // Session memo (same rationale as the study-guide editor): a deck already
+    // generated this session mounts instantly, no worker round-trip.
+    const cached = peekEditorHtml(packageId, path, chapterTitle);
+    return cached ? { s: "hosted", html: cached } : { s: "loading" };
+  });
 
   useEffect(() => {
     let cancelled = false;
+    const cached = peekEditorHtml(packageId, path, chapterTitle);
+    if (cached) {
+      touchEditorHtml(packageId, path, chapterTitle);
+      setState({ s: "hosted", html: cached });
+      return () => {
+        cancelled = true;
+      };
+    }
     setState({ s: "loading" });
     generateSlidesHtmlAction(packageId, path, chapterTitle)
       .then((r) => {
         if (cancelled) return;
-        setState(r.ok && r.editable && r.html ? { s: "hosted", html: r.html } : { s: "unavailable" });
+        if (r.ok && r.editable && r.html) {
+          storeEditorHtml(packageId, path, chapterTitle, r.html, r.theme);
+          setState({ s: "hosted", html: r.html });
+        } else {
+          setState({ s: "unavailable" });
+        }
       })
       .catch(() => !cancelled && setState({ s: "unavailable" }));
     return () => {
@@ -932,15 +988,28 @@ function HostedSlidesEditor(props: {
         source={state.html}
         onDirty={onDirty}
         hostSave={async (payload) => {
-          // Drop `rendered` — orz-slides' inline bundle alone exceeds 1 MB, and
-          // it's never persisted (the surface is always regenerated server-side
-          // from source). Keep `theme` as a fallback: the action prefers reading
-          // it straight out of the deck's own config (self-describing), but
-          // still accepts this in case the deck predates that write-back.
+          // Drop `rendered` SERVER-ward — orz-slides' inline bundle alone exceeds
+          // 1 MB, and it's never persisted (the surface is always regenerated
+          // server-side from source). Keep `theme` as a fallback: the action
+          // prefers reading it straight out of the deck's own config
+          // (self-describing), but still accepts this in case the deck predates
+          // that write-back.
           const r = await hostSaveSlidesAction(packageId, path, {
             source: payload.source,
             theme: payload.theme,
           });
+          // Keep `rendered` CLIENT-side as the fresh cache entry (the deck's own
+          // serialization of the just-saved state), so switching back is instant
+          // and shows the SAVED deck. Invalidates the memo on a theme change.
+          if (r.ok) {
+            recordEditorSave({
+              packageId,
+              path,
+              title: chapterTitle,
+              rendered: payload.rendered,
+              theme: payload.theme,
+            });
+          }
           return { ok: r.ok, error: r.error };
         }}
         aiOperations={HOSTED_SLIDES_AI_OPS}
