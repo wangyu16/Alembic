@@ -1313,6 +1313,21 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
     sandbox allow-scripts`, `nosniff`) so a shared permalink can't run script
     against the viewer's session. *(Full user-content isolation — a separate
     cookieless origin — remains a follow-up; sandbox is the interim.)*
+  - 🔄 **Offline document round-trip (U1).** Download a course document, edit it
+    offline, upload it back to **replace** the current version — for all course
+    documents. `replaceCollectionFileAction` writes the edited bytes at the
+    document's existing path, so the registry's location match keeps the same
+    docId → the **permalink survives the round-trip**. Enforces: file-must-exist
+    (replaces, never creates), the two-repo invariant (repo from space), block-ID
+    integrity (rule 7, for block-bearing docs), the storage/size verdict, and
+    binary-as-blob (fix #1). Thin client: a shared **`ReplaceFileButton`** on the
+    Assets / Private / Current file rows. Study-guide deliverables already
+    round-trip via the section-merge Upload (block-ID reconcile) + "Download
+    .md.html". **Next (U2):** embed a stable `uid` in each carrier (orz-family +
+    registry) so identity travels *with the file* — a re-upload keeps its docId
+    even when renamed/moved, and future whole-package / direct-GitHub origins
+    inherit the same identity. **U3:** relative→permalink rewrite on insert. Raw
+    binaries (no meta island) stay path-based.
 - **Post-session coherence audit (2026-07-09, owner request).** Fanned out
   6 parallel read-only subagents (dangling references from today's renames;
   Status.md accuracy vs code; goal/Roadmap/specs coherence; the

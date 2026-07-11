@@ -53,6 +53,7 @@ import { requestAiAccessAction } from "../../ai-access-actions";
 import { resolveIncludeAction } from "../include-actions";
 import { AssetsCollectionView, type AssetMeta } from "./assets-collection-view";
 import { CurrentCollectionView } from "./current-collection-view";
+import { ReplaceFileButton } from "./replace-file-button";
 import {
   generateChapterHtmlAction,
   hostSaveStudyGuideAction,
@@ -2669,6 +2670,15 @@ function PrivateCollectionView({
                 )
               );
             })()}
+            <ReplaceFileButton
+              packageId={packageId}
+              space={PRIVATE_SPACE}
+              path={leaf.path}
+              name={leaf.name}
+              disabled={pending}
+              onDone={refresh}
+              onError={setError}
+            />
             <button className="btn btn-ghost btn-xs" disabled={pending} onClick={() => onRename(leaf)}>
               Rename
             </button>

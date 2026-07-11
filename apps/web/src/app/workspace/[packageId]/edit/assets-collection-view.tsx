@@ -32,6 +32,7 @@ import {
 import { setAssetMetadataAction } from "../share-actions";
 import { adaptElementAction } from "../adapt-actions";
 import { CollectionEditorPane } from "./collection-editor-pane";
+import { ReplaceFileButton } from "./replace-file-button";
 
 /**
  * Assets collection (CF4; docs/specs/collections-framework.md §3, §4, §6).
@@ -310,6 +311,8 @@ export function AssetsCollectionView({
             onEdit={openEditor}
             onRefresh={refresh}
             onDirty={onDirty}
+            space={MATERIALS_SPACE}
+            onError={setError}
           />
         ))}
       </ul>
@@ -452,6 +455,8 @@ function FileRow({
   onEdit,
   onRefresh,
   onDirty,
+  space,
+  onError,
 }: {
   packageId: string;
   leaf: FileLeaf;
@@ -463,6 +468,8 @@ function FileRow({
   onEdit: (path: string, name: string, kind: EditorKind) => void;
   onRefresh: () => void;
   onDirty?: (d: boolean) => void;
+  space: string;
+  onError: (message: string) => void;
 }) {
   // `leaf.class` is authoritative; fall back to `classForPath` if a tree ever
   // omits it (it doesn't today) or the registry-projected meta disagrees.
@@ -535,6 +542,15 @@ function FileRow({
             Edit
           </button>
         )}
+        <ReplaceFileButton
+          packageId={packageId}
+          space={space}
+          path={leaf.path}
+          name={leaf.name}
+          disabled={pending}
+          onDone={onRefresh}
+          onError={onError}
+        />
         <button className="btn btn-ghost btn-xs" disabled={pending} onClick={onRename}>
           Rename
         </button>

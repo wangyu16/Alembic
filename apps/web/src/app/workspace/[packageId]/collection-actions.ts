@@ -6,9 +6,12 @@ import {
   classForPath,
   editorKindForPath,
   isSeededOnCreate,
+  parseStudyGuide,
+  validateBlockIds,
   type CollectionScope,
 } from "@alembic/package-contract";
 import { collectionItemPath } from "@alembic/package-ops";
+import { hasCarrier, extractSource } from "@alembic/carriers";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
 import { syncFilesToGitHub, syncPrivateFilesToGitHub } from "@/lib/github";
@@ -303,6 +306,127 @@ export async function saveCollectionFileAction(
   await syncPackageRegistry(supabase, packageId);
   revalidatePath(`/workspace/${packageId}`);
   return { ok: true };
+}
+
+// ── Upload-to-replace: offline document round-trip (U1) ──────────────────────
+// Download a course document, edit it offline, upload it back to REPLACE the
+// existing version. The replacement lands at the SAME path, so the registry's
+// location match preserves the docId → the permalink survives the round-trip.
+
+/**
+ * Reject a replacement whose block IDs are malformed or duplicated (rule 7:
+ * validate on every save path). No-op for content without block anchors
+ * (SVG objects, binaries, slide decks, plain prose) — only study-guide-style
+ * markdown carries `{{attrs[#blk-…]}}`. For carriers, the embedded source is
+ * checked, not the rendered envelope.
+ */
+function blockIdIssue(content: string): string | null {
+  let source = content;
+  if (hasCarrier(content)) {
+    try {
+      source = extractSource(content).source;
+    } catch {
+      return null; // no extractable island — nothing block-bearing to check
+    }
+  }
+  if (!source.includes("{{attrs[#blk-")) return null;
+  let blocks;
+  try {
+    blocks = parseStudyGuide(source).blocks;
+  } catch {
+    return null;
+  }
+  const result = validateBlockIds(blocks.map((b) => ({ id: b.id })));
+  if (result.ok) return null;
+  // Educator-facing: never surface the raw "block ID" internals.
+  return "This document's section anchors look corrupted, so it can't replace the current version. Re-download it and edit from that copy.";
+}
+
+export interface ReplaceCollectionFileInput {
+  /** The document's contract space dir (fixes the repo via the invariant). */
+  space: string;
+  /** The EXISTING repo-relative path to replace (must already exist). */
+  path: string;
+  /** New content — UTF-8 text, or base64 for a binary (caller encodes). */
+  content: string;
+  /** Whether `content` is a base64-encoded binary. */
+  isBinary: boolean;
+  /** Decoded byte length, for the size policy. */
+  sizeBytes: number;
+}
+
+export interface ReplaceCollectionFileResult {
+  ok: boolean;
+  /** The path that was replaced (unchanged — same location). */
+  path?: string;
+  warning?: string;
+  error?: string;
+}
+
+/**
+ * Replace an existing course document with an edited-offline version (U1). The
+ * new bytes land at the document's CURRENT path, so `syncPackageRegistry`'s
+ * location match keeps the same docId — the permalink is durable across the
+ * round-trip. Enforces: the file must already exist (this replaces, never
+ * creates); the two-repo invariant (repo derived from `space`, never trusted);
+ * block-ID integrity for block-bearing docs; and the storage/size verdict.
+ *
+ * Identity here is by PATH. U2 adds embedded-uid identity so a re-upload keeps
+ * the docId even if the file is renamed/moved offline — this path-based door is
+ * the same one that will read the uid once carriers carry it.
+ */
+export async function replaceCollectionFileAction(
+  packageId: string,
+  input: ReplaceCollectionFileInput,
+): Promise<ReplaceCollectionFileResult> {
+  const { supabase, user } = await requireUser();
+  const repo = repoOf(input.space);
+  const clean = input.path.replace(/^\/+/, "");
+
+  // Path must live under the declared space (boundary-safe for multi-segment
+  // spaces like `current/<term-id>`), and never traverse.
+  if (!underPrefix(clean, input.space) || clean.includes("..")) {
+    return { ok: false, error: "That document isn't in this collection." };
+  }
+
+  const store = new SupabaseSandboxStore(supabase);
+  const record = await store.getPackage(packageId);
+  if (!record) return { ok: false, error: "We couldn't find that course." };
+
+  // Replace — not create: the file must already exist at this path + repo.
+  const files = await store.listFiles(packageId);
+  const existing = files.find((f) => f.repo === repo && f.path === clean);
+  if (!existing) {
+    return { ok: false, error: "There's no document at that location to replace." };
+  }
+
+  const verdict = uploadVerdict({
+    isBinary: input.isBinary,
+    isPublished: record.storage === "github",
+    sizeBytes: input.sizeBytes,
+  });
+  if (!verdict.ok) return { ok: false, error: verdict.error };
+
+  // Block-ID integrity (rule 7) — only meaningful for text content.
+  if (!input.isBinary) {
+    const issue = blockIdIssue(input.content);
+    if (issue) return { ok: false, error: issue };
+  }
+
+  await store.putFiles(packageId, [{ repo, path: clean, content: input.content }]);
+  const commit = repo === "private" ? syncPrivateFilesToGitHub : syncFilesToGitHub;
+  await commit(
+    supabase,
+    store,
+    user.id,
+    packageId,
+    [{ path: clean, content: input.content, encoding: input.isBinary ? "base64" : "utf-8" }],
+    "Replace with edited version (Alembic)",
+  );
+  await syncPackageRegistry(supabase, packageId);
+
+  revalidatePath(`/workspace/${packageId}`);
+  return { ok: true, path: clean, warning: verdict.warning };
 }
 
 export interface CreateCollectionFileInput {

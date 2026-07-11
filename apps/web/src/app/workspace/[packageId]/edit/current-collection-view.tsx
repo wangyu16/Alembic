@@ -31,6 +31,7 @@ import {
   renameCollectionFileAction,
 } from "../collection-actions";
 import { CollectionEditorPane } from "./collection-editor-pane";
+import { ReplaceFileButton } from "./replace-file-button";
 import {
   startTermAction,
   activateTermAction,
@@ -328,6 +329,9 @@ export function CurrentCollectionView({
             onRename={() => onRename(leaf)}
             onDelete={() => onDelete(leaf.path, false)}
             onEdit={openEditor}
+            space={space}
+            onError={setError}
+            onRefresh={refresh}
           />
         ))}
       </ul>
@@ -565,6 +569,9 @@ function FileRow({
   onRename,
   onDelete,
   onEdit,
+  space,
+  onError,
+  onRefresh,
 }: {
   packageId: string;
   leaf: FileLeaf;
@@ -574,6 +581,9 @@ function FileRow({
   onRename: () => void;
   onDelete: () => void;
   onEdit: (path: string, name: string, kind: EditorKind) => void;
+  space: string;
+  onError: (message: string) => void;
+  onRefresh: () => void;
 }) {
   const editorKind = editorKindForPath(leaf.path);
   return (
@@ -603,6 +613,15 @@ function FileRow({
                 Edit
               </button>
             )}
+            <ReplaceFileButton
+              packageId={packageId}
+              space={space}
+              path={leaf.path}
+              name={leaf.name}
+              disabled={pending}
+              onDone={onRefresh}
+              onError={onError}
+            />
             <button className="btn btn-ghost btn-xs" disabled={pending} onClick={onRename}>
               Rename
             </button>
