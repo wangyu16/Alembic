@@ -14,9 +14,22 @@ import {
 import {
   serializeStudyGuide,
   unitTermForms,
+  type CollectionScope,
   type StudyGuideBlock,
   type UnitTerm,
 } from "@alembic/package-contract";
+import type {
+  CollectionScopeTree,
+  FileLeaf,
+  FolderNode,
+} from "@alembic/package-ops";
+import { isBinaryPath } from "@/lib/collection-upload";
+import {
+  uploadCollectionFileAction,
+  loadCollectionFileAction,
+  deleteCollectionEntryAction,
+  renameCollectionFileAction,
+} from "../collection-actions";
 import {
   operationsForCategory,
   type AIOperation,
@@ -240,6 +253,7 @@ export function StudioShell({
   courseConceptMap,
   courseInfo,
   categoryFile,
+  privateTree,
   assets,
   assetDocs,
   publishing,
@@ -258,6 +272,7 @@ export function StudioShell({
   courseConceptMap: string | null;
   courseInfo: CourseInfo;
   categoryFile: { path: string; repo: "public" | "private"; content: string } | null;
+  privateTree: CollectionScopeTree[] | null;
   assets: AssetItem[];
   assetDocs?: Record<string, AssetDocInfo>;
   publishing: PublishingState;
@@ -639,16 +654,13 @@ export function StudioShell({
             <AssetsView key="assets" packageId={packageId} activePath={activePath} assets={assets} assetDocs={assetDocs} onDirty={setDirty} />
           ) : view.collection === "current" ? (
             <CurrentSpace />
-          ) : categoryFile ? (
-            <FileEditor
-              key={`${view.collection}:${categoryFile.path}`}
+          ) : view.collection === "private" ? (
+            <PrivateCollectionView
+              key="private"
               packageId={packageId}
-              category={category as OperationCategory}
-              label={CATEGORY_LABELS[view.collection]}
-              help="Private notes for this chapter — never published. Assignments, quizzes, exams, and answer keys live in the private repository."
-              file={categoryFile}
+              tree={privateTree ?? []}
+              chapters={chapters}
               onDirty={setDirty}
-              aiAccess={aiAccess}
             />
           ) : (
             <CategoryPlaceholder label={CATEGORY_LABELS[view.collection]} />
@@ -2713,6 +2725,259 @@ function UploadControl({
       {note && <span className="text-xs text-ok">{note}</span>}
       {error && <span className="text-xs text-danger">{error}</span>}
     </span>
+  );
+}
+
+/* ── Private collection (CF3): a folder tree over the private-instructor space ─
+ * The framework's first client — folders + files, upload / open / rename /
+ * delete, scoped course-wide or to a chapter. Private files are text notes
+ * (`.md`) in the common case, so opening one reuses the plain FileEditor (no
+ * hosted iframe → no remount hazard). The tree is a server prop; every mutation
+ * calls a server action then router.refresh() to reload it. */
+const PRIVATE_SPACE = "private-instructor";
+
+/** Read a browser File as UTF-8 text, or base64 for a binary. */
+function readFileContent(file: File): Promise<{ content: string; isBinary: boolean }> {
+  const isBinary = isBinaryPath(file.name);
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(reader.error);
+    reader.onload = () => {
+      const result = reader.result as string;
+      // readAsDataURL → "data:...;base64,<payload>"; keep only the payload.
+      resolve({ content: isBinary ? result.split(",", 2)[1] ?? "" : result, isBinary });
+    };
+    if (isBinary) reader.readAsDataURL(file);
+    else reader.readAsText(file);
+  });
+}
+
+function scopeLabel(scope: CollectionScope, chapters: Chapter[]): string {
+  if (scope.kind === "course") return "Whole course";
+  const i = chapters.findIndex((c) => c.slug === scope.slug);
+  return i >= 0 ? `${i + 1}. ${chapters[i].title}` : scope.slug;
+}
+
+/** A file's handling-class badge (a small muted tag). */
+function ClassBadge({ leaf }: { leaf: FileLeaf }) {
+  const label =
+    leaf.class === "document"
+      ? "document"
+      : leaf.class === "opaque-download"
+        ? "file"
+        : leaf.class.replace("insertable-", "");
+  return <span className="rounded bg-elevated px-1.5 py-0.5 text-[10px] text-faint">{label}</span>;
+}
+
+function PrivateCollectionView({
+  packageId,
+  tree,
+  chapters,
+  onDirty,
+}: {
+  packageId: string;
+  tree: CollectionScopeTree[];
+  chapters: Chapter[];
+  onDirty?: (d: boolean) => void;
+}) {
+  const router = useRouter();
+  const [pending, start] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+  const [note, setNote] = useState<string | null>(null);
+  const [open, setOpen] = useState<{ path: string; repo: "public" | "private"; content: string } | null>(null);
+  // Upload target.
+  const [scopeIdx, setScopeIdx] = useState(0); // 0 = course, else chapters[idx-1]
+  const [folder, setFolder] = useState("");
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const targetScope: CollectionScope =
+    scopeIdx === 0 ? { kind: "course" } : { kind: "chapter", slug: chapters[scopeIdx - 1].slug };
+
+  const refresh = () => router.refresh();
+
+  const onUpload = (file: File) => {
+    setError(null);
+    setNote(null);
+    start(async () => {
+      const { content, isBinary } = await readFileContent(file);
+      const r = await uploadCollectionFileAction(packageId, {
+        space: PRIVATE_SPACE,
+        repo: "private",
+        scope: targetScope,
+        folder: folder.trim() || undefined,
+        filename: file.name,
+        content,
+        isBinary,
+        sizeBytes: file.size,
+      });
+      if (!r.ok) setError(r.error ?? "Upload failed.");
+      else {
+        setNote(r.warning ?? `Added ${file.name}.`);
+        refresh();
+      }
+      if (fileRef.current) fileRef.current.value = "";
+    });
+  };
+
+  const onOpen = (leaf: FileLeaf) => {
+    setError(null);
+    start(async () => {
+      const r = await loadCollectionFileAction(packageId, "private", leaf.path);
+      if (!r.ok) setError(r.error ?? "Couldn't open that file.");
+      else setOpen({ path: leaf.path, repo: "private", content: r.content ?? "" });
+    });
+  };
+
+  const onDelete = (path: string, isFolder: boolean) => {
+    if (!window.confirm(`Delete ${isFolder ? "this folder and everything in it" : "this file"}?`)) return;
+    setError(null);
+    start(async () => {
+      const r = await deleteCollectionEntryAction(packageId, PRIVATE_SPACE, path, isFolder);
+      if (!r.ok) setError(r.error ?? "Delete failed.");
+      else {
+        if (open && open.path === path) setOpen(null);
+        refresh();
+      }
+    });
+  };
+
+  const onRename = (leaf: FileLeaf) => {
+    const next = window.prompt("Rename to (name only):", leaf.name);
+    if (!next || next.trim() === leaf.name) return;
+    const dir = leaf.path.slice(0, leaf.path.length - leaf.name.length); // includes trailing "/"
+    setError(null);
+    start(async () => {
+      const r = await renameCollectionFileAction(packageId, PRIVATE_SPACE, leaf.path, `${dir}${next.trim()}`);
+      if (!r.ok) setError(r.error ?? "Rename failed.");
+      else {
+        if (open && open.path === leaf.path) setOpen(null);
+        refresh();
+      }
+    });
+  };
+
+  // The opened text file: a plain editor (no hosted iframe). Category "private"
+  // has no AI ops, so the assistant simply offers nothing.
+  if (open) {
+    return (
+      <div className="flex h-full min-h-0 flex-col gap-2">
+        <button className="btn btn-ghost btn-sm self-start" onClick={() => { setOpen(null); onDirty?.(false); }}>
+          ← Back to Private
+        </button>
+        <div className="min-h-0 flex-1">
+          <FileEditor
+            key={`private:${open.path}`}
+            packageId={packageId}
+            category={"private" as OperationCategory}
+            label={open.path.split("/").pop() ?? open.path}
+            help="A private file — never published, never included when others adapt your course."
+            file={open}
+            onDirty={onDirty}
+            aiAccess="none"
+          />
+        </div>
+      </div>
+    );
+  }
+
+  const renderFolder = (node: FolderNode, depth: number): React.ReactNode => (
+    <div key={node.path} style={{ marginLeft: depth * 12 }}>
+      {depth > 0 && (
+        <div className="flex items-center gap-2 py-1">
+          <span className="text-sm text-muted">📁 {node.name}</span>
+          <button className="btn btn-ghost btn-xs text-faint" disabled={pending} onClick={() => onDelete(node.path, true)}>
+            Delete
+          </button>
+        </div>
+      )}
+      {node.folders.map((f) => renderFolder(f, depth + 1))}
+      <ul className="divide-y divide-[var(--edge-soft)]">
+        {node.files.map((leaf) => (
+          <li key={leaf.path} className="flex items-center gap-2 py-1.5" style={{ marginLeft: depth > 0 ? 12 : 0 }}>
+            <span className="min-w-0 flex-1 truncate text-sm text-ink">{leaf.name}</span>
+            <ClassBadge leaf={leaf} />
+            {!isBinaryPath(leaf.name) && (
+              <button className="btn btn-ghost btn-xs" disabled={pending} onClick={() => onOpen(leaf)}>
+                Open
+              </button>
+            )}
+            <button className="btn btn-ghost btn-xs" disabled={pending} onClick={() => onRename(leaf)}>
+              Rename
+            </button>
+            <button className="btn btn-ghost btn-xs text-danger" disabled={pending} onClick={() => onDelete(leaf.path, false)}>
+              Delete
+            </button>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+
+  return (
+    <div className="flex h-full min-h-0 flex-col gap-3 overflow-y-auto">
+      <div>
+        <h2 className="font-serif text-lg text-ink">Private</h2>
+        <p className="max-w-prose text-sm text-muted">
+          Files only you can see — notes, keys, drafts. Never published, and never
+          included when others adapt your course. Organize them in folders, per
+          chapter or across the whole course.
+        </p>
+      </div>
+
+      {/* Upload */}
+      <div className="panel flex flex-wrap items-end gap-2 rounded-lg border border-edge p-3">
+        <label className="flex flex-col gap-1 text-xs text-muted">
+          Scope
+          <select
+            className="field"
+            value={scopeIdx}
+            onChange={(e) => setScopeIdx(Number(e.target.value))}
+          >
+            <option value={0}>Whole course</option>
+            {chapters.map((c, i) => (
+              <option key={c.slug} value={i + 1}>{i + 1}. {c.title}</option>
+            ))}
+          </select>
+        </label>
+        <label className="flex flex-col gap-1 text-xs text-muted">
+          Folder (optional)
+          <input
+            className="field"
+            placeholder="e.g. drafts or exams/2026"
+            value={folder}
+            onChange={(e) => setFolder(e.target.value)}
+          />
+        </label>
+        <input
+          ref={fileRef}
+          type="file"
+          className="text-sm"
+          disabled={pending}
+          onChange={(e) => { const f = e.target.files?.[0]; if (f) onUpload(f); }}
+        />
+      </div>
+
+      {error && <p className="text-sm text-danger">{error}</p>}
+      {note && <p className="text-xs text-ok">{note}</p>}
+
+      {/* Tree */}
+      {tree.length === 0 ? (
+        <p className="text-sm text-faint">No private files yet — upload one above.</p>
+      ) : (
+        <div className="flex flex-col gap-4">
+          {tree.map((st) => (
+            <div key={JSON.stringify(st.scope)}>
+              <p className="mb-1 text-xs uppercase tracking-wide text-faint">
+                {scopeLabel(st.scope, chapters)}
+              </p>
+              <div className="panel rounded-lg border border-edge p-2">
+                {renderFolder(st.root, 0)}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 

@@ -1,9 +1,11 @@
 import { notFound, redirect } from "next/navigation";
 import {
+  collectionTree,
   listAssets,
   listChapters,
   loadStudyGuide,
   loadCourseConceptMap,
+  type CollectionScopeTree,
 } from "@alembic/package-ops";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
@@ -86,16 +88,26 @@ export default async function EditShellPage({
   const single =
     category === "assessment-guide" && activeChapter
       ? { path: `assessment-support/${activeChapter.slug}.md`, repo: "public" as const }
-      : category === "private" && activeChapter
-        ? { path: `private-instructor/notes/${activeChapter.slug}.md`, repo: "private" as const }
-        : category === "concept-map" && activeChapter
-          ? { path: `concepts/${activeChapter.slug}.md`, repo: "public" as const }
-          : null;
+      : category === "concept-map" && activeChapter
+        ? { path: `concepts/${activeChapter.slug}.md`, repo: "public" as const }
+        : null;
   if (single) {
     const files = await store.listFiles(packageId);
     const f = files.find((x) => x.repo === single.repo && x.path === single.path);
     categoryFile = { path: single.path, repo: single.repo, content: f?.content ?? "" };
   }
+
+  // The Private collection (CF3): a folder tree over the private-instructor
+  // space, replacing the old single `private-instructor/notes/<slug>.md` file.
+  const privateTree: CollectionScopeTree[] | null =
+    category === "private"
+      ? await collectionTree(store, packageId, {
+          spaceDir: "private-instructor",
+          repo: "private",
+          chapterSlugs: chapters.map((c) => c.slug),
+          fileTypes: record.manifest.fileTypes,
+        })
+      : null;
 
   // Carrier categories: assets list.
   const assets = category === "assets" ? await listAssets(store, packageId) : [];
@@ -205,6 +217,7 @@ export default async function EditShellPage({
         keywords: record.manifest.keywords,
       }}
       categoryFile={categoryFile}
+      privateTree={privateTree}
       assets={assets.map((a) => ({ path: a.path, kind: a.kind }))}
       assetDocs={assetDocs}
       publishing={publishing}
