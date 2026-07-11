@@ -54,6 +54,7 @@ import { resolveIncludeAction } from "../include-actions";
 import { AssetsCollectionView, type AssetMeta } from "./assets-collection-view";
 import { CurrentCollectionView } from "./current-collection-view";
 import { ReplaceFileButton } from "./replace-file-button";
+import { DocumentActionsBar } from "./document-actions-bar";
 import {
   generateChapterHtmlAction,
   hostSaveStudyGuideAction,
@@ -1376,10 +1377,13 @@ function HostedStudyGuideEditor(props: {
   }
   return (
     <div className="flex h-full min-h-[75vh] flex-col gap-2">
-      <p className="shrink-0 text-xs text-faint">
-        Edit inline — your changes save with the <span className="text-muted">Save</span> button in
-        the document’s toolbar. “Save online” in the header is a separate step that publishes.
-      </p>
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-2">
+        <p className="text-xs text-faint">
+          Edit inline — your changes save with the <span className="text-muted">Save</span> button in
+          the document’s toolbar. “Save online” in the header is a separate step that publishes.
+        </p>
+        <DocumentActionsBar packageId={packageId} path={path} />
+      </div>
       <ModuleMount
         kind="md"
         source={state.html}
@@ -1498,10 +1502,13 @@ function HostedSlidesEditor(props: {
   }
   return (
     <div className="flex h-full min-h-[75vh] flex-col gap-2">
-      <p className="shrink-0 text-xs text-faint">
-        Edit inline — your changes save with the <span className="text-muted">Save</span> button in
-        the deck’s toolbar. “Save online” in the header is a separate step that publishes.
-      </p>
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-2">
+        <p className="text-xs text-faint">
+          Edit inline — your changes save with the <span className="text-muted">Save</span> button in
+          the deck’s toolbar. “Save online” in the header is a separate step that publishes.
+        </p>
+        <DocumentActionsBar packageId={packageId} path={path} />
+      </div>
       <ModuleMount
         kind="slides"
         source={state.html}
@@ -1817,6 +1824,7 @@ function FileEditor({
             </button>
           </div>
           <AIAssistant packageId={packageId} category={category} path={file.path} repo={file.repo} current={text} aiAccess={aiAccess} />
+          {file.repo === "public" && <DocumentActionsBar packageId={packageId} path={file.path} />}
           <button onClick={save} disabled={pending || !dirty} className="btn btn-primary btn-sm">
             {pending ? "Saving…" : "Save"}
           </button>

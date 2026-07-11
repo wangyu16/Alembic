@@ -1321,10 +1321,14 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
     (replaces, never creates), the two-repo invariant (repo from space), block-ID
     integrity (rule 7, for block-bearing docs), the storage/size verdict, and
     binary-as-blob (fix #1). Thin client: a shared **`ReplaceFileButton`** on the
-    Assets / Private / Current file rows. Study-guide deliverables already
-    round-trip via the section-merge Upload (block-ID reconcile) + "Download
-    .md.html". **U3 (next):** relative→permalink rewrite on insert. Raw
-    binaries (no meta island) stay path-based.
+    Assets / Private / Current file rows, AND — via a shared
+    **`DocumentActionsBar`** (Download + Replace) — on every single-document
+    editor: study guide, slides, practice, concept map, assessment guide. (The
+    per-chapter editors mount the self-contained in-file editor in an iframe,
+    which has no host-level Download/Replace; the bar adds it so the round-trip
+    reaches those documents, not just the collections. It derives the space from
+    the path and reloads after a replace so a hosted editor regenerates from the
+    new source.) Raw binaries (no meta island) stay path-based.
   - ✅ **Durable document identity (U2).** A stable `uid` is embedded in each
     self-contained carrier's `#orz-meta` island — `orz-markdown@1.6.0`
     (`DocMeta.uid`, published) carries it; because `serializeDoc()` never
