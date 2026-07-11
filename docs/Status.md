@@ -1340,6 +1340,20 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
     hash→location identity. No orz-mdhtml/slides/paged republish needed (their
     bundled builders already serialize a `uid` a titled meta carries); worker
     redeployed so freshly-generated carriers embed it.
+  - ✅ **Relative→permalink rewrite (U3).** On the write path, a plain-markdown
+    document's relative asset references (`![](figures/x.png)`,
+    `<img src="../assets/y.png">`) are rewritten to permalinks
+    (`…/d/{docId}`) — matching what "Insert" bakes in — so a cross-reference
+    survives the document being moved and still resolves in a downloaded copy.
+    Pure helper `rewriteRelativeRefs` (package-ops; POSIX path resolution,
+    injected registry resolver, 10 tests) wired into
+    upload/replace/save-collection actions. Best-effort + non-destructive: only
+    `.md` content, only refs that resolve to a REGISTERED asset in the same repo,
+    no-op when `NEXT_PUBLIC_APP_URL` is unset or a ref is external/data/anchor/
+    already-permalink. Carriers (`.md.html`/…) keep their own refs (Insert +
+    publish resolution cover them); rewriting carrier-embedded sources is a
+    follow-up (needs regeneration). This completes the offline round-trip trio
+    (U1 replace · U2 identity · U3 references).
 - **Post-session coherence audit (2026-07-09, owner request).** Fanned out
   6 parallel read-only subagents (dangling references from today's renames;
   Status.md accuracy vs code; goal/Roadmap/specs coherence; the

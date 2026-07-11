@@ -11,10 +11,13 @@ import {
   validateBlockIds,
   type CollectionScope,
 } from "@alembic/package-contract";
-import { collectionItemPath } from "@alembic/package-ops";
+import { collectionItemPath, rewriteRelativeRefs } from "@alembic/package-ops";
 import { hasCarrier, extractSource } from "@alembic/carriers";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
+import { SupabaseDocumentRegistryStore } from "@/lib/document-registry-store";
+import { appBaseUrl } from "@/lib/app-url";
 import { syncFilesToGitHub, syncPrivateFilesToGitHub } from "@/lib/github";
 import { syncPackageRegistry } from "@/lib/register";
 import { uploadVerdict } from "@/lib/collection-upload";
@@ -29,6 +32,33 @@ async function requireUser() {
   } = await supabase.auth.getUser();
   if (!user) redirect("/signin");
   return { supabase, user };
+}
+
+/**
+ * Rewrite a plain-markdown document's relative asset references to permalinks
+ * (U3): `![](figures/x.png)` → `![](https://…/d/{docId})`, so a cross-reference
+ * survives the document being moved and still resolves in a downloaded copy —
+ * matching what "Insert" bakes in. Best-effort and non-destructive: only `.md`
+ * content is touched, only references that resolve to a REGISTERED asset in the
+ * same repo are rewritten, and it no-ops when the app origin isn't configured
+ * (server needs `NEXT_PUBLIC_APP_URL`). Carriers (`.md.html`/…) keep their own
+ * refs (Insert + publish resolution cover them); binaries are never markdown.
+ */
+async function rewriteMarkdownRefs(
+  supabase: SupabaseClient,
+  packageId: string,
+  repo: "public" | "private",
+  path: string,
+  content: string,
+): Promise<string> {
+  if (!path.toLowerCase().endsWith(".md")) return content;
+  const base = appBaseUrl();
+  if (!base) return content;
+  const registry = new SupabaseDocumentRegistryStore(supabase);
+  return rewriteRelativeRefs(content, path, async (repoPath) => {
+    const rec = await registry.getByLocation(packageId, repo, repoPath);
+    return rec ? `${base}/d/${rec.docId}` : null;
+  });
 }
 
 export interface UploadCollectionFileInput {
@@ -121,11 +151,17 @@ export async function uploadCollectionFileAction(
   });
   if (!verdict.ok) return { ok: false, error: verdict.error };
 
+  // U3: rewrite an uploaded markdown doc's relative asset refs to permalinks so
+  // they survive moves + downloads (no-op for binaries/carriers).
+  const content = input.isBinary
+    ? input.content
+    : await rewriteMarkdownRefs(supabase, packageId, input.repo, target, input.content);
+
   // Persist (the one validated write path), then best-effort commit (published
   // → real commit; sandbox → no-op) and registry projection. Store base64
   // as-is for binaries; do not decode.
   await store.putFiles(packageId, [
-    { repo: input.repo, path: target, content: input.content },
+    { repo: input.repo, path: target, content },
   ]);
   // Route the commit by repo: the public helper only ever targets the public
   // repo (github.ts), so a private-space file must go through the private one or
@@ -138,7 +174,7 @@ export async function uploadCollectionFileAction(
     packageId,
     // Binary content is base64 — commit it as a blob so the bytes (not the
     // base64 text) reach GitHub; text goes inline.
-    [{ path: target, content: input.content, encoding: input.isBinary ? "base64" : "utf-8" }],
+    [{ path: target, content, encoding: input.isBinary ? "base64" : "utf-8" }],
     "Upload file (Alembic)",
   );
   await syncPackageRegistry(supabase, packageId);
@@ -293,15 +329,19 @@ export async function saveCollectionFileAction(
   }
   if (clean.includes("..")) return { ok: false, error: "Invalid path." };
 
+  // U3: rewrite relative markdown refs to permalinks (no-op for carriers/SVG —
+  // only `.md` content is touched).
+  const rewritten = await rewriteMarkdownRefs(supabase, packageId, repo, clean, content);
+
   const store = new SupabaseSandboxStore(supabase);
-  await store.putFiles(packageId, [{ repo, path: clean, content }]);
+  await store.putFiles(packageId, [{ repo, path: clean, content: rewritten }]);
   const commit = repo === "private" ? syncPrivateFilesToGitHub : syncFilesToGitHub;
   await commit(
     supabase,
     store,
     user.id,
     packageId,
-    [{ path: clean, content }],
+    [{ path: clean, content: rewritten }],
     "Edit file (Alembic)",
   );
   await syncPackageRegistry(supabase, packageId);
@@ -414,14 +454,19 @@ export async function replaceCollectionFileAction(
     if (issue) return { ok: false, error: issue };
   }
 
-  await store.putFiles(packageId, [{ repo, path: clean, content: input.content }]);
+  // U3: rewrite relative markdown refs to permalinks (no-op for binaries/carriers).
+  const content = input.isBinary
+    ? input.content
+    : await rewriteMarkdownRefs(supabase, packageId, repo, clean, input.content);
+
+  await store.putFiles(packageId, [{ repo, path: clean, content }]);
   const commit = repo === "private" ? syncPrivateFilesToGitHub : syncFilesToGitHub;
   await commit(
     supabase,
     store,
     user.id,
     packageId,
-    [{ path: clean, content: input.content, encoding: input.isBinary ? "base64" : "utf-8" }],
+    [{ path: clean, content, encoding: input.isBinary ? "base64" : "utf-8" }],
     "Replace with edited version (Alembic)",
   );
   await syncPackageRegistry(supabase, packageId);

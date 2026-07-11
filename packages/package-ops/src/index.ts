@@ -25,3 +25,4 @@ export * from "./adaptation";
 export * from "./pull-updates";
 export * from "./document-registry";
 export * from "./license-file";
+export * from "./rewrite-refs";
