@@ -1354,6 +1354,24 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
     publish resolution cover them); rewriting carrier-embedded sources is a
     follow-up (needs regeneration). This completes the offline round-trip trio
     (U1 replace · U2 identity · U3 references).
+  - ✅ **Offline package-authoring contract + agent skill.** Groundwork for
+    whole-package upload / direct-GitHub push (author a full package offline
+    with an AI agent). Confirmed the contract is comprehensive via a two-agent
+    audit; filled the gaps: **`repoForPath(path)`** — the two-repo split as a
+    total, fail-closed, dual-mode derivation (single source of truth so the
+    importer + the skill can't drift; `package-contract`, tested);
+    **`validateProject` now requires the skeleton** (`alembic.json` + `LICENSE`
+    present); **`validatePackageForImport`** (`package-ops`) — the import-ready
+    validator that injects the carrier extensions, the ONE call the importer
+    runs and the offline author targets. Resolved the study-guide-extension
+    ambiguity in the spec (canonical = plain `study-guide/<slug>.md`, not
+    `.md.html`). Wrote **[.claude/skills/alembic-package/SKILL.md](../.claude/skills/alembic-package/SKILL.md)**
+    — a self-contained agent skill (directory→repo map, minimal + full manifest,
+    file formats, `uid`/block-ID identity, naming, pre-upload validation),
+    portable so an external authoring agent can follow it. Still deferred (not
+    yet built): `importPackageAction` (zip unpack + fan-out over the validated
+    door), private-repo reconcile + bootstrap-from-existing-repos for the
+    GitHub-direct path, and duplicate-uid detection on ingest.
 - **Post-session coherence audit (2026-07-09, owner request).** Fanned out
   6 parallel read-only subagents (dangling references from today's renames;
   Status.md accuracy vs code; goal/Roadmap/specs coherence; the

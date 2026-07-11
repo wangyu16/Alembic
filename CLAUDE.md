@@ -17,6 +17,11 @@ adapt, cite, share).
 - [docs/SteeringNote.md](docs/SteeringNote.md) — **owner's living steering
   note** (2026-07 direction; refined ahead of the specs — newer thinking wins
   until folded back). Read it before any design/architecture work.
+- [.claude/skills/alembic-package/SKILL.md](.claude/skills/alembic-package/SKILL.md) —
+  **agent skill for authoring a whole package OFFLINE** (directory→repo map,
+  manifest, file formats, identity, pre-upload validation). Its structural rules
+  mirror `validatePackageForImport` (`package-ops`) + `repoForPath`
+  (`package-contract`) — keep the three in sync.
 - [docs/specs/self-contained-editing.md](docs/specs/self-contained-editing.md) —
   **2026-07 design direction:** editing offloads to self-contained files
   (`.md.html` / `.slides.html` / `.paged.html` from the sibling orz-family

@@ -26,3 +26,4 @@ export * from "./pull-updates";
 export * from "./document-registry";
 export * from "./license-file";
 export * from "./rewrite-refs";
+export * from "./validate-package";

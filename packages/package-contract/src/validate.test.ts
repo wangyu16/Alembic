@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { validateProject } from "./validate";
+import { repoForPath, validateProject } from "./validate";
 import type { ProjectFile, ValidateOptions } from "./validate";
 
 const KNOWN: ValidateOptions = {
@@ -25,6 +25,7 @@ const goodManifest = {
 
 const goodFiles: ProjectFile[] = [
   { repo: "public", path: "alembic.json" },
+  { repo: "public", path: "LICENSE" },
   { repo: "public", path: "study-guide/01-energy.md" },
   { repo: "public", path: "study-guide/02-enthalpy.md" },
   { repo: "public", path: "materials/structures/benzene.ketcher.svg" },
@@ -135,6 +136,7 @@ describe("validateProject — contract v2 (dual-mode paths)", () => {
 
   const v2Files: ProjectFile[] = [
     { repo: "public", path: "alembic.json" },
+    { repo: "public", path: "LICENSE" },
     { repo: "public", path: "assets/structures/benzene.ketcher.svg" },
     { repo: "public", path: "slides/lecture-01.slides.html" },
     { repo: "public", path: "practice/set-01.md.html" },
@@ -150,6 +152,8 @@ describe("validateProject — contract v2 (dual-mode paths)", () => {
 
   it("still recognizes v1 paths alongside v2 (mid-migration)", () => {
     const mixed: ProjectFile[] = [
+      { repo: "public", path: "alembic.json" },
+      { repo: "public", path: "LICENSE" },
       { repo: "public", path: "materials/structures/old.ketcher.svg" },
       { repo: "public", path: "assets/structures/new.ketcher.svg" },
     ];
@@ -159,6 +163,8 @@ describe("validateProject — contract v2 (dual-mode paths)", () => {
 
   it("accepts a known carrier under assets/ as public (v2)", () => {
     const files: ProjectFile[] = [
+      { repo: "public", path: "alembic.json" },
+      { repo: "public", path: "LICENSE" },
       { repo: "public", path: "assets/figures/plot.plot.svg" },
     ];
     const result = validateProject({ manifest: v2Manifest, files }, KNOWN);
@@ -184,5 +190,51 @@ describe("validateProject — contract v2 (dual-mode paths)", () => {
     expect(
       result.issues.some((i) => i.path === "private/secret.ketcher.svg"),
     ).toBe(true);
+  });
+});
+
+describe("validateProject — required package skeleton", () => {
+  it("requires alembic.json and LICENSE to be present as files", () => {
+    // A manifest that parses, but a tree missing the skeleton files.
+    const result = validateProject(
+      { manifest: goodManifest, files: [
+        { repo: "public", path: "study-guide/01-energy.md" },
+        { repo: "public", path: "study-guide/02-enthalpy.md" },
+      ] },
+      KNOWN,
+    );
+    expect(result.ok).toBe(false);
+    expect(result.issues.some((i) => i.path === "alembic.json")).toBe(true);
+    expect(result.issues.some((i) => i.path === "LICENSE")).toBe(true);
+  });
+});
+
+describe("repoForPath — the two-repo split as a total, fail-closed derivation", () => {
+  it("classifies public directories (v1 + v2) as public", () => {
+    for (const p of [
+      "study-guide/01.md",
+      "materials/figures/x.png",
+      "assets/figures/x.png",
+      "slides/deck.slides.html",
+      "current/2026-fall/announcements/a.md",
+    ]) {
+      expect(repoForPath(p)).toBe("public");
+    }
+  });
+
+  it("classifies private directories (v1 private-instructor + v2 private) as private", () => {
+    expect(repoForPath("private-instructor/keys.md")).toBe("private");
+    expect(repoForPath("private/keys.md")).toBe("private");
+  });
+
+  it("treats root-allowlisted files as public", () => {
+    expect(repoForPath("alembic.json")).toBe("public");
+    expect(repoForPath("LICENSE")).toBe("public");
+    expect(repoForPath("README.md")).toBe("public");
+  });
+
+  it("throws (fail-closed) for a path in no known directory", () => {
+    expect(() => repoForPath("random-top-dir/x.md")).toThrow();
+    expect(() => repoForPath("../escape")).toThrow();
   });
 });

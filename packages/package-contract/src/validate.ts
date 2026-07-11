@@ -49,6 +49,30 @@ export function assertPathAllowedInEitherContract(path: string, repo: RepoKind):
   }
 }
 
+/**
+ * Derive the repository a path belongs to — the two-repo split as a TOTAL,
+ * fail-closed function, dual-mode (v1 layers OR v2 spaces). This is the single
+ * source of truth for "which repo does this file go in": the offline-author
+ * agent skill and the package importer both derive the split from it, so they
+ * cannot drift. Returns `"public"` / `"private"`, or THROWS (`PathLayerError`)
+ * for a path in no known directory — an unclassifiable file is rejected, never
+ * silently placed.
+ *
+ * Correct because the dual-mode agreement invariant (`contract-agreement.test.ts`)
+ * guarantees no directory is PUBLIC under one contract and PRIVATE under the
+ * other — so trying v1 first, then v2, can never disagree on the repo.
+ */
+export function repoForPath(path: string): RepoKind {
+  try {
+    const layer = layerForPath(path);
+    // Root-allowlisted files (alembic.json, LICENSE, …) have no layer → public.
+    return layer === null ? "public" : LAYER_REPO[layer];
+  } catch {
+    // Not a v1 layer path — classify under v2 spaces (throws if unknown).
+    return SPACE_REPO[spaceForPath(path)];
+  }
+}
+
 /** True if a path resolves to a PUBLIC location under v1 layers OR v2 spaces.
  *  Root-allowlisted files (v1 layer null) are public-safe. Used by the carrier
  *  placement check so v2 `assets/…` is recognized as public alongside v1
@@ -159,6 +183,23 @@ export function validateProject(
     issues.push({ ...issue, message: `Heads up: ${issue.message}` });
   };
 
+  // Normalized set of every file present in the tree (reused below).
+  const presentPaths = new Set(
+    input.files.map((f) => f.path.replace(/\\/g, "/").replace(/^\/+/, "")),
+  );
+
+  // 0. The package skeleton: the manifest and a license must be present as files
+  //    at the repo root — the minimal shape `createSandboxPackage` writes and the
+  //    importer expects. (`alembic.json` is also parsed below as the manifest.)
+  for (const required of ["alembic.json", "LICENSE"]) {
+    if (!presentPaths.has(required)) {
+      addError({
+        path: required,
+        message: `Every package must include a ${required} file at its root.`,
+      });
+    }
+  }
+
   // 1. Manifest parses.
   let manifest: ReturnType<typeof parseManifest> | undefined;
   try {
@@ -201,12 +242,9 @@ export function validateProject(
 
   // 3. Declared chapters have their study-guide page present.
   if (manifest?.chapters && manifest.chapters.length > 0) {
-    const present = new Set(
-      input.files.map((f) => f.path.replace(/\\/g, "/").replace(/^\/+/, "")),
-    );
     for (const chapter of manifest.chapters) {
       const expected = chapterStudyGuidePath(chapter.slug);
-      if (!present.has(expected)) {
+      if (!presentPaths.has(expected)) {
         addError({
           path: expected,
           message: `Chapter "${chapter.title}" is listed but its study-guide page (${expected}) is missing.`,
