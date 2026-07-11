@@ -4,6 +4,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createPackageAction } from "./actions";
 import { reconcileArchivedPackages } from "./lifecycle-actions";
 import { PackageActions } from "./_components/package-actions";
+import { ImportPackage } from "./_components/import-package";
 import { PackageSnapshots } from "./_components/package-snapshots";
 import { ArchivedPackages } from "./_components/archived-packages";
 
@@ -103,6 +104,7 @@ export default async function WorkspacePage() {
             Create
           </button>
         </form>
+        <ImportPackage />
       </section>
 
       <section>

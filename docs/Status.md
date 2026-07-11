@@ -1369,9 +1369,25 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
     — a self-contained agent skill (directory→repo map, minimal + full manifest,
     file formats, `uid`/block-ID identity, naming, pre-upload validation),
     portable so an external authoring agent can follow it. Still deferred (not
-    yet built): `importPackageAction` (zip unpack + fan-out over the validated
-    door), private-repo reconcile + bootstrap-from-existing-repos for the
-    GitHub-direct path, and duplicate-uid detection on ingest.
+    yet built): private-repo reconcile + bootstrap-from-existing-repos for the
+    GitHub-direct path.
+  - ✅ **Whole-package import (zip upload).** Upload a package authored offline
+    (e.g. by an AI agent following the `alembic-package` skill) as a `.zip`; it
+    becomes a new trial package. `importPackageFromFiles` (`package-ops`,
+    8 tests) is the durable core — a composition over existing seams, no new
+    mechanism: parse `alembic.json` → derive each file's repo with
+    `repoForPath` → `validatePackageForImport` (two-repo + skeleton + chapters
+    + carrier placement) → **duplicate-uid detection** → mint a fresh platform
+    packageId → `store.createPackage`, with `assertPathAllowedInEitherContract`
+    fail-closed before persisting. A LICENSE is generated from the manifest if
+    absent. Server route `/api/import-package` unzips (fflate), strips a single
+    common root folder, splits text vs binary (`isBinaryPath`), and registers
+    with `origin: "uploaded"`. Trial is text-only, so **binaries are reported,
+    not stored** (add after publishing). Thin client: an **Import a .zip
+    package** control on the workspace page that surfaces per-file validation
+    issues on rejection. Still deferred: direct-to-GitHub ingest (private-repo
+    reconcile + bootstrap-from-existing-repos) and letting an import carry
+    binaries (needs publish-first or a storage-policy change).
 - **Post-session coherence audit (2026-07-09, owner request).** Fanned out
   6 parallel read-only subagents (dangling references from today's renames;
   Status.md accuracy vs code; goal/Roadmap/specs coherence; the
