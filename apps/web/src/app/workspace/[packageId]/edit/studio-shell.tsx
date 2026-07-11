@@ -661,6 +661,7 @@ export function StudioShell({
               tree={privateTree ?? []}
               chapters={chapters}
               onDirty={setDirty}
+              aiAccess={aiAccess}
             />
           ) : (
             <CategoryPlaceholder label={CATEGORY_LABELS[view.collection]} />
@@ -2774,11 +2775,13 @@ function PrivateCollectionView({
   tree,
   chapters,
   onDirty,
+  aiAccess,
 }: {
   packageId: string;
   tree: CollectionScopeTree[];
   chapters: Chapter[];
   onDirty?: (d: boolean) => void;
+  aiAccess: AiAccess;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -2856,8 +2859,9 @@ function PrivateCollectionView({
     });
   };
 
-  // The opened text file: a plain editor (no hosted iframe). Category "private"
-  // has no AI ops, so the assistant simply offers nothing.
+  // The opened text file: a plain editor (no hosted iframe). Passes the real
+  // account AI access through — hardcoding "none" here wrongly showed an
+  // approved account "Request access".
   if (open) {
     return (
       <div className="flex h-full min-h-0 flex-col gap-2">
@@ -2873,7 +2877,7 @@ function PrivateCollectionView({
             help="A private file — never published, never included when others adapt your course."
             file={open}
             onDirty={onDirty}
-            aiAccess="none"
+            aiAccess={aiAccess}
           />
         </div>
       </div>
@@ -2948,13 +2952,18 @@ function PrivateCollectionView({
             onChange={(e) => setFolder(e.target.value)}
           />
         </label>
-        <input
-          ref={fileRef}
-          type="file"
-          className="text-sm"
-          disabled={pending}
-          onChange={(e) => { const f = e.target.files?.[0]; if (f) onUpload(f); }}
-        />
+        {/* A styled trigger over a hidden native input, so it reads as an
+            action rather than the raw "Choose File / No file chosen" text. */}
+        <label className={`btn btn-primary btn-sm ${pending ? "pointer-events-none opacity-60" : "cursor-pointer"}`}>
+          {pending ? "Uploading…" : "Upload a file"}
+          <input
+            ref={fileRef}
+            type="file"
+            className="sr-only"
+            disabled={pending}
+            onChange={(e) => { const f = e.target.files?.[0]; if (f) onUpload(f); }}
+          />
+        </label>
       </div>
 
       {error && <p className="text-sm text-danger">{error}</p>}
