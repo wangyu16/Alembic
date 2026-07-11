@@ -33,7 +33,7 @@ registration classification; there is one term, one meaning.
 | `concepts` | `concepts/` | public | course + chapter concept maps (`.md`), off-website |
 | `assessment-support` | `assessment-support/` | public | assessment guide (`.md`), off-website |
 | `assets` | `assets/` | public | reusable objects (images, structures, plots, md fragments, media) |
-| `current` | `current/` | public | this-term files; newest on the site, `current/archive/<term>/` off |
+| `current` | `current/` | public | this-term files under `current/<term-id>/` (pointer model — `manifest.currentTerm` names the active term; others are archived) |
 | `metadata` | `metadata/` | public | `course.md`, portal/LRMI records |
 | `provenance` | `provenance/` | public | attribution & adaptation records |
 | `private` | `private/` (private-repo root) | private | notes, keys, embargoed, drafts — never discoverable |

@@ -44,7 +44,7 @@ describe("spaceForPath", () => {
   });
 
   it("resolves any depth under a space dir to that space", () => {
-    expect(spaceForPath("current/archive/2026-spring/quiz1.pdf")).toBe("current");
+    expect(spaceForPath("current/2026-spring/assignments/quiz1.pdf")).toBe("current");
     expect(spaceForPath("assets/deeply/nested/dirs/mol.ketcher.svg")).toBe("assets");
   });
 
@@ -77,7 +77,7 @@ describe("assertPathAllowedInRepoV2 — the two-repo invariant", () => {
       assertPathAllowedInRepoV2("study-guide/acids.md.html", "public"),
     ).not.toThrow();
     expect(() =>
-      assertPathAllowedInRepoV2("current/archive/2026-spring/quiz.pdf", "public"),
+      assertPathAllowedInRepoV2("current/2026-spring/assignments/quiz.pdf", "public"),
     ).not.toThrow();
   });
 
