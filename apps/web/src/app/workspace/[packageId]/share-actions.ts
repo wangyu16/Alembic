@@ -67,3 +67,61 @@ export async function shareFileAction(
 
   return { ok: true, permalink: share ? `/d/${docId}` : undefined };
 }
+
+/**
+ * CF4 — set an asset's shareable metadata in one call: description, tags,
+ * license, and the discoverable flag. Extends the share gate: an object must
+ * have a description before it can be made discoverable (element search + a11y).
+ * Owner-only via registry RLS; `private`/`current` can never be discoverable.
+ */
+export interface AssetMetadataInput {
+  description?: string;
+  tags?: string[];
+  license?: string;
+  discoverable?: boolean;
+}
+
+export async function setAssetMetadataAction(
+  packageId: string,
+  docId: string,
+  input: AssetMetadataInput,
+): Promise<ShareResult> {
+  const supabase = await createSupabaseServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect("/signin");
+
+  const { data: row } = await supabase
+    .from("documents")
+    .select("doc_id, package_id, space, permalink_class, description, tombstoned")
+    .eq("doc_id", docId)
+    .eq("package_id", packageId)
+    .maybeSingle();
+  if (!row || row.tombstoned) {
+    return { ok: false, error: "That file isn't registered (open the package once, then retry)." };
+  }
+
+  const discoverable = input.discoverable ?? false;
+  if (discoverable && NEVER_DISCOVERABLE.has(row.space)) {
+    return { ok: false, error: "Files in this space can't be shared." };
+  }
+  const description = input.description?.trim() || row.description || null;
+  if (discoverable && row.permalink_class === "object" && !description) {
+    return { ok: false, error: "Add a short description first — it's what others will find it by." };
+  }
+
+  const patch: Record<string, unknown> = { discoverable };
+  patch["description"] = description;
+  if (input.tags) patch["tags"] = input.tags.map((t) => t.trim()).filter(Boolean);
+  if (input.license !== undefined) patch["license"] = input.license.trim() || null;
+
+  const { error } = await supabase
+    .from("documents")
+    .update(patch)
+    .eq("doc_id", docId)
+    .eq("package_id", packageId);
+  if (error) return { ok: false, error: "Couldn't save. Please try again." };
+
+  return { ok: true, permalink: discoverable ? `/d/${docId}` : undefined };
+}
