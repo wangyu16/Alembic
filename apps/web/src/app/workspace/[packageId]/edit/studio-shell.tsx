@@ -12,6 +12,7 @@ import {
   type ReactNode,
 } from "react";
 import {
+  CREATABLE_FILE_TYPES,
   serializeStudyGuide,
   unitTermForms,
   type CollectionScope,
@@ -2791,6 +2792,7 @@ function PrivateCollectionView({
   // Upload target.
   const [scopeIdx, setScopeIdx] = useState(0); // 0 = course, else chapters[idx-1]
   const [folder, setFolder] = useState("");
+  const [createOpen, setCreateOpen] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const targetScope: CollectionScope =
@@ -2952,6 +2954,45 @@ function PrivateCollectionView({
             onChange={(e) => setFolder(e.target.value)}
           />
         </label>
+        {/* Create — a menu of the framework's creatable formats. In-app creation
+            for collections isn't wired yet (CF6 builds the format editors), so
+            each item is a disabled placeholder for now. */}
+        <div className="relative">
+          <button
+            className="btn btn-ghost btn-sm"
+            aria-haspopup="menu"
+            aria-expanded={createOpen}
+            onClick={() => setCreateOpen((v) => !v)}
+          >
+            Create ▾
+          </button>
+          {createOpen && (
+            <>
+              <button
+                type="button"
+                aria-label="Close create menu"
+                className="fixed inset-0 z-20 cursor-default"
+                onClick={() => setCreateOpen(false)}
+              />
+              <div role="menu" className="absolute left-0 z-30 mt-1 w-64 overflow-hidden rounded-xl border border-edge bg-[var(--surface)] p-1 shadow-xl">
+                {CREATABLE_FILE_TYPES.map((t) => (
+                  <div
+                    key={t.extension}
+                    className="flex items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 text-sm text-faint"
+                    title="In-app creation is coming soon — for now, upload a file"
+                  >
+                    <span>{t.label}</span>
+                    <span className="text-[10px]">{t.extension}</span>
+                  </div>
+                ))}
+                <p className="px-2.5 pb-1 pt-1.5 text-[11px] text-faint">
+                  Creating these in-app is coming soon — for now, use Upload.
+                </p>
+              </div>
+            </>
+          )}
+        </div>
+
         {/* A styled trigger over a hidden native input, so it reads as an
             action rather than the raw "Choose File / No file chosen" text. */}
         <label className={`btn btn-primary btn-sm ${pending ? "pointer-events-none opacity-60" : "cursor-pointer"}`}>
