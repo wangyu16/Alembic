@@ -1252,8 +1252,25 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
     CF4.1 added per-file `tags` to the registry (migration 0019). Structure/plot
     creation unified under the Create menu as CF6 placeholders. Browser-verified.
     **Held from push pending migration 0019** (per-file tags column).
-  - ⬜ **CF5** Current collection (term pointer + sections). ⬜ **CF6**
-    creatable-format editors.
+  - ✅ **CF5** Current collection (`edit/current-collection-view.tsx` +
+    `terms.ts` in contract & ops + `term-actions.ts`): the pointer model —
+    files at `current/<term-id>/…`, `manifest.currentTerm` (immutable id) +
+    `currentTermLabel` (display) name the active term, every other term is
+    archived (read-only), rollover is one manifest write (no file moves).
+    A term is just a two-segment `spaceDir` — the framework was generalized to
+    a multi-segment, boundary-safe prefix (`scopeForPath` + `listCollection`),
+    so the whole tree/upload/register machine is reused verbatim. Reserved
+    course-level sections (announcements/assignments/misc) drive a data-driven
+    **"This term"** area on the published course home (`course-site.ts`
+    `CourseTermData` → site-actions gathers announcements as rendered markdown +
+    assignment/misc links). Term switcher, new-term dialog with structure
+    carry-over (`planCarryOver`, announcements excluded), announcement composer.
+    Browser-verified (current/archived/empty states); contract 225 + ops 237 +
+    renderer 69 tests green. *Known limitation:* a binary file (e.g. `.pdf`) in
+    an assignments/misc section publishes best-effort (its bytes as text) — the
+    text surfaces (announcements, `.md.html`/`.paged.html`) are unaffected.
+  - ⬜ **CF6** creatable-format editors (Excalidraw / 3Dmol / p5.js; wire
+    structure/plot back to live editors — currently Create-menu placeholders).
 - **Post-session coherence audit (2026-07-09, owner request).** Fanned out
   6 parallel read-only subagents (dangling references from today's renames;
   Status.md accuracy vs code; goal/Roadmap/specs coherence; the

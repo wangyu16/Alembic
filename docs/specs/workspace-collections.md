@@ -331,9 +331,16 @@ Students never see repo paths.
 - Term switcher above the scope control; editing an archived term stamps a
   revision note; new-term carry-over offers structure-only (default) or
   structure+files.
-- **Stale docs to correct**: `spaces.ts:78`'s doc comment and
-  `package-layout.md` §2 both describe `current/archive/<term>/`, predating this
-  decision.
+- **Stale docs corrected (CF5)**: `spaces.ts:78`'s doc comment and
+  `package-layout.md` §1/§2 no longer describe `current/archive/<term>/` — both
+  now state the pointer model.
+- **✅ Landed as CF5** (see collections-framework.md): the term dimension is
+  built on the shared collections framework — `current/<term-id>` is a
+  two-segment `spaceDir`; `manifest.currentTerm` (id) + `currentTermLabel`
+  (display) are live; `terms.ts` (contract + ops), `term-actions.ts`,
+  `current-collection-view.tsx`, and the data-driven "This term" area in
+  `course-site.ts` ship it. Structure-only carry-over = `planCarryOver`
+  (announcements excluded).
 - The published course home's static `current-term` placeholder
   (`renderer/course-site.ts:301`) becomes data-driven off the pointer.
 

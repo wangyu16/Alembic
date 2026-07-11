@@ -15,11 +15,15 @@ import {
 } from "@alembic/package-ops";
 import {
   buildCourseSite,
+  renderMarkdown,
   themeScheme,
   withDeckTheme,
   type CourseChapter,
+  type CourseTermData,
+  type CourseTermLink,
   type SiteFile,
 } from "@alembic/renderer";
+import type { PackageRecord, PackageStore } from "@alembic/package-ops";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
 import { supabaseEventLogger } from "@/lib/events";
@@ -30,6 +34,110 @@ import { generateSelfContainedFile } from "@/lib/worker-client";
 import { docMetaForPackage } from "@/lib/doc-metadata";
 
 const PAGES_BRANCH = "gh-pages";
+
+/** Deterministic UTC date formatter for announcement stamps ("July 11, 2026"). */
+const ANNOUNCEMENT_DATE_FMT = new Intl.DateTimeFormat("en-US", {
+  timeZone: "UTC",
+  year: "numeric",
+  month: "long",
+  day: "numeric",
+});
+
+/**
+ * Derive a human date from an announcement filename. Announcements are stamped
+ * `<YYYY-MM-DDThh-mm-ssZ>-<slug>.md` (see term-actions `postAnnouncementAction`),
+ * so the leading `YYYY-MM-DD` is the post date. Returns undefined when the name
+ * doesn't carry a parseable stamp (then the card simply shows no date).
+ */
+function announcementDate(filename: string): string | undefined {
+  const m = /^(\d{4})-(\d{2})-(\d{2})T/.exec(filename);
+  if (!m) return undefined;
+  const d = new Date(`${m[1]}-${m[2]}-${m[3]}T00:00:00Z`);
+  return Number.isNaN(d.getTime()) ? undefined : ANNOUNCEMENT_DATE_FMT.format(d);
+}
+
+/** Split an announcement markdown file into its H1 title and body. */
+function splitAnnouncement(
+  markdown: string,
+  fallbackTitle: string,
+): { title: string; body: string } {
+  const lines = markdown.split("\n");
+  let i = 0;
+  while (i < lines.length && !lines[i].trim()) i++;
+  const heading = /^#\s+(.+?)\s*$/.exec(lines[i]?.trim() ?? "");
+  if (heading) {
+    return { title: heading[1], body: lines.slice(i + 1).join("\n").trim() };
+  }
+  return { title: fallbackTitle, body: markdown.trim() };
+}
+
+/** Drop a file extension (incl. self-contained double extensions) for a title. */
+function prettyFileTitle(filename: string): string {
+  return filename.replace(/\.(md\.html|slides\.html|paged\.html|[^.]+)$/, "");
+}
+
+/**
+ * Gather the CURRENT term's course-level "This term" data (CF5) from the
+ * package's public files. Only the manifest's current term is surfaced; archived
+ * terms never appear. Course-level section files sit directly under
+ * `current/<term-id>/<section>/…` (exactly four path segments) — chapter-scoped
+ * material (`…/chapters/…`) is intentionally excluded.
+ *
+ * Announcements are parsed fully (title from the leading `# ` line, body rendered
+ * markdown→HTML, newest first by ISO-stamped filename). Assignments and other
+ * materials are surfaced as links to their published paths and the underlying
+ * files are handed back so the caller can publish them to Pages alongside the
+ * home — the same public files, at the same root-relative path the link uses.
+ */
+async function gatherCurrentTerm(
+  store: PackageStore,
+  packageId: string,
+  record: PackageRecord,
+): Promise<{ data: CourseTermData; files: SiteFile[] } | undefined> {
+  const termId = record.manifest.currentTerm;
+  if (!termId) return undefined;
+  const label = record.manifest.currentTermLabel?.trim() || termId;
+
+  const sectionFiles = (await store.listFiles(packageId))
+    .filter((f) => f.repo === "public")
+    .map((f) => ({ file: f, seg: f.path.replace(/^\/+/, "").split("/") }))
+    .filter(
+      ({ seg }) => seg.length === 4 && seg[0] === "current" && seg[1] === termId,
+    );
+
+  // Newest-first: filenames carry a leading ISO stamp, so reverse-lexical order
+  // is chronological (newest first).
+  const announcements = sectionFiles
+    .filter(({ seg }) => seg[2] === "announcements" && seg[3].endsWith(".md"))
+    .sort((a, b) => b.seg[3].localeCompare(a.seg[3]))
+    .map(({ file, seg }) => {
+      const { title, body } = splitAnnouncement(file.content, prettyFileTitle(seg[3]));
+      return {
+        title,
+        date: announcementDate(seg[3]),
+        bodyHtml: body ? renderMarkdown(body) : "",
+      };
+    });
+
+  const publishFiles: SiteFile[] = [];
+  const linksFor = (section: string): CourseTermLink[] =>
+    sectionFiles
+      .filter(({ seg }) => seg[2] === section)
+      .sort((a, b) => a.seg[3].localeCompare(b.seg[3]))
+      .map(({ file, seg }) => {
+        const href = `current/${termId}/${section}/${seg[3]}`;
+        // Publish the file to Pages at the same root-relative path the link
+        // targets, so the link actually resolves. Best-effort: these are already
+        // public files; text-based (`.md.html`, etc.) publish cleanly.
+        publishFiles.push({ path: href, content: file.content });
+        return { title: prettyFileTitle(seg[3]), href };
+      });
+
+  const assignments = linksFor("assignments");
+  const misc = linksFor("misc");
+
+  return { data: { label, announcements, assignments, misc }, files: publishFiles };
+}
 
 export interface PublishSiteResult {
   ok: boolean;
@@ -199,6 +307,10 @@ export async function publishSiteAction(
       }
     }
 
+    // The CURRENT term's "This term" area (announcements + assignments + other
+    // materials). Absent current term → omit the section entirely.
+    const currentTermBundle = await gatherCurrentTerm(store, packageId, record!);
+
     const files = [
       ...buildCourseSite({
         title: record!.title,
@@ -207,6 +319,7 @@ export async function publishSiteAction(
         courseNumber: record!.manifest.courseContext?.courseNumber,
         department: record!.manifest.courseContext?.department,
         chapters,
+        currentTerm: currentTermBundle?.data,
         // The visible rights notice on the published home page.
         license: record!.manifest.license,
         builtAt: new Date().toISOString(),
@@ -225,6 +338,8 @@ export async function publishSiteAction(
         },
       }),
       ...pageFiles,
+      // The current-term assignment/misc files themselves, so their links resolve.
+      ...(currentTermBundle?.files ?? []),
     ];
 
     const coords = { owner: repo.owner, repo: repo.name };

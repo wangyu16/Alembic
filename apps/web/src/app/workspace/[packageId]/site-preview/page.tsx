@@ -8,12 +8,95 @@ import {
   loadSlidesDeck,
   loadStudyGuide,
 } from "@alembic/package-ops";
-import { buildCourseSite, themeScheme, type CourseChapter } from "@alembic/renderer";
+import {
+  buildCourseSite,
+  renderMarkdown,
+  themeScheme,
+  type CourseChapter,
+  type CourseTermData,
+  type CourseTermLink,
+} from "@alembic/renderer";
+import type { PackageRecord, PackageStore } from "@alembic/package-ops";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
 import { getRenderTheme } from "@/lib/theme";
 
 export const dynamic = "force-dynamic";
+
+/** Deterministic UTC date formatter for announcement stamps ("July 11, 2026"). */
+const ANNOUNCEMENT_DATE_FMT = new Intl.DateTimeFormat("en-US", {
+  timeZone: "UTC",
+  year: "numeric",
+  month: "long",
+  day: "numeric",
+});
+
+function announcementDate(filename: string): string | undefined {
+  const m = /^(\d{4})-(\d{2})-(\d{2})T/.exec(filename);
+  if (!m) return undefined;
+  const d = new Date(`${m[1]}-${m[2]}-${m[3]}T00:00:00Z`);
+  return Number.isNaN(d.getTime()) ? undefined : ANNOUNCEMENT_DATE_FMT.format(d);
+}
+
+function splitAnnouncement(
+  markdown: string,
+  fallbackTitle: string,
+): { title: string; body: string } {
+  const lines = markdown.split("\n");
+  let i = 0;
+  while (i < lines.length && !lines[i].trim()) i++;
+  const heading = /^#\s+(.+?)\s*$/.exec(lines[i]?.trim() ?? "");
+  if (heading) {
+    return { title: heading[1], body: lines.slice(i + 1).join("\n").trim() };
+  }
+  return { title: fallbackTitle, body: markdown.trim() };
+}
+
+function prettyFileTitle(filename: string): string {
+  return filename.replace(/\.(md\.html|slides\.html|paged\.html|[^.]+)$/, "");
+}
+
+/**
+ * Gather the CURRENT term's "This term" data for the preview — mirrors
+ * `site-actions.ts`'s gathering (announcements parsed newest-first, assignments +
+ * other materials as links). The preview only needs the shape, not the published
+ * files, so it returns the data alone.
+ */
+async function previewCurrentTerm(
+  store: PackageStore,
+  packageId: string,
+  record: PackageRecord,
+): Promise<CourseTermData | undefined> {
+  const termId = record.manifest.currentTerm;
+  if (!termId) return undefined;
+  const label = record.manifest.currentTermLabel?.trim() || termId;
+
+  const sectionFiles = (await store.listFiles(packageId))
+    .filter((f) => f.repo === "public")
+    .map((f) => ({ file: f, seg: f.path.replace(/^\/+/, "").split("/") }))
+    .filter(
+      ({ seg }) => seg.length === 4 && seg[0] === "current" && seg[1] === termId,
+    );
+
+  const announcements = sectionFiles
+    .filter(({ seg }) => seg[2] === "announcements" && seg[3].endsWith(".md"))
+    .sort((a, b) => b.seg[3].localeCompare(a.seg[3]))
+    .map(({ file, seg }) => {
+      const { title, body } = splitAnnouncement(file.content, prettyFileTitle(seg[3]));
+      return { title, date: announcementDate(seg[3]), bodyHtml: body ? renderMarkdown(body) : "" };
+    });
+
+  const linksFor = (section: string): CourseTermLink[] =>
+    sectionFiles
+      .filter(({ seg }) => seg[2] === section)
+      .sort((a, b) => a.seg[3].localeCompare(b.seg[3]))
+      .map(({ seg }) => ({
+        title: prettyFileTitle(seg[3]),
+        href: `current/${termId}/${section}/${seg[3]}`,
+      }));
+
+  return { label, announcements, assignments: linksFor("assignments"), misc: linksFor("misc") };
+}
 
 /**
  * Preview of the student-facing course HOME. The chapter/slides/practice pages
@@ -53,6 +136,8 @@ export default async function SitePreviewPage({
     chapters.push(chapter);
   }
 
+  const currentTerm = await previewCurrentTerm(store, packageId, record);
+
   const cookie = await getRenderTheme();
   const orzTheme = record.manifest.theme ?? undefined;
   const files = buildCourseSite({
@@ -62,6 +147,7 @@ export default async function SitePreviewPage({
     courseNumber: record.manifest.courseContext?.courseNumber,
     department: record.manifest.courseContext?.department,
     chapters,
+    currentTerm,
     license: record.manifest.license,
     builtAt: new Date().toISOString(),
     theme: orzTheme ? themeScheme(orzTheme) : cookie,

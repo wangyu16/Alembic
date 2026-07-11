@@ -168,10 +168,106 @@ describe("buildCourseSite — course home hub", () => {
     expect(index.content).toContain('<span class="modules-count">3 modules</span>');
   });
 
-  it("includes a placeholder \"This term\" section", () => {
+  it("omits the \"This term\" section entirely when there is no current term", () => {
     const index = buildCourseSite(course).find((f) => f.path === "index.html")!;
-    expect(index.content).toContain('<section class="current-term">');
-    expect(index.content).toContain("This term");
+    expect(index.content).not.toContain('class="current-term"');
+    // No empty "This term" box for a course with no current term.
+    expect(index.content).not.toContain("This term");
+  });
+});
+
+describe("buildCourseSite — \"This term\" (current collection)", () => {
+  const index = (extra: Parameters<typeof buildCourseSite>[0]) =>
+    buildCourseSite(extra).find((f) => f.path === "index.html")!.content;
+
+  const term = {
+    label: "Fall 2026",
+    announcements: [
+      {
+        title: "Welcome to the course",
+        date: "July 11, 2026",
+        bodyHtml: "<p>Read <strong>chapter 1</strong> before class.</p>",
+      },
+      {
+        title: "Office hours moved",
+        bodyHtml: "<p>Now Tuesdays at 2pm.</p>",
+      },
+    ],
+    assignments: [
+      { title: "Problem set 1", href: "current/2026-fall/assignments/ps1.md.html" },
+    ],
+    misc: [{ title: "Syllabus", href: "current/2026-fall/misc/syllabus.md.html" }],
+  };
+
+  it("renders the section with the term label shown tastefully in the heading", () => {
+    const html = index({ ...course, currentTerm: term });
+    expect(html).toContain('<section class="current-term"');
+    expect(html).toContain('id="current-term-heading">This term');
+    expect(html).toContain('<span class="term-label">Fall 2026</span>');
+  });
+
+  it("lists announcements newest-first with optional date and pre-rendered body", () => {
+    const html = index({ ...course, currentTerm: term });
+    // Titles escaped; body HTML placed verbatim.
+    expect(html).toContain("Welcome to the course");
+    expect(html).toContain("<strong>chapter 1</strong>");
+    expect(html).toContain('<span class="term-ann-date">July 11, 2026</span>');
+    // Newest first: the first announcement appears before the second.
+    expect(html.indexOf("Welcome to the course")).toBeLessThan(
+      html.indexOf("Office hours moved"),
+    );
+    // The second announcement carries no date span of its own.
+    const second = html.slice(html.indexOf("Office hours moved"));
+    expect(second.slice(0, 120)).not.toContain("term-ann-date");
+  });
+
+  it("renders assignments and other materials as labelled link lists", () => {
+    const html = index({ ...course, currentTerm: term });
+    expect(html).toContain("Assignments");
+    expect(html).toContain('href="current/2026-fall/assignments/ps1.md.html"');
+    expect(html).toContain("Other materials");
+    expect(html).toContain('href="current/2026-fall/misc/syllabus.md.html"');
+  });
+
+  it("omits empty sub-sections individually", () => {
+    const html = index({
+      ...course,
+      currentTerm: { ...term, assignments: [], misc: [] },
+    });
+    expect(html).toContain("Welcome to the course"); // announcements still shown
+    expect(html).not.toContain("Assignments");
+    expect(html).not.toContain("Other materials");
+    expect(html).not.toContain("No announcements yet.");
+  });
+
+  it("shows the label + a gentle empty line for a fully-empty current term", () => {
+    const html = index({
+      ...course,
+      currentTerm: { label: "Spring 2027", announcements: [], assignments: [], misc: [] },
+    });
+    expect(html).toContain('<section class="current-term"');
+    expect(html).toContain('<span class="term-label">Spring 2027</span>');
+    expect(html).toContain("No announcements yet.");
+  });
+
+  it("escapes caller strings but not the announcement body", () => {
+    const html = index({
+      ...course,
+      currentTerm: {
+        label: "<b>x</b>",
+        announcements: [
+          { title: "<script>t</script>", bodyHtml: "<p>Safe <em>body</em></p>" },
+        ],
+        assignments: [],
+        misc: [],
+      },
+    });
+    // Label + title escaped.
+    expect(html).toContain("&lt;b&gt;x&lt;/b&gt;");
+    expect(html).toContain("&lt;script&gt;t&lt;/script&gt;");
+    expect(html).not.toContain("<script>t</script>");
+    // Body HTML is intentional — placed verbatim.
+    expect(html).toContain("<p>Safe <em>body</em></p>");
   });
 });
 

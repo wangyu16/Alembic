@@ -9,7 +9,7 @@ in [document-model.md](document-model.md) and the v1 layout
 ([package-contract-v1.md](package-contract-v1.md)); v1 packages remain
 readable, migration is explicit. The four §8 items were ruled by the owner
 same-day (all per recommendation: `assets/`, `private/`,
-`current/archive/<term>/` + `currentTerm`, template repository ships).
+`current/<term-id>/` + `currentTerm` pointer, template repository ships).
 
 ## 1. The repositories
 
@@ -50,9 +50,10 @@ practice/
   <chapter>.md.html                 # example & practice questions
 assets/                             # the shared-elements space (decided)
   **/*                              # any depth; kind by extension
-current/                            # this-term space
-  **/*                              # newest set, shown on the site
-  archive/<term>/**                 # archived cycles, e.g. archive/2026-spring/
+current/                            # this-term space (pointer model)
+  <term-id>/**                      # one folder per term, e.g. 2026-fall/;
+                                    # manifest.currentTerm names the active one,
+                                    # every other <term-id>/ is an archived cycle
 provenance/                         # attribution & adaptation records
 .alembic/                           # platform bookkeeping — REBUILDABLE,
                                     # never required for registration
@@ -154,8 +155,10 @@ with preview (a Tier-3-style deliberate act, per recommendation):
    packages by hand; v1's `materials/` maps to it in migration.
 2. **Private repo root: `private/`** (v1's `private-instructor/` maps in
    migration).
-3. **`current/` archiving: `current/archive/<term>/`**, with `currentTerm`
-   in the manifest labeling the active cycle.
+3. **`current/` uses the pointer model: `current/<term-id>/`**, with
+   `currentTerm` in the manifest naming the active cycle (immutable id) and
+   `currentTermLabel` its display name; every other `<term-id>/` is archived.
+   Files never move on rollover — the pointer moves.
 4. **Template repository ships** (`create-alembic-package`: README +
    skeleton + one example chapter) — the spec's executable documentation;
    an R0 deliverable.

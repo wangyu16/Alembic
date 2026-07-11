@@ -2,10 +2,13 @@ import { notFound, redirect } from "next/navigation";
 import {
   collectionTree,
   listChapters,
+  listTerms,
   loadStudyGuide,
   loadCourseConceptMap,
   type CollectionScopeTree,
+  type TermInfo,
 } from "@alembic/package-ops";
+import { currentSpaceDir, isValidTermId } from "@alembic/package-contract";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
 import { clientForUser, githubConfig, installUrl } from "@/lib/github";
@@ -34,6 +37,9 @@ export default async function EditShellPage({
     view?: string;
     collection?: string;
     scope?: string;
+    /** Which term the Current collection is viewing (defaults to the active
+     *  term); orthogonal to the nav view model, read directly like `publish`. */
+    term?: string;
     /** Legacy; mapped forward by `parseWorkspaceView`. */
     cat?: string;
     publish?: string;
@@ -152,6 +158,33 @@ export default async function EditShellPage({
       assetMeta = {};
     }
   }
+
+  // The Current collection (CF5): the active teaching term. Files live at
+  // `current/<term-id>/…` (pointer model — the manifest names the active term).
+  // The viewer can switch to an archived term via `?term=`; a term other than
+  // `manifest.currentTerm` is read-only. `activeTermId` falls back to the
+  // pointer, then null (no term started yet).
+  let terms: TermInfo[] = [];
+  let activeTermId: string | null = null;
+  let isCurrentTerm = true;
+  let currentTree: CollectionScopeTree[] | null = null;
+  if (category === "current") {
+    terms = await listTerms(store, packageId);
+    const requested = sp.term && isValidTermId(sp.term) ? sp.term : null;
+    const pointer = record.manifest.currentTerm ?? null;
+    // A requested term must actually exist; else fall back to the pointer.
+    activeTermId =
+      requested && terms.some((t) => t.id === requested) ? requested : pointer;
+    isCurrentTerm = activeTermId != null && activeTermId === pointer;
+    if (activeTermId) {
+      currentTree = await collectionTree(store, packageId, {
+        spaceDir: currentSpaceDir(activeTermId),
+        repo: "public",
+        chapterSlugs: chapters.map((c) => c.slug),
+        fileTypes: record.manifest.fileTypes,
+      });
+    }
+  }
   // Publishing state for the header (Save to GitHub / Publish page / List
   // publicly) — mirrors the classic editor's page. `versions` isn't needed here
   // (history is per-chapter elsewhere), so we skip the commit listing.
@@ -237,6 +270,10 @@ export default async function EditShellPage({
       privateTree={privateTree}
       assetsTree={assetsTree}
       assetMeta={assetMeta}
+      terms={terms}
+      activeTermId={activeTermId}
+      isCurrentTerm={isCurrentTerm}
+      currentTree={currentTree}
       publishing={publishing}
       aiAccess={aiAccess}
     />

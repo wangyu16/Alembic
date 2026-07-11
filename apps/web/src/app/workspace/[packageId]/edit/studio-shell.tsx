@@ -23,6 +23,7 @@ import type {
   CollectionScopeTree,
   FileLeaf,
   FolderNode,
+  TermInfo,
 } from "@alembic/package-ops";
 import { isBinaryPath } from "@/lib/collection-upload";
 import {
@@ -43,6 +44,7 @@ import { saveFileAction, proposeEditAction, runGenerateOperationAction } from ".
 import { importFileAction } from "../import-actions";
 import { requestAiAccessAction } from "../../ai-access-actions";
 import { AssetsCollectionView, type AssetMeta } from "./assets-collection-view";
+import { CurrentCollectionView } from "./current-collection-view";
 import {
   generateChapterHtmlAction,
   hostSaveStudyGuideAction,
@@ -239,6 +241,10 @@ export function StudioShell({
   privateTree,
   assetsTree,
   assetMeta,
+  terms,
+  activeTermId,
+  isCurrentTerm,
+  currentTree,
   publishing,
   aiAccess,
 }: {
@@ -258,6 +264,10 @@ export function StudioShell({
   privateTree: CollectionScopeTree[] | null;
   assetsTree: CollectionScopeTree[] | null;
   assetMeta: Record<string, AssetMeta>;
+  terms: TermInfo[];
+  activeTermId: string | null;
+  isCurrentTerm: boolean;
+  currentTree: CollectionScopeTree[] | null;
   publishing: PublishingState;
   aiAccess: AiAccess;
 }) {
@@ -643,7 +653,16 @@ export function StudioShell({
               onDirty={setDirty}
             />
           ) : view.collection === "current" ? (
-            <CurrentSpace />
+            <CurrentCollectionView
+              key="current"
+              packageId={packageId}
+              terms={terms}
+              activeTermId={activeTermId}
+              isCurrent={isCurrentTerm}
+              tree={currentTree ?? []}
+              chapters={chapters}
+              onDirty={setDirty}
+            />
           ) : view.collection === "private" ? (
             <PrivateCollectionView
               key="private"
@@ -2639,26 +2658,6 @@ function PrivateCollectionView({
           ))}
         </div>
       )}
-    </div>
-  );
-}
-
-/* ── The "Current" space: this teaching cycle (document-model.md row 7) ───── */
-function CurrentSpace() {
-  return (
-    <div className="flex h-full flex-col items-start gap-3">
-      <h2 className="font-serif text-lg text-ink">Current (this term)</h2>
-      <p className="max-w-prose text-sm text-muted">
-        A space for the current teaching cycle — this semester&rsquo;s
-        assignment list, completed exams with keys for student review, and
-        similar. The newest set appears on the course website; when a new
-        semester starts, the old set is archived. Not included when others
-        adapt your course.
-      </p>
-      <p className="max-w-prose text-xs text-faint">
-        Arrives with the document contract (file uploads and semester
-        archiving) — being built now.
-      </p>
     </div>
   );
 }

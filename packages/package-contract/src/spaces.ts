@@ -75,7 +75,8 @@ const ROOT_DIR_ALLOWLIST = new Set([".alembic", ".github"]);
 /**
  * Resolve a repository-relative path to its contract-v2 space.
  * Any depth under a space directory belongs to that space
- * (`current/archive/2026-spring/quiz.pdf` → `current`). Root allowlisted
+ * (`current/2026-spring/quiz.pdf` → `current`, under the pointer model —
+ * see terms.ts). Root allowlisted
  * files resolve to `metadata`; throws for unknown locations (fail closed —
  * an unclassifiable path must never be committed). Reuses PathLayerError
  * so callers catch one error type across v1 and v2.

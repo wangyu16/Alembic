@@ -190,9 +190,15 @@ Disjoint pieces are marked ∥ (parallelizable via subagents).
 - **CF4 — Assets.** Metadata panel (description/tags/license) gating share;
   insert & open actions from the handling class; element registration →
   Discover.
-- **CF5 — Current.** Term dimension (pointer model, switcher, archive) + section
-  tagging + the "This term" published area. Depends on the term work in
-  workspace-collections.md P5.
+- **CF5 — Current.** ✅ Landed. Term dimension (pointer model, switcher,
+  archived = read-only) + reserved course-level sections
+  (announcements/assignments/misc) + the data-driven "This term" published area.
+  A term is a two-segment `spaceDir` (`current/<term-id>`); `scopeForPath` +
+  `listCollection` were generalized to a boundary-safe multi-segment prefix so
+  the framework is reused verbatim. `terms.ts` (contract: sections, id
+  validation, `currentSpaceDir`; ops: `listTerms`, `planCarryOver`),
+  `term-actions.ts` (start/activate/relabel/announce), `current-collection-view.tsx`,
+  and `course-site.ts` `CourseTermData`. See workspace-collections.md P5.
 - **CF6 — creatable formats (separate track, later).** Each is its own
   self-contained builder + in-file editor (orz-family style): Excalidraw
   `.excalidraw.svg` (whiteboard/diagram, re-editable SVG), 3Dmol/NGL `.mol.html`

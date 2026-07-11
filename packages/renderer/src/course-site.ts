@@ -91,6 +91,37 @@ export interface CourseChapter {
   pagedHref?: string;
 }
 
+/** One dated note in the current term's "This term" area. Newest first. */
+export interface CourseTermAnnouncement {
+  title: string;
+  /** Human date string already formatted by the caller (e.g. "July 11, 2026"),
+   *  optional. Determinism: the renderer never derives a date itself. */
+  date?: string;
+  /** Announcement body, already rendered to safe HTML by the caller
+   *  (markdown → HTML through `@alembic/renderer`). Placed verbatim. */
+  bodyHtml: string;
+}
+
+/** A link to a published current-term file (assignment / other material). */
+export interface CourseTermLink {
+  title: string;
+  /** Root-relative href of a published file. */
+  href: string;
+}
+
+/**
+ * The CURRENT term's course-level surface, gathered by the caller from
+ * `current/<term-id>/…`. Only the current term is ever shown to students;
+ * archived terms never reach the site.
+ */
+export interface CourseTermData {
+  /** Display label ("Fall 2026"). */
+  label: string;
+  announcements: CourseTermAnnouncement[]; // newest first
+  assignments: CourseTermLink[];
+  misc: CourseTermLink[];
+}
+
 export interface CourseSiteInput {
   title: string;
   /** The course description — one paragraph, PLAIN TEXT (not markdown),
@@ -128,6 +159,77 @@ export interface CourseSiteInput {
   meta?: LearningResourceMeta;
   /** Render theme — matches the educator's editor selection (default dark). */
   theme?: RenderTheme;
+  /**
+   * The active teaching cycle surfaced on the home ("This term"): announcements,
+   * assignments, and other materials for the CURRENT term. Optional + additive —
+   * when absent, the whole "This term" section is omitted (a course with no
+   * current term shows no empty box). A present-but-fully-empty term still shows
+   * its label with a gentle "No announcements yet." line.
+   */
+  currentTerm?: CourseTermData;
+}
+
+/**
+ * The "This term" section — the CURRENT collection (CF5) surfaced to students.
+ * Returns "" when there is no current term (the section is omitted entirely, so
+ * a course with none shows no empty box). Announcements come first (the primary
+ * surface), each a dated card whose `bodyHtml` is caller-sanitized and placed
+ * verbatim; assignments and other materials follow as labelled link lists. Each
+ * sub-section is omitted individually when empty; a term with nothing at all
+ * shows only its label and a gentle empty line. Every caller string is escaped
+ * except `bodyHtml`, which is intentional HTML.
+ */
+function renderCurrentTerm(term: CourseTermData | undefined): string {
+  if (!term) return "";
+
+  const label = term.label.trim();
+  const labelHtml = label
+    ? ` <span class="term-label">${escapeHtml(label)}</span>`
+    : "";
+
+  const announcements = term.announcements.length
+    ? `<ul class="term-announcements">
+${term.announcements
+        .map((a) => {
+          const date = a.date?.trim()
+            ? `<span class="term-ann-date">${escapeHtml(a.date.trim())}</span>`
+            : "";
+          return `<li class="term-announcement">
+<div class="term-ann-head"><h3 class="term-ann-title">${escapeHtml(a.title)}</h3>${date}</div>
+<div class="term-ann-body markdown-body">${a.bodyHtml}</div>
+</li>`;
+        })
+        .join("\n")}
+</ul>`
+    : "";
+
+  const linkList = (heading: string, links: CourseTermLink[]): string =>
+    links.length
+      ? `<div class="term-links">
+<h3 class="term-links-heading">${escapeHtml(heading)}</h3>
+<ul class="term-link-list">
+${links
+          .map(
+            (l) =>
+              `<li><a href="${escapeHtml(l.href)}">${escapeHtml(l.title)}</a></li>`,
+          )
+          .join("\n")}
+</ul>
+</div>`
+      : "";
+
+  const assignments = linkList("Assignments", term.assignments);
+  const misc = linkList("Other materials", term.misc);
+
+  const hasContent = announcements || assignments || misc;
+  const body = hasContent
+    ? [announcements, assignments, misc].filter(Boolean).join("\n")
+    : `<p class="term-empty">No announcements yet.</p>`;
+
+  return `<section class="current-term" aria-labelledby="current-term-heading">
+<h2 id="current-term-heading">This term${labelHtml}</h2>
+${body}
+</section>`;
 }
 
 /**
@@ -240,10 +342,35 @@ a.module-title:hover{color:var(--accent)}
 .module-formats a:hover{color:var(--accent)}
 .modules-empty{color:var(--muted);font-style:italic}
 
-.current-term{margin:clamp(2.5rem,6vw,4rem) 0;padding:1.5rem 1.75rem;
-  border:1px dashed var(--edge);border-radius:.75rem;text-align:left}
-.current-term h2{margin-top:0}
-.current-note{color:var(--muted);margin:0}
+.current-term{margin:clamp(2.5rem,6vw,4rem) 0;padding:clamp(1.35rem,4vw,1.85rem);
+  border:1px solid var(--edge);border-radius:.9rem;background:var(--elevated);
+  text-align:left}
+.current-term h2{margin-top:0;display:flex;align-items:baseline;
+  flex-wrap:wrap;gap:.5rem .6rem}
+.term-label{font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+  font-size:.72rem;font-weight:600;letter-spacing:.02em;
+  color:var(--accent);background:var(--accent-soft);
+  border-radius:999px;padding:.15em .7em;line-height:1.4}
+.term-empty{color:var(--muted);margin:0}
+.term-announcements{list-style:none;padding:0;margin:0}
+.term-announcement{padding:1rem 0;border-top:1px solid var(--edge-soft)}
+.term-announcement:first-child{padding-top:.25rem;border-top:none}
+.term-ann-head{display:flex;align-items:baseline;justify-content:space-between;
+  flex-wrap:wrap;gap:.2rem .9rem}
+.term-ann-title{font-size:1.02rem;margin:0}
+.term-ann-date{flex:none;font-size:.8rem;color:var(--muted);
+  font-variant-numeric:tabular-nums}
+.term-ann-body{margin-top:.35rem}
+.term-ann-body>:first-child{margin-top:0}
+.term-ann-body>:last-child{margin-bottom:0}
+.term-links{margin-top:1.4rem}
+.term-links:first-child{margin-top:0}
+.term-links-heading{font-family:'Source Serif 4',Georgia,serif;font-size:1rem;
+  font-weight:600;color:var(--ink);margin:0 0 .5rem}
+.term-link-list{list-style:none;padding:0;margin:0;
+  display:flex;flex-direction:column;gap:.35rem}
+.term-link-list a{color:var(--accent)}
+.term-link-list a:hover{color:var(--accent-hover)}
 
 .site-footer{margin-top:3rem;padding-top:1rem;border-top:1px solid var(--edge-soft);
   display:flex;flex-wrap:wrap;align-items:center;gap:.5rem;
@@ -325,12 +452,10 @@ export function buildCourseSite(input: CourseSiteInput): SiteFile[] {
 ${modulesBody}
 </section>`;
 
-  // Placeholder — the "current term" collection (announcements, due dates,
-  // in-progress materials) isn't finalized yet; this just names the spot.
-  const currentTerm = `<section class="current-term">
-<h2>This term</h2>
-<p class="current-note">Announcements and current-term materials will appear here once available.</p>
-</section>`;
+  // The "This term" area — the current collection (announcements, assignments,
+  // other materials). Empty string when the course has no current term, so the
+  // section is omitted entirely rather than shown as an empty box.
+  const currentTerm = renderCurrentTerm(input.currentTerm);
 
   // Rights notice. Two shapes, because the licenses are two different things:
   //
