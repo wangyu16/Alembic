@@ -36,6 +36,14 @@ export {
   type HostAIRequest,
 } from "./host-ai-client";
 
+export {
+  HOST_INCLUDE_PROTOCOL,
+  HOST_INCLUDE_VERSION,
+  createHostIncludeClient,
+  type HostIncludeClient,
+  type HostIncludeClientOptions,
+} from "./host-include-client";
+
 /** A proposed AI edit the host diffs and the educator approves (a Tier-2 change). */
 export interface AIProposal {
   /** The proposed new carrier source (full replacement). */
