@@ -71,6 +71,9 @@ function parseMetadata(v: unknown): GenerateFileJob["metadata"] {
     description: str(m["description"]),
     source: str(m["source"]),
     date: str(m["date"]),
+    // Durable document identity (U2): the host's stable docId, embedded into the
+    // #orz-meta island so a re-uploaded copy keeps its permalink. Opaque string.
+    uid: str(m["uid"]),
     ...(license && (license.spdx || license.name || license.url) ? { license } : {}),
     ...(keywords && keywords.length ? { keywords } : {}),
   };
