@@ -1215,8 +1215,23 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
     both, which is what proves the change didn't widen them.
   **Next:** P2.6 (the remaining preserve-don't-regress items that need a
   signed-in session: the base-route redirect's query-forwarding, and the
-  hosted-editor unsaved paths), then P3 (Assets), P4 (Private), P5 (Current,
-  needs P1.2 — now done). P3/P4 do not depend on P1.2.
+  hosted-editor unsaved paths), then the **collections framework** (below).
+- **Collections framework — design approved (owner, 2026-07-11).**
+  [collections-framework.md](specs/collections-framework.md) is the durable
+  shared machine behind Assets/Current/Private (supersedes the per-collection
+  *detail* sketch in workspace-collections.md P3–P5; that spec still owns the
+  scope model + nav, which are built). Three forks locked (all the recommended
+  option): **folders** = scope (course/chapter) as the semantic top layer + free
+  nesting below (no contract change — depth already ignored); **type registry** =
+  curated handling classes, user-addable via an additive manifest field, class
+  drives insert/open/download; **upload** = follow GitHub (warn ~50 MB, block
+  100 MB), binaries require a published package (trial stays text-only —
+  locked trial-storage decision). Impl plan CF0–CF6: CF0 type registry (pure),
+  CF1 folder-aware tree, CF2 one generalized (scope,folder,type)+register door
+  (folds in `importFileAction`), CF3 Private (proves the framework), CF4 Assets
+  (+Discover element search), CF5 Current (term pointer model + sections + "This
+  term" area), CF6 creatable-formats roadmap (Excalidraw `.excalidraw.svg`,
+  3Dmol `.mol.html`, p5.js `.sim.html`). Not started.
 - **Post-session coherence audit (2026-07-09, owner request).** Fanned out
   6 parallel read-only subagents (dangling references from today's renames;
   Status.md accuracy vs code; goal/Roadmap/specs coherence; the
