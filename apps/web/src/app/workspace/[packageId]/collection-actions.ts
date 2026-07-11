@@ -6,6 +6,7 @@ import {
   classForPath,
   editorKindForPath,
   isSeededOnCreate,
+  newDocId,
   parseStudyGuide,
   validateBlockIds,
   type CollectionScope,
@@ -505,14 +506,18 @@ export async function createCollectionFileAction(
 
   let content: string;
   if (kind === "markdown") {
-    content = source; // the `.md` file's own bytes
+    content = source; // the `.md` file's own bytes (no #orz-meta island → no uid)
   } else {
     // md / slides / paged → the generator wraps the source into a self-contained
     // file. With a worker it is in-file-editable; without one the in-process
     // fallback yields a rendered viewer (still a valid file). The space's theme
     // seeds the document so it opens on-brand.
     const theme = record.manifest.themes?.[input.space.split("/")[0]] ?? record.manifest.theme;
-    const meta = docMetaForPackage(record.manifest, { title });
+    // U2: mint the document's durable id NOW and embed it in the carrier's
+    // #orz-meta island, so its docId is fixed from birth. registerFile (below,
+    // via syncPackageRegistry) reads the embedded uid and adopts it AS the docId
+    // — so the permalink survives any later rename/move/offline re-upload.
+    const meta = docMetaForPackage(record.manifest, { title, uid: newDocId() });
     // `kind` here is one of md/slides/paged: markdown is handled above, and
     // ketcher/plot were rejected by the `isSeededOnCreate` guard.
     content = await generateEditableFile({

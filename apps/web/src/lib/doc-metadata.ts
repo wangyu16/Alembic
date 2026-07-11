@@ -15,7 +15,7 @@ import type { DocMeta } from "@alembic/renderer";
  */
 export function docMetaForPackage(
   manifest: Pick<PackageManifest, "license" | "courseContext" | "description">,
-  opts: { title?: string; description?: string; source?: string },
+  opts: { title?: string; description?: string; source?: string; uid?: string },
 ): DocMeta {
   const meta: DocMeta = {
     license: {
@@ -30,5 +30,10 @@ export function docMetaForPackage(
   const description = opts.description ?? manifest.description;
   if (description?.trim()) meta.description = description.trim();
   if (opts.source) meta.source = opts.source;
+  // Durable document identity (U2): when the caller mints a stable id, embed it
+  // in the file's #orz-meta island. It survives in-file edits and travels with
+  // the file, so the registry recognizes a re-uploaded copy as the same
+  // document (permalink stays put) — see extractEmbeddedUid / registerFile.
+  if (opts.uid) meta.uid = opts.uid;
   return meta;
 }

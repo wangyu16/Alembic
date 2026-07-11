@@ -14,7 +14,7 @@
   "dependencies": {
     "@alembic/carriers": "workspace:*",
     "@alembic/package-contract": "workspace:*",
-    "orz-markdown": "^1.5.0"
+    "orz-markdown": "^1.6.0"
   },
   "devDependencies": {
     "@types/markdown-it": "^14.1.2"

@@ -137,8 +137,8 @@ importers:
   packages/generators:
     dependencies:
       orz-markdown:
-        specifier: ^1.5.0
-        version: 1.5.0(@types/markdown-it@14.1.2)
+        specifier: ^1.6.0
+        version: 1.6.0(@types/markdown-it@14.1.2)
       orz-mdhtml:
         specifier: ^0.9.0
         version: 0.9.0(@types/markdown-it@14.1.2)
@@ -192,8 +192,8 @@ importers:
         specifier: workspace:*
         version: link:../package-contract
       orz-markdown:
-        specifier: ^1.5.0
-        version: 1.5.0(@types/markdown-it@14.1.2)
+        specifier: ^1.6.0
+        version: 1.6.0(@types/markdown-it@14.1.2)
     devDependencies:
       '@types/markdown-it':
         specifier: ^14.1.2
@@ -2607,8 +2607,8 @@ packages:
     resolution: {integrity: sha512-6IpQ7mKUxRcZNLIObR0hz7lxsapSSIYNZJwXPGeF0mTVqGKFIXj1DQcMoT22S3ROcLyY/rz0PWaWZ9ayWmad9g==}
     engines: {node: '>= 0.8.0'}
 
-  orz-markdown@1.5.0:
-    resolution: {integrity: sha512-8ScOv9DxozbdJrFUVLl5xYOxCiHr2HlNLAbbb39UidQkq76SKH9yrpGAZC1NTI7cVAqH2c0LGY6LsLDVEhcSBA==}
+  orz-markdown@1.6.0:
+    resolution: {integrity: sha512-1IlbpgEm4OOljA1EFTzCF0sb0v6yKlP3JXuqB0w5jiusTroVAynNO8hGd1niaq4q0DEoFk0Q0rEmNXPrfpkB4A==}
 
   orz-mdhtml@0.9.0:
     resolution: {integrity: sha512-nD7sUJ5Jq+B2giecS7Ix3J36fSprHptl3gzkIOfO6TYRllyq9khU5BDNH28KES+XJLx+NW2aMcR43R08FQRpYA==}
@@ -4742,7 +4742,7 @@ snapshots:
       eslint: 9.39.4(jiti@2.7.0)
       eslint-import-resolver-node: 0.3.10
       eslint-import-resolver-typescript: 3.10.1(eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.61.0(eslint@9.39.4(jiti@2.7.0))(typescript@5.9.3))(eslint@9.39.4(jiti@2.7.0)))(eslint@9.39.4(jiti@2.7.0))
-      eslint-plugin-import: 2.32.0(@typescript-eslint/parser@8.61.0(eslint@9.39.4(jiti@2.7.0))(typescript@5.9.3))(eslint-import-resolver-typescript@3.10.1)(eslint@9.39.4(jiti@2.7.0))
+      eslint-plugin-import: 2.32.0(@typescript-eslint/parser@8.61.0(eslint@9.39.4(jiti@2.7.0))(typescript@5.9.3))(eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.61.0(eslint@9.39.4(jiti@2.7.0))(typescript@5.9.3))(eslint@9.39.4(jiti@2.7.0)))(eslint@9.39.4(jiti@2.7.0)))(eslint@9.39.4(jiti@2.7.0))
       eslint-plugin-jsx-a11y: 6.10.2(eslint@9.39.4(jiti@2.7.0))
       eslint-plugin-react: 7.37.5(eslint@9.39.4(jiti@2.7.0))
       eslint-plugin-react-hooks: 7.1.1(eslint@9.39.4(jiti@2.7.0))
@@ -4775,7 +4775,7 @@ snapshots:
       tinyglobby: 0.2.17
       unrs-resolver: 1.12.2
     optionalDependencies:
-      eslint-plugin-import: 2.32.0(@typescript-eslint/parser@8.61.0(eslint@9.39.4(jiti@2.7.0))(typescript@5.9.3))(eslint-import-resolver-typescript@3.10.1)(eslint@9.39.4(jiti@2.7.0))
+      eslint-plugin-import: 2.32.0(@typescript-eslint/parser@8.61.0(eslint@9.39.4(jiti@2.7.0))(typescript@5.9.3))(eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.61.0(eslint@9.39.4(jiti@2.7.0))(typescript@5.9.3))(eslint@9.39.4(jiti@2.7.0)))(eslint@9.39.4(jiti@2.7.0)))(eslint@9.39.4(jiti@2.7.0))
     transitivePeerDependencies:
       - supports-color
 
@@ -4790,7 +4790,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.61.0(eslint@9.39.4(jiti@2.7.0))(typescript@5.9.3))(eslint-import-resolver-typescript@3.10.1)(eslint@9.39.4(jiti@2.7.0)):
+  eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.61.0(eslint@9.39.4(jiti@2.7.0))(typescript@5.9.3))(eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.61.0(eslint@9.39.4(jiti@2.7.0))(typescript@5.9.3))(eslint@9.39.4(jiti@2.7.0)))(eslint@9.39.4(jiti@2.7.0)))(eslint@9.39.4(jiti@2.7.0)):
     dependencies:
       '@rtsao/scc': 1.1.0
       array-includes: 3.1.9
@@ -5603,7 +5603,7 @@ snapshots:
       type-check: 0.4.0
       word-wrap: 1.2.5
 
-  orz-markdown@1.5.0(@types/markdown-it@14.1.2):
+  orz-markdown@1.6.0(@types/markdown-it@14.1.2):
     dependencies:
       '@traptitech/markdown-it-katex': 3.6.0
       katex: 0.16.47
@@ -5624,20 +5624,20 @@ snapshots:
 
   orz-mdhtml@0.9.0(@types/markdown-it@14.1.2):
     dependencies:
-      orz-markdown: 1.5.0(@types/markdown-it@14.1.2)
+      orz-markdown: 1.6.0(@types/markdown-it@14.1.2)
     transitivePeerDependencies:
       - '@types/markdown-it'
 
   orz-paged@0.7.0(@types/markdown-it@14.1.2):
     dependencies:
-      orz-markdown: 1.5.0(@types/markdown-it@14.1.2)
+      orz-markdown: 1.6.0(@types/markdown-it@14.1.2)
       pagedjs: 0.4.3
     transitivePeerDependencies:
       - '@types/markdown-it'
 
   orz-slides@0.8.0(@types/markdown-it@14.1.2):
     dependencies:
-      orz-markdown: 1.5.0(@types/markdown-it@14.1.2)
+      orz-markdown: 1.6.0(@types/markdown-it@14.1.2)
       reveal.js: 5.2.1
     transitivePeerDependencies:
       - '@types/markdown-it'

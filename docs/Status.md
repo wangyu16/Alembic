@@ -1323,11 +1323,23 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
     binary-as-blob (fix #1). Thin client: a shared **`ReplaceFileButton`** on the
     Assets / Private / Current file rows. Study-guide deliverables already
     round-trip via the section-merge Upload (block-ID reconcile) + "Download
-    .md.html". **Next (U2):** embed a stable `uid` in each carrier (orz-family +
-    registry) so identity travels *with the file* — a re-upload keeps its docId
-    even when renamed/moved, and future whole-package / direct-GitHub origins
-    inherit the same identity. **U3:** relative→permalink rewrite on insert. Raw
+    .md.html". **U3 (next):** relative→permalink rewrite on insert. Raw
     binaries (no meta island) stay path-based.
+  - ✅ **Durable document identity (U2).** A stable `uid` is embedded in each
+    self-contained carrier's `#orz-meta` island — `orz-markdown@1.6.0`
+    (`DocMeta.uid`, published) carries it; because `serializeDoc()` never
+    rewrites that island, the uid **survives in-file edits and travels with the
+    file**. `createCollectionFileAction` mints the uid (`newDocId`) at create so
+    a carrier's docId is fixed from birth; `registerFile` matches an embedded
+    uid FIRST (before hash/location) via `extractEmbeddedUid` — the uid IS the
+    docId. So a `.md.html`/`.slides.html`/`.paged.html` re-uploaded after an
+    offline edit keeps its permalink **even when renamed/moved**, and a future
+    whole-package import / direct-GitHub commit inherits the same identity with
+    no rework. Registry store gains `getByDocId` (memory + Supabase). Additive:
+    files with no uid (plain `.md`, raw binaries, pre-U2 docs) keep
+    hash→location identity. No orz-mdhtml/slides/paged republish needed (their
+    bundled builders already serialize a `uid` a titled meta carries); worker
+    redeployed so freshly-generated carriers embed it.
 - **Post-session coherence audit (2026-07-09, owner request).** Fanned out
   6 parallel read-only subagents (dangling references from today's renames;
   Status.md accuracy vs code; goal/Roadmap/specs coherence; the
