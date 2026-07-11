@@ -441,8 +441,8 @@ export function CurrentCollectionView({
             />
           </label>
 
-          {/* Create — the framework's creatable formats. In-app creation isn't
-              wired for collections yet; each item is a disabled placeholder. */}
+          {/* Create — the framework's creatable formats (CF6). Each opens the
+              shared editor: documents/markdown on a starter, structure/plot empty. */}
           <div className="relative">
             <button
               className="btn btn-ghost btn-sm"
