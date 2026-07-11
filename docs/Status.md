@@ -1313,6 +1313,20 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
     sandbox allow-scripts`, `nosniff`) so a shared permalink can't run script
     against the viewer's session. *(Full user-content isolation — a separate
     cookieless origin — remains a follow-up; sandbox is the interim.)*
+  - 🔄 **Illustrated Guide (`/guide`), Phase A.** Grew the one-page "seven
+    things" orientation into a multi-page guide section. Home is an illustrated
+    **card hub** (Understand / Do groups; Do pages tagged "soon"); sub-pages get
+    a sticky **sidebar rail** (drawer below `lg`, active page in copper) via a
+    shared `GuidePageShell` + `GuideSidebar` + prev/next. Four **Understand**
+    pages shipped — Core ideas, Anatomy of a package, Documents & collections,
+    Citing/versions & links — each carrying **generated line-SVG concept figures**
+    (`guide-figures.tsx`: package public/private split, study-guide spine,
+    collections, permalink, self-contained doc, publish) in the house idiom
+    (muted base + copper detail, theme-aware). Educator voice throughout,
+    grounded in goal.md; built via the impeccable craft flow and browser-verified
+    at 375 / 1280 in both themes (fixed a JSX line-wrap whitespace bug and a
+    mobile flex-vs-stack layout bug found in review). **Phase B (deferred):** the
+    five **Do** walkthrough pages with captured screenshots/GIFs.
   - 🔄 **Offline document round-trip (U1).** Download a course document, edit it
     offline, upload it back to **replace** the current version — for all course
     documents. `replaceCollectionFileAction` writes the edited bytes at the
