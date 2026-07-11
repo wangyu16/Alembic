@@ -5,6 +5,9 @@ import { serializeStudyGuide } from "@alembic/package-contract";
 import {
   chapterPracticePath,
   chapterSlidesPath,
+  ensureLicenseFile,
+  LICENSE_PATH,
+  licenseFileContent,
   listChapters,
   loadSlidesDeck,
   loadStudyGuide,
@@ -20,7 +23,8 @@ import {
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
 import { supabaseEventLogger } from "@/lib/events";
-import { clientForUser } from "@/lib/github";
+import { clientForUser, recordSyncedSha } from "@/lib/github";
+import { commitFiles } from "@alembic/github-bridge";
 import { getRenderTheme } from "@/lib/theme";
 import { generateSelfContainedFile } from "@/lib/worker-client";
 import { docMetaForPackage } from "@/lib/doc-metadata";
@@ -72,6 +76,30 @@ export async function publishSiteAction(
 
   const gh = await clientForUser(supabase, user.id);
   if (!gh) return { ok: false, error: "Connect publishing first." };
+
+  // Backfill the repo-root LICENSE to the main branch. GitHub needs the verbatim
+  // legal text at the root to detect the license and show the badge, and courses
+  // published before this feature existed never got one — the original backfill
+  // only ran on FIRST publish, which an already-published course skips. A license
+  // change also refreshes it here. Best-effort: a failure must not block the site
+  // publish. recordSyncedSha keeps the synced pointer current so this Alembic
+  // commit isn't later mistaken for an outside edit.
+  try {
+    if (await ensureLicenseFile(store, packageId, record!.manifest)) {
+      const { commitSha } = await commitFiles(
+        gh.client,
+        { owner: repo.owner, repo: repo.name },
+        {
+          repo: "public",
+          summary: "Add LICENSE (Alembic)",
+          changes: [{ path: LICENSE_PATH, content: licenseFileContent(record!.manifest.license) }],
+        },
+      );
+      await recordSyncedSha(supabase, packageId, commitSha);
+    }
+  } catch (err) {
+    console.warn(`LICENSE backfill failed for ${packageId}:`, err);
+  }
 
   const events = supabaseEventLogger(supabase);
   await events.log({
