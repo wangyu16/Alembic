@@ -5,6 +5,7 @@
  */
 
 import { z } from "zod";
+import { FileTypeDefSchema } from "./file-types";
 
 /**
  * Schema version stamped on NEWLY CREATED packages (owner: bumped to 2,
@@ -248,6 +249,13 @@ export const PackageManifestSchema = z.object({
       url: z.string().optional(),
     })
     .optional(),
+  /**
+   * Educator-added collection file types (collections framework, CF0;
+   * file-types.ts). Extends the built-in registry: each entry maps an extension
+   * to a handling class, so a new type Alembic doesn't ship still has a defined
+   * insert/open/download behavior. Optional + additive; absent = built-ins only.
+   */
+  fileTypes: z.array(FileTypeDefSchema).optional(),
   createdAt: z.iso.datetime(),
 });
 
