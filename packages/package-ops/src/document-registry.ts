@@ -261,6 +261,9 @@ export async function registerFile(
     registeredAt: existing?.registeredAt ?? new Date().toISOString(),
     license: license ?? existing?.license,
     description: existing?.description,
+    // Tags are set later via the Assets metadata UI (CF4); a re-registration
+    // preserves them like description, never resets to empty.
+    tags: existing?.tags ?? [],
     altText: existing?.altText,
     // discoverable is mutable and only ever set true by "share this" — a
     // re-registration preserves the owner's choice, never resets it.

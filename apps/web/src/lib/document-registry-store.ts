@@ -28,6 +28,7 @@ interface DocumentRow {
   registered_at: string;
   license: string | null;
   description: string | null;
+  tags: string[];
   alt_text: string | null;
   discoverable: boolean;
   permalink_class: string;
@@ -50,6 +51,7 @@ function toRow(r: RegistrationRecord): DocumentRow {
     registered_at: r.registeredAt,
     license: r.license ?? null,
     description: r.description ?? null,
+    tags: r.tags,
     alt_text: r.altText ?? null,
     discoverable: r.discoverable,
     permalink_class: r.permalinkClass,
@@ -74,6 +76,7 @@ function fromRow(row: DocumentRow): RegistrationRecord {
     registeredAt: row.registered_at,
     license: row.license ?? undefined,
     description: row.description ?? undefined,
+    tags: row.tags ?? [],
     altText: row.alt_text ?? undefined,
     discoverable: row.discoverable,
     permalinkClass: row.permalink_class,

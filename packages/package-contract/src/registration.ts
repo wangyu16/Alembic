@@ -69,6 +69,10 @@ export const RegistrationRecordSchema = z.object({
   /** Required for discoverable objects (a11y + element search) — enforced
    * at the "share this" gate, never at registration (needs-description flag). */
   description: z.string().optional(),
+  /** File-level discovery tags/keywords (collections framework, CF4). Sharpen
+   * element search on Discover. Additive; per-file, distinct from the
+   * whole-package `manifest.keywords`. Absent = none. */
+  tags: z.array(z.string()).default([]),
   altText: z.string().optional(),
   /** Set only by the owner's one-click "share this" (Tier 3). Default false. */
   discoverable: z.boolean().default(false),
