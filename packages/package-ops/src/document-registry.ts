@@ -70,6 +70,12 @@ export interface DocumentRegistryStore {
     packageId: string,
     hash: string,
   ): Promise<RegistrationRecord | null>;
+  /** The live (non-tombstoned) record with this docId, if any. Used to honor a
+   *  file's EMBEDDED identity (`uid`) — see registerFile. */
+  getByDocId(
+    packageId: string,
+    docId: string,
+  ): Promise<RegistrationRecord | null>;
   /** Every record for a package (tombstoned included). */
   listByPackage(packageId: string): Promise<RegistrationRecord[]>;
 }
@@ -135,6 +141,14 @@ export class MemoryDocumentRegistryStore implements DocumentRegistryStore {
     return null;
   }
 
+  async getByDocId(
+    packageId: string,
+    docId: string,
+  ): Promise<RegistrationRecord | null> {
+    const record = this.records.get(this.key(packageId, docId));
+    return record && !record.tombstoned ? record : null;
+  }
+
   async listByPackage(packageId: string): Promise<RegistrationRecord[]> {
     const out: RegistrationRecord[] = [];
     for (const record of this.records.values()) {
@@ -183,6 +197,34 @@ function kindForFile(
  * everything else, the hash of the raw bytes. Reuses the contract's pure
  * `hashContent`.
  */
+/**
+ * The `#orz-meta` JSON island a self-contained document (`.md.html` /
+ * `.slides.html` / `.paged.html`) may carry. Matches only that one script id.
+ */
+const ORZ_META_ISLAND_RE =
+  /<script[^>]*id="orz-meta"[^>]*>([\s\S]*?)<\/script>/i;
+
+/**
+ * The stable document identifier a host embedded in a carrier's `#orz-meta`
+ * island (`DocMeta.uid`), or null. Because the island survives in-file edits
+ * (`serializeDoc()` never rewrites it), this id travels WITH the file — so a
+ * downloaded-then-re-uploaded document is recognized as the SAME document even
+ * if its filename or contents changed. Pure: a regex + JSON parse, no IO.
+ * Non-carrier files (raw binaries, plain markdown, SVG objects) carry no island
+ * and return null (they fall back to hash/location identity).
+ */
+export function extractEmbeddedUid(content: string): string | null {
+  const m = ORZ_META_ISLAND_RE.exec(content);
+  const json = m?.[1];
+  if (!json) return null;
+  try {
+    const meta = JSON.parse(json) as { uid?: unknown };
+    return typeof meta.uid === "string" && meta.uid ? meta.uid : null;
+  } catch {
+    return null;
+  }
+}
+
 export function computeSourceHash(content: string): string {
   if (hasCarrier(content)) {
     try {
@@ -217,9 +259,11 @@ export interface RegisterFileInput {
 /**
  * Register (or re-register) one file, IDEMPOTENTLY BY IDENTITY (contract v2
  * §2). Identity match order:
- *   1. content hash within the package — same source anywhere reuses the docId
- *      (this is what makes permalinks durable across offline re-uploads and
- *      `current`→`assets` moves);
+ *   0. an EMBEDDED uid (`DocMeta.uid` in a carrier's `#orz-meta` island) — the
+ *      strongest signal: it travels with the file, so it holds even when the
+ *      file was renamed/moved or its contents changed (offline round-trip,
+ *      whole-package import, direct GitHub commit). The uid IS the docId.
+ *   1. content hash within the package — same source anywhere reuses the docId;
  *   2. an existing live record at the same location;
  *   3. else it is new — mint a fresh docId.
  *
@@ -227,6 +271,10 @@ export interface RegisterFileInput {
  * sourceHash / kind / origin / etc. refreshed). Invariants
  * (`assertRegistrationInvariants`) are enforced before the upsert. Returns the
  * stored record.
+ *
+ * Duplicate embedded uids (e.g. a file copied byte-for-byte and both uploaded)
+ * would both map to one docId; the last registration wins the location. That is
+ * a degenerate input — normal authoring never mints two files with one uid.
  */
 export async function registerFile(
   store: DocumentRegistryStore,
@@ -240,12 +288,17 @@ export async function registerFile(
   const { kind, formatVersion } = kindForFile(path, content);
   const permalinkClass = permalinkClassForPath(path);
 
-  // Identity: content hash first, then same-location, else new.
-  const byHash = await store.getByContentHash(packageId, sourceHash);
-  const existing =
-    byHash ?? (await store.getByLocation(packageId, repo, path));
+  // Identity: an embedded uid wins (it travels with the file); else content
+  // hash, then same-location, else new. When a uid is present it IS the docId —
+  // even on this file's first registration (no prior record) — so a document
+  // created here keeps that permalink through any later rename/move/re-upload.
+  const embeddedUid = extractEmbeddedUid(content);
+  const existing = embeddedUid
+    ? await store.getByDocId(packageId, embeddedUid)
+    : (await store.getByContentHash(packageId, sourceHash)) ??
+      (await store.getByLocation(packageId, repo, path));
 
-  const docId = existing?.docId ?? newDocId();
+  const docId = embeddedUid ?? existing?.docId ?? newDocId();
 
   const record = parseRegistrationRecord({
     docId,

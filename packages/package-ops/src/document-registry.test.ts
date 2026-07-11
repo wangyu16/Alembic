@@ -44,6 +44,37 @@ describe("registerFile — idempotency by identity", () => {
     expect(await store.listByPackage(PKG)).toHaveLength(1);
   });
 
+  it("an embedded uid keeps the docId across a rename AND a content edit", async () => {
+    // The uid travels in the #orz-meta island; identity holds even when both the
+    // path and the contents change — the offline round-trip / whole-package case.
+    const withUid = (source: string, uid: string) =>
+      `<script type="application/orz-meta+json" id="orz-meta">${JSON.stringify({ uid })}</script>\n` +
+      mdHtml(source);
+    const store = new MemoryDocumentRegistryStore();
+    const first = await registerFile(store, {
+      packageId: PKG,
+      repo: "public",
+      path: "study-guide/ch1.md.html",
+      origin: "created",
+      content: withUid("# Chapter 1", "doc-uidfixed01"),
+    });
+    // The embedded uid IS the docId.
+    expect(first.docId).toBe("doc-uidfixed01");
+
+    // Re-upload EDITED content at a DIFFERENT path — neither hash nor location
+    // matches, but the uid does → same docId, new path.
+    const second = await registerFile(store, {
+      packageId: PKG,
+      repo: "public",
+      path: "study-guide/renamed.md.html",
+      origin: "uploaded",
+      content: withUid("# Chapter 1 — heavily edited offline", "doc-uidfixed01"),
+    });
+    expect(second.docId).toBe("doc-uidfixed01");
+    expect(second.path).toBe("study-guide/renamed.md.html");
+    expect(await store.listByPackage(PKG)).toHaveLength(1);
+  });
+
   it("moving a file (same content, new path) keeps the docId and updates path", async () => {
     const store = new MemoryDocumentRegistryStore();
     const content = mdHtml("# Practice\n\nQ1.");

@@ -137,6 +137,21 @@ export class SupabaseDocumentRegistryStore implements DocumentRegistryStore {
     return data ? fromRow(data as DocumentRow) : null;
   }
 
+  async getByDocId(
+    packageId: string,
+    docId: string,
+  ): Promise<RegistrationRecord | null> {
+    const { data, error } = await this.supabase
+      .from("documents")
+      .select("*")
+      .eq("package_id", packageId)
+      .eq("doc_id", docId)
+      .eq("tombstoned", false)
+      .maybeSingle();
+    if (error) throw new Error(`Registry read failed: ${error.message}`);
+    return data ? fromRow(data as DocumentRow) : null;
+  }
+
   async listByPackage(packageId: string): Promise<RegistrationRecord[]> {
     const { data, error } = await this.supabase
       .from("documents")
