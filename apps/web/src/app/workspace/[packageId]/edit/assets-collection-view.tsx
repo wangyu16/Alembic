@@ -5,23 +5,31 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import {
   CREATABLE_FILE_TYPES,
   classForPath,
+  editorKindForPath,
   isInsertable,
+  isSeededOnCreate,
   type CollectionScope,
+  type EditorKind,
+  type FileTypeDef,
   type HandlingClass,
 } from "@alembic/package-contract";
-import type {
-  CollectionScopeTree,
-  FileLeaf,
-  FolderNode,
+import {
+  collectionItemPath,
+  type CollectionScopeTree,
+  type FileLeaf,
+  type FolderNode,
 } from "@alembic/package-ops";
 import { isBinaryPath } from "@/lib/collection-upload";
 import {
   uploadCollectionFileAction,
+  createCollectionFileAction,
+  loadCollectionFileAction,
   deleteCollectionEntryAction,
   renameCollectionFileAction,
 } from "../collection-actions";
 import { setAssetMetadataAction } from "../share-actions";
 import { adaptElementAction } from "../adapt-actions";
+import { CollectionEditorPane } from "./collection-editor-pane";
 
 /**
  * Assets collection (CF4; docs/specs/collections-framework.md §3, §4, §6).
@@ -138,6 +146,87 @@ export function AssetsCollectionView({
 
   const refresh = () => router.refresh();
 
+  // CF6: in-app create + edit. When `editing` is set the view shows the shared
+  // editor pane instead of the tree; the pane mounts once (never re-keyed).
+  const [editing, setEditing] = useState<{
+    path: string;
+    name: string;
+    editorKind: EditorKind;
+    initialContent: string;
+    isNew: boolean;
+  } | null>(null);
+
+  const openEditor = (path: string, name: string, editorKind: EditorKind) => {
+    setError(null);
+    start(async () => {
+      const r = await loadCollectionFileAction(packageId, "public", path);
+      if (!r.ok) {
+        setError(r.error ?? "Couldn't open that file.");
+        return;
+      }
+      setEditing({ path, name, editorKind, initialContent: r.content ?? "", isNew: false });
+    });
+  };
+
+  const onCreate = (t: FileTypeDef) => {
+    if (!t.editorKind) return;
+    const base = window.prompt(`Name for the new ${t.label}?`, "");
+    if (!base) return;
+    const slug = base.trim().replace(/\s+/g, "-").replace(/[^A-Za-z0-9._-]/g, "");
+    if (!slug) return;
+    const filename = slug.endsWith(t.extension) ? slug : `${slug}${t.extension}`;
+    setCreateOpen(false);
+    setError(null);
+    const kind = t.editorKind;
+    if (isSeededOnCreate(kind)) {
+      start(async () => {
+        const r = await createCollectionFileAction(packageId, {
+          space: MATERIALS_SPACE,
+          scope: targetScope,
+          folder: folder.trim() || undefined,
+          filename,
+        });
+        if (!r.ok || !r.path) {
+          setError(r.error ?? "Couldn't create the file.");
+          return;
+        }
+        const c = await loadCollectionFileAction(packageId, "public", r.path);
+        setEditing({ path: r.path, name: filename, editorKind: kind, initialContent: c.content ?? "", isNew: false });
+      });
+    } else {
+      // ketcher/plot: no server seed — open an empty editor; first save writes it.
+      let path: string;
+      try {
+        path = collectionItemPath(
+          MATERIALS_SPACE,
+          targetScope,
+          folder.trim() ? `${folder.trim()}/${filename}` : filename,
+        );
+      } catch {
+        setError("That name or folder isn't allowed.");
+        return;
+      }
+      setEditing({ path, name: filename, editorKind: kind, initialContent: "", isNew: true });
+    }
+  };
+
+  if (editing) {
+    return (
+      <CollectionEditorPane
+        packageId={packageId}
+        space={MATERIALS_SPACE}
+        path={editing.path}
+        name={editing.name}
+        editorKind={editing.editorKind}
+        initialContent={editing.initialContent}
+        isNew={editing.isNew}
+        onClose={() => setEditing(null)}
+        onSaved={refresh}
+        onDirty={onDirty}
+      />
+    );
+  }
+
   const onUpload = (file: File) => {
     setError(null);
     setNote(null);
@@ -216,6 +305,7 @@ export function AssetsCollectionView({
             pending={pending}
             onRename={() => onRename(leaf)}
             onDelete={() => onDelete(leaf.path, false)}
+            onEdit={openEditor}
             onRefresh={refresh}
             onDirty={onDirty}
           />
@@ -261,9 +351,9 @@ export function AssetsCollectionView({
           />
         </label>
 
-        {/* Create — a menu of the framework's creatable formats. In-app creation
-            for collections isn't wired yet (CF6 builds the format editors), so
-            each item is a disabled placeholder for now. */}
+        {/* Create — a menu of the framework's creatable formats (CF6). Each opens
+            the shared editor: seeded documents/markdown open on a starter; the
+            structure/plot editors open empty and write on first save. */}
         <div className="relative">
           <button
             className="btn btn-ghost btn-sm"
@@ -286,18 +376,16 @@ export function AssetsCollectionView({
                 className="absolute left-0 z-30 mt-1 w-64 overflow-hidden rounded-xl border border-edge bg-[var(--surface)] p-1 shadow-xl"
               >
                 {CREATABLE_FILE_TYPES.map((t) => (
-                  <div
+                  <button
                     key={t.extension}
-                    className="flex items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 text-sm text-faint"
-                    title="In-app creation is coming soon — for now, upload a file"
+                    role="menuitem"
+                    className="flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 text-left text-sm text-ink hover:bg-elevated"
+                    onClick={() => onCreate(t)}
                   >
                     <span>{t.label}</span>
-                    <span className="text-[10px]">{t.extension}</span>
-                  </div>
+                    <span className="text-[10px] text-faint">{t.extension}</span>
+                  </button>
                 ))}
-                <p className="px-2.5 pb-1 pt-1.5 text-[11px] text-faint">
-                  Creating these in-app is coming soon — for now, use Upload.
-                </p>
               </div>
             </>
           )}
@@ -359,6 +447,7 @@ function FileRow({
   pending,
   onRename,
   onDelete,
+  onEdit,
   onRefresh,
   onDirty,
 }: {
@@ -369,6 +458,7 @@ function FileRow({
   pending: boolean;
   onRename: () => void;
   onDelete: () => void;
+  onEdit: (path: string, name: string, kind: EditorKind) => void;
   onRefresh: () => void;
   onDirty?: (d: boolean) => void;
 }) {
@@ -376,6 +466,8 @@ function FileRow({
   // omits it (it doesn't today) or the registry-projected meta disagrees.
   const cls: HandlingClass = leaf.class ?? classForPath(leaf.path);
   const insertable = isInsertable(cls);
+  // CF6: files with an in-app editor get an Edit affordance.
+  const editorKind = editorKindForPath(leaf.path);
   const [panelOpen, setPanelOpen] = useState(false);
   const [copiedInsert, copyInsert, insertCopyError] = useCopy();
 
@@ -427,6 +519,16 @@ function FileRow({
         >
           Metadata
         </button>
+        {editorKind && (
+          <button
+            className="btn btn-ghost btn-xs"
+            disabled={pending}
+            onClick={() => onEdit(leaf.path, leaf.name, editorKind)}
+            title="Edit this file in the workspace"
+          >
+            Edit
+          </button>
+        )}
         <button className="btn btn-ghost btn-xs" disabled={pending} onClick={onRename}>
           Rename
         </button>

@@ -2,13 +2,21 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { classForPath, type CollectionScope } from "@alembic/package-contract";
+import {
+  classForPath,
+  editorKindForPath,
+  isSeededOnCreate,
+  type CollectionScope,
+} from "@alembic/package-contract";
 import { collectionItemPath } from "@alembic/package-ops";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
 import { syncFilesToGitHub, syncPrivateFilesToGitHub } from "@/lib/github";
 import { syncPackageRegistry } from "@/lib/register";
 import { uploadVerdict } from "@/lib/collection-upload";
+import { generateEditableFile } from "@/lib/worker-client";
+import { docMetaForPackage } from "@/lib/doc-metadata";
+import { seedSourceFor } from "@/lib/collection-seeds";
 
 async function requireUser() {
   const supabase = await createSupabaseServerClient();
@@ -173,7 +181,10 @@ export async function deleteCollectionEntryAction(
 ): Promise<{ ok: boolean; count?: number; error?: string }> {
   const { supabase, user } = await requireUser();
   const repo = repoOf(space);
-  if (path.replace(/^\/+/, "").split("/")[0] !== space) {
+  // Boundary-safe: the path must be AT or UNDER the space prefix. `space` may be
+  // multi-segment (e.g. `current/<term-id>`), so a first-segment check would
+  // wrongly reject term files — use the boundary-aware prefix test.
+  if (!underPrefix(path.replace(/^\/+/, ""), space)) {
     return { ok: false, error: "That path is outside the collection." };
   }
   const store = new SupabaseSandboxStore(supabase);
@@ -212,7 +223,8 @@ export async function renameCollectionFileAction(
   const repo = repoOf(space);
   const from = fromPath.replace(/^\/+/, "");
   const to = toPath.replace(/^\/+/, "");
-  if (from.split("/")[0] !== space || to.split("/")[0] !== space) {
+  // Boundary-safe (multi-segment spaces like `current/<term-id>` — see delete).
+  if (!underPrefix(from, space) || !underPrefix(to, space)) {
     return { ok: false, error: "A move must stay inside the collection." };
   }
   if (to.includes("..")) return { ok: false, error: "Invalid destination." };
@@ -243,4 +255,160 @@ export async function renameCollectionFileAction(
   await syncPackageRegistry(supabase, packageId);
   revalidatePath(`/workspace/${packageId}`);
   return { ok: true, path: to };
+}
+
+// ── CF6: create + save in-app-authored collection files ──────────────────────
+// The Create menu offers the six creatable orz formats. `.md` + the three
+// self-contained documents are SEEDED here (a starter file exists to edit);
+// `.ketcher.svg` / `.plot.svg` open an empty WYSIWYG editor and are written by
+// `saveCollectionFileAction` on first save. Editing (all six) persists the
+// editor's re-serialized bytes through the same door as upload — the two-repo
+// invariant and registry projection are enforced identically.
+
+/**
+ * Persist a whole collection file's bytes (CF6 host-save target). Used both by
+ * the hosted document editors (`.md.html`/`.slides.html`/`.paged.html`, whose
+ * save payload is the full re-serialized file) and the WYSIWYG image editors
+ * (`.ketcher.svg`/`.plot.svg`, whose payload is the rendered SVG). The repo is
+ * derived from the space (two-repo invariant), never trusted from the client;
+ * the path must live under the space.
+ */
+export async function saveCollectionFileAction(
+  packageId: string,
+  space: string,
+  path: string,
+  content: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const { supabase, user } = await requireUser();
+  const repo = repoOf(space);
+  const clean = path.replace(/^\/+/, "");
+  if (!underPrefix(clean, space)) {
+    return { ok: false, error: "That file can't be saved there." };
+  }
+  if (clean.includes("..")) return { ok: false, error: "Invalid path." };
+
+  const store = new SupabaseSandboxStore(supabase);
+  await store.putFiles(packageId, [{ repo, path: clean, content }]);
+  const commit = repo === "private" ? syncPrivateFilesToGitHub : syncFilesToGitHub;
+  await commit(
+    supabase,
+    store,
+    user.id,
+    packageId,
+    [{ path: clean, content }],
+    "Edit file (Alembic)",
+  );
+  await syncPackageRegistry(supabase, packageId);
+  revalidatePath(`/workspace/${packageId}`);
+  return { ok: true };
+}
+
+export interface CreateCollectionFileInput {
+  /** Contract space dir (`assets`, `private-instructor`, `current/<term-id>`). */
+  space: string;
+  /** Course-wide, or bound to one live chapter. */
+  scope: CollectionScope;
+  /** Free folder path under the scope (optional). */
+  folder?: string;
+  /** Bare filename WITH its creatable extension (e.g. `intro.md.html`). */
+  filename: string;
+}
+
+export interface CreateCollectionFileResult {
+  ok: boolean;
+  /** The repo-relative path the seed landed at (open it in the editor). */
+  path?: string;
+  error?: string;
+}
+
+/**
+ * Create a new self-contained document or markdown file from a starter template
+ * (CF6). Only the SEEDED kinds are handled here (`.md`, `.md.html`,
+ * `.slides.html`, `.paged.html`); the WYSIWYG image kinds are created by their
+ * editor's first `saveCollectionFileAction`, so this refuses them. The seed
+ * routes through the same validated door as upload (path resolution, two-repo
+ * invariant, registry projection).
+ */
+export async function createCollectionFileAction(
+  packageId: string,
+  input: CreateCollectionFileInput,
+): Promise<CreateCollectionFileResult> {
+  const { supabase, user } = await requireUser();
+  const store = new SupabaseSandboxStore(supabase);
+  const record = await store.getPackage(packageId);
+  if (!record) return { ok: false, error: "We couldn't find that course." };
+
+  const repo = repoOf(input.space);
+
+  // Resolve the target path first (traversal-safe), then classify it — so the
+  // editor kind is derived from the SAME path the file lands at.
+  let target: string;
+  try {
+    target = collectionItemPath(
+      input.space,
+      input.scope,
+      input.folder ? `${input.folder}/${input.filename}` : input.filename,
+    );
+  } catch {
+    return { ok: false, error: "That file name or folder isn't allowed." };
+  }
+
+  // Two-repo invariant, enforced early (fail-closed) — mirror uploadCollectionFile.
+  const wantsPrivate = input.space.startsWith("private");
+  if ((wantsPrivate && repo !== "private") || (!wantsPrivate && repo !== "public")) {
+    return { ok: false, error: "That file can't go there." };
+  }
+
+  const kind = editorKindForPath(target, record.manifest.fileTypes);
+  if (!kind) return { ok: false, error: "That file type can't be created in-app yet." };
+  if (!isSeededOnCreate(kind)) {
+    // ketcher/plot are authored empty then saved — the client opens the editor
+    // and calls saveCollectionFileAction; there is no server seed.
+    return { ok: false, error: "Open the editor and save to create this file." };
+  }
+
+  // Refuse to clobber an existing file.
+  const files = await store.listFiles(packageId);
+  if (files.some((f) => f.repo === repo && f.path === target)) {
+    return { ok: false, error: "A file with that name already exists here." };
+  }
+
+  // Title from the filename (drop the creatable extension) for the seed heading.
+  const title = input.filename.replace(/\.[^.]+(\.[^.]+)?$/, "").replace(/[-_]+/g, " ").trim();
+  const source = seedSourceFor(kind, title);
+
+  let content: string;
+  if (kind === "markdown") {
+    content = source; // the `.md` file's own bytes
+  } else {
+    // md / slides / paged → the generator wraps the source into a self-contained
+    // file. With a worker it is in-file-editable; without one the in-process
+    // fallback yields a rendered viewer (still a valid file). The space's theme
+    // seeds the document so it opens on-brand.
+    const theme = record.manifest.themes?.[input.space.split("/")[0]] ?? record.manifest.theme;
+    const meta = docMetaForPackage(record.manifest, { title });
+    // `kind` here is one of md/slides/paged: markdown is handled above, and
+    // ketcher/plot were rejected by the `isSeededOnCreate` guard.
+    content = await generateEditableFile({
+      kind: kind as "md" | "slides" | "paged",
+      markdown: source,
+      title,
+      theme,
+      metadata: meta,
+    });
+  }
+
+  await store.putFiles(packageId, [{ repo, path: target, content }]);
+  const commit = repo === "private" ? syncPrivateFilesToGitHub : syncFilesToGitHub;
+  await commit(
+    supabase,
+    store,
+    user.id,
+    packageId,
+    [{ path: target, content }],
+    "Create file (Alembic)",
+  );
+  await syncPackageRegistry(supabase, packageId);
+  revalidatePath(`/workspace/${packageId}`);
+  return { ok: true, path: target };
 }

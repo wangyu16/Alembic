@@ -7,22 +7,30 @@ import {
   CURRENT_SECTIONS,
   SECTION_META,
   currentSpaceDir,
+  editorKindForPath,
   isCurrentSection,
+  isSeededOnCreate,
   type CollectionScope,
   type CurrentSection,
+  type EditorKind,
+  type FileTypeDef,
 } from "@alembic/package-contract";
-import type {
-  CollectionScopeTree,
-  FileLeaf,
-  FolderNode,
-  TermInfo,
+import {
+  collectionItemPath,
+  type CollectionScopeTree,
+  type FileLeaf,
+  type FolderNode,
+  type TermInfo,
 } from "@alembic/package-ops";
 import { isBinaryPath } from "@/lib/collection-upload";
 import {
   uploadCollectionFileAction,
+  createCollectionFileAction,
+  loadCollectionFileAction,
   deleteCollectionEntryAction,
   renameCollectionFileAction,
 } from "../collection-actions";
+import { CollectionEditorPane } from "./collection-editor-pane";
 import {
   startTermAction,
   activateTermAction,
@@ -110,6 +118,14 @@ export function CurrentCollectionView({
   const [folder, setFolder] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  // CF6: in-app create + edit (only reachable on the current, editable term).
+  const [editing, setEditing] = useState<{
+    path: string;
+    name: string;
+    editorKind: EditorKind;
+    initialContent: string;
+    isNew: boolean;
+  } | null>(null);
 
   const hasCurrentTerm = terms.some((t) => t.isCurrent);
 
@@ -159,6 +175,73 @@ export function CurrentCollectionView({
 
   const targetScope: CollectionScope =
     scopeIdx === 0 ? { kind: "course" } : { kind: "chapter", slug: chapters[scopeIdx - 1].slug };
+
+  // CF6 create/edit — the pane persists to the public `current/<term-id>` space.
+  const openEditor = (path: string, name: string, editorKind: EditorKind) => {
+    setError(null);
+    start(async () => {
+      const r = await loadCollectionFileAction(packageId, "public", path);
+      if (!r.ok) {
+        setError(r.error ?? "Couldn't open that file.");
+        return;
+      }
+      setEditing({ path, name, editorKind, initialContent: r.content ?? "", isNew: false });
+    });
+  };
+
+  const onCreate = (t: FileTypeDef) => {
+    if (!t.editorKind) return;
+    const base = window.prompt(`Name for the new ${t.label}?`, "");
+    if (!base) return;
+    const slug = base.trim().replace(/\s+/g, "-").replace(/[^A-Za-z0-9._-]/g, "");
+    if (!slug) return;
+    const filename = slug.endsWith(t.extension) ? slug : `${slug}${t.extension}`;
+    setCreateOpen(false);
+    setError(null);
+    const kind = t.editorKind;
+    if (isSeededOnCreate(kind)) {
+      start(async () => {
+        const r = await createCollectionFileAction(packageId, {
+          space,
+          scope: targetScope,
+          folder: folder.trim() || undefined,
+          filename,
+        });
+        if (!r.ok || !r.path) {
+          setError(r.error ?? "Couldn't create the file.");
+          return;
+        }
+        const c = await loadCollectionFileAction(packageId, "public", r.path);
+        setEditing({ path: r.path, name: filename, editorKind: kind, initialContent: c.content ?? "", isNew: false });
+      });
+    } else {
+      let path: string;
+      try {
+        path = collectionItemPath(space, targetScope, folder.trim() ? `${folder.trim()}/${filename}` : filename);
+      } catch {
+        setError("That name or folder isn't allowed.");
+        return;
+      }
+      setEditing({ path, name: filename, editorKind: kind, initialContent: "", isNew: true });
+    }
+  };
+
+  if (editing) {
+    return (
+      <CollectionEditorPane
+        packageId={packageId}
+        space={space}
+        path={editing.path}
+        name={editing.name}
+        editorKind={editing.editorKind}
+        initialContent={editing.initialContent}
+        isNew={editing.isNew}
+        onClose={() => setEditing(null)}
+        onSaved={refresh}
+        onDirty={onDirty}
+      />
+    );
+  }
 
   const onUpload = (file: File) => {
     setError(null);
@@ -244,6 +327,7 @@ export function CurrentCollectionView({
             editable={editable}
             onRename={() => onRename(leaf)}
             onDelete={() => onDelete(leaf.path, false)}
+            onEdit={openEditor}
           />
         ))}
       </ul>
@@ -381,18 +465,16 @@ export function CurrentCollectionView({
                   className="absolute left-0 z-30 mt-1 w-64 overflow-hidden rounded-xl border border-edge bg-[var(--surface)] p-1 shadow-xl"
                 >
                   {CREATABLE_FILE_TYPES.map((t) => (
-                    <div
+                    <button
                       key={t.extension}
-                      className="flex items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 text-sm text-faint"
-                      title="In-app creation is coming soon — for now, upload a file"
+                      role="menuitem"
+                      className="flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 text-left text-sm text-ink hover:bg-elevated"
+                      onClick={() => onCreate(t)}
                     >
                       <span>{t.label}</span>
-                      <span className="text-[10px]">{t.extension}</span>
-                    </div>
+                      <span className="text-[10px] text-faint">{t.extension}</span>
+                    </button>
                   ))}
-                  <p className="px-2.5 pb-1 pt-1.5 text-[11px] text-faint">
-                    Creating these in-app is coming soon — for now, use Upload.
-                  </p>
                 </div>
               </>
             )}
@@ -482,6 +564,7 @@ function FileRow({
   editable,
   onRename,
   onDelete,
+  onEdit,
 }: {
   packageId: string;
   leaf: FileLeaf;
@@ -490,7 +573,9 @@ function FileRow({
   editable: boolean;
   onRename: () => void;
   onDelete: () => void;
+  onEdit: (path: string, name: string, kind: EditorKind) => void;
 }) {
+  const editorKind = editorKindForPath(leaf.path);
   return (
     <li className="py-1.5" style={{ marginLeft: depth > 0 ? 12 : 0 }}>
       <div className="flex items-center gap-2">
@@ -508,6 +593,16 @@ function FileRow({
         </a>
         {editable && (
           <>
+            {editorKind && (
+              <button
+                className="btn btn-ghost btn-xs"
+                disabled={pending}
+                onClick={() => onEdit(leaf.path, leaf.name, editorKind)}
+                title="Edit this file in the workspace"
+              >
+                Edit
+              </button>
+            )}
             <button className="btn btn-ghost btn-xs" disabled={pending} onClick={onRename}>
               Rename
             </button>

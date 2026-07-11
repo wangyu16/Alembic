@@ -199,11 +199,17 @@ Disjoint pieces are marked ∥ (parallelizable via subagents).
   validation, `currentSpaceDir`; ops: `listTerms`, `planCarryOver`),
   `term-actions.ts` (start/activate/relabel/announce), `current-collection-view.tsx`,
   and `course-site.ts` `CourseTermData`. See workspace-collections.md P5.
-- **CF6 — creatable formats (separate track, later).** Each is its own
-  self-contained builder + in-file editor (orz-family style): Excalidraw
-  `.excalidraw.svg` (whiteboard/diagram, re-editable SVG), 3Dmol/NGL `.mol.html`
-  (3D structures), p5.js `.sim.html` (animations/simulations). Prioritized as
-  detail.
+- **CF6 — creatable formats.** ✅ First six shipped (create + edit in-app on the
+  framework): `.md`, `.md.html`, `.slides.html`, `.paged.html`, `.ketcher.svg`,
+  `.plot.svg`. Each creatable type carries an `editorKind` (contract); a shared
+  `CollectionEditorPane` mounts the surface — plain-text for `.md`, the
+  self-contained file's own in-file editor (hosted carrier + orz-host-save) for
+  the three documents, and an editor-kit WYSIWYG (embed-on-save) for the two
+  SVGs. `createCollectionFileAction` seeds the four text/doc formats;
+  `saveCollectionFileAction` is the one host-save sink. **Planned, not yet
+  shipped** (uploaded-only until their builders land): `.html` (plain web page)
+  and the roadmap formats — Excalidraw `.excalidraw.svg` (whiteboard/diagram),
+  3Dmol/NGL `.mol.html` (3D structures), p5.js `.sim.html` (simulations).
 
 Each phase: durable module + tests first, thin disposable client last; the
 client stays replaceable per rule 9.

@@ -13,25 +13,32 @@ import {
 } from "react";
 import {
   CREATABLE_FILE_TYPES,
+  editorKindForPath,
+  isSeededOnCreate,
   serializeStudyGuide,
   unitTermForms,
   type CollectionScope,
+  type EditorKind,
+  type FileTypeDef,
   type StudyGuideBlock,
   type UnitTerm,
 } from "@alembic/package-contract";
-import type {
-  CollectionScopeTree,
-  FileLeaf,
-  FolderNode,
-  TermInfo,
+import {
+  collectionItemPath,
+  type CollectionScopeTree,
+  type FileLeaf,
+  type FolderNode,
+  type TermInfo,
 } from "@alembic/package-ops";
 import { isBinaryPath } from "@/lib/collection-upload";
 import {
   uploadCollectionFileAction,
+  createCollectionFileAction,
   loadCollectionFileAction,
   deleteCollectionEntryAction,
   renameCollectionFileAction,
 } from "../collection-actions";
+import { CollectionEditorPane } from "./collection-editor-pane";
 import {
   operationsForCategory,
   type AIOperation,
@@ -2420,6 +2427,15 @@ function PrivateCollectionView({
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [open, setOpen] = useState<{ path: string; repo: "public" | "private"; content: string } | null>(null);
+  // CF6: the rich carrier editor (md.html/slides.html/paged.html/ketcher/plot).
+  // Plain text (incl. `.md`) keeps the FileEditor path above (AI + preview).
+  const [editing, setEditing] = useState<{
+    path: string;
+    name: string;
+    editorKind: EditorKind;
+    initialContent: string;
+    isNew: boolean;
+  } | null>(null);
   // Upload target.
   const [scopeIdx, setScopeIdx] = useState(0); // 0 = course, else chapters[idx-1]
   const [folder, setFolder] = useState("");
@@ -2430,6 +2446,80 @@ function PrivateCollectionView({
     scopeIdx === 0 ? { kind: "course" } : { kind: "chapter", slug: chapters[scopeIdx - 1].slug };
 
   const refresh = () => router.refresh();
+
+  // A file's CARRIER editor kind — the ones the rich pane hosts. Plain markdown
+  // (`.md`) is deliberately excluded: it keeps the FileEditor path (AI+preview).
+  const carrierKindOf = (path: string): EditorKind | undefined => {
+    const ek = editorKindForPath(path);
+    return ek && ek !== "markdown" ? ek : undefined;
+  };
+
+  const openCarrierEditor = (path: string, name: string, editorKind: EditorKind) => {
+    setError(null);
+    start(async () => {
+      const r = await loadCollectionFileAction(packageId, "private", path);
+      if (!r.ok) {
+        setError(r.error ?? "Couldn't open that file.");
+        return;
+      }
+      setEditing({ path, name, editorKind, initialContent: r.content ?? "", isNew: false });
+    });
+  };
+
+  const onCreate = (t: FileTypeDef) => {
+    if (!t.editorKind) return;
+    const base = window.prompt(`Name for the new ${t.label}?`, "");
+    if (!base) return;
+    const slug = base.trim().replace(/\s+/g, "-").replace(/[^A-Za-z0-9._-]/g, "");
+    if (!slug) return;
+    const filename = slug.endsWith(t.extension) ? slug : `${slug}${t.extension}`;
+    setCreateOpen(false);
+    setError(null);
+    const kind = t.editorKind;
+    if (kind === "markdown") {
+      // Plain markdown → seed, then open in the FileEditor (AI + preview).
+      start(async () => {
+        const r = await createCollectionFileAction(packageId, {
+          space: PRIVATE_SPACE,
+          scope: targetScope,
+          folder: folder.trim() || undefined,
+          filename,
+        });
+        if (!r.ok || !r.path) {
+          setError(r.error ?? "Couldn't create the file.");
+          return;
+        }
+        const c = await loadCollectionFileAction(packageId, "private", r.path);
+        setOpen({ path: r.path, repo: "private", content: c.content ?? "" });
+      });
+    } else if (isSeededOnCreate(kind)) {
+      // md.html / slides.html / paged.html → seed then open the carrier pane.
+      start(async () => {
+        const r = await createCollectionFileAction(packageId, {
+          space: PRIVATE_SPACE,
+          scope: targetScope,
+          folder: folder.trim() || undefined,
+          filename,
+        });
+        if (!r.ok || !r.path) {
+          setError(r.error ?? "Couldn't create the file.");
+          return;
+        }
+        const c = await loadCollectionFileAction(packageId, "private", r.path);
+        setEditing({ path: r.path, name: filename, editorKind: kind, initialContent: c.content ?? "", isNew: false });
+      });
+    } else {
+      // ketcher / plot → open empty; first save writes the file.
+      let path: string;
+      try {
+        path = collectionItemPath(PRIVATE_SPACE, targetScope, folder.trim() ? `${folder.trim()}/${filename}` : filename);
+      } catch {
+        setError("That name or folder isn't allowed.");
+        return;
+      }
+      setEditing({ path, name: filename, editorKind: kind, initialContent: "", isNew: true });
+    }
+  };
 
   const onUpload = (file: File) => {
     setError(null);
@@ -2492,6 +2582,25 @@ function PrivateCollectionView({
     });
   };
 
+  // CF6 rich carrier editor (self-contained docs / structure / plot). Mounts
+  // once; the parent unmounts it on Back.
+  if (editing) {
+    return (
+      <CollectionEditorPane
+        packageId={packageId}
+        space={PRIVATE_SPACE}
+        path={editing.path}
+        name={editing.name}
+        editorKind={editing.editorKind}
+        initialContent={editing.initialContent}
+        isNew={editing.isNew}
+        onClose={() => setEditing(null)}
+        onSaved={refresh}
+        onDirty={onDirty}
+      />
+    );
+  }
+
   // The opened text file: a plain editor (no hosted iframe). Passes the real
   // account AI access through — hardcoding "none" here wrongly showed an
   // approved account "Request access".
@@ -2533,11 +2642,30 @@ function PrivateCollectionView({
           <li key={leaf.path} className="flex items-center gap-2 py-1.5" style={{ marginLeft: depth > 0 ? 12 : 0 }}>
             <span className="min-w-0 flex-1 truncate text-sm text-ink">{leaf.name}</span>
             <ClassBadge leaf={leaf} />
-            {!isBinaryPath(leaf.name) && (
-              <button className="btn btn-ghost btn-xs" disabled={pending} onClick={() => onOpen(leaf)}>
-                Open
-              </button>
-            )}
+            {(() => {
+              const carrier = carrierKindOf(leaf.path);
+              if (carrier) {
+                // Self-contained doc / structure / plot → the rich carrier pane.
+                return (
+                  <button
+                    className="btn btn-ghost btn-xs"
+                    disabled={pending}
+                    onClick={() => openCarrierEditor(leaf.path, leaf.name, carrier)}
+                    title="Edit this file in the workspace"
+                  >
+                    Edit
+                  </button>
+                );
+              }
+              // Plain text (incl. `.md`) → the FileEditor (AI + preview).
+              return (
+                !isBinaryPath(leaf.name) && (
+                  <button className="btn btn-ghost btn-xs" disabled={pending} onClick={() => onOpen(leaf)}>
+                    Open
+                  </button>
+                )
+              );
+            })()}
             <button className="btn btn-ghost btn-xs" disabled={pending} onClick={() => onRename(leaf)}>
               Rename
             </button>
@@ -2585,9 +2713,8 @@ function PrivateCollectionView({
             onChange={(e) => setFolder(e.target.value)}
           />
         </label>
-        {/* Create — a menu of the framework's creatable formats. In-app creation
-            for collections isn't wired yet (CF6 builds the format editors), so
-            each item is a disabled placeholder for now. */}
+        {/* Create — the framework's creatable formats (CF6). Markdown opens in
+            the plain editor; documents/structures/plots open the shared pane. */}
         <div className="relative">
           <button
             className="btn btn-ghost btn-sm"
@@ -2607,18 +2734,16 @@ function PrivateCollectionView({
               />
               <div role="menu" className="absolute left-0 z-30 mt-1 w-64 overflow-hidden rounded-xl border border-edge bg-[var(--surface)] p-1 shadow-xl">
                 {CREATABLE_FILE_TYPES.map((t) => (
-                  <div
+                  <button
                     key={t.extension}
-                    className="flex items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 text-sm text-faint"
-                    title="In-app creation is coming soon — for now, upload a file"
+                    role="menuitem"
+                    className="flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 text-left text-sm text-ink hover:bg-elevated"
+                    onClick={() => onCreate(t)}
                   >
                     <span>{t.label}</span>
-                    <span className="text-[10px]">{t.extension}</span>
-                  </div>
+                    <span className="text-[10px] text-faint">{t.extension}</span>
+                  </button>
                 ))}
-                <p className="px-2.5 pb-1 pt-1.5 text-[11px] text-faint">
-                  Creating these in-app is coming soon — for now, use Upload.
-                </p>
               </div>
             </>
           )}

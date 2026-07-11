@@ -1269,8 +1269,25 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
     renderer 69 tests green. *Known limitation:* a binary file (e.g. `.pdf`) in
     an assignments/misc section publishes best-effort (its bytes as text) — the
     text surfaces (announcements, `.md.html`/`.paged.html`) are unaffected.
-  - ⬜ **CF6** creatable-format editors (Excalidraw / 3Dmol / p5.js; wire
-    structure/plot back to live editors — currently Create-menu placeholders).
+  - ✅ **CF6** creatable formats — the Create menu now creates + edits **six**
+    formats in-app, all on the framework: `.md` (plain-text editor), `.md.html` /
+    `.slides.html` / `.paged.html` (the self-contained file's own in-file editor,
+    mounted in a sandboxed iframe via the hosted-carrier module + orz-host-save),
+    and `.ketcher.svg` / `.plot.svg` (editor-kit WYSIWYG; save re-embeds the
+    editable source so the SVG stays re-editable). The contract carries an
+    `editorKind` per creatable type (`editorKindForPath`, `isSeededOnCreate`);
+    `createCollectionFileAction` seeds the four text/doc formats (via
+    `generateEditableFile` for the docs, a heading stub for `.md`) and
+    `saveCollectionFileAction` is the one host-save sink; a shared
+    `CollectionEditorPane` mounts the right surface by kind and is reused by
+    Private/Assets/Current. `.html` (plain web page) and the roadmap formats
+    (Excalidraw `.excalidraw.svg`, 3Dmol `.mol.html`, p5.js `.sim.html`) stay
+    **planned** (uploaded-only) until their builders ship. Doc/markdown editing
+    is browser-verified; `.ketcher.svg`/`.plot.svg` need the vendored canvas
+    builds and are verified interactively (per the editor-module convention).
+    Also fixed a latent CF5 bug: the collection delete/rename space-boundary
+    check used a first-segment match, which rejected multi-segment `current/<term>`
+    paths — now boundary-safe (`underPrefix`).
 - **Post-session coherence audit (2026-07-09, owner request).** Fanned out
   6 parallel read-only subagents (dangling references from today's renames;
   Status.md accuracy vs code; goal/Roadmap/specs coherence; the

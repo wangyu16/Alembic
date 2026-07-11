@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   BUILTIN_FILE_TYPES,
   CREATABLE_FILE_TYPES,
+  editorKindForPath,
+  isSeededOnCreate,
   DEFAULT_HANDLING_CLASS,
   FileTypeDefSchema,
   HANDLING_CLASSES,
@@ -117,6 +119,40 @@ describe("registry shape + helpers", () => {
     // documents + .md + the two structured SVGs are creatable; raw images are not
     expect(CREATABLE_FILE_TYPES.some((t) => t.extension === ".md.html")).toBe(true);
     expect(CREATABLE_FILE_TYPES.some((t) => t.extension === ".png")).toBe(false);
+  });
+
+  it("the six shipped creatable formats are exactly the ones with an editor (CF6)", () => {
+    // CF6 ships create+edit for these six; `.html` and the roadmap formats stay
+    // uploaded-only until their builders land.
+    const exts = CREATABLE_FILE_TYPES.map((t) => t.extension).sort();
+    expect(exts).toEqual(
+      [".ketcher.svg", ".md", ".md.html", ".paged.html", ".plot.svg", ".slides.html"].sort(),
+    );
+    // `.html` is a document but not creatable (no in-app editor yet).
+    expect(fileTypeForPath("page.html")?.creatable).toBeUndefined();
+    // Every creatable type carries an editorKind.
+    expect(CREATABLE_FILE_TYPES.every((t) => t.editorKind !== undefined)).toBe(true);
+  });
+
+  it("editorKindForPath resolves by longest suffix (CF6)", () => {
+    expect(editorKindForPath("notes.md.html")).toBe("md"); // not "markdown"
+    expect(editorKindForPath("plain.md")).toBe("markdown");
+    expect(editorKindForPath("deck.slides.html")).toBe("slides");
+    expect(editorKindForPath("hand.paged.html")).toBe("paged");
+    expect(editorKindForPath("mol.ketcher.svg")).toBe("ketcher");
+    expect(editorKindForPath("fig.plot.svg")).toBe("plot");
+    // A plain image / opaque type has no editor.
+    expect(editorKindForPath("photo.png")).toBeUndefined();
+    expect(editorKindForPath("paper.pdf")).toBeUndefined();
+  });
+
+  it("isSeededOnCreate: docs + markdown seed eagerly, image editors lazily (CF6)", () => {
+    expect(isSeededOnCreate("md")).toBe(true);
+    expect(isSeededOnCreate("slides")).toBe(true);
+    expect(isSeededOnCreate("paged")).toBe(true);
+    expect(isSeededOnCreate("markdown")).toBe(true);
+    expect(isSeededOnCreate("ketcher")).toBe(false);
+    expect(isSeededOnCreate("plot")).toBe(false);
   });
 
   it("the manifest schema rejects a bad extension or unknown class", () => {
