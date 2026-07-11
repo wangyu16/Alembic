@@ -49,6 +49,13 @@ const MIME: Array<[RegExp, string]> = [
   [/\.(mp3)$/i, "audio/mpeg"],
   [/\.(wav)$/i, "audio/wav"],
   [/\.(m4a)$/i, "audio/mp4"],
+  [/\.(ogg|oga)$/i, "audio/ogg"],
+  // Video — so an inserted `<video src="/d/{docId}">` resolves.
+  [/\.mp4$/i, "video/mp4"],
+  [/\.webm$/i, "video/webm"],
+  [/\.mov$/i, "video/quicktime"],
+  [/\.m4v$/i, "video/mp4"],
+  [/\.ogv$/i, "video/ogg"],
   [/\.json$/i, "application/json; charset=utf-8"],
   [/\.md$/i, "text/markdown; charset=utf-8"],
 ];

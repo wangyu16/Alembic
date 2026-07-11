@@ -6,6 +6,7 @@ import {
   CREATABLE_FILE_TYPES,
   classForPath,
   editorKindForPath,
+  insertReference,
   isInsertable,
   isSeededOnCreate,
   type CollectionScope,
@@ -13,6 +14,7 @@ import {
   type FileTypeDef,
   type HandlingClass,
 } from "@alembic/package-contract";
+import { permalinkUrl } from "@/lib/app-url";
 import {
   collectionItemPath,
   type CollectionScopeTree,
@@ -471,13 +473,17 @@ function FileRow({
   const [panelOpen, setPanelOpen] = useState(false);
   const [copiedInsert, copyInsert, insertCopyError] = useCopy();
 
-  // The insert-ready reference: markdown image for images, bare permalink
-  // otherwise (never for a `document` — isInsertable already excludes it).
+  // The insert-ready reference: an ABSOLUTE permalink baked into a class-
+  // appropriate form (image → `![](url)`, media → `<video>`/`<audio>`, source →
+  // link), so the document renders the element standalone anywhere it travels.
   const insertRef =
     meta && insertable
-      ? cls === "insertable-image"
-        ? `![${meta.description ?? leaf.name}](/d/${meta.docId})`
-        : `/d/${meta.docId}`
+      ? insertReference({
+          cls,
+          path: leaf.path,
+          url: permalinkUrl(meta.docId),
+          alt: meta.description ?? leaf.name,
+        })
       : null;
 
   return (

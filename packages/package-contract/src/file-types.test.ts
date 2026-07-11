@@ -3,6 +3,7 @@ import {
   BUILTIN_FILE_TYPES,
   CREATABLE_FILE_TYPES,
   editorKindForPath,
+  insertReference,
   isSeededOnCreate,
   DEFAULT_HANDLING_CLASS,
   FileTypeDefSchema,
@@ -153,6 +154,26 @@ describe("registry shape + helpers", () => {
     expect(isSeededOnCreate("markdown")).toBe(true);
     expect(isSeededOnCreate("ketcher")).toBe(false);
     expect(isSeededOnCreate("plot")).toBe(false);
+  });
+
+  it("insertReference builds absolute, class-appropriate references", () => {
+    const url = "https://alembic.orz.how/d/doc-abc123";
+    // Image → markdown image.
+    expect(insertReference({ cls: "insertable-image", path: "figures/benzene.ketcher.svg", url, alt: "Benzene" }))
+      .toBe(`![Benzene](${url})`);
+    // Video vs audio by extension.
+    expect(insertReference({ cls: "insertable-media", path: "clips/demo.mp4", url }))
+      .toBe(`<video src="${url}" controls style="max-width:100%"></video>`);
+    expect(insertReference({ cls: "insertable-media", path: "clips/lecture.mp3", url }))
+      .toBe(`<audio src="${url}" controls></audio>`);
+    // Source (.md/.csv) → a link (transclusion is separate).
+    expect(insertReference({ cls: "insertable-source", path: "data/notes.md", url }))
+      .toBe(`[notes.md](${url})`);
+    // alt defaults to the filename and strips markdown-breaking brackets.
+    expect(insertReference({ cls: "insertable-image", path: "a/b/pic.png", url, alt: "a [nice] pic" }))
+      .toBe(`![a nice pic](${url})`);
+    // The URL is used verbatim — always absolute (caller assembles the origin).
+    expect(insertReference({ cls: "insertable-image", path: "x.png", url })).toContain("https://");
   });
 
   it("the manifest schema rejects a bad extension or unknown class", () => {

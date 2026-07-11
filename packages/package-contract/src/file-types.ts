@@ -160,6 +160,49 @@ export function isInsertable(cls: HandlingClass): boolean {
   return cls === "insertable-image" || cls === "insertable-media" || cls === "insertable-source";
 }
 
+const VIDEO_EXTENSIONS = [".mp4", ".webm", ".mov", ".m4v", ".ogv"];
+const AUDIO_EXTENSIONS = [".mp3", ".wav", ".m4a", ".ogg", ".oga", ".aac", ".flac"];
+
+/**
+ * Build the insert-ready cross-reference for a shared element (permalinks
+ * §"objects: insert"). The reference is an ABSOLUTE permalink URL baked into the
+ * source at insert time (pinned by docId), so the document renders the element
+ * standalone — in the workspace preview, on the published site, AND in a
+ * downloaded copy — with no view-time URL assembly. The class decides the form:
+ *
+ *  - `insertable-image`  → Markdown image `![alt](url)` (renders as `<img>`)
+ *  - `insertable-media`  → an HTML `<video>`/`<audio controls>` (by extension)
+ *  - `insertable-source` → a Markdown link `[alt](url)` (a `.md`/`.csv` opens at
+ *    the permalink; inlining its TEXT is transclusion — a separate operation)
+ *
+ * `url` must be the full absolute permalink (`https://host/d/{docId}`). `alt`
+ * defaults to the filename; Markdown-breaking brackets are stripped.
+ */
+export function insertReference(opts: {
+  cls: HandlingClass;
+  path: string;
+  url: string;
+  alt?: string;
+}): string {
+  const alt = (opts.alt ?? basename(opts.path)).replace(/[[\]]/g, "").trim();
+  const lower = opts.path.toLowerCase();
+  switch (opts.cls) {
+    case "insertable-image":
+      return `![${alt}](${opts.url})`;
+    case "insertable-media":
+      if (VIDEO_EXTENSIONS.some((e) => lower.endsWith(e)))
+        return `<video src="${opts.url}" controls style="max-width:100%"></video>`;
+      if (AUDIO_EXTENSIONS.some((e) => lower.endsWith(e)))
+        return `<audio src="${opts.url}" controls></audio>`;
+      return `[${alt}](${opts.url})`;
+    case "insertable-source":
+      return `[${alt}](${opts.url})`;
+    default:
+      // document / opaque-download are not inserted — return the bare link.
+      return `[${alt}](${opts.url})`;
+  }
+}
+
 /** The built-in types Alembic can create in-app (for the "New" menu). */
 export const CREATABLE_FILE_TYPES: readonly FileTypeDef[] = BUILTIN_FILE_TYPES.filter(
   (t) => t.creatable,
