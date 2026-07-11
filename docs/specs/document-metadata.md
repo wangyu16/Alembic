@@ -162,16 +162,21 @@ A lone author who wants the metadata in their markdown simply writes the block.
   clean). **Not covered:** the worker-DOWN fallback (`@alembic/renderer`'s own
   md/slides builders) omits metadata — a rare degraded path, documented in
   `worker-client`.
-- **M6 — release.** Bump + publish `orz-markdown`, then the three tools **and
-  their lockstep `-browser` subpackages** (a `-browser` at a different version is
-  the trap that once shipped blank published slides). Bump Alembic's deps.
-  Redeploy the Fly worker.
+- **M6 — release ✅.** Published in dependency order: `orz-markdown@1.4.0`
+  first (verified resolvable), then each tool with its lockstep `-browser`
+  subpackage — `orz-mdhtml`/`-browser@0.8.0`, `orz-slides`/`-browser@0.7.0`,
+  `orz-paged`/`-browser@0.6.0`. Each tool matches its `-browser` (the mismatch
+  that once shipped blank slides was checked). Four sibling repos pushed;
+  Alembic's deps bumped + committed with the lockfile. **Fly worker redeployed**
+  (`alembic-worker` v8): `/health` now reports `orz-markdown@1.4.0`, machine
+  healthy (1/1 checks). The worker's `/generate` is `WORKER_TOKEN`-gated, so the
+  live emission is proven via `/health`'s version string + the generators tests
+  against the identical published builders, not a direct call.
 
-M6 is an **operator action**: publishing to npm and redeploying production are
-the owner's calls, not the agent's. M5 depends on the tools being published
-(M6), because Alembic's worker consumes them from npm — so **M5 lands as code
-now but cannot be verified end-to-end until M6 publishes 1.4.0 / 0.6.0 / 0.8.0 /
-0.7.0.**
+M6 was an **operator action** (npm publish + Fly redeploy), performed on the
+owner's explicit request. **Remaining owner follow-ups:** rotate the npm token
+that was shared in chat; a real CHEM 320 republish will then carry `rel=license`
+on each chapter (spot-check one).
 
 ### Cross-repo dev note
 
