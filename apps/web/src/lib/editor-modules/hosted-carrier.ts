@@ -1,5 +1,5 @@
 import type { EditorContext, EditorHandle, EditorModule } from "@alembic/editor-kit";
-import { createHostSaveClient, createHostAIClient } from "@alembic/editor-kit";
+import { createHostSaveClient, createHostAIClient, createHostIncludeClient } from "@alembic/editor-kit";
 
 /**
  * The generic hosted-carrier editor (E1): mounts a self-contained orz file
@@ -80,15 +80,27 @@ export function hostedCarrierModule(
             })
           : null;
 
+      // The include bridge (orz-host-include@1): when the host can resolve web
+      // transclusions, answer the file's per-URL requests for its preview render.
+      // Absent resolver → no bridge → the file leaves directives unresolved.
+      const includeClient = ctx.resolveInclude
+        ? createHostIncludeClient({
+            post: (m) => frame.contentWindow?.postMessage(m, "*"),
+            resolve: (url) => ctx.resolveInclude!(url),
+          })
+        : null;
+
       const onMessage = (e: MessageEvent) => {
         if (e.source !== frame.contentWindow) return;
         client.handleMessage(e.data);
         aiClient?.handleMessage(e.data);
+        includeClient?.handleMessage(e.data);
       };
       window.addEventListener("message", onMessage);
       frame.addEventListener("load", () => {
         client.start();
         aiClient?.start();
+        includeClient?.start();
       });
       el.appendChild(frame);
 
@@ -98,6 +110,7 @@ export function hostedCarrierModule(
           window.removeEventListener("message", onMessage);
           client.stop();
           aiClient?.stop();
+          includeClient?.stop();
           frame.remove();
         },
       };

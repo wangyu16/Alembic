@@ -7,6 +7,7 @@ import type { EditorKind } from "@alembic/package-contract";
 import { ModuleMount } from "@/lib/editor-modules/module-mount";
 import { useUnsavedGuard } from "@/lib/use-unsaved-guard";
 import { saveCollectionFileAction } from "../collection-actions";
+import { resolveIncludeAction } from "../include-actions";
 
 /**
  * The shared in-workspace editor for a collection file (CF6). One pane, three
@@ -116,6 +117,7 @@ export function CollectionEditorPane({
             theme={theme}
             onDirty={markDirty}
             hostSave={async ({ rendered }) => persist(rendered)}
+            resolveInclude={resolveIncludeAction}
           />
         ) : (
           <WysiwygCarrier

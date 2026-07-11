@@ -50,6 +50,7 @@ import { saveCourseConceptMapAction, setCourseInfoAction, type CourseInfo } from
 import { saveFileAction, proposeEditAction, runGenerateOperationAction } from "./edit-actions";
 import { importFileAction } from "../import-actions";
 import { requestAiAccessAction } from "../../ai-access-actions";
+import { resolveIncludeAction } from "../include-actions";
 import { AssetsCollectionView, type AssetMeta } from "./assets-collection-view";
 import { CurrentCollectionView } from "./current-collection-view";
 import {
@@ -1421,6 +1422,7 @@ function HostedStudyGuideEditor(props: {
                 })
             : undefined
         }
+        resolveInclude={resolveIncludeAction}
         className="w-full flex-1"
       />
     </div>
@@ -1541,6 +1543,7 @@ function HostedSlidesEditor(props: {
                 })
             : undefined
         }
+        resolveInclude={resolveIncludeAction}
         className="w-full flex-1"
       />
     </div>

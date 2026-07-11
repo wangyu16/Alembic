@@ -88,6 +88,12 @@ export interface EditorContext {
    *  operations registry + `PLATFORM_SCOPE` + governance. Pairs with
    *  `aiOperations`; used by hosted (iframe) modules via the bridge. */
   runAIOperation?(req: HostAIRequest): Promise<{ ok: boolean; proposed?: string; error?: string }>;
+  /** Resolve a web transclusion URL (`{{md-include https://…}}`) to its markdown
+   *  for the file's PREVIEW, over the `orz-host-include@1` bridge. The Alembic
+   *  host fetches under its own permalink allowlist. Absent = no include bridge
+   *  (the file leaves directives unresolved, never auto-fetching). Returns null
+   *  when the host declines/can't resolve. */
+  resolveInclude?(url: string): Promise<string | null>;
 }
 
 /** The live handle to a mounted module. */

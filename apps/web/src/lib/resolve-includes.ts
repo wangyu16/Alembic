@@ -34,3 +34,27 @@ export async function resolveWebIncludes(markdown: string): Promise<string> {
     return markdown;
   }
 }
+
+/**
+ * Resolve ONE include URL to its markdown — the `orz-host-include@1` bridge
+ * target for hosted in-file editors (their preview requests URLs one at a time).
+ * Only the app's own permalink host is fetched (SSRF guard); anything else, or
+ * a failed/unset fetch, returns null (the file leaves the directive unresolved).
+ */
+export async function resolveIncludeUrl(url: string): Promise<string | null> {
+  if (!PERMALINK_HOST) return null;
+  let host: string;
+  try {
+    host = new URL(url).host;
+  } catch {
+    return null;
+  }
+  if (host.toLowerCase() !== PERMALINK_HOST.toLowerCase()) return null;
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    return await res.text();
+  } catch {
+    return null;
+  }
+}

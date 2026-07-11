@@ -25,6 +25,7 @@ export function ModuleMount({
   onReady,
   aiOperations,
   runAIOperation,
+  resolveInclude,
   className,
 }: {
   kind: string;
@@ -41,12 +42,14 @@ export function ModuleMount({
   aiOperations?: HostAIOperation[];
   /** Run an operation the file's assistant requested. */
   runAIOperation?: (req: HostAIRequest) => Promise<{ ok: boolean; proposed?: string; error?: string }>;
+  /** Resolve a web transclusion URL for the file's preview (orz-host-include@1). */
+  resolveInclude?: (url: string) => Promise<string | null>;
   className?: string;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   // Keep the latest callbacks without forcing a remount.
-  const cbs = useRef({ onChange, onReady, hostSave, onDirty, runAIOperation });
-  cbs.current = { onChange, onReady, hostSave, onDirty, runAIOperation };
+  const cbs = useRef({ onChange, onReady, hostSave, onDirty, runAIOperation, resolveInclude });
+  cbs.current = { onChange, onReady, hostSave, onDirty, runAIOperation, resolveInclude };
 
   useEffect(() => {
     const el = ref.current;
@@ -67,6 +70,11 @@ export function ModuleMount({
         cbs.current.runAIOperation
           ? cbs.current.runAIOperation(req)
           : Promise.resolve({ ok: false, error: "AI is not available here." }),
+      // Only expose the include bridge when the caller wired a resolver at mount
+      // — otherwise the host would announce an include bridge it can't serve.
+      ...(resolveInclude
+        ? { resolveInclude: (url: string) => cbs.current.resolveInclude!(url) }
+        : {}),
     });
     cbs.current.onReady?.(handle);
     return () => handle.destroy();
