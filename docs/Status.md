@@ -1231,7 +1231,29 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
   (folds in `importFileAction`), CF3 Private (proves the framework), CF4 Assets
   (+Discover element search), CF5 Current (term pointer model + sections + "This
   term" area), CF6 creatable-formats roadmap (Excalidraw `.excalidraw.svg`,
-  3Dmol `.mol.html`, p5.js `.sim.html`). Not started.
+  3Dmol `.mol.html`, p5.js `.sim.html`).
+  - ✅ **CF0** file-type registry (`packages/package-contract/src/file-types.ts`):
+    handling classes, longest-suffix resolution, `BUILTIN_FILE_TYPES`,
+    `CREATABLE_FILE_TYPES`, additive `manifest.fileTypes`. 25 tests.
+  - ✅ **CF1** folder-aware collection tree + `moveFile`/`moveFolder`/`deleteFolder`
+    (`packages/package-ops/src/collections-tree.ts`), all fail-closed. 21 tests.
+  - ✅ **CF2** one generalized write door
+    (`uploadCollectionFileAction` in `edit/collection-actions.ts`) — two-repo
+    routing (private space ⇒ private repo), traversal-safe path, upload verdict
+    (binary-on-trial blocked; 50 MB warn / 100 MB block), register on commit.
+  - ✅ **CF3** Private collection UI (`PrivateCollectionView` in studio-shell):
+    scope bands + free folders + upload + Create-menu placeholders + open/rename/delete.
+  - ✅ **CF4** Assets collection (`edit/assets-collection-view.tsx`,
+    `AssetsCollectionView`): same framework over the public `materials/` space,
+    plus class-driven Open (anchor to `/api/asset/…`) · Insert (Object permalink
+    `/d/{docId}`; documents/opaque excluded, unregistered insertables disabled) ·
+    Metadata/share panel (description + tags + license + discoverable →
+    `setAssetMetadataAction`, object-needs-description gate) · Adapt-by-permalink.
+    CF4.1 added per-file `tags` to the registry (migration 0019). Structure/plot
+    creation unified under the Create menu as CF6 placeholders. Browser-verified.
+    **Held from push pending migration 0019** (per-file tags column).
+  - ⬜ **CF5** Current collection (term pointer + sections). ⬜ **CF6**
+    creatable-format editors.
 - **Post-session coherence audit (2026-07-09, owner request).** Fanned out
   6 parallel read-only subagents (dangling references from today's renames;
   Status.md accuracy vs code; goal/Roadmap/specs coherence; the

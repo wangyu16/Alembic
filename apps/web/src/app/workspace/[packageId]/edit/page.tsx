@@ -1,7 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import {
   collectionTree,
-  listAssets,
   listChapters,
   loadStudyGuide,
   loadCourseConceptMap,
@@ -109,30 +108,48 @@ export default async function EditShellPage({
         })
       : null;
 
-  // Carrier categories: assets list.
-  const assets = category === "assets" ? await listAssets(store, packageId) : [];
-  // Registry rows for the assets pane: docId + sharing state per path (P2).
-  let assetDocs: Record<
+  // The Assets collection (CF4): a folder tree over the materials space (the v1
+  // asset dir; the registry normalizes it to the `assets` space for Discover).
+  const assetsTree: CollectionScopeTree[] | null =
+    category === "assets"
+      ? await collectionTree(store, packageId, {
+          spaceDir: "materials",
+          repo: "public",
+          chapterSlugs: chapters.map((c) => c.slug),
+          fileTypes: record.manifest.fileTypes,
+        })
+      : null;
+  // Registry metadata per asset path — docId, sharing state, description, tags,
+  // license, permalink class. Drives the metadata panel + insert (needs a docId)
+  // + the discoverable indicator. Best-effort; a failure leaves the tree usable.
+  let assetMeta: Record<
     string,
-    { docId: string; discoverable: boolean; description?: string }
+    {
+      docId: string;
+      discoverable: boolean;
+      description?: string;
+      tags: string[];
+      license?: string;
+      permalinkClass: "document" | "object";
+    }
   > = {};
   if (category === "assets") {
     try {
       const registry = new SupabaseDocumentRegistryStore(supabase);
       for (const r of await registry.listByPackage(packageId)) {
         if (r.tombstoned || r.repo !== "public") continue;
-        assetDocs[r.path] = {
+        assetMeta[r.path] = {
           docId: r.docId,
           discoverable: r.discoverable,
           description: r.description,
+          tags: r.tags,
+          license: r.license,
+          permalinkClass: r.permalinkClass,
         };
       }
     } catch (err) {
-      // Registry is best-effort; the pane still renders without sharing
-      // controls. Log rather than swallow — a silent blank here once hid a
-      // datetime parse failure that disabled "share this" everywhere.
       console.warn(`assets registry read failed for ${packageId}:`, err);
-      assetDocs = {};
+      assetMeta = {};
     }
   }
   // Publishing state for the header (Save to GitHub / Publish page / List
@@ -218,8 +235,8 @@ export default async function EditShellPage({
       }}
       categoryFile={categoryFile}
       privateTree={privateTree}
-      assets={assets.map((a) => ({ path: a.path, kind: a.kind }))}
-      assetDocs={assetDocs}
+      assetsTree={assetsTree}
+      assetMeta={assetMeta}
       publishing={publishing}
       aiAccess={aiAccess}
     />

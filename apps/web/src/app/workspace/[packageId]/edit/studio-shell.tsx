@@ -42,8 +42,7 @@ import { saveCourseConceptMapAction, setCourseInfoAction, type CourseInfo } from
 import { saveFileAction, proposeEditAction, runGenerateOperationAction } from "./edit-actions";
 import { importFileAction } from "../import-actions";
 import { requestAiAccessAction } from "../../ai-access-actions";
-import { shareFileAction } from "../share-actions";
-import { adaptElementAction } from "../adapt-actions";
+import { AssetsCollectionView, type AssetMeta } from "./assets-collection-view";
 import {
   generateChapterHtmlAction,
   hostSaveStudyGuideAction,
@@ -73,26 +72,9 @@ import {
 } from "@/lib/editor-html-cache";
 import type { EditorHandle } from "@alembic/editor-kit";
 import { ModuleMount } from "@/lib/editor-modules/module-mount";
-import {
-  readAssetAction,
-  saveAssetAction,
-  suggestStructureAltTextAction,
-} from "../asset-actions";
 import { ManageDialog } from "../chapter-nav";
 import { PublishHeader, type PublishingState } from "../_components/publish-header";
 
-interface AssetItem {
-  path: string;
-  kind: string;
-  altText?: string;
-}
-
-/** Registry state per asset path (P2 sharing): docId + discoverable. */
-export interface AssetDocInfo {
-  docId: string;
-  discoverable: boolean;
-  description?: string;
-}
 /* Per-account AI approval state (docs/specs/user-governance.md §4). Threaded
    from the server (edit/page.tsx) so the assistant surfaces gate as UX; the
    real enforcement is server-side in GovernedProvider. */
@@ -255,8 +237,8 @@ export function StudioShell({
   courseInfo,
   categoryFile,
   privateTree,
-  assets,
-  assetDocs,
+  assetsTree,
+  assetMeta,
   publishing,
   aiAccess,
 }: {
@@ -274,8 +256,8 @@ export function StudioShell({
   courseInfo: CourseInfo;
   categoryFile: { path: string; repo: "public" | "private"; content: string } | null;
   privateTree: CollectionScopeTree[] | null;
-  assets: AssetItem[];
-  assetDocs?: Record<string, AssetDocInfo>;
+  assetsTree: CollectionScopeTree[] | null;
+  assetMeta: Record<string, AssetMeta>;
   publishing: PublishingState;
   aiAccess: AiAccess;
 }) {
@@ -652,7 +634,14 @@ export function StudioShell({
               </div>
             </div>
           ) : view.collection === "assets" ? (
-            <AssetsView key="assets" packageId={packageId} activePath={activePath} assets={assets} assetDocs={assetDocs} onDirty={setDirty} />
+            <AssetsCollectionView
+              key="assets"
+              packageId={packageId}
+              tree={assetsTree ?? []}
+              chapters={chapters}
+              assetMeta={assetMeta}
+              onDirty={setDirty}
+            />
           ) : view.collection === "current" ? (
             <CurrentSpace />
           ) : view.collection === "private" ? (
@@ -2285,383 +2274,6 @@ function useSelectionAI({
     ) : null;
 
   return { selectionProps: { onMouseUp, onKeyDown }, overlay };
-}
-
-/* ── Assets: list + create/edit structures & plots (reuses the editors) ──── */
-function AssetsView({
-  packageId,
-  activePath,
-  assets,
-  assetDocs,
-  onDirty,
-}: {
-  packageId: string;
-  activePath: string | null;
-  assets: AssetItem[];
-  assetDocs?: Record<string, AssetDocInfo>;
-  onDirty?: (d: boolean) => void;
-}) {
-  const router = useRouter();
-  const [editing, setEditing] = useState<
-    { kind: "ketcher" | "plot"; path?: string; source?: string } | null
-  >(null);
-  const [pending, start] = useTransition();
-
-  const openEdit = (path: string, kind: string) => {
-    if (kind !== "ketcher" && kind !== "plot") return;
-    start(async () => {
-      const r = await readAssetAction(packageId, path);
-      setEditing({ kind, path, source: r.ok ? r.source : undefined });
-    });
-  };
-  const onSaved = () => {
-    setEditing(null);
-    router.refresh();
-  };
-
-  if (editing) {
-    return (
-      <AssetEditor
-        packageId={packageId}
-        activePath={activePath}
-        kind={editing.kind}
-        initialPath={editing.path}
-        initialSource={editing.source}
-        onDirty={onDirty}
-        onDone={onSaved}
-        onCancel={() => setEditing(null)}
-      />
-    );
-  }
-
-  return (
-    <div className="flex flex-col gap-3">
-      <div className="flex items-center justify-between">
-        <h2 className="font-serif text-lg text-ink">Assets</h2>
-        <div className="flex flex-wrap items-center gap-2">
-          <button onClick={() => setEditing({ kind: "ketcher" })} className="btn btn-ghost btn-sm">
-            + Structure
-          </button>
-          <button onClick={() => setEditing({ kind: "plot" })} className="btn btn-ghost btn-sm">
-            + Plot
-          </button>
-          <UploadControl
-            packageId={packageId}
-            activePath={activePath ?? ""}
-            accept=".ketcher.svg,.plot.svg,.svg,.md,.md.html"
-            label="Upload"
-            title="Upload a file Alembic (or an orz tool) wrote — structures and plots land in Assets"
-          />
-          <AdaptControl packageId={packageId} />
-        </div>
-      </div>
-      <p className="text-xs text-faint">
-        Reusable non-text objects (structures, plots, figures) under <code>materials/</code> —
-        insert them into any document by permalink. {pending ? "Opening…" : ""}
-      </p>
-      {assets.length === 0 ? (
-        <p className="text-sm text-muted">No assets yet — draw a structure or plot above.</p>
-      ) : (
-        <ul className="panel divide-y divide-[var(--edge-soft)]">
-          {assets.map((a) => (
-            <li key={a.path} className="flex items-center justify-between gap-2 px-3 py-2">
-              <span className="min-w-0 truncate text-sm">
-                <span className="chip mr-2">{a.kind}</span>
-                {a.path.replace(/^materials\//, "")}
-              </span>
-              <div className="flex shrink-0 items-center gap-2">
-                <a
-                  href={`/api/asset/${packageId}/${a.path}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="link text-xs"
-                >
-                  View
-                </a>
-                {(a.kind === "ketcher" || a.kind === "plot") && (
-                  <button onClick={() => openEdit(a.path, a.kind)} className="btn btn-ghost btn-sm">
-                    Edit
-                  </button>
-                )}
-                {assetDocs?.[a.path] && (
-                  <ShareControl packageId={packageId} doc={assetDocs[a.path]} />
-                )}
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
-}
-
-/* ── "Adapt" (P4): copy a shared object into this package by permalink ─────── */
-function AdaptControl({ packageId }: { packageId: string }) {
-  const router = useRouter();
-  const [open, setOpen] = useState(false);
-  const [link, setLink] = useState("");
-  const [pending, start] = useTransition();
-  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
-
-  const submit = () => {
-    setMsg(null);
-    start(async () => {
-      const r = await adaptElementAction(packageId, link);
-      if (!r.ok) {
-        setMsg({ ok: false, text: r.error ?? "Couldn't add that element." });
-        return;
-      }
-      setLink("");
-      setOpen(false);
-      setMsg({ ok: true, text: r.already ? "Already in this package." : "Added to Assets." });
-      router.refresh();
-    });
-  };
-
-  if (!open) {
-    return (
-      <span className="flex items-center gap-2">
-        <button
-          onClick={() => setOpen(true)}
-          className="btn btn-ghost btn-sm"
-          title="Paste a shared element's permalink (from Discover) to copy it into this package"
-        >
-          Adapt…
-        </button>
-        {msg?.ok && <span className="text-xs text-muted">{msg.text}</span>}
-      </span>
-    );
-  }
-
-  return (
-    <span className="flex items-center gap-1">
-      <input
-        value={link}
-        onChange={(e) => setLink(e.target.value)}
-        placeholder="Paste a shared link (/d/…)"
-        aria-label="Shared element permalink"
-        className="field w-56 text-xs"
-        autoFocus
-        onKeyDown={(e) => e.key === "Enter" && !pending && link.trim() && submit()}
-      />
-      <button onClick={submit} disabled={pending || !link.trim()} className="btn btn-primary btn-sm">
-        {pending ? "…" : "Add"}
-      </button>
-      <button onClick={() => { setOpen(false); setMsg(null); }} className="btn btn-ghost btn-sm">
-        Cancel
-      </button>
-      {msg && !msg.ok && <span className="text-xs text-danger">{msg.text}</span>}
-    </span>
-  );
-}
-
-/* ── "Share this" (P2): per-file discoverability + copyable permalink ─────── */
-function ShareControl({ packageId, doc }: { packageId: string; doc: AssetDocInfo }) {
-  const router = useRouter();
-  const [asking, setAsking] = useState(false);
-  const [description, setDescription] = useState(doc.description ?? "");
-  const [pending, start] = useTransition();
-  const [error, setError] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
-
-  const set = (share: boolean, desc?: string) => {
-    setError(null);
-    start(async () => {
-      const r = await shareFileAction(packageId, doc.docId, share, desc);
-      if (!r.ok) setError(r.error ?? "That didn't complete.");
-      else {
-        setAsking(false);
-        router.refresh();
-      }
-    });
-  };
-
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(`${window.location.origin}/d/${doc.docId}`);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    } catch {
-      setError("Couldn't copy — the permalink is /d/" + doc.docId);
-    }
-  };
-
-  if (doc.discoverable) {
-    return (
-      <span className="flex items-center gap-2">
-        <button onClick={copy} className="link text-xs" title="Copy the shareable permalink">
-          {copied ? "Copied!" : "Copy permalink"}
-        </button>
-        <button
-          onClick={() => set(false)}
-          disabled={pending}
-          className="text-xs text-faint hover:text-ink"
-          title="Stop sharing this file (its permalink stops resolving for others)"
-        >
-          {pending ? "…" : "Unshare"}
-        </button>
-        {error && <span className="text-xs text-danger">{error}</span>}
-      </span>
-    );
-  }
-
-  if (asking) {
-    return (
-      <span className="flex items-center gap-1">
-        <input
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          placeholder="Short description (what others find it by)…"
-          aria-label="Description for sharing"
-          className="field w-56 text-xs"
-          onKeyDown={(e) => e.key === "Enter" && !pending && set(true, description)}
-        />
-        <button
-          onClick={() => set(true, description)}
-          disabled={pending || !description.trim()}
-          className="btn btn-primary btn-sm"
-        >
-          {pending ? "…" : "Share"}
-        </button>
-        <button onClick={() => setAsking(false)} className="btn btn-ghost btn-sm">
-          Cancel
-        </button>
-        {error && <span className="text-xs text-danger">{error}</span>}
-      </span>
-    );
-  }
-
-  return (
-    <button
-      onClick={() => (doc.description ? set(true) : setAsking(true))}
-      disabled={pending}
-      className="btn btn-ghost btn-sm"
-      title="Make this file discoverable on Discover's Elements and shareable by permalink"
-    >
-      {pending ? "…" : "Share this"}
-    </button>
-  );
-}
-
-/* ── Inline asset editor: mounts the editor MODULE (ketcher/plot) ─────────── */
-function AssetEditor({
-  packageId,
-  activePath,
-  kind,
-  initialPath,
-  initialSource,
-  onDirty,
-  onDone,
-  onCancel,
-}: {
-  packageId: string;
-  activePath: string | null;
-  kind: "ketcher" | "plot";
-  initialPath?: string;
-  initialSource?: string;
-  onDirty?: (d: boolean) => void;
-  onDone: () => void;
-  onCancel: () => void;
-}) {
-  const handleRef = useRef<EditorHandle | null>(null);
-  const [name, setName] = useState("");
-  const [altText, setAltText] = useState("");
-  const [dirty, setDirty] = useState(false);
-  const [busy, setBusy] = useState<null | "describe" | "save">(null);
-  const [error, setError] = useState<string | null>(null);
-  useUnsavedGuard(dirty);
-  useReportDirty(dirty, onDirty);
-
-  const describe = () => {
-    if (kind !== "ketcher" || !handleRef.current) return;
-    setError(null);
-    setBusy("describe");
-    void (async () => {
-      try {
-        const source = await handleRef.current!.getSource();
-        const r = await suggestStructureAltTextAction(packageId, source, activePath ?? "");
-        if (r.ok && r.altText) {
-          setAltText(r.altText);
-          setDirty(true);
-        } else setError(r.error ?? "Couldn't generate a description.");
-      } finally {
-        setBusy(null);
-      }
-    })();
-  };
-
-  const save = () => {
-    setError(null);
-    if (!altText.trim()) return setError("Add a short description (alt text).");
-    if (!initialPath && !name.trim()) return setError("Name this asset so it can be reused.");
-    if (!handleRef.current) return;
-    setBusy("save");
-    void (async () => {
-      try {
-        const source = await handleRef.current!.getSource();
-        const svg = (await handleRef.current!.renderPayload?.()) ?? "";
-        const res = await saveAssetAction(packageId, {
-          kind,
-          path: initialPath,
-          name,
-          source,
-          svg,
-          altText: altText.trim(),
-        });
-        if (res.ok) {
-          setDirty(false);
-          onDone();
-        } else setError(res.error ?? "Couldn't save the asset.");
-      } catch {
-        setError("Couldn't save the asset.");
-      } finally {
-        setBusy(null);
-      }
-    })();
-  };
-
-  return (
-    <div className="flex h-full flex-col gap-3">
-      <div className="flex items-center justify-between">
-        <h2 className="font-serif text-lg text-ink">
-          {initialPath ? "Edit" : "New"} {kind === "ketcher" ? "structure" : "plot"}
-        </h2>
-        <div className="flex items-center gap-2">
-          {dirty && <span className="text-xs text-warn">Unsaved</span>}
-          <button onClick={onCancel} className="btn btn-ghost btn-sm">Cancel</button>
-        </div>
-      </div>
-      <div className="min-h-0 flex-1 overflow-hidden rounded-lg border border-edge">
-        <ModuleMount
-          kind={kind}
-          source={initialSource ?? ""}
-          onChange={() => setDirty(true)}
-          onReady={(h) => (handleRef.current = h)}
-        />
-      </div>
-      <div className="flex flex-wrap items-end gap-3">
-        {!initialPath && (
-          <label className="text-sm">
-            <span className="mb-1 block text-xs text-muted">Name</span>
-            <input value={name} onChange={(e) => { setName(e.target.value); setDirty(true); }} placeholder="benzene" className="field" />
-          </label>
-        )}
-        <label className="flex-1 text-sm">
-          <span className="mb-1 block text-xs text-muted">Description (alt text)</span>
-          <input value={altText} onChange={(e) => { setAltText(e.target.value); setDirty(true); }} placeholder="A six-membered aromatic ring…" className="field w-full" />
-        </label>
-        {kind === "ketcher" && (
-          <button onClick={describe} disabled={busy !== null} className="btn btn-ghost btn-sm">
-            {busy === "describe" ? "Describing…" : "Describe with AI"}
-          </button>
-        )}
-        <button onClick={save} disabled={busy !== null} className="btn btn-primary btn-sm">
-          {busy === "save" ? "Saving…" : "Save"}
-        </button>
-      </div>
-      {error && <p className="text-sm text-danger">{error}</p>}
-    </div>
-  );
 }
 
 /* ── Upload (origin parity): created, uploaded, or committed — all equal ──── */
