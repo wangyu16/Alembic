@@ -18,8 +18,14 @@ export * from "./client";
 
 export interface FileChange {
   path: string;
-  /** UTF-8 content; null means delete. */
+  /** Content to write; null means delete. UTF-8 text, unless `encoding` says otherwise. */
   content: string | null;
+  /**
+   * How `content` is encoded. Omitted/"utf-8" → inlined as text in the tree.
+   * "base64" → a binary file; uploaded as a blob and referenced by sha, so the
+   * bytes (not the base64 text) land in the repo. See client.buildTreeEntries.
+   */
+  encoding?: "utf-8" | "base64";
 }
 
 export interface CommitPlan {

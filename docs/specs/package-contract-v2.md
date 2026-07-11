@@ -130,6 +130,14 @@ Same validation and same record shape at every door (origin parity); only the
 
 ## 4. Study guide = one `.md.html` file (source of record)
 
+> **Status (2026-07): TARGET, not current.** This section describes the
+> planned E3 study-guide switchover. **The shipped code stores a lean
+> `study-guide/<slug>.md`** (source-of-record markdown; `.md.html` is generated
+> for viewing/download, not committed as the chapter's stored artifact). The
+> `.md.html`-as-committed-source model below is the target for E3 and is **not
+> yet implemented** — see [Roadmap.md](../Roadmap.md) E3 and Status.md. Until
+> E3 lands, read this as the destination, not the current on-disk shape.
+
 A chapter's study guide is **one `.md.html` file** at
 `study-guide/<chapter>.md.html`, committed to git — the primary artifact. Its
 editable markdown lives **embedded** in the file's carrier island; on

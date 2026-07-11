@@ -148,8 +148,8 @@ door is the single collection writer; `importFileAction` folds into it.
     [[collections-organization-decisions]]).
   - **section** — announcements (timestamped `.md`, title + body), assignments
     (`.md.html`/`.paged.html`), misc. Sections drive a reserved **"This term"**
-    area on the published course home (the placeholder already stubbed in
-    `renderer/course-site.ts`).
+    area on the published course home — data-driven and shipped (`renderCurrentTerm`
+    in `renderer/course-site.ts`, fed by `CourseTermData`; see §8 CF5).
 
 ## 7. What this reuses vs. adds
 
@@ -181,15 +181,18 @@ Disjoint pieces are marked ∥ (parallelizable via subagents).
 - **CF2 — the generalized door.** The single collection writer: `(packageId,
   space, scope, folder, filename, bytes|source)` → resolve type → `packageOps`
   write → register → (published) commit. Enforce the storage gate + size
-  policy. `importFileAction` folds in. Adversarial: binary on a trial package
-  rejected with a clear message; path traversal rejected; private space never
-  reaches the public repo.
-- **CF3 — Private UI.** The framework's first client: tree view, create folder,
-  upload (text in trial / binary when published), rename/move/delete. Proves the
-  machine end-to-end with the least surface.
-- **CF4 — Assets.** Metadata panel (description/tags/license) gating share;
-  insert & open actions from the handling class; element registration →
-  Discover.
+  policy. `importFileAction` *will* fold in (it still owns the study-guide
+  section-merge upload until callers migrate). Adversarial: binary on a trial
+  package rejected with a clear message; path traversal rejected; private space
+  never reaches the public repo. (Binary uploads now commit as real bytes via
+  the blobs API — `FileChange.encoding`.)
+- **CF3 — Private UI.** ✅ Landed. The framework's first client: tree view, create
+  folder, upload (text in trial / binary when published), rename/delete
+  (cross-scope move UI is a follow-up). Proves the machine end-to-end with the
+  least surface.
+- **CF4 — Assets.** ✅ Landed (needs migration 0019 in prod for per-file tags).
+  Metadata panel (description/tags/license) gating share; insert & open actions
+  from the handling class; element registration → Discover.
 - **CF5 — Current.** ✅ Landed. Term dimension (pointer model, switcher,
   archived = read-only) + reserved course-level sections
   (announcements/assignments/misc) + the data-driven "This term" published area.

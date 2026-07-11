@@ -111,7 +111,7 @@ theme-in-save).
 
 These are the only things blocking full production parity with the code:
 
-1. **Migration `0013_drop_portal_eligible` is pending** (drops the now-unused `profiles.portal_eligible` column — optional cleanup, apply anytime after this deploys; no code references it). Migrations 0005–0012, **0014** (documents), and **0015** (portal keywords — ✅ **applied 2026-07-09**) are all applied; **0013** is the only one pending, and it's optional. Config notes: 0007's budget stays dormant until `AI_TOKEN_BUDGET` is set; portal listing is now open to all educators (the `portal_eligible` gate + admin toggle were removed); to reach `/admin`, **flag yourself `is_admin=true`** (dashboard) and set **`SUPABASE_SECRET_KEY`** (service-role reads) — optionally `RESEARCH_EXPORT_SALT`.
+1. **Migrations pending: `0019` (required for CF4) and `0013` (optional).** `0019_document_tags` adds the per-file `tags` column the Assets collection (CF4.1/4.2) reads/writes — **apply it before relying on asset tags/metadata in production** (CF4 asset writes are otherwise held; see the CF4 entry). `0013_drop_portal_eligible` drops the now-unused `profiles.portal_eligible` column — optional cleanup, apply anytime; no code references it. Applied: 0005–0012, **0014** (documents), **0015** (portal keywords, 2026-07-09), and **0016–0018** (profile column grants + user governance + ban backstop, ✅ **applied 2026-07-10** — see the security/UG banners above). Config notes: 0007's budget stays dormant until `AI_TOKEN_BUDGET` is set; portal listing is now open to all educators (the `portal_eligible` gate + admin toggle were removed); to reach `/admin`, **flag yourself `is_admin=true`** (dashboard) and set **`SUPABASE_SECRET_KEY`** (service-role reads) — optionally `RESEARCH_EXPORT_SALT`.
 2. ✅ **Done** — Vercel build command is `node ../../scripts/fetch-vendor.mjs && next build`; Plotly is vendored and the plot editor (M11b) works live.
 3. **Interactive verification passes** (can't run in CI): slides render (M13), the in-file hosted editors (`.md.html`/`.slides.html`/`.paged.html` save round-trip via the worker tier), and the AI/reconcile live runs (M18 coherence agent, M9.6 draft-from-plan, M20 reconcile, M23 question generation, M26–M28 adapt/pull/suggest-back) once Portkey is on Vercel. Ketcher (M11) and plots (M11b) are verified live.
 4. **Set the Portkey env vars in Vercel** (`AI_GATEWAY_URL=https://api.portkey.ai/v1`, `AI_GATEWAY_API_KEY`, `AI_MODEL_DEFAULT/FAST/STRONG` = `@<provider-slug>/<model>`) to verify the **M18 coherence agent** live. Local dev can't reach Portkey from this machine (the dev Mac's security/firewall blocks the `node` binary's outbound — `curl` works, `node` ETIMEDOUTs — not an app issue); Vercel's egress is clean. See [ai-architecture.md](specs/ai-architecture.md).
@@ -1228,17 +1228,20 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
   100 MB), binaries require a published package (trial stays text-only —
   locked trial-storage decision). Impl plan CF0–CF6: CF0 type registry (pure),
   CF1 folder-aware tree, CF2 one generalized (scope,folder,type)+register door
-  (folds in `importFileAction`), CF3 Private (proves the framework), CF4 Assets
+  (will fold in `importFileAction`; still the live path for study-guide
+  section-merge upload until callers migrate), CF3 Private (proves the framework), CF4 Assets
   (+Discover element search), CF5 Current (term pointer model + sections + "This
   term" area), CF6 creatable-formats roadmap (Excalidraw `.excalidraw.svg`,
   3Dmol `.mol.html`, p5.js `.sim.html`).
   - ✅ **CF0** file-type registry (`packages/package-contract/src/file-types.ts`):
     handling classes, longest-suffix resolution, `BUILTIN_FILE_TYPES`,
-    `CREATABLE_FILE_TYPES`, additive `manifest.fileTypes`. 25 tests.
+    `CREATABLE_FILE_TYPES`, additive `manifest.fileTypes`. 19 tests.
   - ✅ **CF1** folder-aware collection tree + `moveFile`/`moveFolder`/`deleteFolder`
-    (`packages/package-ops/src/collections-tree.ts`), all fail-closed. 21 tests.
+    (`packages/package-ops/src/collections-tree.ts`), all fail-closed. 19 tests.
+    (`moveFile`/`moveFolder`/`deleteFolder` are built + tested but not yet wired
+    to a cross-scope "Move to chapter…" UI — folder-move UI is a follow-up.)
   - ✅ **CF2** one generalized write door
-    (`uploadCollectionFileAction` in `edit/collection-actions.ts`) — two-repo
+    (`uploadCollectionFileAction` in `workspace/[packageId]/collection-actions.ts`) — two-repo
     routing (private space ⇒ private repo), traversal-safe path, upload verdict
     (binary-on-trial blocked; 50 MB warn / 100 MB block), register on commit.
   - ✅ **CF3** Private collection UI (`PrivateCollectionView` in studio-shell):
@@ -1266,9 +1269,7 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
     assignment/misc links). Term switcher, new-term dialog with structure
     carry-over (`planCarryOver`, announcements excluded), announcement composer.
     Browser-verified (current/archived/empty states); contract 225 + ops 237 +
-    renderer 69 tests green. *Known limitation:* a binary file (e.g. `.pdf`) in
-    an assignments/misc section publishes best-effort (its bytes as text) — the
-    text surfaces (announcements, `.md.html`/`.paged.html`) are unaffected.
+    renderer 69 tests green.
   - ✅ **CF6** creatable formats — the Create menu now creates + edits **six**
     formats in-app, all on the framework: `.md` (plain-text editor), `.md.html` /
     `.slides.html` / `.paged.html` (the self-contained file's own in-file editor,
@@ -1288,6 +1289,30 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
     Also fixed a latent CF5 bug: the collection delete/rename space-boundary
     check used a first-segment match, which rejected multi-segment `current/<term>`
     paths — now boundary-safe (`underPrefix`).
+  - ✅ **Web transclusion (`orz-host-include@1`).** Inserting a `.md` asset emits
+    `{{md-include https://…/d/{docId}}}` (a permalink directive, not a raw path),
+    resolved into the rendered/built copy while the editable source keeps the
+    directive. Shared primitive: orz-markdown `prepareSources` (SSRF allowlist +
+    recursion/cycle guard + injectable fetcher, 1.5.0). Host side:
+    `apps/web/src/lib/resolve-includes.ts` (`resolveWebIncludes` on the publish +
+    `/api/preview` paths; `resolveIncludeUrl` bounded to `NEXT_PUBLIC_APP_URL` —
+    manual redirects, timeout, size cap) and `include-actions.ts`
+    (`resolveIncludeAction`, sign-in gated) over the `orz-host-include@1`
+    postMessage bridge (`packages/editor-kit/src/host-include-client.ts`). The
+    in-file editors of orz-mdhtml 0.9.0 / orz-slides 0.8.0 / orz-paged 0.7.0
+    resolve includes in their preview via the host; a **standalone file never
+    auto-fetches** an author URL. Best-effort: unset host / failed fetch leaves
+    the directive in place.
+  - ✅ **Binary uploads commit as real bytes.** github-bridge now uploads binary
+    (base64) content via the blobs API and references it by sha in the tree, so
+    an uploaded `.png`/`.pdf`/media file lands on GitHub as its bytes, not its
+    base64 text (`FileChange.encoding`, `client.buildTreeEntries`). Fixes the
+    prior corruption where the create-tree `content` field (always UTF-8) was
+    handed base64. Serving routes (`/d/{docId}`, `/api/asset`) sandbox
+    self-contained HTML/SVG into an opaque origin (`Content-Security-Policy:
+    sandbox allow-scripts`, `nosniff`) so a shared permalink can't run script
+    against the viewer's session. *(Full user-content isolation — a separate
+    cookieless origin — remains a follow-up; sandbox is the interim.)*
 - **Post-session coherence audit (2026-07-09, owner request).** Fanned out
   6 parallel read-only subagents (dangling references from today's renames;
   Status.md accuracy vs code; goal/Roadmap/specs coherence; the

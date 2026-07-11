@@ -132,7 +132,9 @@ export async function uploadCollectionFileAction(
     store,
     user.id,
     packageId,
-    [{ path: target, content: input.content }],
+    // Binary content is base64 — commit it as a blob so the bytes (not the
+    // base64 text) reach GitHub; text goes inline.
+    [{ path: target, content: input.content, encoding: input.isBinary ? "base64" : "utf-8" }],
     "Upload file (Alembic)",
   );
   await syncPackageRegistry(supabase, packageId);

@@ -25,6 +25,9 @@ function commitMock(): { fetchImpl: FetchLike; calls: Call[] } {
     if (method === "GET" && url.includes("/git/commits/")) {
       return ok({ tree: { sha: "BASETREE" } });
     }
+    if (method === "POST" && url.endsWith("/git/blobs")) {
+      return ok({ sha: "BLOBSHA" });
+    }
     if (method === "POST" && url.endsWith("/git/trees")) {
       return ok({ sha: "NEWTREE" });
     }
@@ -80,6 +83,34 @@ describe("commitFiles", () => {
       type: "blob",
       sha: null,
     });
+  });
+
+  it("uploads base64 (binary) content as a blob and references it by sha", async () => {
+    const { fetchImpl, calls } = commitMock();
+    const client = new GitHubClient("ghs_x", fetchImpl);
+    await commitFiles(client, coords, {
+      repo: "public",
+      summary: "add figure",
+      changes: [
+        { path: "materials/figures/plot.png", content: "iVBORw0KGgo=", encoding: "base64" },
+      ],
+    });
+
+    // A blob is created with base64 encoding...
+    const blob = calls.find((c) => c.url.endsWith("/git/blobs"))!;
+    expect(blob.method).toBe("POST");
+    expect(blob.body).toEqual({ content: "iVBORw0KGgo=", encoding: "base64" });
+
+    // ...and the tree references it by sha, NOT by inline (base64-as-text) content.
+    const tree = calls.find((c) => c.url.endsWith("/git/trees"))!;
+    expect((tree.body as { tree: unknown[] }).tree).toContainEqual({
+      path: "materials/figures/plot.png",
+      mode: "100644",
+      type: "blob",
+      sha: "BLOBSHA",
+    });
+    const entry = (tree.body as { tree: Array<Record<string, unknown>> }).tree[0];
+    expect(entry).not.toHaveProperty("content");
   });
 
   it("REFUSES a private path in a public commit before any network call", async () => {

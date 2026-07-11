@@ -65,6 +65,30 @@ function mimeFor(path: string): string {
   return "text/plain; charset=utf-8";
 }
 
+/** Active-content classes: self-contained HTML documents and SVG objects. */
+const ACTIVE_CONTENT = /\.(md\.html|slides\.html|paged\.html|html|svg)$/i;
+
+/**
+ * Security headers for served content. Self-contained documents legitimately
+ * carry their own scripts (the orz runtime renders the deck/markdown island),
+ * so we can't strip script — but a public permalink is on the SAME origin as
+ * the authenticated workspace. We serve active content in a CSP `sandbox` with
+ * `allow-scripts` but deliberately WITHOUT `allow-same-origin`: the file still
+ * runs and renders, but in an OPAQUE origin — it can't read the viewer's
+ * Alembic session cookies or call their Server Actions. That closes cross-user
+ * stored XSS via a shared `/d/{docId}` link (and the `adaptElementAction` SVG
+ * vector) without breaking the reader experience. `nosniff` pins every type so
+ * a mislabeled body can't be reinterpreted as HTML.
+ */
+function securityHeaders(path: string): Record<string, string> {
+  const h: Record<string, string> = { "x-content-type-options": "nosniff" };
+  if (ACTIVE_CONTENT.test(path)) {
+    h["content-security-policy"] =
+      "sandbox allow-scripts allow-popups allow-popups-to-escape-sandbox allow-downloads";
+  }
+  return h;
+}
+
 function page(status: number, title: string, body: string): Response {
   return new Response(
     `<!doctype html><meta charset="utf-8"><title>${title}</title>` +
@@ -147,6 +171,7 @@ export async function GET(
           : "public, max-age=60",
       // Public objects are embeddable cross-origin (permalink-as-src).
       ...(doc.repo === "public" ? { "access-control-allow-origin": "*" } : {}),
+      ...securityHeaders(doc.path),
     },
   });
 }

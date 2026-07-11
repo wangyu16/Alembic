@@ -65,11 +65,23 @@ export async function GET(
   // `.ketcher.svg` → svg), not the compound carrier extension.
   const ext = path.split(".").pop()?.toLowerCase() ?? "";
   const contentType = CONTENT_TYPE[ext] ?? "application/octet-stream";
+  // Self-contained HTML / SVG carry scripts. This route is owner-only, but
+  // `adaptElementAction` can copy a stranger's public SVG into the owner's
+  // package — so serve active content in an opaque-origin sandbox (scripts run,
+  // no same-origin session access). `nosniff` pins the declared type.
+  const active = ext === "html" || ext === "svg";
   return new Response(file.content, {
     headers: {
       "content-type": contentType,
       // Authoring preview only; never cache across edits.
       "cache-control": "no-store",
+      "x-content-type-options": "nosniff",
+      ...(active
+        ? {
+            "content-security-policy":
+              "sandbox allow-scripts allow-popups allow-popups-to-escape-sandbox allow-downloads",
+          }
+        : {}),
     },
   });
 }

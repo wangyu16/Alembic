@@ -7,11 +7,12 @@
  * them (hub-and-spoke) — redesigned 2026-07-09 as the course's table of
  * contents: a hero (title + instructor/course number/department + intro), a
  * numbered module list per chapter (study guide always; slides/practice links
- * only when that chapter has authored one), and a placeholder section for the
- * not-yet-finalized "current term" space.
+ * only when that chapter has authored one), and a data-driven "This term"
+ * area for the CURRENT collection (CF5): announcements + assignment/misc links
+ * for the active term, populated by the caller from `CourseTermData`.
  *
  * Layout:
- *   index.html   — hero + module list + current-term placeholder
+ *   index.html   — hero + module list + "This term" area
  *   build-info.json, .nojekyll
  *
  * The chapter/slides/practice/paged pages themselves (self-contained files)

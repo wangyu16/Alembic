@@ -78,7 +78,9 @@ workspace, or upload to GitHub source, all registered correctly."*
   `concepts` / `assessment-support` / `assets` (renames `materials`) /
   `current` / `metadata` / `provenance` public, `private` (renames
   `private-instructor`, becomes the private-repo root); **chapter study
-  guide = one `.md.html` file** (source embedded). Block IDs: *malformed or
+  guide = one `.md.html` file** (source embedded) — *this is the E3 target;
+  the shipped code still stores a lean `study-guide/<slug>.md` and generates
+  `.md.html` for viewing, so the switchover is pending (see E3)*. Block IDs: *malformed or
   duplicate* IDs still reject a save; *missing* IDs are now legal (anchors
   are optional). Adaptation lineage: whole-package fork sets package-level
   `adaptedFrom` (files inherit); copying an individual file sets file-level

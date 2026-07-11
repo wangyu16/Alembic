@@ -100,12 +100,54 @@ export class GitHubClient {
     return { commitSha: ref.object.sha, treeSha: commit.tree.sha };
   }
 
-  /** Tree entry: text content to write, or null to delete the path. */
+  /**
+   * Create a blob and return its sha. GitHub's create-tree `content` field is
+   * always UTF-8, so binary files (`encoding: "base64"`) must be uploaded as a
+   * blob first and then referenced by sha in the tree — otherwise a PNG/PDF
+   * lands on GitHub as its base64 *text*, not its bytes.
+   */
+  private async createBlob(
+    coords: RepoCoords,
+    content: string,
+    encoding: "utf-8" | "base64",
+  ): Promise<string> {
+    const data = await this.request<{ sha: string }>(
+      "POST",
+      `/repos/${coords.owner}/${coords.repo}/git/blobs`,
+      { content, encoding },
+    );
+    return data.sha;
+  }
+
+  /**
+   * Build create-tree entries for a file set. Text (utf-8) content is inlined;
+   * a deletion is a null-sha entry; base64 (binary) content is uploaded as a
+   * blob first and referenced by sha (see `createBlob`).
+   */
+  private async buildTreeEntries(
+    coords: RepoCoords,
+    files: Array<{ path: string; content: string | null; encoding?: "utf-8" | "base64" }>,
+  ): Promise<Array<Record<string, unknown>>> {
+    return Promise.all(
+      files.map(async (f) => {
+        if (f.content === null) {
+          return { path: f.path, mode: "100644", type: "blob", sha: null };
+        }
+        if (f.encoding === "base64") {
+          const sha = await this.createBlob(coords, f.content, "base64");
+          return { path: f.path, mode: "100644", type: "blob", sha };
+        }
+        return { path: f.path, mode: "100644", type: "blob", content: f.content };
+      }),
+    );
+  }
+
+  /** Tree entry: text content to write, base64 binary, or null to delete. */
   async createCommitOnBranch(input: {
     coords: RepoCoords;
     branch?: string;
     message: string;
-    files: Array<{ path: string; content: string | null }>;
+    files: Array<{ path: string; content: string | null; encoding?: "utf-8" | "base64" }>;
   }): Promise<{ commitSha: string }> {
     const branch = input.branch ?? "main";
     const { commitSha: parentSha, treeSha: baseTree } = await this.getBranchHead(
@@ -113,11 +155,7 @@ export class GitHubClient {
       branch,
     );
 
-    const tree = input.files.map((f) =>
-      f.content === null
-        ? { path: f.path, mode: "100644", type: "blob", sha: null }
-        : { path: f.path, mode: "100644", type: "blob", content: f.content },
-    );
+    const tree = await this.buildTreeEntries(input.coords, input.files);
 
     const newTree = await this.request<{ sha: string }>(
       "POST",
@@ -182,15 +220,10 @@ export class GitHubClient {
     coords: RepoCoords;
     branch: string;
     message: string;
-    files: Array<{ path: string; content: string }>;
+    files: Array<{ path: string; content: string; encoding?: "utf-8" | "base64" }>;
   }): Promise<{ commitSha: string }> {
     const { coords, branch } = input;
-    const tree = input.files.map((f) => ({
-      path: f.path,
-      mode: "100644",
-      type: "blob",
-      content: f.content,
-    }));
+    const tree = await this.buildTreeEntries(coords, input.files);
     const newTree = await this.request<{ sha: string }>(
       "POST",
       `/repos/${coords.owner}/${coords.repo}/git/trees`,
