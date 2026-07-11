@@ -7,6 +7,7 @@ import { slidesSourceFromBlocks, deckThemeFromSource, withDeckTheme } from "@ale
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
 import { generateEditableFile, generateSelfContainedFile, workerConfigured } from "@/lib/worker-client";
+import { docMetaForPackage } from "@/lib/doc-metadata";
 import { syncFilesToGitHub } from "@/lib/github";
 import { saveStudyGuideAction } from "./actions";
 import { setCourseThemeAction } from "./metadata-actions";
@@ -84,6 +85,13 @@ export interface ChapterHtmlResult {
   error?: string;
 }
 
+/** The public repo URL for a package's canonical `source`, or undefined for a
+ *  sandbox package that has not been published yet. */
+function repoUrlOf(record: { manifest: { publicRepo?: { owner: string; name: string } } }): string | undefined {
+  const r = record.manifest.publicRepo;
+  return r ? `https://github.com/${r.owner}/${r.name}` : undefined;
+}
+
 /**
  * Generate the chapter's `.md.html` for hosted editing. Returns `editable:false`
  * (no html) when no worker is configured or generation fails — the caller then
@@ -109,7 +117,10 @@ export async function generateChapterHtmlAction(
     // current choice and a change persists to it on save.
     const space = path.split("/")[0];
     const theme = record?.manifest.themes?.[space] ?? record?.manifest.theme;
-    const html = await generateEditableFile({ kind: "md", markdown, title, theme });
+    // Even the EDITING file carries its license/author, so a downloaded working
+    // copy is self-describing. `source` only exists once the package has a repo.
+    const meta = record ? docMetaForPackage(record.manifest, { title, source: repoUrlOf(record) }) : undefined;
+    const html = await generateEditableFile({ kind: "md", markdown, title, theme, metadata: meta });
     return { ok: true, editable: true, html, theme };
   } catch {
     // No reachable worker / generation error — degrade to the block editor.
@@ -149,7 +160,8 @@ export async function generateSlidesHtmlAction(
     // and publish under the SAME theme until the educator re-picks one here.
     const theme = record?.manifest.themes?.["slides"];
     const source = theme ? withDeckTheme(seeded, theme) : seeded;
-    const html = await generateEditableFile({ kind: "slides", markdown: source, title, theme });
+    const meta = record ? docMetaForPackage(record.manifest, { title, source: repoUrlOf(record) }) : undefined;
+    const html = await generateEditableFile({ kind: "slides", markdown: source, title, theme, metadata: meta });
     return { ok: true, editable: true, html, theme };
   } catch {
     return { ok: true, editable: false };

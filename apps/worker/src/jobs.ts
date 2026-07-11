@@ -7,7 +7,7 @@
  */
 
 import { rendererVersion } from "@alembic/renderer";
-import { generateSelfContained } from "@alembic/generators";
+import { generateSelfContained, type DocMeta } from "@alembic/generators";
 
 export interface BuildSiteJob {
   type: "build-site";
@@ -69,6 +69,8 @@ export interface GenerateFileJob {
   theme?: string;
   /** Framework delivery: `inline` (default) or `cdn` (small file). */
   delivery?: "inline" | "cdn";
+  /** Document metadata (license, author, source …) for the file's <head>. */
+  metadata?: DocMeta;
 }
 
 export interface GenerateFileResult {
@@ -99,6 +101,7 @@ export async function handleGenerateFile(job: GenerateFileJob): Promise<Generate
       title: job.title,
       theme: job.theme,
       delivery: job.delivery,
+      metadata: job.metadata,
     });
     return { ok: true, html };
   } catch (err) {

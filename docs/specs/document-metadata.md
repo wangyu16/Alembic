@@ -146,10 +146,22 @@ A lone author who wants the metadata in their markdown simply writes the block.
 - **M4 — `orz-slides` ✅** (0.7.0). Deck config (`title`/`author`) seeds the
   metadata, host wins (§6); `deck.config.footer` still drives the on-slide
   footer; nothing stripped. 54 tests pass.
-- **M5 — Alembic.** `GenerateInput.metadata`; `generateSelfContained` passes it
-  through; the hosted-editor and publish paths supply license (from
-  `manifest.license` + `licenseUrl` + `licenseLabel`), author
-  (`courseContext.instructor`), description, and the public repo URL as `source`.
+- **M5 — Alembic ✅** (code; deploy pending M6's worker redeploy).
+  `GenerateInput.metadata` threaded through the full chain:
+  `generateSelfContained` (generators) → worker `GenerateFileJob` +
+  `handleGenerateFile` → the `/generate` endpoint (**untrusted `metadata`
+  sanitized fail-closed** in `parseMetadata`) → `worker-client` POST body. A new
+  `lib/doc-metadata.ts` (`docMetaForPackage`) is the single translator from a
+  package manifest to `DocMeta` (license via `licenseUrl`/`licenseLabel`, author
+  = `courseContext.instructor`, `source` = public repo URL). Wired into both the
+  publish path (`site-actions`, all four per-chapter files) and the editing path
+  (`hosted-actions`, study guide + slides). `DocMeta` is re-exported from
+  `@alembic/generators` (worker) and `@alembic/renderer` (web) so neither side
+  depends on orz-markdown directly. 6 tests against the **real published**
+  builders (rel=license/author/island present for md/slides/paged; bare docs
+  clean). **Not covered:** the worker-DOWN fallback (`@alembic/renderer`'s own
+  md/slides builders) omits metadata — a rare degraded path, documented in
+  `worker-client`.
 - **M6 — release.** Bump + publish `orz-markdown`, then the three tools **and
   their lockstep `-browser` subpackages** (a `-browser` at a different version is
   the trap that once shipped blank published slides). Bump Alembic's deps.

@@ -23,6 +23,7 @@ import { supabaseEventLogger } from "@/lib/events";
 import { clientForUser } from "@/lib/github";
 import { getRenderTheme } from "@/lib/theme";
 import { generateSelfContainedFile } from "@/lib/worker-client";
+import { docMetaForPackage } from "@/lib/doc-metadata";
 
 const PAGES_BRANCH = "gh-pages";
 
@@ -107,8 +108,14 @@ export async function publishSiteAction(
       const guide = await loadStudyGuide(store, packageId, ch.path);
       const markdown = serializeStudyGuide(guide.preamble, guide.blocks);
       const viewHref = `chapters/${ch.slug}.md.html`;
+      // Injected into each generated file's <head> (license, author, home link),
+      // so a downloaded chapter is self-describing. `source` is the public repo,
+      // the file's canonical home. The worker path carries this; the worker-down
+      // fallback omits it (degraded, rare).
+      const repoUrl = `https://github.com/${repo.owner}/${repo.name}`;
+      const meta = docMetaForPackage(record!.manifest, { title: ch.title, source: repoUrl });
       try {
-        const html = await generateSelfContainedFile({ kind: "md", markdown, title: ch.title, theme: mdTheme, delivery: "cdn" });
+        const html = await generateSelfContainedFile({ kind: "md", markdown, title: ch.title, theme: mdTheme, delivery: "cdn", metadata: meta });
         pageFiles.push({ path: viewHref, content: html });
         const chapter: CourseChapter = { slug: ch.slug, title: ch.title, viewHref };
 
@@ -125,7 +132,7 @@ export async function publishSiteAction(
             // (orz-slides always prefers a deck's own `theme:` line; see
             // withDeckTheme's doc).
             const slidesSource = slidesTheme ? withDeckTheme(authored.source, slidesTheme) : authored.source;
-            const slidesHtml = await generateSelfContainedFile({ kind: "slides", markdown: slidesSource, title: ch.title, theme: slidesTheme, delivery: "cdn" });
+            const slidesHtml = await generateSelfContainedFile({ kind: "slides", markdown: slidesSource, title: ch.title, theme: slidesTheme, delivery: "cdn", metadata: meta });
             const slidesHref = `slides/${ch.slug}.slides.html`;
             pageFiles.push({ path: slidesHref, content: slidesHtml });
             chapter.slidesHref = slidesHref;
@@ -141,7 +148,7 @@ export async function publishSiteAction(
           const practiceMarkdown = serializeStudyGuide(practiceDoc.preamble, practiceDoc.blocks);
           if (practiceMarkdown.trim()) {
             const practiceTheme = record!.manifest.themes?.["practice"] ?? mdTheme;
-            const practiceHtml = await generateSelfContainedFile({ kind: "md", markdown: practiceMarkdown, title: `${ch.title} — Practice questions`, theme: practiceTheme, delivery: "cdn" });
+            const practiceHtml = await generateSelfContainedFile({ kind: "md", markdown: practiceMarkdown, title: `${ch.title} — Practice questions`, theme: practiceTheme, delivery: "cdn", metadata: docMetaForPackage(record!.manifest, { title: `${ch.title} — Practice questions`, source: repoUrl }) });
             const practiceHref = `practice/${ch.slug}.md.html`;
             pageFiles.push({ path: practiceHref, content: practiceHtml });
             chapter.practiceHref = practiceHref;
@@ -150,7 +157,7 @@ export async function publishSiteAction(
           /* omit the practice link for this chapter */
         }
         try {
-          const pagedHtml = await generateSelfContainedFile({ kind: "paged", markdown, title: ch.title, delivery: "cdn" });
+          const pagedHtml = await generateSelfContainedFile({ kind: "paged", markdown, title: ch.title, delivery: "cdn", metadata: meta });
           const pagedHref = `paged/${ch.slug}.paged.html`;
           pageFiles.push({ path: pagedHref, content: pagedHtml });
           chapter.pagedHref = pagedHref;

@@ -15,6 +15,7 @@
  * mode for repo-committed study guides (Roadmap E3) is a future upstream option.
  */
 
+import type { DocMeta } from "orz-markdown/doc-meta";
 import { buildMdHtml } from "orz-mdhtml";
 import { buildSlidesHtml } from "orz-slides";
 import { buildPagedHtml } from "orz-paged";
@@ -42,7 +43,17 @@ export interface GenerateInput {
    * theme-agnostic.
    */
   theme?: string;
+  /**
+   * Document metadata (license, author, description, source URL) injected into
+   * the file's <head> and a JSON island by the orz builders. The one shared
+   * helper (orz-markdown/doc-meta) owns the shape; this package just passes it
+   * through, so a downloaded file is self-describing and GitHub/readers can see
+   * its license. Absent → no metadata tags (unchanged output).
+   */
+  metadata?: DocMeta;
 }
+
+export type { DocMeta } from "orz-markdown/doc-meta";
 
 /**
  * Generate a self-contained orz file. Synchronous (the upstream builders are),
@@ -55,6 +66,7 @@ export async function generateSelfContained(input: GenerateInput): Promise<strin
     title: input.title,
     theme: input.theme,
     delivery: input.delivery,
+    metadata: input.metadata,
   };
   switch (input.kind) {
     case "md":

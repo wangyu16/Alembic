@@ -1,5 +1,5 @@
 import "server-only";
-import { buildMdHtml, buildSlidesHtml, themeScheme } from "@alembic/renderer";
+import { buildMdHtml, buildSlidesHtml, themeScheme, type DocMeta } from "@alembic/renderer";
 
 /**
  * Web → worker seam for generating self-contained files. The upstream
@@ -22,6 +22,9 @@ export interface GenerateFileInput {
   /** The course's theme — an orz theme id (`light-neat-3`, `dark-elegant-1`, …),
    *  or a legacy `"dark"`/`"light"` that's mapped to a default. */
   theme?: string;
+  /** Document metadata (license, author, source …) injected into the file's
+   *  <head> so it is self-describing when it travels alone. */
+  metadata?: DocMeta;
   /** Framework delivery: `inline` (default, offline copy) or `cdn` (small file
    *  that loads the framework at view time — for repo-committed views). */
   delivery?: "inline" | "cdn";
@@ -63,6 +66,7 @@ async function callWorker(input: GenerateFileInput): Promise<string> {
             ? input.theme
             : undefined,
       delivery: input.delivery,
+      metadata: input.metadata,
     }),
   });
   const data = (await res.json()) as { ok: boolean; html?: string; message?: string };

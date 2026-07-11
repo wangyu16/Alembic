@@ -23,3 +23,6 @@ export * from "./mdhtml";
 export * from "./slides";
 export * from "./site";
 export * from "./course-site";
+// The shared document-metadata type, re-exported so the web app can build a
+// DocMeta without depending on orz-markdown directly.
+export type { DocMeta } from "orz-markdown/doc-meta";

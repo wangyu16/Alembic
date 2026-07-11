@@ -45,6 +45,39 @@ function readBody(req: IncomingMessage): Promise<string> {
   });
 }
 
+const str = (v: unknown): string | undefined => (typeof v === "string" ? v : undefined);
+
+/**
+ * Sanitize the untrusted `metadata` object into a DocMeta, keeping only known
+ * string fields. The orz builders escape these into the <head>, but the worker
+ * still validates fail-closed: an unexpected shape yields `undefined`, never a
+ * throw, so a malformed field cannot break generation.
+ */
+function parseMetadata(v: unknown): GenerateFileJob["metadata"] {
+  if (typeof v !== "object" || v === null) return undefined;
+  const m = v as Record<string, unknown>;
+  const lic = typeof m["license"] === "object" && m["license"] !== null
+    ? (m["license"] as Record<string, unknown>)
+    : undefined;
+  const license = lic
+    ? { spdx: str(lic["spdx"]), name: str(lic["name"]), url: str(lic["url"]) }
+    : undefined;
+  const keywords = Array.isArray(m["keywords"])
+    ? m["keywords"].filter((k): k is string => typeof k === "string")
+    : undefined;
+  const meta = {
+    title: str(m["title"]),
+    author: str(m["author"]),
+    description: str(m["description"]),
+    source: str(m["source"]),
+    date: str(m["date"]),
+    ...(license && (license.spdx || license.name || license.url) ? { license } : {}),
+    ...(keywords && keywords.length ? { keywords } : {}),
+  };
+  // Drop it entirely when nothing usable survived.
+  return Object.values(meta).some((x) => x !== undefined) ? meta : undefined;
+}
+
 /** Validate the untrusted body into a GenerateFileJob (fail-closed). */
 function parseGenerateJob(raw: string): GenerateFileJob | null {
   let data: unknown;
@@ -66,6 +99,7 @@ function parseGenerateJob(raw: string): GenerateFileJob | null {
     title: typeof d["title"] === "string" ? d["title"] : undefined,
     theme: typeof d["theme"] === "string" ? d["theme"] : undefined,
     delivery,
+    metadata: parseMetadata(d["metadata"]),
   };
 }
 

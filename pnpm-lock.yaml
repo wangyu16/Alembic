@@ -136,15 +136,18 @@ importers:
 
   packages/generators:
     dependencies:
+      orz-markdown:
+        specifier: ^1.4.0
+        version: 1.4.0(@types/markdown-it@14.1.2)
       orz-mdhtml:
-        specifier: ^0.7.1
-        version: 0.7.1
+        specifier: ^0.8.0
+        version: 0.8.0(@types/markdown-it@14.1.2)
       orz-paged:
-        specifier: ^0.4.0
-        version: 0.4.0
+        specifier: ^0.6.0
+        version: 0.6.0(@types/markdown-it@14.1.2)
       orz-slides:
-        specifier: ^0.6.1
-        version: 0.6.1
+        specifier: ^0.7.0
+        version: 0.7.0(@types/markdown-it@14.1.2)
     devDependencies:
       '@alembic/carriers':
         specifier: workspace:*
@@ -189,8 +192,8 @@ importers:
         specifier: workspace:*
         version: link:../package-contract
       orz-markdown:
-        specifier: ^1.3.2
-        version: 1.3.2(@types/markdown-it@14.1.2)
+        specifier: ^1.4.0
+        version: 1.4.0(@types/markdown-it@14.1.2)
     devDependencies:
       '@types/markdown-it':
         specifier: ^14.1.2
@@ -2604,19 +2607,19 @@ packages:
     resolution: {integrity: sha512-6IpQ7mKUxRcZNLIObR0hz7lxsapSSIYNZJwXPGeF0mTVqGKFIXj1DQcMoT22S3ROcLyY/rz0PWaWZ9ayWmad9g==}
     engines: {node: '>= 0.8.0'}
 
-  orz-markdown@1.3.2:
-    resolution: {integrity: sha512-N2g2n7Rbe6mq0lhhFXjv7VFxVH6X8aCEYfhbIfBd73V/y24QEN1gbHOaEuQHf2umwICWngMNWjXF0oBWf/iU/Q==}
+  orz-markdown@1.4.0:
+    resolution: {integrity: sha512-38iUNWa8cK28km7RvyYvVfYRMkXCzU2VhpVk6ct6NMRKhlUnF4Bd2u33k6JdO8IZWimg7uoLhF0ayzAI2H6ORQ==}
 
-  orz-mdhtml@0.7.1:
-    resolution: {integrity: sha512-wkGT/B5NYrSAwhPAUmFoFB+gDje0iRsNlq/7PNzP6R5N4wM/vxbjRBu6VgiLOQb8PvbwWK01QTA6TW8YYrycIg==}
+  orz-mdhtml@0.8.0:
+    resolution: {integrity: sha512-9afu593rN9P5ZKHmaq4shw2oMGehEPXS7XaGVvTP3ZnJ1L4bKk2Odmq/wVHwd+To6aZ7GFow9Dia3ZGUNjrFpQ==}
     hasBin: true
 
-  orz-paged@0.4.0:
-    resolution: {integrity: sha512-PTcJej9EDVfjiuj7xK5nn/NpLT58iyP+VIFX5CSDEEBsi3krGaDHaH2045MnRbFQanPny/hE7BJx8dzQU1LDZQ==}
+  orz-paged@0.6.0:
+    resolution: {integrity: sha512-GU0DVMBSZVc+Gy2fmEi2lW1KCok7X+Y9RKvfFCrU3QwL7T15GtVjvDtGn3DwjRZHyhMDvTiNejkKRBtrrll9MQ==}
     hasBin: true
 
-  orz-slides@0.6.1:
-    resolution: {integrity: sha512-sNWs5le68N9eg5lpxefEemVs9+ITUZo7iQjhhRSgJ3ulq0RaXWRRYp3Aua9A9tmv5BzsRgTgmV/ohJcmcM3IqQ==}
+  orz-slides@0.7.0:
+    resolution: {integrity: sha512-esyIw50ub6EZArJrWVaAC3zyRONQQHr/X9kjwa7qS6TlPBUl3e5qgNj9kLQYXXhYtzFmzdACKiuaJwkPMEa79Q==}
     hasBin: true
 
   own-keys@1.0.1:
@@ -5600,7 +5603,7 @@ snapshots:
       type-check: 0.4.0
       word-wrap: 1.2.5
 
-  orz-markdown@1.3.2(@types/markdown-it@14.1.2):
+  orz-markdown@1.4.0(@types/markdown-it@14.1.2):
     dependencies:
       '@traptitech/markdown-it-katex': 3.6.0
       katex: 0.16.47
@@ -5619,22 +5622,22 @@ snapshots:
     transitivePeerDependencies:
       - '@types/markdown-it'
 
-  orz-mdhtml@0.7.1:
+  orz-mdhtml@0.8.0(@types/markdown-it@14.1.2):
     dependencies:
-      orz-markdown: 1.3.2(@types/markdown-it@14.1.2)
+      orz-markdown: 1.4.0(@types/markdown-it@14.1.2)
     transitivePeerDependencies:
       - '@types/markdown-it'
 
-  orz-paged@0.4.0:
+  orz-paged@0.6.0(@types/markdown-it@14.1.2):
     dependencies:
-      orz-markdown: 1.3.2(@types/markdown-it@14.1.2)
+      orz-markdown: 1.4.0(@types/markdown-it@14.1.2)
       pagedjs: 0.4.3
     transitivePeerDependencies:
       - '@types/markdown-it'
 
-  orz-slides@0.6.1:
+  orz-slides@0.7.0(@types/markdown-it@14.1.2):
     dependencies:
-      orz-markdown: 1.3.2(@types/markdown-it@14.1.2)
+      orz-markdown: 1.4.0(@types/markdown-it@14.1.2)
       reveal.js: 5.2.1
     transitivePeerDependencies:
       - '@types/markdown-it'
