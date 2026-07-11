@@ -1385,9 +1385,11 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
     with `origin: "uploaded"`. Trial is text-only, so **binaries are reported,
     not stored** (add after publishing). Thin client: an **Import a .zip
     package** control on the workspace page that surfaces per-file validation
-    issues on rejection. Still deferred: direct-to-GitHub ingest (private-repo
-    reconcile + bootstrap-from-existing-repos) and letting an import carry
-    binaries (needs publish-first or a storage-policy change).
+    issues on rejection. **By design (permanent):** a trial package is
+    text-only, so imported images/PDFs are always added after publishing — this
+    is the storage policy, not a gap. **Deferred to future:** direct-to-GitHub
+    ingest (private-repo reconcile + bootstrap-from-existing-repos), plus UI
+    polish and minor feature expansions.
 - **Post-session coherence audit (2026-07-09, owner request).** Fanned out
   6 parallel read-only subagents (dangling references from today's renames;
   Status.md accuracy vs code; goal/Roadmap/specs coherence; the
