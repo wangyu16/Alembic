@@ -12,7 +12,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "orz-mdhtml": "^0.8.1",
+    "orz-mdhtml": "^0.9.0",
     "orz-slides": "^0.7.1",
     "orz-paged": "^0.6.1",
     "orz-markdown": "^1.5.0"
