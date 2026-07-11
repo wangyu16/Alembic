@@ -13,6 +13,9 @@ adapt, cite, share).
 - [docs/Roadmap.md](docs/Roadmap.md) — phased development plan
 - [docs/InitialReleasePlan.md](docs/InitialReleasePlan.md) — v0.1 scope, milestones M0–M8
 - [docs/Status.md](docs/Status.md) — sub-module status tracker. **Update it whenever a sub-module's status changes.**
+- [docs/DecisionLog.md](docs/DecisionLog.md) — dated record of concrete
+  decisions (the "why"), permanent by-design constraints, and the deferred
+  future plan. Add an entry when a non-obvious decision or deferral is made.
 - docs/specs/ — written specs (package contract, etc.)
 - [docs/SteeringNote.md](docs/SteeringNote.md) — **owner's living steering
   note** (2026-07 direction; refined ahead of the specs — newer thinking wins
