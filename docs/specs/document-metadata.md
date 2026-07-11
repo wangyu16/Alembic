@@ -132,26 +132,43 @@ A lone author who wants the metadata in their markdown simply writes the block.
 
 ## 7. Subtasks
 
-- **M1 — `orz-markdown`.** Hoist `scanNymlBlocks` out of orz-paged; add
-  `doc-meta.ts`: `DocMeta`, `extractDocMeta(markdown) → {meta, body}` (strips the
-  meta block), `mergeDocMeta(source, host)`, `renderDocMetaHead(meta)`,
-  `renderDocMetaIsland(meta)`. Pure, unit-tested. Minor version bump.
-- **M2 — `orz-paged`.** Import the hoisted scanner (delete the local copy);
-  accept `metadata?`; emit head + island.
-- **M3 — `orz-mdhtml`.** Accept `metadata?`; emit head + island; strip the meta
-  block from the previewed body.
-- **M4 — `orz-slides`.** Same, with the deck-config precedence rule of §6.
+- **M1 — `orz-markdown` ✅** (1.4.0, commit `eeafbff`). Hoisted `scanNymlBlocks`
+  into `nyml-blocks.ts`; added `doc-meta.ts` (`DocMeta`, `extractDocMeta`,
+  `mergeDocMeta`, `renderDocMetaHead`, `renderDocMetaIsland`,
+  `parseDocMetaIsland`) + a `./doc-meta` subpath export. 15 tests, incl. the
+  save round-trip that guards the whole design.
+- **M2 — `orz-paged` ✅** (0.6.0). `src/doc/nyml.ts` re-exports the hoisted
+  scanner (render-paged.ts unchanged); `metadata?` threaded through
+  `composeInlineHtml`; meta block extracted + stripped; head + island emitted.
+  132 tests pass.
+- **M3 — `orz-mdhtml` ✅** (0.8.0). `metadata?` through `composeInlineMdHtml`;
+  meta block stripped from the embedded/previewed source; head + island emitted.
+- **M4 — `orz-slides` ✅** (0.7.0). Deck config (`title`/`author`) seeds the
+  metadata, host wins (§6); `deck.config.footer` still drives the on-slide
+  footer; nothing stripped. 54 tests pass.
 - **M5 — Alembic.** `GenerateInput.metadata`; `generateSelfContained` passes it
   through; the hosted-editor and publish paths supply license (from
-  `manifest.license` + `licenseUrl`), author (`courseContext.instructor`),
-  description, and the public repo URL as `source`.
+  `manifest.license` + `licenseUrl` + `licenseLabel`), author
+  (`courseContext.instructor`), description, and the public repo URL as `source`.
 - **M6 — release.** Bump + publish `orz-markdown`, then the three tools **and
   their lockstep `-browser` subpackages** (a `-browser` at a different version is
   the trap that once shipped blank published slides). Bump Alembic's deps.
   Redeploy the Fly worker.
 
 M6 is an **operator action**: publishing to npm and redeploying production are
-the owner's calls, not the agent's.
+the owner's calls, not the agent's. M5 depends on the tools being published
+(M6), because Alembic's worker consumes them from npm — so **M5 lands as code
+now but cannot be verified end-to-end until M6 publishes 1.4.0 / 0.6.0 / 0.8.0 /
+0.7.0.**
+
+### Cross-repo dev note
+
+The four repos are siblings, **not** an npm workspace: each tool carries its own
+installed copy of `orz-markdown` (was 1.3.2). For local build/test during
+M2–M4, the built `orz-markdown@1.4.0` `dist/` + `package.json` were synced into
+each tool's `node_modules/orz-markdown`, and each tool's declared dependency was
+bumped to `^1.4.0`. A real `npm install` after M6 publishes 1.4.0 reproduces
+this cleanly; the synced copies are gitignored (`node_modules`).
 
 ## 8. Verification
 
