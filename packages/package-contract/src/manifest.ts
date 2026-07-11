@@ -227,12 +227,21 @@ export const PackageManifestSchema = z.object({
   /** Last accessibility audit result. Optional and additive (absent = unknown). */
   accessibility: AccessibilityStatusSchema.optional(),
   /**
-   * Labels the active teaching cycle of the `current/` space (contract v2,
-   * package-layout.md §8: `current/archive/<term>/`). Optional + additive;
-   * absent = no active cycle. Free-form ("2026-fall") — it names a folder,
-   * so keep it URL-safe by convention; never affects the v1 data model.
+   * The IMMUTABLE id of the active teaching cycle in the `current/` space —
+   * the pointer, per the pointer model (workspace-collections.md P5). Files
+   * live at `current/<currentTerm>/…`; "current" vs "archived" is derived from
+   * this field, never from position, so rollover is one manifest write and no
+   * file ever moves. URL-safe by construction (see `isValidTermId`). Optional +
+   * additive; absent = no active cycle. Never affects the v1 data model.
    */
   currentTerm: z.string().min(1).optional(),
+  /**
+   * The DISPLAY label for `currentTerm` ("Fall 2026"). Split from the id so the
+   * label can be renamed freely without moving a file — renaming the id would
+   * churn every path/permalink the pointer model exists to keep stable.
+   * Optional + additive; absent = fall back to the id.
+   */
+  currentTermLabel: z.string().min(1).optional(),
   /**
    * Package-level adaptation lineage: set when this package was forked/adapted
    * from another (goal.md §5). Optional + additive; absent = an original work.

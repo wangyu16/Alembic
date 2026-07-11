@@ -1,6 +1,7 @@
 export * from "./layers";
 export * from "./spaces";
 export * from "./scope";
+export * from "./terms";
 export * from "./file-types";
 export * from "./registration";
 export * from "./blocks";

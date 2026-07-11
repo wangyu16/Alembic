@@ -9,6 +9,7 @@ export * from "./release-gates";
 export * from "./assets";
 export * from "./collections";
 export * from "./collections-tree";
+export * from "./terms";
 export * from "./slides";
 export * from "./import";
 export * from "./citation";

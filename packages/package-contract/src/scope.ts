@@ -92,9 +92,21 @@ export function scopeForPath(
     throw new PathLayerError(`Path traversal is not allowed: ${path}`, path);
   }
   const segments = normalized.split("/");
-  if (segments[0] !== spaceDir) return { kind: "course" };
-  if (segments[1] !== CHAPTER_SCOPE_DIR) return { kind: "course" };
-  const slug = segments[2];
+  // `spaceDir` may be multi-segment (`current/<term-id>`, not just `materials`).
+  // Match its segments as a prefix, then look for the reserved chapter subtree
+  // at the segment immediately after it.
+  const spaceSegments = spaceDir
+    .replace(/\\/g, "/")
+    .replace(/^\/+|\/+$/g, "")
+    .split("/")
+    .filter(Boolean);
+  for (let i = 0; i < spaceSegments.length; i++) {
+    if (segments[i] !== spaceSegments[i]) return { kind: "course" };
+  }
+  if (segments[spaceSegments.length] !== CHAPTER_SCOPE_DIR) {
+    return { kind: "course" };
+  }
+  const slug = segments[spaceSegments.length + 1];
   if (!slug) return { kind: "course" };
   if (!chapterSlugs.includes(slug)) return { kind: "course" };
   return { kind: "chapter", slug };

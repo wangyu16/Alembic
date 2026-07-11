@@ -47,9 +47,17 @@ export interface ListCollectionOptions {
   chapterSlugs: readonly string[];
 }
 
-/** First path segment of a repo-relative path (normalizes leading slashes). */
-function firstSegment(path: string): string {
-  return path.replace(/\\/g, "/").replace(/^\/+/, "").split("/")[0] ?? "";
+/**
+ * Whether a repo-relative `path` sits at or under the `spaceDir` space,
+ * boundary-safe. `spaceDir` may be multi-segment (`current/<term-id>`), so this
+ * matches the full prefix on a segment boundary — `materials/` never captures a
+ * sibling `materials-backup/…`, and `current/2026-fall` never captures
+ * `current/2026-fall-draft`. (Normalizes backslashes + leading slashes.)
+ */
+function underSpaceDir(path: string, spaceDir: string): boolean {
+  const clean = path.replace(/\\/g, "/").replace(/^\/+/, "");
+  const dir = spaceDir.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
+  return clean === dir || clean.startsWith(`${dir}/`);
 }
 
 /**
@@ -71,7 +79,7 @@ export async function listCollection(
   const out: CollectionItem[] = [];
   for (const f of files) {
     if (f.repo !== repo) continue;
-    if (firstSegment(f.path) !== spaceDir) continue;
+    if (!underSpaceDir(f.path, spaceDir)) continue;
     const scope = scopeForPath(spaceDir, f.path, chapterSlugs);
     const kind = getKindByExtension(f.path)?.id;
     out.push(kind ? { path: f.path, scope, kind } : { path: f.path, scope });

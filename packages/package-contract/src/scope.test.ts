@@ -50,6 +50,32 @@ describe("scopeForPath", () => {
     ).toEqual({ kind: "chapter", slug: "03-step" });
   });
 
+  it("supports a MULTI-SEGMENT spaceDir (current/<term-id>)", () => {
+    // The Current collection uses `current/<term-id>` as its space directory;
+    // scope must resolve at the segment right after the whole prefix.
+    expect(
+      scopeForPath("current/2026-fall", "current/2026-fall/misc/a.pdf", SLUGS),
+    ).toEqual({ kind: "course" });
+    expect(
+      scopeForPath(
+        "current/2026-fall",
+        "current/2026-fall/chapters/03-step/hw.md.html",
+        SLUGS,
+      ),
+    ).toEqual({ kind: "chapter", slug: "03-step" });
+  });
+
+  it("multi-segment spaceDir does not match a sibling term prefix", () => {
+    // `current/2026-fall` must never capture `current/2026-fall-draft/…`.
+    expect(
+      scopeForPath(
+        "current/2026-fall",
+        "current/2026-fall-draft/chapters/03-step/x.md",
+        SLUGS,
+      ),
+    ).toEqual({ kind: "course" });
+  });
+
   it("treats a bare chapters folder with no slug as course scope", () => {
     expect(scopeForPath("materials", "materials/chapters/", SLUGS)).toEqual({
       kind: "course",

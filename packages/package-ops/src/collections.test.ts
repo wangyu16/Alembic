@@ -125,6 +125,53 @@ describe("listCollection (Assets, public materials)", () => {
   });
 });
 
+describe("listCollection (multi-segment spaceDir — Current)", () => {
+  it("restricts to current/<term-id> and resolves scope under it", async () => {
+    const store = new MemoryPackageStore();
+    await store.putFiles(PKG, [
+      { repo: "public", path: "current/2026-fall/announcements/a.md", content: "x" },
+      { repo: "public", path: "current/2026-fall/chapters/02-step/hw.md.html", content: "x" },
+      // Sibling term prefix — must NOT be captured by `current/2026-fall`.
+      { repo: "public", path: "current/2026-fall-draft/misc/note.md", content: "x" },
+      // A different term entirely.
+      { repo: "public", path: "current/2027-spring/misc/x.md", content: "x" },
+    ]);
+
+    const items = await listCollection(store, PKG, {
+      spaceDir: "current/2026-fall",
+      repo: "public",
+      chapterSlugs: CHAPTERS,
+    });
+
+    expect(items.map((i) => i.path).sort()).toEqual([
+      "current/2026-fall/announcements/a.md",
+      "current/2026-fall/chapters/02-step/hw.md.html",
+    ]);
+    const byPath = new Map(items.map((i) => [i.path, i]));
+    expect(byPath.get("current/2026-fall/announcements/a.md")!.scope).toEqual({
+      kind: "course",
+    });
+    expect(byPath.get("current/2026-fall/chapters/02-step/hw.md.html")!.scope).toEqual({
+      kind: "chapter",
+      slug: "02-step",
+    });
+  });
+
+  it("single-segment spaceDir still excludes a sibling prefix (materials vs materials-x)", async () => {
+    const store = new MemoryPackageStore();
+    await store.putFiles(PKG, [
+      { repo: "public", path: "materials/a.svg", content: SVG },
+      { repo: "public", path: "materials-backup/b.svg", content: SVG },
+    ]);
+    const items = await listCollection(store, PKG, {
+      spaceDir: "materials",
+      repo: "public",
+      chapterSlugs: CHAPTERS,
+    });
+    expect(items.map((i) => i.path)).toEqual(["materials/a.svg"]);
+  });
+});
+
 describe("collectionItemPath", () => {
   it("targets the space root for course scope", () => {
     expect(collectionItemPath("materials", { kind: "course" }, "cover.png")).toBe(
