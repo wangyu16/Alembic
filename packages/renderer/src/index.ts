@@ -16,6 +16,12 @@ export function renderMarkdown(source: string): string {
   return md.render(source);
 }
 
+// The async URL-include pre-pass (`{{md-include https://…}}`), re-exported so
+// hosts resolve web transclusions before the synchronous render. See
+// orz-markdown/prepare-sources.
+export { prepareSources } from "orz-markdown";
+export type { PrepareSourcesOptions } from "orz-markdown";
+
 export * from "./theme-css";
 export * from "./learning-resource";
 export * from "./document";

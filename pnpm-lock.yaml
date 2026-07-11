@@ -137,8 +137,8 @@ importers:
   packages/generators:
     dependencies:
       orz-markdown:
-        specifier: ^1.4.1
-        version: 1.4.1(@types/markdown-it@14.1.2)
+        specifier: ^1.5.0
+        version: 1.5.0(@types/markdown-it@14.1.2)
       orz-mdhtml:
         specifier: ^0.8.1
         version: 0.8.1(@types/markdown-it@14.1.2)
@@ -192,8 +192,8 @@ importers:
         specifier: workspace:*
         version: link:../package-contract
       orz-markdown:
-        specifier: ^1.4.1
-        version: 1.4.1(@types/markdown-it@14.1.2)
+        specifier: ^1.5.0
+        version: 1.5.0(@types/markdown-it@14.1.2)
     devDependencies:
       '@types/markdown-it':
         specifier: ^14.1.2
@@ -2607,8 +2607,8 @@ packages:
     resolution: {integrity: sha512-6IpQ7mKUxRcZNLIObR0hz7lxsapSSIYNZJwXPGeF0mTVqGKFIXj1DQcMoT22S3ROcLyY/rz0PWaWZ9ayWmad9g==}
     engines: {node: '>= 0.8.0'}
 
-  orz-markdown@1.4.1:
-    resolution: {integrity: sha512-tnEUyLOrTpmczZl549xNlU0+x2dIhVCffVtBpIeysdt7OyhlNbmBhqN37Z7t/BJQIy/560d6SIVE1IQHQFTgVw==}
+  orz-markdown@1.5.0:
+    resolution: {integrity: sha512-8ScOv9DxozbdJrFUVLl5xYOxCiHr2HlNLAbbb39UidQkq76SKH9yrpGAZC1NTI7cVAqH2c0LGY6LsLDVEhcSBA==}
 
   orz-mdhtml@0.8.1:
     resolution: {integrity: sha512-iGJZeBG2XNYL3IZW6dyNdgc/RfhkT/DAyPh2IuJQeRfDts0OgqTOQemOWU/lkr3DW/S1mvtiB2x12DaXaAJskQ==}
@@ -5603,7 +5603,7 @@ snapshots:
       type-check: 0.4.0
       word-wrap: 1.2.5
 
-  orz-markdown@1.4.1(@types/markdown-it@14.1.2):
+  orz-markdown@1.5.0(@types/markdown-it@14.1.2):
     dependencies:
       '@traptitech/markdown-it-katex': 3.6.0
       katex: 0.16.47
@@ -5624,20 +5624,20 @@ snapshots:
 
   orz-mdhtml@0.8.1(@types/markdown-it@14.1.2):
     dependencies:
-      orz-markdown: 1.4.1(@types/markdown-it@14.1.2)
+      orz-markdown: 1.5.0(@types/markdown-it@14.1.2)
     transitivePeerDependencies:
       - '@types/markdown-it'
 
   orz-paged@0.6.1(@types/markdown-it@14.1.2):
     dependencies:
-      orz-markdown: 1.4.1(@types/markdown-it@14.1.2)
+      orz-markdown: 1.5.0(@types/markdown-it@14.1.2)
       pagedjs: 0.4.3
     transitivePeerDependencies:
       - '@types/markdown-it'
 
   orz-slides@0.7.1(@types/markdown-it@14.1.2):
     dependencies:
-      orz-markdown: 1.4.1(@types/markdown-it@14.1.2)
+      orz-markdown: 1.5.0(@types/markdown-it@14.1.2)
       reveal.js: 5.2.1
     transitivePeerDependencies:
       - '@types/markdown-it'

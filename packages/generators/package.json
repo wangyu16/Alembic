@@ -15,7 +15,7 @@
     "orz-mdhtml": "^0.8.1",
     "orz-slides": "^0.7.1",
     "orz-paged": "^0.6.1",
-    "orz-markdown": "^1.4.1"
+    "orz-markdown": "^1.5.0"
   },
   "devDependencies": {
     "@alembic/carriers": "workspace:*",

@@ -1,5 +1,38 @@
 import "server-only";
-import { buildMdHtml, buildSlidesHtml, themeScheme, type DocMeta } from "@alembic/renderer";
+import { buildMdHtml, buildSlidesHtml, prepareSources, themeScheme, type DocMeta } from "@alembic/renderer";
+
+/**
+ * The app's own permalink host — the ONLY host whose `{{md-include …}}`
+ * directives we resolve (SSRF guard). Derived from NEXT_PUBLIC_APP_URL; when it
+ * is unset we resolve nothing (leave directives in place) rather than fetch an
+ * arbitrary URL server-side.
+ */
+const PERMALINK_HOST = (() => {
+  const u = process.env["NEXT_PUBLIC_APP_URL"];
+  if (!u) return null;
+  try {
+    return new URL(u).host;
+  } catch {
+    return null;
+  }
+})();
+
+/**
+ * Resolve web transclusions (`{{md-include https://host/d/{docId}}}`) into the
+ * markdown BEFORE a PUBLISHED artifact is built, so the output is standalone
+ * (the fetched text is inlined; readers/downloads need no view-time fetch). The
+ * educator's editable source keeps the directive — this runs only on the
+ * publish path, never on editable generation. Restricted to the app's own
+ * permalink host. Best-effort: a failed fetch leaves the directive in place.
+ */
+async function resolveWebIncludes(markdown: string): Promise<string> {
+  if (!PERMALINK_HOST || !markdown.includes("{{")) return markdown;
+  try {
+    return await prepareSources(markdown, { allowedHosts: [PERMALINK_HOST] });
+  } catch {
+    return markdown;
+  }
+}
 
 /**
  * Web → worker seam for generating self-contained files. The upstream
@@ -101,16 +134,21 @@ function fallback(input: GenerateFileInput): string {
  * failing the export; paged surfaces the error (no fallback path).
  */
 export async function generateSelfContainedFile(input: GenerateFileInput): Promise<string> {
+  // Publish path → inline web transclusions so the artifact is standalone.
+  const resolved: GenerateFileInput = {
+    ...input,
+    markdown: await resolveWebIncludes(input.markdown),
+  };
   if (workerConfigured()) {
     try {
-      return await callWorker(input);
+      return await callWorker(resolved);
     } catch (err) {
-      if (input.kind === "paged") throw err;
+      if (resolved.kind === "paged") throw err;
       // md/slides: keep the export working on a fresh in-process build.
-      return fallback(input);
+      return fallback(resolved);
     }
   }
-  return fallback(input);
+  return fallback(resolved);
 }
 
 /**

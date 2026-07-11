@@ -196,6 +196,11 @@ export function insertReference(opts: {
         return `<audio src="${opts.url}" controls></audio>`;
       return `[${alt}](${opts.url})`;
     case "insertable-source":
+      // Markdown transcludes: the `{{md-include url}}` directive is resolved by
+      // orz-markdown's `prepareSources` pre-pass at render/publish time — the
+      // fetched markdown is inlined, so the document is standalone. Other source
+      // (e.g. `.csv`) has no transclusion form → a link.
+      if (lower.endsWith(".md")) return `{{md-include ${opts.url}}}`;
       return `[${alt}](${opts.url})`;
     default:
       // document / opaque-download are not inserted — return the bare link.

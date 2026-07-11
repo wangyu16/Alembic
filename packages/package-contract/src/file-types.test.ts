@@ -166,9 +166,12 @@ describe("registry shape + helpers", () => {
       .toBe(`<video src="${url}" controls style="max-width:100%"></video>`);
     expect(insertReference({ cls: "insertable-media", path: "clips/lecture.mp3", url }))
       .toBe(`<audio src="${url}" controls></audio>`);
-    // Source (.md/.csv) → a link (transclusion is separate).
+    // Source .md → the transclusion directive (resolved by prepareSources).
     expect(insertReference({ cls: "insertable-source", path: "data/notes.md", url }))
-      .toBe(`[notes.md](${url})`);
+      .toBe(`{{md-include ${url}}}`);
+    // Non-markdown source (.csv) → a link (no transclusion form).
+    expect(insertReference({ cls: "insertable-source", path: "data/grades.csv", url }))
+      .toBe(`[grades.csv](${url})`);
     // alt defaults to the filename and strips markdown-breaking brackets.
     expect(insertReference({ cls: "insertable-image", path: "a/b/pic.png", url, alt: "a [nice] pic" }))
       .toBe(`![a nice pic](${url})`);
