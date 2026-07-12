@@ -246,6 +246,116 @@ export function BlueprintFigure() {
   );
 }
 
+/** Getting started: the create → author → preview → publish flow. */
+export function StepsFigure() {
+  return (
+    <Figure
+      viewBox="0 0 300 96"
+      title="Four steps: create, author, preview, publish"
+      desc="A left-to-right flow of four stages — create a package, author its documents, preview them, and publish — with the final publish step in copper."
+    >
+      {/* create */}
+      <g {...S} aria-hidden>
+        <rect x="10" y="30" width="40" height="36" rx="4" />
+        <path d="M30 40v16M22 48h16" />
+      </g>
+      {/* author */}
+      <g {...S} aria-hidden>
+        <rect x="86" y="30" width="40" height="36" rx="4" />
+        <path d="M94 41h24M94 48h24M94 55h14" />
+      </g>
+      {/* preview */}
+      <g {...S} aria-hidden>
+        <rect x="162" y="30" width="40" height="36" rx="4" />
+        <circle cx="182" cy="48" r="8" />
+        <circle cx="182" cy="48" r="2.4" />
+      </g>
+      {/* publish (copper) */}
+      <g {...S} className={copper} aria-hidden>
+        <rect x="238" y="30" width="40" height="36" rx="4" />
+        <path d="M258 58V38M250 46l8-8 8 8" />
+      </g>
+      {/* connectors */}
+      <g {...S} aria-hidden opacity="0.6">
+        <path d="M54 48h28M82 48l-5-3M82 48l-5 3" />
+        <path d="M130 48h28M158 48l-5-3M158 48l-5 3" />
+        <path d="M206 48h28M234 48l-5-3M234 48l-5 3" />
+      </g>
+    </Figure>
+  );
+}
+
+/** The round-trip: download a document, edit it offline, upload to replace. */
+export function RoundTripFigure() {
+  return (
+    <Figure
+      viewBox="0 0 220 150"
+      title="Download a document, edit it offline, upload it to replace the original"
+      desc="A document in Alembic is downloaded, edited offline with a copper pencil, and uploaded back to replace the same document — a loop that keeps its identity."
+    >
+      {/* document in Alembic */}
+      <g {...S} aria-hidden>
+        <rect x="82" y="16" width="56" height="34" rx="4" />
+        <path d="M92 26h36M92 33h36M92 40h22" />
+      </g>
+      {/* download arrow (left, down) */}
+      <g {...S} aria-hidden opacity="0.7">
+        <path d="M78 40c-30 6-42 24-42 40" />
+        <path d="M36 80l-4-6M36 80l5-5" />
+      </g>
+      {/* offline edit */}
+      <g {...S} aria-hidden>
+        <rect x="14" y="92" width="44" height="42" rx="4" />
+        <path d="M22 102h20M22 109h20" />
+      </g>
+      <g {...S} className={copper} aria-hidden>
+        <path d="M50 112l8 8-14 14-8 2 2-8 12-16z" />
+      </g>
+      {/* replace arrow (right, up) */}
+      <g {...S} className={copper} aria-hidden>
+        <path d="M64 118c60-6 92-30 78-64" strokeDasharray="0" opacity="0.85" />
+        <path d="M142 54l0 8M142 54l7 3" />
+      </g>
+    </Figure>
+  );
+}
+
+/** Share & adapt: your work is reused, improvements flow back. */
+export function AdaptFigure() {
+  return (
+    <Figure
+      viewBox="0 0 240 140"
+      title="Others adapt your course, and can suggest improvements back"
+      desc="Your package on the left is adapted into a colleague's copy on the right; a copper arrow shows an improvement suggested back to you, with attribution carried along."
+    >
+      {/* your package */}
+      <g {...S} aria-hidden>
+        <rect x="20" y="42" width="60" height="56" rx="5" />
+        <path d="M32 56h36M32 66h36M32 76h22" />
+      </g>
+      {/* adapted copy */}
+      <g {...S} aria-hidden>
+        <rect x="160" y="42" width="60" height="56" rx="5" />
+        <path d="M172 56h36M172 66h36M172 76h22" />
+      </g>
+      {/* adapt arrow (yours → copy), with attribution tag */}
+      <g {...S} aria-hidden opacity="0.7">
+        <path d="M84 58c30-14 46-14 72 0" />
+        <path d="M156 58l-8-2M156 58l-6 5" />
+      </g>
+      <g {...S} className={copper} aria-hidden>
+        <circle cx="120" cy="47" r="4" />
+        <path d="M120 45v4M118 47h4" opacity="0.8" />
+      </g>
+      {/* suggest-back arrow (copy → yours), copper */}
+      <g {...S} className={copper} aria-hidden>
+        <path d="M156 86c-30 14-46 14-72 0" />
+        <path d="M84 86l8 2M84 86l6-5" />
+      </g>
+    </Figure>
+  );
+}
+
 /** Publish: your materials become a website on infrastructure you own. */
 export function PublishFigure() {
   return (

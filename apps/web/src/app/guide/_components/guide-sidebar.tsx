@@ -19,7 +19,9 @@ function NavList({
     <nav aria-label="Guide" className="flex flex-col gap-6">
       {GUIDE_GROUPS.map((group) => (
         <div key={group.key} className="flex flex-col gap-1.5">
-          <p className="px-2 font-serif text-sm text-ink">{group.label}</p>
+          <p className="px-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-faint">
+            {group.label}
+          </p>
           <ul className="flex flex-col">
             {group.pages.map((page) => (
               <li key={page.slug}>

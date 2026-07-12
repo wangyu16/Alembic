@@ -1330,8 +1330,15 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
     **blueprint** (concept maps + assessment guides — the plan) vs. the
     **course** (study-guide-centered public materials, AI-assembled) — with a
     `BlueprintFigure` (plan → AI → course) and **coursewerk** named as the
-    upstream authoring pipeline. **Phase B (deferred):** the five **Do**
-    walkthrough pages with captured screenshots/GIFs.
+    upstream authoring pipeline. **Phase B shipped:** the five **Do** walkthrough
+    pages — Getting started, Creating & editing, Work offline & upload,
+    Publishing, Share & adapt — each with a workflow figure (`StepsFigure`,
+    `RoundTripFigure`, `AdaptFigure`, + reuse); nav flipped all-live. Sidebar
+    group labels reworked into tracked section headers (distinct from page
+    items). Every inline-tag boundary made explicit `{" "}` to retire the
+    line-wrap whitespace bug for good; browser-verified clean. **Follow-up
+    (optional):** real workspace screenshots/GIFs — the pages read complete on
+    generated figures; captures need an authenticated session.
   - 🔄 **Offline document round-trip (U1).** Download a course document, edit it
     offline, upload it back to **replace** the current version — for all course
     documents. `replaceCollectionFileAction` writes the edited bytes at the
