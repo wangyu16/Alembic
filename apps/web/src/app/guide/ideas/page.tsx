@@ -101,14 +101,16 @@ export default function CoreIdeasPage() {
       <GuideSection
         heading="You own it — and it&rsquo;s yours to keep"
         figure={<PublishFigure />}
-        figureCaption="Publishing builds a course website hosted under your own account; everything works without Alembic."
+        figureCaption="Publishing moves your course into your own GitHub and serves it with GitHub Pages — it works without Alembic."
       >
         <p>
-          When you publish, Alembic builds a course website hosted under your
-          own account. Everything remains usable without Alembic — that is the
-          point. Take a named <strong>snapshot</strong>{" "}each term
-          (&ldquo;Fall&nbsp;2026&rdquo;) to cite, compare, and restore exactly
-          what you taught.
+          When you publish, Alembic moves your course out of its temporary storage
+          and into <strong>your own space on GitHub</strong>{" "}— the account you
+          signed in with — where GitHub Pages serves it as a website. It&rsquo;s
+          yours, and it keeps working with or without Alembic; Alembic is only the
+          bridge. Take a named <strong>snapshot</strong>{" "}each term
+          (&ldquo;Fall&nbsp;2026&rdquo;) to cite, compare, and restore exactly what
+          you taught.
         </p>
       </GuideSection>
 

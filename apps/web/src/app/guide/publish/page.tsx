@@ -18,14 +18,23 @@ export default function PublishPage() {
       <GuideSection
         heading="What publishing does"
         figure={<PublishFigure />}
-        figureCaption="Your package becomes a course website hosted under your own account; everything keeps working without Alembic."
+        figureCaption="Publishing moves your course out of Alembic and into your own GitHub, where GitHub Pages serves it — Alembic is only the bridge."
       >
         <p>
-          When you publish, Alembic sets up the storage under <strong>your</strong>{" "}
-          account and builds a course website from your materials. The routine
-          technical work — creating the storage, moving files, building the site —
-          is handled for you. The result is a normal website you own; nothing
-          depends on Alembic staying around.
+          Until you publish, your course lives in Alembic&rsquo;s{" "}
+          <strong>temporary storage</strong>. Publishing moves it{" "}
+          <strong>out of Alembic and into your own space on GitHub</strong>{" "}— the
+          same account you signed in with. Those repositories belong to you and are
+          entirely independent of Alembic; <strong>GitHub Pages</strong>{" "}—
+          GitHub&rsquo;s own free website hosting — turns them into a live course
+          website.
+        </p>
+        <p>
+          So Alembic is really just the <strong>bridge</strong>: it handles the
+          setup and the transfer, but once your course is on GitHub, the site and
+          its content live there on their own. If Alembic disappeared tomorrow,
+          your published course would keep working — that is exactly why it&rsquo;s
+          built this way.
         </p>
         <p>
           Publishing always needs your <strong>explicit approval</strong>. It never

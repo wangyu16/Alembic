@@ -58,12 +58,12 @@ export default function StartPage() {
 
       <GuideSection heading="4 · Publish">
         <p>
-          When you&rsquo;re ready, <strong>publish</strong>. Alembic builds a
-          course website under your own account and moves your package onto GitHub
-          — all behind the scenes. Publishing is deliberate and always needs your
-          explicit approval; nothing goes out on its own. See{" "}
-          <Link href="/guide/publish">Publishing</Link>{" "}for what happens and what
-          you get.
+          When you&rsquo;re ready, <strong>publish</strong>. Alembic moves your
+          course into your own space on GitHub — the account you signed in with —
+          where GitHub Pages publishes it as a website you own. Publishing is
+          deliberate and always needs your explicit approval; nothing goes out on
+          its own. See <Link href="/guide/publish">Publishing</Link>{" "}for what
+          happens and what you get.
         </p>
       </GuideSection>
     </GuidePageShell>
