@@ -20,14 +20,15 @@ const LICENSES = [
   "ALL-RIGHTS-RESERVED",
 ] as const;
 
-// Friendly option labels; the value stays the manifest license id.
+// Short option labels (kept compact so the select doesn't stretch the row); the
+// value stays the manifest license id. "Private" = all-rights-reserved (unlisted).
 const LICENSE_OPTION_LABEL: Record<(typeof LICENSES)[number], string> = {
-  "CC-BY-4.0": "CC BY 4.0 — open, credit required",
-  "CC-BY-SA-4.0": "CC BY-SA 4.0 — open, share-alike",
-  "CC-BY-NC-4.0": "CC BY-NC 4.0 — open, non-commercial",
-  "CC-BY-NC-SA-4.0": "CC BY-NC-SA 4.0 — open, NC + share-alike",
-  "CC0-1.0": "CC0 1.0 — public domain",
-  "ALL-RIGHTS-RESERVED": "All rights reserved — private (not listable on Discover)",
+  "CC-BY-4.0": "CC BY 4.0",
+  "CC-BY-SA-4.0": "CC BY-SA 4.0",
+  "CC-BY-NC-4.0": "CC BY-NC 4.0",
+  "CC-BY-NC-SA-4.0": "CC BY-NC-SA 4.0",
+  "CC0-1.0": "CC0 1.0",
+  "ALL-RIGHTS-RESERVED": "Private (all rights reserved)",
 };
 
 const UNIT_TERMS = ["chapter", "module", "lesson", "unit", "week"] as const;
@@ -96,7 +97,7 @@ export default async function WorkspacePage() {
             name="unitTerm"
             defaultValue="chapter"
             title="What this course calls its units"
-            className="field"
+            className="field min-w-0"
           >
             {UNIT_TERMS.map((t) => (
               <option key={t} value={t}>
@@ -104,7 +105,12 @@ export default async function WorkspacePage() {
               </option>
             ))}
           </select>
-          <select name="license" defaultValue="CC-BY-4.0" className="field">
+          <select
+            name="license"
+            defaultValue="CC-BY-4.0"
+            title="License — an open license to share, or Private (all rights reserved) to keep it to yourself"
+            className="field min-w-0"
+          >
             {LICENSES.map((license) => (
               <option key={license} value={license}>
                 {LICENSE_OPTION_LABEL[license]}

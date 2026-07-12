@@ -80,9 +80,13 @@ at the top of "This term"; `gatherCurrentTerm` detects + publishes it. **Miscell
 instructor-managed `{label,url}` list (`manifest.currentTermLinks`), each opening in a **new tab**
 (`rel=noopener`), rendered under a "Miscellaneous" heading — distinct from the existing file-based `misc/`
 section; `setTermLinksAction` persists it (URL schema-validated). Renderer `CourseTermData` gains
-`syllabus` + `miscLinks`. **Durable + tested** (contract + renderer, 473 tests, web build). **Remaining: the
-thin workspace UI** (a syllabus panel + a links editor in `current-collection-view.tsx`) — auth-gated, lands
-next.
+`syllabus` + `miscLinks`. **Durable + tested** (contract + renderer, 473 tests, web build). **Workspace UI
+landed:** `current-collection-view.tsx` now has a **Syllabus** panel (add/edit/replace the fixed
+`syllabus.md` slot, pulled out of "Other files") and a **Miscellaneous links** editor (`TermLinksEditor` —
+label+URL rows → `setTermLinksAction`), threaded via a new `currentLinks` prop (page → studio-shell → view).
+Typecheck + web build green; the workspace surface is auth-gated so it wasn't browser-verified. Also fixed
+the **Create-a-package** row overflow (the long ARR license label stretched the select — now short labels +
+`min-w-0`).
 
 **Superseded design (kept for guardrail history):** the 2026-06 “editor overhaul (v2)” — a bespoke three-pane editor with per-section `.md` editing and `.md.html` *export* — was **superseded by the self-contained-editing direction above** (owner decision, 2026-07-03/04) and archived at [docs/archive/spec-workspace-editor-overhaul.md](archive/spec-workspace-editor-overhaul.md). Its durable guardrails (G1–G8) shipped; the bespoke-editor surface did **not** — the workspace hosts the in-file editors instead. The 7-category rail and chapter/publish flows it prototyped carried over into the hosting shell.
 

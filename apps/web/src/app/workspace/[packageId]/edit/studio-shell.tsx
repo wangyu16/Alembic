@@ -255,6 +255,7 @@ export function StudioShell({
   activeTermId,
   isCurrentTerm,
   currentTree,
+  currentLinks,
   publishing,
   aiAccess,
 }: {
@@ -278,6 +279,7 @@ export function StudioShell({
   activeTermId: string | null;
   isCurrentTerm: boolean;
   currentTree: CollectionScopeTree[] | null;
+  currentLinks: Array<{ label: string; url: string }>;
   publishing: PublishingState;
   aiAccess: AiAccess;
 }) {
@@ -670,6 +672,7 @@ export function StudioShell({
               activeTermId={activeTermId}
               isCurrent={isCurrentTerm}
               tree={currentTree ?? []}
+              termLinks={currentLinks}
               chapters={chapters}
               onDirty={setDirty}
             />

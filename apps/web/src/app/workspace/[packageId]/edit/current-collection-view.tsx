@@ -10,6 +10,7 @@ import {
   editorKindForPath,
   isCurrentSection,
   isSeededOnCreate,
+  isSyllabusPath,
   type CollectionScope,
   type CurrentSection,
   type EditorKind,
@@ -36,6 +37,7 @@ import {
   startTermAction,
   activateTermAction,
   setTermLabelAction,
+  setTermLinksAction,
   postAnnouncementAction,
 } from "../term-actions";
 
@@ -98,6 +100,7 @@ export function CurrentCollectionView({
   activeTermId,
   isCurrent,
   tree,
+  termLinks,
   chapters,
   onDirty,
 }: {
@@ -106,6 +109,7 @@ export function CurrentCollectionView({
   activeTermId: string | null;
   isCurrent: boolean;
   tree: CollectionScopeTree[];
+  termLinks: Array<{ label: string; url: string }>;
   chapters: Chapter[];
   onDirty?: (d: boolean) => void;
 }): React.JSX.Element {
@@ -343,15 +347,51 @@ export function CurrentCollectionView({
   const chapterTrees = tree.filter((t) => t.scope.kind === "chapter");
   const sectionFolder = (id: CurrentSection): FolderNode | undefined =>
     courseTree?.root.folders.find((f) => f.name === id);
-  // Course-scope files/folders not under a known section → "Other files".
+  // The syllabus is a fixed single-file slot at the term root — pulled out into
+  // its own panel, so it never shows up under "Other files".
+  const syllabusLeaf = courseTree?.root.files.find((f) => isSyllabusPath(f.path));
+  // Course-scope files/folders not under a known section (and not the syllabus)
+  // → "Other files".
   const otherRoot: FolderNode | undefined = courseTree && {
     name: "",
     path: courseTree.root.path,
     folders: courseTree.root.folders.filter((f) => !isCurrentSection(f.name)),
-    files: courseTree.root.files,
+    files: courseTree.root.files.filter((f) => !isSyllabusPath(f.path)),
   };
   const otherHasContent =
     !!otherRoot && (otherRoot.folders.length > 0 || otherRoot.files.length > 0);
+
+  // Create the fixed `syllabus.md` slot, then open it for editing.
+  const onAddSyllabus = () => {
+    setError(null);
+    const filename = "syllabus.md";
+    const kind = editorKindForPath(filename);
+    if (!kind) return;
+    if (isSeededOnCreate(kind)) {
+      start(async () => {
+        const r = await createCollectionFileAction(packageId, {
+          space,
+          scope: { kind: "course" },
+          filename,
+        });
+        if (!r.ok || !r.path) {
+          setError(r.error ?? "Couldn't create the syllabus.");
+          return;
+        }
+        const c = await loadCollectionFileAction(packageId, "public", r.path);
+        setEditing({ path: r.path, name: filename, editorKind: kind, initialContent: c.content ?? "", isNew: false });
+      });
+    } else {
+      let path: string;
+      try {
+        path = collectionItemPath(space, { kind: "course" }, filename);
+      } catch {
+        setError("Couldn't create the syllabus.");
+        return;
+      }
+      setEditing({ path, name: filename, editorKind: kind, initialContent: "", isNew: true });
+    }
+  };
 
   const activeTerm = terms.find((t) => t.id === activeTermId);
 
@@ -506,6 +546,39 @@ export function CurrentCollectionView({
       {error && <p className="text-sm text-danger">{error}</p>}
       {note && <p className="text-xs text-ok">{note}</p>}
 
+      {/* Syllabus — a fixed single-document slot, shown atop the student page */}
+      <div>
+        <p className="mb-1 text-xs uppercase tracking-wide text-faint">Syllabus</p>
+        <p className="mb-1 text-xs text-muted">
+          One syllabus for this term — shown as a prominent link at the top of the student page.
+        </p>
+        <div className="panel rounded-lg border border-edge p-2">
+          {syllabusLeaf ? (
+            <ul className="divide-y divide-[var(--edge-soft)]">
+              <FileRow
+                packageId={packageId}
+                leaf={syllabusLeaf}
+                depth={0}
+                pending={pending}
+                editable={editable}
+                onRename={() => onRename(syllabusLeaf)}
+                onDelete={() => onDelete(syllabusLeaf.path, false)}
+                onEdit={openEditor}
+                space={space}
+                onError={setError}
+                onRefresh={refresh}
+              />
+            </ul>
+          ) : editable ? (
+            <button className="btn btn-ghost btn-sm" disabled={pending} onClick={onAddSyllabus}>
+              Add a syllabus
+            </button>
+          ) : (
+            <p className="px-1 py-1 text-sm text-faint">No syllabus.</p>
+          )}
+        </div>
+      </div>
+
       {/* Reserved sections (announcements / assignments / other) */}
       <div className="flex flex-col gap-4">
         {CURRENT_SECTIONS.map((id) => {
@@ -552,7 +625,127 @@ export function CurrentCollectionView({
             <div className="panel rounded-lg border border-edge p-2">{renderFolder(st.root, 0)}</div>
           </div>
         ))}
+
+        {/* Miscellaneous external links (open in a new tab on the student site) */}
+        <div>
+          <p className="mb-1 text-xs uppercase tracking-wide text-faint">Miscellaneous links</p>
+          <p className="mb-1 text-xs text-muted">
+            Links to anything else — a shared drive, a video, an external tool. Each opens in a new
+            tab on the student page.
+          </p>
+          <div className="panel rounded-lg border border-edge p-3">
+            {editable ? (
+              <TermLinksEditor
+                packageId={packageId}
+                initial={termLinks}
+                onSaved={refresh}
+                onDirty={onDirty}
+              />
+            ) : termLinks.length ? (
+              <ul className="flex flex-col gap-1 text-sm">
+                {termLinks.map((l, i) => (
+                  <li key={i}>
+                    <span className="text-ink">{l.label}</span>{" "}
+                    <span className="text-faint">— {l.url}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="px-1 py-1 text-sm text-faint">No links.</p>
+            )}
+          </div>
+        </div>
       </div>
+    </div>
+  );
+}
+
+/* ── Miscellaneous external-links editor ────────────────────────────────────
+ * A label+URL list persisted to the manifest (setTermLinksAction). Rows can be
+ * added/removed; Save validates and commits. Only shown on the active term. */
+function TermLinksEditor({
+  packageId,
+  initial,
+  onSaved,
+  onDirty,
+}: {
+  packageId: string;
+  initial: Array<{ label: string; url: string }>;
+  onSaved: () => void;
+  onDirty?: (d: boolean) => void;
+}): React.JSX.Element {
+  const [rows, setRows] = useState<Array<{ label: string; url: string }>>(
+    initial.length ? initial : [{ label: "", url: "" }],
+  );
+  const [pending, start] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+  const [note, setNote] = useState<string | null>(null);
+
+  const update = (i: number, patch: Partial<{ label: string; url: string }>) => {
+    setRows((rs) => rs.map((r, j) => (j === i ? { ...r, ...patch } : r)));
+    onDirty?.(true);
+    setNote(null);
+  };
+  const addRow = () => {
+    setRows((rs) => [...rs, { label: "", url: "" }]);
+    onDirty?.(true);
+  };
+  const removeRow = (i: number) => {
+    setRows((rs) => rs.filter((_, j) => j !== i));
+    onDirty?.(true);
+  };
+
+  const save = () => {
+    setError(null);
+    setNote(null);
+    const cleaned = rows.map((r) => ({ label: r.label.trim(), url: r.url.trim() })).filter((r) => r.label || r.url);
+    start(async () => {
+      const r = await setTermLinksAction(packageId, cleaned);
+      if (!r.ok) {
+        setError(r.error ?? "Couldn't save the links.");
+        return;
+      }
+      onDirty?.(false);
+      setNote("Saved.");
+      onSaved();
+    });
+  };
+
+  return (
+    <div className="flex flex-col gap-2">
+      {rows.map((row, i) => (
+        <div key={i} className="flex flex-wrap items-center gap-2">
+          <input
+            className="field min-w-0 flex-1"
+            placeholder="Label (e.g. Course Drive)"
+            value={row.label}
+            onChange={(e) => update(i, { label: e.target.value })}
+          />
+          <input
+            className="field min-w-0 flex-[2]"
+            placeholder="https://…"
+            value={row.url}
+            onChange={(e) => update(i, { url: e.target.value })}
+          />
+          <button
+            className="btn btn-ghost btn-sm"
+            title="Remove this link"
+            onClick={() => removeRow(i)}
+          >
+            Remove
+          </button>
+        </div>
+      ))}
+      <div className="flex items-center gap-2">
+        <button className="btn btn-ghost btn-sm" onClick={addRow} disabled={pending}>
+          Add a link
+        </button>
+        <button className="btn btn-primary btn-sm" onClick={save} disabled={pending}>
+          {pending ? "Saving…" : "Save links"}
+        </button>
+      </div>
+      {error && <p className="text-sm text-danger">{error}</p>}
+      {note && <p className="text-xs text-ok">{note}</p>}
     </div>
   );
 }

@@ -274,6 +274,7 @@ export default async function EditShellPage({
       activeTermId={activeTermId}
       isCurrentTerm={isCurrentTerm}
       currentTree={currentTree}
+      currentLinks={record.manifest.currentTermLinks ?? []}
       publishing={publishing}
       aiAccess={aiAccess}
     />
