@@ -70,6 +70,13 @@ export default function CoreIdeasPage() {
           documents. Either way, you stay on the high ground: deciding what to
           teach and what is ready.
         </p>
+        <p>
+          <strong>Alembic itself is free and open to use.</strong>{" "}The AI
+          assistant is the one part that costs something to run, so it works on
+          credits — covered by a sponsor or grant, or purchased — which keeps the
+          platform free for everyone. You can always do the writing yourself; the
+          assistant is there to take the tedious work off your hands.
+        </p>
       </GuideSection>
 
       <GuideSection

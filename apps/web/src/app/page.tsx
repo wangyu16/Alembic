@@ -80,6 +80,12 @@ export default function Home() {
         </Link>
       </div>
 
+      <p className="max-w-2xl text-sm leading-relaxed text-muted">
+        <span className="font-medium text-ink">Alembic is free and open to use.</span>{" "}
+        The optional AI assistant runs on credits — covered by a sponsor or grant, or purchased —
+        so the platform stays free for everyone.
+      </p>
+
       <dl className="grid gap-x-8 gap-y-5 border-t border-edge-soft pt-8 sm:grid-cols-3">
         {[
           {
