@@ -264,6 +264,16 @@ export const PackageManifestSchema = z.object({
    */
   currentTermLabel: z.string().min(1).optional(),
   /**
+   * MISCELLANEOUS external links for the current term — an instructor-managed list
+   * of `{label, url}` shown on the published "This term" area, each opening in a new
+   * tab (not embedded). Free-form: a shared drive, an external tool, a video. These
+   * are external URLs, distinct from the file-based `misc/` section. Optional +
+   * additive; absent = none. Tied to the current-term pointer (edit/clear on rollover).
+   */
+  currentTermLinks: z
+    .array(z.object({ label: z.string().min(1), url: z.string().url() }))
+    .optional(),
+  /**
    * Package-level adaptation lineage: set when this package was forked/adapted
    * from another (goal.md §5). Optional + additive; absent = an original work.
    * Typed loosely here (the full record lives in adaptation.ts) to keep the

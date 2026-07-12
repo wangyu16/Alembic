@@ -1,7 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { serializeStudyGuide } from "@alembic/package-contract";
+import { serializeStudyGuide, isSyllabusPath } from "@alembic/package-contract";
 import {
   chapterPracticePath,
   chapterSlidesPath,
@@ -98,12 +98,12 @@ async function gatherCurrentTerm(
   if (!termId) return undefined;
   const label = record.manifest.currentTermLabel?.trim() || termId;
 
-  const sectionFiles = (await store.listFiles(packageId))
+  const publicFiles = (await store.listFiles(packageId))
     .filter((f) => f.repo === "public")
-    .map((f) => ({ file: f, seg: f.path.replace(/^\/+/, "").split("/") }))
-    .filter(
-      ({ seg }) => seg.length === 4 && seg[0] === "current" && seg[1] === termId,
-    );
+    .map((f) => ({ file: f, seg: f.path.replace(/^\/+/, "").split("/") }));
+  const sectionFiles = publicFiles.filter(
+    ({ seg }) => seg.length === 4 && seg[0] === "current" && seg[1] === termId,
+  );
 
   // Newest-first: filenames carry a leading ISO stamp, so reverse-lexical order
   // is chronological (newest first).
@@ -136,7 +136,29 @@ async function gatherCurrentTerm(
   const assignments = linksFor("assignments");
   const misc = linksFor("misc");
 
-  return { data: { label, announcements, assignments, misc }, files: publishFiles };
+  // Syllabus — a single fixed-slot file at current/<termId>/syllabus.<ext>
+  // (directly under the term, not in a section). Published as-is, like the
+  // assignment links, at the same root-relative path.
+  const syllabusFile = publicFiles.find(
+    ({ file, seg }) => seg[1] === termId && isSyllabusPath(file.path),
+  );
+  let syllabus: CourseTermLink | undefined;
+  if (syllabusFile) {
+    const href = syllabusFile.file.path.replace(/^\/+/, "");
+    publishFiles.push({ path: href, content: syllabusFile.file.content });
+    syllabus = { title: "Syllabus", href };
+  }
+
+  // Miscellaneous external links (manifest-backed) — passed straight through;
+  // the renderer opens each in a new tab.
+  const miscLinks = record.manifest.currentTermLinks?.length
+    ? record.manifest.currentTermLinks.map((l) => ({ label: l.label, url: l.url }))
+    : undefined;
+
+  return {
+    data: { label, syllabus, announcements, assignments, misc, miscLinks },
+    files: publishFiles,
+  };
 }
 
 export interface PublishSiteResult {

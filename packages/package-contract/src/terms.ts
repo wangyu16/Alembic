@@ -58,6 +58,34 @@ export function isCurrentSection(value: string): value is CurrentSection {
 }
 
 /**
+ * The SYLLABUS is a fixed single-document slot per term (not a section folder):
+ * one file at `current/<term-id>/syllabus.<ext>`. It is shown as a prominent link
+ * on the published "This term" area. Any supported document extension is allowed
+ * (a plain `.md`, or a print-oriented `.paged.html`).
+ */
+export const SYLLABUS_BASENAME = "syllabus";
+
+/** The write path for a term's syllabus at a chosen extension (default `.md`). */
+export function syllabusPath(termId: string, ext = ".md"): string {
+  return `${currentSpaceDir(termId)}/${SYLLABUS_BASENAME}${ext.startsWith(".") ? ext : `.${ext}`}`;
+}
+
+/**
+ * True when a path is a term's syllabus slot: `current/<term-id>/syllabus.<ext>`
+ * directly under the term (not nested in a section). Fail-closed on traversal.
+ */
+export function isSyllabusPath(path: string): boolean {
+  const normalized = path.replace(/\\/g, "/").replace(/^\/+/, "");
+  if (normalized.includes("..")) return false;
+  const segments = normalized.split("/");
+  // current / <term-id> / syllabus.<ext>   → exactly three segments
+  if (segments.length !== 3) return false;
+  const [top, termId, name] = segments;
+  if (top !== "current" || !termId || !name || !isValidTermId(termId)) return false;
+  return name === SYLLABUS_BASENAME || name.startsWith(`${SYLLABUS_BASENAME}.`);
+}
+
+/**
  * A term id is URL-safe: lowercase alphanumerics joined by single hyphens
  * (`2026-fall`, `spring2027`). It names a folder and is immutable, so it must
  * never contain a path separator, uppercase (the display label carries case),

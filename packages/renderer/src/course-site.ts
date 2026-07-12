@@ -111,6 +111,13 @@ export interface CourseTermLink {
   href: string;
 }
 
+/** An instructor-added external link, opened in a new tab. */
+export interface CourseTermExternalLink {
+  label: string;
+  /** Absolute external URL. */
+  url: string;
+}
+
 /**
  * The CURRENT term's course-level surface, gathered by the caller from
  * `current/<term-id>/…`. Only the current term is ever shown to students;
@@ -119,9 +126,13 @@ export interface CourseTermLink {
 export interface CourseTermData {
   /** Display label ("Fall 2026"). */
   label: string;
+  /** The term's syllabus, if one is set — shown as a prominent link. */
+  syllabus?: CourseTermLink;
   announcements: CourseTermAnnouncement[]; // newest first
   assignments: CourseTermLink[];
   misc: CourseTermLink[];
+  /** Miscellaneous external links, each opened in a new tab. */
+  miscLinks?: CourseTermExternalLink[];
 }
 
 export interface CourseSiteInput {
@@ -220,12 +231,32 @@ ${links
 </div>`
       : "";
 
+  // Syllabus — a single prominent link at the top of the term area.
+  const syllabus = term.syllabus
+    ? `<p class="term-syllabus"><a href="${escapeHtml(term.syllabus.href)}">${escapeHtml(term.syllabus.title)}</a></p>`
+    : "";
+
   const assignments = linkList("Assignments", term.assignments);
   const misc = linkList("Other materials", term.misc);
 
-  const hasContent = announcements || assignments || misc;
+  // Miscellaneous EXTERNAL links — open in a new tab (rel=noopener), never embedded.
+  const miscLinks = term.miscLinks?.length
+    ? `<div class="term-links">
+<h3 class="term-links-heading">Miscellaneous</h3>
+<ul class="term-link-list">
+${term.miscLinks
+        .map(
+          (l) =>
+            `<li><a href="${escapeHtml(l.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(l.label)}</a></li>`,
+        )
+        .join("\n")}
+</ul>
+</div>`
+    : "";
+
+  const hasContent = syllabus || announcements || assignments || misc || miscLinks;
   const body = hasContent
-    ? [announcements, assignments, misc].filter(Boolean).join("\n")
+    ? [syllabus, announcements, assignments, misc, miscLinks].filter(Boolean).join("\n")
     : `<p class="term-empty">No announcements yet.</p>`;
 
   return `<section class="current-term" aria-labelledby="current-term-heading">
@@ -354,6 +385,9 @@ a.module-title:hover{color:var(--accent)}
   color:var(--accent);background:var(--accent-soft);
   border-radius:999px;padding:.15em .7em;line-height:1.4}
 .term-empty{color:var(--muted);margin:0}
+.term-syllabus{margin:0 0 1.2rem}
+.term-syllabus a{color:var(--accent);font-weight:600}
+.term-syllabus a:hover{color:var(--accent-hover)}
 .term-announcements{list-style:none;padding:0;margin:0}
 .term-announcement{padding:1rem 0;border-top:1px solid var(--edge-soft)}
 .term-announcement:first-child{padding-top:.25rem;border-top:none}

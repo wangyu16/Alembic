@@ -161,6 +161,57 @@ export async function setTermLabelAction(
   return writePointer(packageId, record.manifest.currentTerm, label);
 }
 
+/**
+ * Set the CURRENT term's miscellaneous external links — an instructor-managed
+ * list of `{label, url}` shown on the student site, each opening in a new tab.
+ * Stored in the manifest (`currentTermLinks`); the URL is validated by the
+ * schema (an invalid link is rejected rather than published).
+ */
+export async function setTermLinksAction(
+  packageId: string,
+  links: Array<{ label: string; url: string }>,
+): Promise<Result> {
+  const { supabase, user } = await requireUser();
+  const store = new SupabaseSandboxStore(supabase);
+  const record = await store.getPackage(packageId);
+  if (!record) return { ok: false, error: "Package not found." };
+  if (!record.manifest.currentTerm) {
+    return { ok: false, error: "Start a term first." };
+  }
+
+  const cleaned = links
+    .map((l) => ({ label: l.label.trim(), url: l.url.trim() }))
+    .filter((l) => l.label || l.url);
+  for (const l of cleaned) {
+    if (!l.label || !l.url) {
+      return { ok: false, error: "Each link needs both a label and a URL." };
+    }
+  }
+
+  let manifest;
+  try {
+    manifest = parseManifest({
+      ...record.manifest,
+      currentTermLinks: cleaned.length ? cleaned : undefined,
+    });
+  } catch {
+    return { ok: false, error: "One of the links isn't a valid URL (include https://)." };
+  }
+
+  await supabase.from("packages").update({ manifest }).eq("id", packageId);
+  await mirrorManifestToSandbox(store, packageId, manifest);
+  await syncFilesToGitHub(
+    supabase,
+    store,
+    user.id,
+    packageId,
+    [{ path: "alembic.json", content: JSON.stringify(manifest, null, 2) + "\n" }],
+    "Update this-term links (Alembic)",
+  );
+  revalidatePath(`/workspace/${packageId}`);
+  return { ok: true };
+}
+
 /** Lowercase-hyphen slug for an announcement filename (never empty). */
 function slugify(title: string): string {
   const s = title

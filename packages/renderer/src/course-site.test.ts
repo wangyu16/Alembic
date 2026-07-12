@@ -240,6 +240,34 @@ describe("buildCourseSite — \"This term\" (current collection)", () => {
     expect(html).not.toContain("No announcements yet.");
   });
 
+  it("shows the syllabus as a prominent link and misc external links in a new tab", () => {
+    const html = index({
+      ...course,
+      currentTerm: {
+        ...term,
+        syllabus: { title: "Syllabus", href: "current/2026-fall/syllabus.paged.html" },
+        miscLinks: [
+          { label: "Course Drive", url: "https://drive.example.com/chem101" },
+        ],
+      },
+    });
+    // Syllabus: a prominent single link, above announcements.
+    expect(html).toContain('<p class="term-syllabus"><a href="current/2026-fall/syllabus.paged.html">Syllabus</a>');
+    expect(html.indexOf('<p class="term-syllabus"')).toBeLessThan(html.indexOf("Welcome to the course"));
+    // Misc external links: labelled "Miscellaneous", opened in a new tab, safely.
+    expect(html).toContain("Miscellaneous");
+    expect(html).toContain(
+      '<a href="https://drive.example.com/chem101" target="_blank" rel="noopener noreferrer">Course Drive</a>',
+    );
+  });
+
+  it("omits the syllabus and misc-links blocks when they are unset", () => {
+    // The `.term-syllabus` CSS rule ships unconditionally — check for the element.
+    const html = index({ ...course, currentTerm: term });
+    expect(html).not.toContain('<p class="term-syllabus"');
+    expect(html).not.toContain("Miscellaneous");
+  });
+
   it("shows the label + a gentle empty line for a fully-empty current term", () => {
     const html = index({
       ...course,

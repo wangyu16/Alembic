@@ -4,7 +4,9 @@ import {
   SECTION_META,
   currentSpaceDir,
   isCurrentSection,
+  isSyllabusPath,
   isValidTermId,
+  syllabusPath,
   termIdForPath,
 } from "./terms";
 import { PathLayerError } from "./layers";
@@ -79,5 +81,26 @@ describe("termIdForPath", () => {
 
   it("is fail-closed on traversal", () => {
     expect(termIdForPath("current/../../etc/passwd")).toBe(null);
+  });
+});
+
+describe("syllabus slot", () => {
+  it("builds the fixed syllabus path at a chosen extension", () => {
+    expect(syllabusPath("2026-fall")).toBe("current/2026-fall/syllabus.md");
+    expect(syllabusPath("2026-fall", ".paged.html")).toBe("current/2026-fall/syllabus.paged.html");
+    expect(syllabusPath("2026-fall", "pdf")).toBe("current/2026-fall/syllabus.pdf");
+  });
+
+  it("recognizes a syllabus slot directly under a term", () => {
+    expect(isSyllabusPath("current/2026-fall/syllabus.md")).toBe(true);
+    expect(isSyllabusPath("current/2026-fall/syllabus.paged.html")).toBe(true);
+  });
+
+  it("rejects non-syllabus, nested, and traversal paths", () => {
+    expect(isSyllabusPath("current/2026-fall/assignments/syllabus.md")).toBe(false); // nested
+    expect(isSyllabusPath("current/2026-fall/notes.md")).toBe(false);
+    expect(isSyllabusPath("current/Bad Id/syllabus.md")).toBe(false);
+    expect(isSyllabusPath("current/../syllabus.md")).toBe(false);
+    expect(isSyllabusPath("study-guide/syllabus.md")).toBe(false);
   });
 });
