@@ -18,7 +18,7 @@ export default function StartPage() {
       <GuideSection
         heading="The shape of the work"
         figure={<StepsFigure />}
-        figureCaption="Create a package, author its documents, preview them, and publish — the last step is always yours to approve."
+        figureCaption="Create a package, author its documents, preview them, publish to a live site, and — optionally — list it publicly. The last two are deliberate steps you approve."
       >
         <p>
           You sign in with GitHub — that&rsquo;s where your materials will live, so
@@ -64,6 +64,17 @@ export default function StartPage() {
           deliberate and always needs your explicit approval; nothing goes out on
           its own. See <Link href="/guide/publish">Publishing</Link>{" "}for what
           happens and what you get.
+        </p>
+      </GuideSection>
+
+      <GuideSection heading="5 · Share it (optional)">
+        <p>
+          Publishing makes your course a live website, but it doesn&rsquo;t put it
+          on the map. To let other educators find and adapt your work, choose{" "}
+          <strong>List publicly</strong>{" "}— a separate, deliberate step that adds
+          your course (or a single asset) to <Link href="/portal">Discover</Link>,
+          the public index. You decide what goes on the market, and you can unlist
+          at any time. More in <Link href="/guide/share">Share &amp; adapt</Link>.
         </p>
       </GuideSection>
     </GuidePageShell>

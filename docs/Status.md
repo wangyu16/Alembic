@@ -1336,9 +1336,19 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
     `RoundTripFigure`, `AdaptFigure`, + reuse); nav flipped all-live. Sidebar
     group labels reworked into tracked section headers (distinct from page
     items). Every inline-tag boundary made explicit `{" "}` to retire the
-    line-wrap whitespace bug for good; browser-verified clean. **Follow-up
-    (optional):** real workspace screenshots/GIFs — the pages read complete on
-    generated figures; captures need an authenticated session.
+    line-wrap whitespace bug for good; browser-verified clean. **Accuracy pass
+    (owner review):** AI/instructor division sharpened (AI does the tedious
+    mechanical editing; the instructor owns the substance, scaling with how much
+    OER exists); offline framing corrected to "documents carry their own editor"
+    (self-contained, no external tools); publishing reframed as a **transfer to
+    the educator's own GitHub + GitHub Pages, Alembic as bridge** (not "hosted
+    under your account"); **"This term"** made consistent with the system label
+    (`Current (this term)`); and **List publicly → Discover** added as an explicit
+    sharing step, separate from publish (new "5 · Share it" on Getting started and
+    a lead "List your work publicly" section on Share & adapt; `StepsFigure`
+    extended to 5 steps with the broadcast/list step). **Follow-up (optional):**
+    real workspace screenshots/GIFs — the pages read complete on generated
+    figures; captures need an authenticated session.
   - 🔄 **Offline document round-trip (U1).** Download a course document, edit it
     offline, upload it back to **replace** the current version — for all course
     documents. `replaceCollectionFileAction` writes the edited bytes at the

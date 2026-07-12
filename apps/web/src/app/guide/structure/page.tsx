@@ -13,8 +13,8 @@ const COLLECTIONS = [
     role: "Reusable figures, chemical structures, plots, data, and media. Insert an asset into any document, and cite it from anywhere — it lives in one place and is shared across the course.",
   },
   {
-    name: "Current",
-    role: "This term's teaching cycle: announcements and assignments for the class you're running now. Roll over to a new term and last term's materials are kept, read-only, for reference.",
+    name: "This term",
+    role: "The current teaching cycle: announcements and assignments for the class you're running now. (In the workspace this collection is labeled “Current (this term)”.) Roll over to a new term and last term's materials are kept, read-only, for reference.",
   },
   {
     name: "Private",

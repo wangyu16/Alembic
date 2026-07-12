@@ -15,6 +15,18 @@ export default function SharePage() {
       title="Share & adapt"
       lede="Open resources are worth more when they circulate. Alembic makes reuse easy in both directions — take what fits your students, and give improvements back — with attribution carried automatically."
     >
+      <GuideSection heading="List your work publicly">
+        <p>
+          Publishing makes your course a live website;{" "}
+          <strong>List publicly</strong>{" "}puts it on the map. It is a separate,
+          deliberate step: choose <strong>List publicly</strong>{" "}and your course —
+          or a single asset — joins <Link href="/portal">Discover</Link>,
+          Alembic&rsquo;s public index, where other educators can search for it,
+          adapt it, and build on it. You decide what goes out, and you can unlist
+          at any time.
+        </p>
+      </GuideSection>
+
       <GuideSection
         heading="Reuse, and improve together"
         figure={<AdaptFigure />}
@@ -35,8 +47,9 @@ export default function SharePage() {
           You don&rsquo;t need a finished course to contribute. A single clear
           illustration, a well-worked derivation, a clean explanation of one
           stubborn concept — small pieces like these are exactly what other
-          educators search for. Make a package (or one asset) discoverable and it
-          joins the index for others to find and build on.
+          educators search for. <strong>List publicly</strong>{" "}works at that
+          scale too: a single asset can join Discover on its own, for others to
+          find and build on.
         </p>
       </GuideSection>
 

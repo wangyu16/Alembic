@@ -246,40 +246,47 @@ export function BlueprintFigure() {
   );
 }
 
-/** Getting started: the create → author → preview → publish flow. */
+/** Getting started: create → author → preview → publish → list publicly. */
 export function StepsFigure() {
   return (
     <Figure
-      viewBox="0 0 300 96"
-      title="Four steps: create, author, preview, publish"
-      desc="A left-to-right flow of four stages — create a package, author its documents, preview them, and publish — with the final publish step in copper."
+      viewBox="0 0 330 96"
+      title="Five steps: create, author, preview, publish, and list publicly"
+      desc="A left-to-right flow — create a package, author its documents, preview them, publish to a live website, and (optionally) list it publicly on Discover. Publish and the final list-publicly step are in copper because each is a deliberate choice you approve."
     >
       {/* create */}
       <g {...S} aria-hidden>
-        <rect x="10" y="30" width="40" height="36" rx="4" />
-        <path d="M30 40v16M22 48h16" />
+        <rect x="8" y="30" width="36" height="36" rx="4" />
+        <path d="M26 40v16M18 48h16" />
       </g>
       {/* author */}
       <g {...S} aria-hidden>
-        <rect x="86" y="30" width="40" height="36" rx="4" />
-        <path d="M94 41h24M94 48h24M94 55h14" />
+        <rect x="74" y="30" width="36" height="36" rx="4" />
+        <path d="M82 41h20M82 48h20M82 55h12" />
       </g>
       {/* preview */}
       <g {...S} aria-hidden>
-        <rect x="162" y="30" width="40" height="36" rx="4" />
-        <circle cx="182" cy="48" r="8" />
-        <circle cx="182" cy="48" r="2.4" />
+        <rect x="140" y="30" width="36" height="36" rx="4" />
+        <circle cx="158" cy="48" r="7.5" />
+        <circle cx="158" cy="48" r="2.2" />
       </g>
-      {/* publish (copper) */}
+      {/* publish (copper — deliberate) */}
       <g {...S} className={copper} aria-hidden>
-        <rect x="238" y="30" width="40" height="36" rx="4" />
-        <path d="M258 58V38M250 46l8-8 8 8" />
+        <rect x="206" y="30" width="36" height="36" rx="4" />
+        <path d="M224 58V38M216 46l8-8 8 8" />
+      </g>
+      {/* list publicly / share (copper — the sharing step) */}
+      <g {...S} className={copper} aria-hidden>
+        <rect x="272" y="30" width="36" height="36" rx="4" />
+        <circle cx="290" cy="48" r="2.4" />
+        <path d="M283 41a10 10 0 0 1 0 14M297 41a10 10 0 0 0 0 14" />
       </g>
       {/* connectors */}
       <g {...S} aria-hidden opacity="0.6">
-        <path d="M54 48h28M82 48l-5-3M82 48l-5 3" />
-        <path d="M130 48h28M158 48l-5-3M158 48l-5 3" />
-        <path d="M206 48h28M234 48l-5-3M234 48l-5 3" />
+        <path d="M48 48h22M70 48l-5-3M70 48l-5 3" />
+        <path d="M114 48h22M136 48l-5-3M136 48l-5 3" />
+        <path d="M180 48h22M202 48l-5-3M202 48l-5 3" />
+        <path d="M246 48h22M268 48l-5-3M268 48l-5 3" />
       </g>
     </Figure>
   );
