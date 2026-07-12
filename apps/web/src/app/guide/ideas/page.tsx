@@ -54,11 +54,21 @@ export default function CoreIdeasPage() {
           guide at their center.
         </p>
         <p>
-          The careful editing — accuracy, accessibility, copyright, structure, and
-          layout — is handled by <strong>AI agents following agent skills</strong>,
-          so the finished documents are far cleaner than hand-editing would make
-          them. You stay on the high ground, deciding what to teach and what is
-          ready; the agent does the work.
+          The <strong>tedious part</strong>{" "}of making a document — consistent
+          formatting, accessibility, spelling and grammar, tightening and
+          re-organizing language — is exactly what AI does well. It follows agent
+          skills, so the result is correct and consistent, far cleaner than
+          hand-editing. Your part is the substance: a raw draft, the direction,
+          and the details that matter.
+        </p>
+        <p>
+          <strong>How much you write depends on the course.</strong>{" "}For
+          introductory topics, where good open material already exists, AI can do
+          most of the work from your outline. For advanced or specialized courses,
+          where little public material exists, you supply more of the raw content
+          — and AI still turns it into clean, accessible, well-structured
+          documents. Either way, you stay on the high ground: deciding what to
+          teach and what is ready.
         </p>
       </GuideSection>
 

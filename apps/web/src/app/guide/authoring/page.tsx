@@ -29,7 +29,13 @@ export default function AuthoringPage() {
         </p>
       </GuideSection>
 
-      <GuideSection heading="Let AI do the heavy lifting">
+      <GuideSection heading="Let AI do the tedious work">
+        <p>
+          The mechanical part of authoring — consistent formatting, accessibility,
+          spelling and grammar, tightening and re-organizing language — is what AI
+          takes off your plate. You draft and steer; AI polishes: you keep the
+          substance and skip the drudgery.
+        </p>
         <p>
           Where an account is approved for AI, the in-file editor offers an{" "}
           <strong>assistant</strong>: improve a selection, or run an operation over
