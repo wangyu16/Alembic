@@ -37,6 +37,7 @@ function jsonForScript(value: unknown): string {
 
 /** Build the schema.org `LearningResource` object (plain data). */
 export function learningResource(meta: LearningResourceMeta): Record<string, unknown> {
+  const licenseHref = licenseUrl(meta.license);
   const ld: Record<string, unknown> = {
     "@context": "https://schema.org",
     "@type": "LearningResource",
@@ -44,9 +45,10 @@ export function learningResource(meta: LearningResourceMeta): Record<string, unk
     learningResourceType: "course",
     inLanguage: "en",
     isAccessibleForFree: true,
-    license: licenseUrl(meta.license),
     creativeWorkStatus: "Published",
   };
+  // An unlicensed (all-rights-reserved) course has no license deed to link.
+  if (licenseHref) ld["license"] = licenseHref;
   if (meta.description) ld["description"] = meta.description;
   if (meta.discipline) ld["about"] = meta.discipline;
   if (meta.educationalLevel) ld["educationalLevel"] = meta.educationalLevel;

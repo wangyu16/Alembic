@@ -17,7 +17,18 @@ const LICENSES = [
   "CC-BY-NC-4.0",
   "CC-BY-NC-SA-4.0",
   "CC0-1.0",
+  "ALL-RIGHTS-RESERVED",
 ] as const;
+
+// Friendly option labels; the value stays the manifest license id.
+const LICENSE_OPTION_LABEL: Record<(typeof LICENSES)[number], string> = {
+  "CC-BY-4.0": "CC BY 4.0 — open, credit required",
+  "CC-BY-SA-4.0": "CC BY-SA 4.0 — open, share-alike",
+  "CC-BY-NC-4.0": "CC BY-NC 4.0 — open, non-commercial",
+  "CC-BY-NC-SA-4.0": "CC BY-NC-SA 4.0 — open, NC + share-alike",
+  "CC0-1.0": "CC0 1.0 — public domain",
+  "ALL-RIGHTS-RESERVED": "All rights reserved — private (not listable on Discover)",
+};
 
 const UNIT_TERMS = ["chapter", "module", "lesson", "unit", "week"] as const;
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
@@ -96,7 +107,7 @@ export default async function WorkspacePage() {
           <select name="license" defaultValue="CC-BY-4.0" className="field">
             {LICENSES.map((license) => (
               <option key={license} value={license}>
-                {license}
+                {LICENSE_OPTION_LABEL[license]}
               </option>
             ))}
           </select>

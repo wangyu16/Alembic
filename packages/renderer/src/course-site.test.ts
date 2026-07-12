@@ -302,6 +302,15 @@ describe("buildCourseSite — rights notice", () => {
     expect(html).toContain("CC BY-SA 4.0");
   });
 
+  it("prints an all-rights-reserved notice (no deed link) for an unlicensed package", () => {
+    const html = index({ ...course, license: "ALL-RIGHTS-RESERVED", instructor: "Dr. Yu Wang" });
+    expect(html).toContain("All rights reserved");
+    expect(html).toContain("©");
+    expect(html).toContain("Dr. Yu Wang");
+    expect(html).not.toContain("Licensed under");
+    expect(html).not.toContain("creativecommons.org");
+  });
+
   it("prefers an explicit copyrightHolder over the instructor", () => {
     const html = index({
       ...course,

@@ -1,4 +1,4 @@
-import type { PackageManifest } from "@alembic/package-contract";
+import { isOpenLicense, type PackageManifest } from "@alembic/package-contract";
 
 /**
  * Citation (M15.3). Generate a `CITATION.cff` so a snapshot is citable
@@ -32,8 +32,9 @@ export function generateCitationCff(
   if (manifest.description) lines.push("abstract: " + y(manifest.description));
   lines.push("authors:", "  - name: " + y(input.authorName));
   if (input.version) lines.push("version: " + y(input.version));
-  // manifest.license values (CC-BY-4.0, …) are SPDX identifiers.
-  lines.push("license: " + manifest.license);
+  // The open manifest.license values (CC-BY-4.0, …) are SPDX identifiers; CFF's
+  // `license` expects one. An unlicensed package has no SPDX id — omit the field.
+  if (isOpenLicense(manifest.license)) lines.push("license: " + manifest.license);
   lines.push("date-released: " + y(input.dateReleased));
   lines.push("url: " + y(input.url));
   return lines.join("\n") + "\n";

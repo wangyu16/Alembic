@@ -104,7 +104,9 @@ export interface VendoredLicense {
   readonly text: string;
 }
 
-export const LICENSE_TEXTS: Record<License, VendoredLicense> = {
+// Partial: only the OPEN licenses have vendored legal text. An all-rights-reserved
+// package has no open deed — license-file.ts writes a copyright notice for it directly.
+export const LICENSE_TEXTS: Partial<Record<License, VendoredLicense>> = {
 ${entries
   .map(
     (e) => `  ${JSON.stringify(e.id)}: {

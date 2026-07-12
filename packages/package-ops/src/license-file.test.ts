@@ -1,20 +1,32 @@
 import { describe, expect, it } from "vitest";
-import { LicenseSchema, type License } from "@alembic/package-contract";
+import { ALL_RIGHTS_RESERVED, LicenseSchema, isOpenLicense, type License } from "@alembic/package-contract";
 import { createSandboxPackage } from "./create";
 import { LICENSE_PATH, ensureLicenseFile, licenseFileContent } from "./license-file";
 import { LICENSE_TEXTS } from "./license-texts.generated";
 import { MemoryPackageStore } from "./memory-store";
 
 const ALL: readonly License[] = LicenseSchema.options;
+// Only the OPEN licenses carry vendored legal text; ALL-RIGHTS-RESERVED is a short notice.
+const OPEN: readonly License[] = ALL.filter(isOpenLicense);
 
 describe("licenseFileContent — verbatim legal code", () => {
-  it("covers every license the schema allows", () => {
+  it("covers every license the schema allows without throwing", () => {
     // A license added to the schema without re-running scripts/fetch-licenses.mjs
     // would otherwise throw at publish time, in production.
     for (const license of ALL) {
       expect(() => licenseFileContent(license)).not.toThrow();
+    }
+    // The open licenses are the full vendored legal code.
+    for (const license of OPEN) {
       expect(licenseFileContent(license).length).toBeGreaterThan(5000);
     }
+  });
+
+  it("writes an all-rights-reserved notice for an unlicensed package", () => {
+    expect(isOpenLicense(ALL_RIGHTS_RESERVED)).toBe(false);
+    const text = licenseFileContent(ALL_RIGHTS_RESERVED);
+    expect(text).toContain("All rights reserved");
+    expect(text.length).toBeLessThan(5000);
   });
 
   it("is the real legal text, not a summary", () => {
@@ -31,7 +43,7 @@ describe("licenseFileContent — verbatim legal code", () => {
   it("carries NO copyright preamble — that would defeat GitHub's detector", () => {
     // The rights notice lives on the published page, in the JSON-LD and in
     // CITATION.cff. LICENSE is the verbatim text and nothing else.
-    for (const license of ALL) {
+    for (const license of OPEN) {
       const text = licenseFileContent(license);
       expect(text.startsWith("Attribution") || text.startsWith("Creative Commons")).toBe(true);
       expect(text).not.toContain("© 20");
@@ -39,10 +51,10 @@ describe("licenseFileContent — verbatim legal code", () => {
   });
 
   it("records the canonical source and a checksum for every vendored text", () => {
-    for (const license of ALL) {
+    for (const license of OPEN) {
       const v = LICENSE_TEXTS[license];
-      expect(v.url).toMatch(/^https:\/\/creativecommons\.org\//);
-      expect(v.sha256).toMatch(/^[0-9a-f]{16}$/);
+      expect(v?.url).toMatch(/^https:\/\/creativecommons\.org\//);
+      expect(v?.sha256).toMatch(/^[0-9a-f]{16}$/);
     }
   });
 });

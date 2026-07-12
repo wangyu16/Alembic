@@ -32,26 +32,46 @@ export function isV2Manifest(m: Pick<PackageManifest, "schemaVersion">): boolean
   return m.schemaVersion === 2;
 }
 
-export const LicenseSchema = z.enum([
+/**
+ * The five OPEN licenses — a package must carry one of these to be shared or listed
+ * on the public Discover index (each grants others some reuse right).
+ */
+export const OPEN_LICENSES = [
   "CC-BY-4.0",
   "CC-BY-SA-4.0",
   "CC-BY-NC-4.0",
   "CC-BY-NC-SA-4.0",
   "CC0-1.0",
-]);
+] as const;
+
+/**
+ * "Unlicensed" — default copyright, no reuse granted. A package may carry this and still
+ * be created, published to its own site, and used for a class; it simply **cannot be listed
+ * on Discover** (there is no reuse grant to list). This is the right value when an educator
+ * keeps a package to themselves.
+ */
+export const ALL_RIGHTS_RESERVED = "ALL-RIGHTS-RESERVED";
+
+export const LicenseSchema = z.enum([...OPEN_LICENSES, ALL_RIGHTS_RESERVED]);
 
 export type License = z.infer<typeof LicenseSchema>;
 
-/** Canonical public URL for each license (for citation + LRMI/schema.org metadata). */
+/** True when the license grants reuse (one of the open licenses), i.e. it is Discover-eligible. */
+export function isOpenLicense(license: License): boolean {
+  return (OPEN_LICENSES as readonly string[]).includes(license);
+}
+
+/** Canonical public URL for each license (for citation + LRMI/schema.org metadata). Empty for unlicensed. */
 export const LICENSE_URLS: Record<License, string> = {
   "CC-BY-4.0": "https://creativecommons.org/licenses/by/4.0/",
   "CC-BY-SA-4.0": "https://creativecommons.org/licenses/by-sa/4.0/",
   "CC-BY-NC-4.0": "https://creativecommons.org/licenses/by-nc/4.0/",
   "CC-BY-NC-SA-4.0": "https://creativecommons.org/licenses/by-nc-sa/4.0/",
   "CC0-1.0": "https://creativecommons.org/publicdomain/zero/1.0/",
+  [ALL_RIGHTS_RESERVED]: "",
 };
 
-/** The canonical deed URL for a license id. */
+/** The canonical deed URL for a license id (empty string for an unlicensed package). */
 export function licenseUrl(license: License): string {
   return LICENSE_URLS[license];
 }
@@ -63,6 +83,7 @@ export const LICENSE_LABELS: Record<License, string> = {
   "CC-BY-NC-4.0": "CC BY-NC 4.0",
   "CC-BY-NC-SA-4.0": "CC BY-NC-SA 4.0",
   "CC0-1.0": "CC0 1.0",
+  [ALL_RIGHTS_RESERVED]: "All rights reserved",
 };
 
 export function licenseLabel(license: License): string {

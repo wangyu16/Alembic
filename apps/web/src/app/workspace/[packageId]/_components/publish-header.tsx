@@ -191,7 +191,10 @@ export function PublishHeader({
   const onPublishPage = () => {
     const confirmMsg = siteUrl
       ? "Update the public web page with your latest saved changes?"
-      : "Publish the public web page? Anyone with the link will be able to view it.";
+      : "Publish the public web page? Anyone with the link will be able to view it.\n\n" +
+        "By publishing, you confirm you have the rights to share this content publicly — " +
+        "every part is your own work or openly licensed, with no copyrighted text or images " +
+        "you aren't cleared to distribute.";
     if (!window.confirm(confirmMsg)) return;
     clearMessages();
     startSite(async () => {
@@ -219,11 +222,22 @@ export function PublishHeader({
   const onToggleList = () => {
     clearMessages();
     const registered = publishing.registered;
-    if (registered && !window.confirm("Remove this from the public index?")) return;
+    if (registered) {
+      if (!window.confirm("Remove this from the public index?")) return;
+    } else {
+      // Listing on Discover requires an open license and the educator's attestation.
+      const attest = window.confirm(
+        "List this on Discover so other educators can find and adapt it?\n\n" +
+          "Confirm that you hold or have cleared the rights: every part is your own work or " +
+          "openly licensed, with no copyrighted text or images you aren't permitted to share. " +
+          "(A package needs an open license to be listed.)",
+      );
+      if (!attest) return;
+    }
     startList(async () => {
       const r = registered
         ? await unregisterPackageAction(packageId)
-        : await registerPackageAction(packageId);
+        : await registerPackageAction(packageId, true);
       if (r.ok) onChanged();
       else if ("gateFailures" in r && r.gateFailures?.length)
         setGateFailures(r.gateFailures);

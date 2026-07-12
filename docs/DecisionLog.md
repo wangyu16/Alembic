@@ -6,6 +6,31 @@ design, and what is deferred to the future. Complements [Status.md](Status.md)
 
 ---
 
+## 2026-07-12 — Licensing tiers, copyright-by-provenance, free platform / metered AI
+
+**Decision.** License and copyright-cleanliness are **separate axes**, gated independently:
+- **License** (the reuse grant): a package carries an **open license** (CC-BY/-SA/-NC/-NC-SA/CC0) *or* the
+  new **`ALL-RIGHTS-RESERVED`** value (unlicensed). Open is required to **list on Discover**; ARR packages
+  are created, published to their own site, and used for a class, but are **not listable**.
+- **Copyright-cleanliness** (the right to distribute): required for any **public** publish (own site or
+  Discover). Handled by **positive provenance** — every asset must *prove* a clean origin (self-generated or
+  open-licensed with a captured source); "if you're not sure where an image came from, don't use it." The
+  platform can't *detect* infringement, so it requires *proof of clean* instead. Text must be original prose
+  (facts aren't copyrightable, expression is); coursewerk's near-verbatim scan flags copied passages.
+
+**Enforcement.** `registerPackageAction` hard-requires open-license + **educator copyright attestation**
+(recorded in the event log — no migration). Publish + List-publicly confirms carry an **attest + warn**
+prompt; own-site publishing stays allowed (educator's responsibility, per owner). Adaptation is disallowed
+for/into ARR. Verified: typecheck + 449 tests + web build.
+
+**Why.** Coursewerk is optional/non-mandating — instructors may keep packages private (no license needed).
+Making license optional (via ARR) lets private/own-class use coexist with an open, verified Discover market.
+
+**Platform economics (owner note).** The **platform is always free and open**; the **AI assistant is the
+metered part** (BYO-key / sponsored / paid credits) so the owner is never liable for thousands of users' AI
+costs. Near-term: a *messaging* pass declaring this. Deferred: the actual metering machinery on the existing
+entitlement seam (no billing UX yet).
+
 ## 2026-07-11 — Two-tier course model (blueprint vs. course) + coursewerk
 
 Owner clarification of the product's mental model, refining the guide framing.

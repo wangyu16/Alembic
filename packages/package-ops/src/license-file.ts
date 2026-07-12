@@ -1,6 +1,18 @@
-import { licenseLabel, type License, type PackageManifest } from "@alembic/package-contract";
+import { ALL_RIGHTS_RESERVED, licenseLabel, type License, type PackageManifest } from "@alembic/package-contract";
 import type { PackageStore } from "./store";
 import { LICENSE_TEXTS } from "./license-texts.generated";
+
+/**
+ * The LICENSE body for an unlicensed (all-rights-reserved) package. There is no
+ * open legal code to vendor — this is a plain copyright notice. GitHub shows no
+ * license badge for it, which is correct: the package grants no reuse and is not
+ * listable on Discover.
+ */
+const ALL_RIGHTS_RESERVED_TEXT =
+  "All rights reserved.\n\n" +
+  "This work is under standard copyright. No license is granted for reuse, " +
+  "redistribution, or adaptation without the copyright holder's explicit permission. " +
+  "Contact the author to request permission.\n";
 
 /**
  * The `LICENSE` file of a published course repository.
@@ -26,8 +38,9 @@ import { LICENSE_TEXTS } from "./license-texts.generated";
  */
 export const LICENSE_PATH = "LICENSE";
 
-/** The verbatim legal code for a license id. */
+/** The verbatim legal code for a license id (or a copyright notice for an unlicensed package). */
 export function licenseFileContent(license: License): string {
+  if (license === ALL_RIGHTS_RESERVED) return ALL_RIGHTS_RESERVED_TEXT;
   const vendored = LICENSE_TEXTS[license];
   if (!vendored) {
     // Unreachable while LICENSE_TEXTS is keyed by `License`; a new license id

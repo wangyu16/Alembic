@@ -51,6 +51,9 @@ export const ADAPT_TARGETS: Record<License, License[]> = {
   "CC-BY-SA-4.0": ["CC-BY-SA-4.0"],
   "CC-BY-NC-4.0": ["CC-BY-NC-4.0", "CC-BY-NC-SA-4.0"],
   "CC-BY-NC-SA-4.0": ["CC-BY-NC-SA-4.0"],
+  // An all-rights-reserved (unlicensed) source grants no reuse — it cannot be adapted,
+  // and open content cannot be relicensed as all-rights-reserved through the adapt flow.
+  "ALL-RIGHTS-RESERVED": [],
 };
 
 export interface AdaptCheck {
@@ -68,7 +71,11 @@ export function canAdapt(source: License, target: License): AdaptCheck {
   if (!allowed) return { ok: false, reason: `Unknown source license "${source}".` };
   if (allowed.includes(target)) return { ok: true };
   const note =
-    source === "CC-BY-SA-4.0" || source === "CC-BY-NC-SA-4.0"
+    source === "ALL-RIGHTS-RESERVED"
+      ? `The source is all rights reserved (no reuse granted), so it can't be adapted.`
+      : target === "ALL-RIGHTS-RESERVED"
+        ? `Openly-licensed content can't be relicensed as all rights reserved.`
+        : source === "CC-BY-SA-4.0" || source === "CC-BY-NC-SA-4.0"
       ? `ShareAlike requires the adaptation to keep the same license (${source}).`
       : source.includes("NC") && !target.includes("NC")
         ? `The source is NonCommercial — the adaptation must also be NonCommercial.`

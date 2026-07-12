@@ -34,6 +34,7 @@
  */
 
 import {
+  isOpenLicense,
   isPublicDomainDedication,
   licenseLabel,
   licenseUrl,
@@ -471,6 +472,16 @@ ${modulesBody}
   // copyright year. `builtAt` is the fallback.
   const licenseNotice = ((): string => {
     if (!input.license) return "";
+    const holder = (input.copyrightHolder ?? input.instructor ?? "").trim();
+    const year = new Date(input.meta?.datePublished ?? input.builtAt).getUTCFullYear();
+
+    // Unlicensed (all rights reserved) — the educator keeps every right and grants
+    // none, so there is no deed to link. Print a plain copyright notice.
+    if (!isOpenLicense(input.license)) {
+      const who = holder ? ` ${escapeHtml(holder)}` : "";
+      return `<p class="site-license">©&nbsp;${year}${who}. All rights reserved.</p>`;
+    }
+
     const url = licenseUrl(input.license);
     const label = escapeHtml(licenseLabel(input.license));
     const deed = `<a href="${url}" rel="license noreferrer" target="_blank">${label}</a>`;
@@ -479,8 +490,6 @@ ${modulesBody}
       return `<p class="site-license">Dedicated to the public domain under ${deed}.</p>`;
     }
 
-    const holder = (input.copyrightHolder ?? input.instructor ?? "").trim();
-    const year = new Date(input.meta?.datePublished ?? input.builtAt).getUTCFullYear();
     // With no named holder, "© 2026" alone claims nothing useful — state the
     // license and leave the copyright line off rather than print a bare symbol.
     const copyright = holder ? `© ${year} ${escapeHtml(holder)} <span class="sep">·</span> ` : "";
