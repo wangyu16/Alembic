@@ -205,6 +205,47 @@ export function SelfContainedFigure() {
   );
 }
 
+/** The two tiers: a plain-text blueprint, assembled by AI into course materials. */
+export function BlueprintFigure() {
+  return (
+    <Figure
+      viewBox="0 0 280 150"
+      title="Your plain-text blueprint is assembled by AI into the course materials"
+      desc="On the left, a concise blueprint — a concept map of linked ideas and a checklist of objectives, in copper. An arrow marked with a spark shows AI assembling it into the finished course materials on the right: a central study guide with slides and practice around it."
+    >
+      {/* Blueprint: concept map + objectives (the plan), copper */}
+      <g {...S} className={copper} aria-hidden>
+        <circle cx="34" cy="40" r="7" />
+        <circle cx="72" cy="30" r="7" />
+        <circle cx="58" cy="68" r="7" />
+        <path d="M40 44l12 20M64 35l-2 26M41 39h24" opacity="0.7" />
+        <path d="M24 96h44M24 108h32" />
+        <path d="M20 96l-3 3M20 108l-3 3" opacity="0.6" />
+      </g>
+      {/* AI assembly arrow with a spark */}
+      <g {...S} aria-hidden>
+        <path d="M104 74h58" />
+        <path d="M162 74l-8-6M162 74l-8 6" />
+      </g>
+      <g {...S} className={copper} aria-hidden>
+        <path d="M133 50v10M128 55h10M130 52l6 6M136 52l-6 6" opacity="0.9" />
+      </g>
+      {/* Course materials: study guide (copper center) + slides/practice */}
+      <g {...S} aria-hidden>
+        <rect x="200" y="16" width="52" height="28" rx="3" />
+        <path d="M208 25h36M208 32h24" />
+        <rect x="200" y="106" width="52" height="28" rx="3" />
+        <path d="M208 115h36M208 122h24" />
+        <path d="M226 44v10M226 96v10" opacity="0.5" strokeDasharray="2 4" />
+      </g>
+      <g {...S} className={copper} aria-hidden>
+        <rect x="196" y="56" width="60" height="38" rx="4" />
+        <path d="M204 66h44M204 74h44M204 82h30" />
+      </g>
+    </Figure>
+  );
+}
+
 /** Publish: your materials become a website on infrastructure you own. */
 export function PublishFigure() {
   return (

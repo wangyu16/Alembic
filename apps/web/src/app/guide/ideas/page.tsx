@@ -2,7 +2,7 @@ import Link from "next/link";
 import { GuidePageShell, GuideSection } from "../_components/guide-page-shell";
 import {
   PackageFigure,
-  SpineFigure,
+  BlueprintFigure,
   SelfContainedFigure,
   PublishFigure,
 } from "../guide-figures";
@@ -10,7 +10,7 @@ import {
 export const metadata = {
   title: "Core ideas — Alembic Guide",
   description:
-    "The five ideas Alembic is built on: your course is a package, the study guide is the spine, documents carry their own editor, you own everything, and sharing starts small.",
+    "The five ideas Alembic is built on: your course is a package, you plan a blueprint that AI assembles into the course, documents carry their own editor, you own everything, and sharing starts small.",
 };
 
 export default function CoreIdeasPage() {
@@ -26,10 +26,10 @@ export default function CoreIdeasPage() {
         figureCaption="One package, two halves: a public side for students and a private side, under lock, for answer keys and notes."
       >
         <p>
-          A <strong>package</strong> holds one course — its study guides, slides,
+          A <strong>package</strong>{" "}holds one course — its study guides, slides,
           practice questions, figures, and instructor materials. It has two
-          halves: a <strong>public</strong> side for everything students see, and
-          a <strong>private</strong> side for answer keys, exams, and your own
+          halves: a <strong>public</strong>{" "}side for everything students see, and
+          a <strong>private</strong>{" "}side for answer keys, exams, and your own
           notes.
         </p>
         <p>
@@ -41,21 +41,24 @@ export default function CoreIdeasPage() {
       </GuideSection>
 
       <GuideSection
-        heading="The study guide is the spine"
-        figure={<SpineFigure />}
-        figureCaption="Slides, practice, and the concept map derive from the study guide and stay traceable to it."
+        heading="You plan; AI does the editing"
+        figure={<BlueprintFigure />}
+        figureCaption="You write a concise blueprint; AI assembles it into polished course materials, centered on the study guide."
       >
         <p>
-          Each chapter centers on one <strong>study guide</strong> — a concise
-          companion when you teach from a textbook, or textbook-grade detail when
-          you don&rsquo;t. It is the organizing source of truth. Slides and
-          practice questions derive from it and stay linked back, so when the
-          study guide changes, Alembic flags what has drifted and you decide:
-          regenerate, merge, or keep your version.
+          A course is built in two layers. You work at the top, on a short,
+          plain-text <strong>blueprint</strong>{" "}— a concept map of what you&rsquo;ll
+          teach and how it connects, and an assessment guide for how each concept is
+          judged. From that plan, the <strong>course materials</strong>{" "}— study
+          guide, slides, practice, quizzes, exams — are assembled, with the study
+          guide at their center.
         </p>
         <p>
-          You are never locked in. An edit you make directly to the slides is
-          legitimate — Alembic records it as your own change, not an error.
+          The careful editing — accuracy, accessibility, copyright, structure, and
+          layout — is handled by <strong>AI agents following agent skills</strong>,
+          so the finished documents are far cleaner than hand-editing would make
+          them. You stay on the high ground, deciding what to teach and what is
+          ready; the agent does the work.
         </p>
       </GuideSection>
 
@@ -68,8 +71,10 @@ export default function CoreIdeasPage() {
           Alembic&rsquo;s documents are <strong>self-contained files</strong>:
           a page, a slide deck, or a print document, each one a single file that
           opens in any browser to read, present, or print — with an editor built
-          into the file itself. Download a study guide and it stays editable
-          forever, with nothing to install.
+          into the file itself. Under every document is a{" "}
+          <strong>markdown source of truth</strong>: edit it in the Alembic
+          workspace, or download the file and edit it locally — either way it
+          stays the same document, editable forever with nothing to install.
         </p>
         <p>
           Because the editor travels with the file, your students can keep their
@@ -91,7 +96,7 @@ export default function CoreIdeasPage() {
         <p>
           When you publish, Alembic builds a course website hosted under your
           own account. Everything remains usable without Alembic — that is the
-          point. Take a named <strong>snapshot</strong> each term
+          point. Take a named <strong>snapshot</strong>{" "}each term
           (&ldquo;Fall&nbsp;2026&rdquo;) to cite, compare, and restore exactly
           what you taught.
         </p>

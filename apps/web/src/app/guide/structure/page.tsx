@@ -1,10 +1,10 @@
 import { GuidePageShell, GuideSection } from "../_components/guide-page-shell";
-import { SpineFigure, CollectionsFigure } from "../guide-figures";
+import { BlueprintFigure, SpineFigure, CollectionsFigure } from "../guide-figures";
 
 export const metadata = {
   title: "Documents & collections — Alembic Guide",
   description:
-    "How a package is organized: the study-guide spine and the documents that derive from it, plus the three collections — Assets, Current, and Private.",
+    "How a course is built in two layers: the plain-text blueprint you plan (concept maps + assessment guides), and the course materials assembled from it — centered on the study guide. Plus the three collections.",
 };
 
 const COLLECTIONS = [
@@ -27,36 +27,72 @@ export default function StructurePage() {
     <GuidePageShell
       slug="structure"
       title="Documents & collections"
-      lede="A package organizes itself around one idea — the study guide — and keeps reusable and time-bound material in three tidy collections. Once you see the shape, you always know where a thing belongs."
+      lede="A course is built in two layers: the blueprint you plan, and the course materials assembled from it. Reusable and time-bound files live in three collections. Once you see the shape, you always know where a thing belongs."
     >
       <GuideSection
-        heading="Documents: a spine and what derives from it"
-        figure={<SpineFigure />}
-        figureCaption="The study guide is the spine; slides, practice, and planning documents derive from it and stay traceable."
+        heading="Two layers: the blueprint and the course"
+        figure={<BlueprintFigure />}
+        figureCaption="You plan a concise blueprint; AI assembles it into the polished course materials, centered on the study guide."
       >
         <p>
-          The <strong>study guide</strong> is the spine of each chapter — the
-          authoritative content. Two kinds of document sit around it:
+          You work at the top. The <strong>blueprint</strong>{" "}is your plan — short,
+          plain text, quick to change. The <strong>course</strong>{" "}is the set of
+          polished documents students receive, <strong>assembled from the
+          blueprint</strong>, largely by AI. You decide what to teach and how to
+          assess it; the careful editing work is handled for you.
+        </p>
+      </GuideSection>
+
+      <GuideSection heading="The blueprint — what you plan">
+        <p>
+          The blueprint is where the thinking lives. It stays concise and
+          plain-text on purpose, so it&rsquo;s easy to write and easy to maintain:
         </p>
         <ul className="ml-4 flex list-disc flex-col gap-2 marker:text-[var(--accent)]">
           <li>
-            <strong>Deliverables</strong>{" "}— the things students receive:{" "}
-            <strong>slides</strong>{" "}for lecture and <strong>practice</strong> for
-            study. They derive from the study guide and stay linked to it, so
-            when it changes, Alembic tells you what has drifted.
+            The <strong>concept map</strong>{" "}— the concepts you&rsquo;ll teach,
+            how they connect, and the learning objectives for each.
           </li>
           <li>
-            <strong>Planning documents</strong>{" "}— the{" "}
-            <strong>concept map</strong>{" "}(concepts and objectives) and the{" "}
-            <strong>assessment guide</strong>{" "}(how to assess each concept). These
-            shape what gets generated and let the coherence check compare your
-            content against your intent. They can stay public without cluttering
-            the student site.
+            The <strong>assessment guide</strong>{" "}— how each concept should be
+            assessed across homework, quizzes, and exams (instructions, not a
+            question bank).
           </li>
         </ul>
         <p>
-          Every document is a self-contained file that opens and edits in the
-          browser — see <a href="/guide/ideas">Core ideas</a>.
+          Together they are the framework of the course. Change the blueprint and
+          everything downstream can be brought back in line with it — the
+          coherence check compares your finished materials against this intent.
+        </p>
+      </GuideSection>
+
+      <GuideSection
+        heading="The course — assembled from the blueprint"
+        figure={<SpineFigure />}
+        figureCaption="The study guide is the center of the course materials; slides, practice, quizzes, and exams organize around it and stay traceable."
+      >
+        <p>
+          The course materials are the finished, public-facing documents:{" "}
+          <strong>the study guide, slides, practice, quizzes, and exams</strong>{" "}—
+          with real structure, layout, and visual design. The{" "}
+          <strong>study guide is the center</strong>; the others organize around it
+          and stay linked to it, so when it changes, Alembic flags what has drifted.
+        </p>
+        <p>
+          The heavy editing — accuracy, accessibility, copyright, structure,
+          format, and layout — is done by <strong>AI agents following agent
+          skills</strong>, which makes the result far cleaner than editing each
+          document by hand.{" "}
+          <a href="https://github.com/wangyu16/coursewerk" target="_blank" rel="noreferrer">
+            coursewerk
+          </a>{" "}
+          is the pipeline that guides an agent to assemble a whole course package
+          from your blueprint, ready to upload.
+        </p>
+        <p>
+          Whoever does the editing, <strong>every file keeps a markdown source of
+          truth</strong>{" "}— you can edit it in the Alembic workspace, or download it
+          and edit it locally.
         </p>
       </GuideSection>
 
@@ -66,7 +102,7 @@ export default function StructurePage() {
         figureCaption="Assets are reusable and shared; Current is this term; Private is yours alone."
       >
         <p>
-          Alongside the documents, three <strong>collections</strong> hold
+          Alongside the documents, three <strong>collections</strong>{" "}hold
           everything else — each with a clear job:
         </p>
         <dl className="flex flex-col divide-y divide-[var(--edge-soft)]">

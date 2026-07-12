@@ -149,3 +149,27 @@ Two-repo public/private invariant (fail-closed everywhere) · `packageOps` as
 the single validated write path · repos as source of truth (DB = rebuildable
 projection) · immutable block IDs · Tier-3 educator approval for
 publish/registration · orz-markdown as the only markdown engine.
+
+## 6. The two-tier course model + coursewerk (owner note, 2026-07-11)
+
+Refinement of how a course is structured — see
+[DecisionLog.md](DecisionLog.md) for the full entry.
+
+- **Tier 1 — the blueprint (the plan).** Concept maps + assessment guides: plain
+  text, concise, easy to maintain. The instructor's layer — *what* is taught,
+  concept correlations, learning objectives, *how* to assess. Instructors are on
+  the high ground, planning.
+- **Tier 2 — the course materials.** Study guide (the center), slides, practice,
+  quizzes, exams: rich, public-facing assembled products. Built **from the
+  blueprint, largely by AI agents + agent skills** — error-free (or far fewer
+  errors than human editing), accessible, correctly attributed, well-structured
+  and laid out.
+- **Every file keeps a markdown source of truth** — edited in the workspace or
+  downloaded and edited locally.
+- **coursewerk** = the pipeline (in development) that guides an AI agent to
+  assemble a *complete, uploadable* package. It authors exactly what Alembic
+  imports; the `alembic-package` skill + `importPackageFromFiles` are its
+  landing contract. Named explicitly in `/guide`.
+- Framing correction: "study-guide-centered" (goal.md P2) describes Tier 2;
+  the blueprint (concept maps / assessment guides) is the planning layer of P8.
+  The `/guide` was reframed to **Blueprint → Course** accordingly.

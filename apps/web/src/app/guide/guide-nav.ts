@@ -48,7 +48,7 @@ export const GUIDE_GROUPS: GuideGroup[] = [
         slug: "structure",
         href: "/guide/structure",
         title: "Documents & collections",
-        blurb: "The study-guide spine, the documents around it, and the three collections.",
+        blurb: "The blueprint you plan, the course materials assembled from it, and the three collections.",
         status: "live",
       },
       {

@@ -1325,8 +1325,13 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
     (muted base + copper detail, theme-aware). Educator voice throughout,
     grounded in goal.md; built via the impeccable craft flow and browser-verified
     at 375 / 1280 in both themes (fixed a JSX line-wrap whitespace bug and a
-    mobile flex-vs-stack layout bug found in review). **Phase B (deferred):** the
-    five **Do** walkthrough pages with captured screenshots/GIFs.
+    mobile flex-vs-stack layout bug found in review). Content follows the owner's
+    **two-tier model** (2026-07-11, see [DecisionLog](DecisionLog.md)): the
+    **blueprint** (concept maps + assessment guides — the plan) vs. the
+    **course** (study-guide-centered public materials, AI-assembled) — with a
+    `BlueprintFigure` (plan → AI → course) and **coursewerk** named as the
+    upstream authoring pipeline. **Phase B (deferred):** the five **Do**
+    walkthrough pages with captured screenshots/GIFs.
   - 🔄 **Offline document round-trip (U1).** Download a course document, edit it
     offline, upload it back to **replace** the current version — for all course
     documents. `replaceCollectionFileAction` writes the edited bytes at the

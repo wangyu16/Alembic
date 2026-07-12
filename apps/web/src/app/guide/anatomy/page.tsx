@@ -4,7 +4,7 @@ import { PackageFigure } from "../guide-figures";
 export const metadata = {
   title: "Anatomy of a package — Alembic Guide",
   description:
-    "Everything a course package holds and what each part is for: the public side (study guides, slides, practice, assets, this term) and the private side (answer keys, notes, exams).",
+    "Everything a course package holds and what each part is for: the blueprint you plan (concept map + assessment guide), the course materials assembled from it (study guide, slides, practice), shared assets, and the private side (answer keys, notes, exams).",
 };
 
 interface Part {
@@ -12,27 +12,37 @@ interface Part {
   role: string;
 }
 
-const PUBLIC_PARTS: Part[] = [
+const BLUEPRINT_PARTS: Part[] = [
+  {
+    name: "Concept map",
+    role: "Your plan — the concepts you'll teach, how they connect, and the learning objective for each. Plain text, concise.",
+  },
+  {
+    name: "Assessment guide",
+    role: "Your plan for assessment — how each concept should be judged across homework, quizzes, and exams. Instructions, not a question bank.",
+  },
+];
+
+const COURSE_PARTS: Part[] = [
   {
     name: "Study guide",
-    role: "The spine of each chapter — the core reading everything else derives from.",
+    role: "The center of the course materials — the core reading students receive, assembled from the blueprint.",
   },
   {
     name: "Slides",
-    role: "A lecture deck per chapter, generated from the study guide and yours to refine.",
+    role: "A lecture deck per chapter, assembled from the study guide and yours to refine.",
   },
   {
     name: "Practice",
     role: "Worked examples and practice questions students can try on their own.",
   },
   {
-    name: "Concept map",
-    role: "The chapter's concepts and learning objectives — a planning layer that guides generation and coherence checks.",
+    name: "Quizzes & exams",
+    role: "Assessments built from the assessment guide. Public where appropriate; exam content and answer keys stay private (below).",
   },
-  {
-    name: "Assessment guide",
-    role: "How each concept should be assessed across homework, quizzes, and exams — instructions, not a question bank.",
-  },
+];
+
+const SHARED_PARTS: Part[] = [
   {
     name: "Assets",
     role: "Reusable figures, chemical structures, plots, and media you insert into documents.",
@@ -80,7 +90,7 @@ export default function AnatomyPage() {
     <GuidePageShell
       slug="anatomy"
       title="Anatomy of a package"
-      lede="A package is your whole course in one place. Here is everything it can hold, and what each part is for — grouped by the one line that matters: what students see, and what stays yours."
+      lede="A package is your whole course in one place. Here is everything it can hold, and what each part is for — grouped by the lines that matter: the plan you write, the course it produces, and what stays yours."
     >
       <GuideSection
         heading="Two sides, one course"
@@ -88,29 +98,44 @@ export default function AnatomyPage() {
         figureCaption="The public side is the course students receive. The private side, under lock, never reaches them."
       >
         <p>
-          Every package has a <strong>public</strong> side and a{" "}
-          <strong>private</strong>{" "}side, kept physically apart. You author both
-          in the same workspace; Alembic guarantees that private material can
-          never appear on the public side, even by accident. You don&rsquo;t
-          have to remember to hide anything — where a document lives decides who
-          can see it.
+          Every package has a <strong>public</strong>{" "}side and a{" "}
+          <strong>private</strong>{" "}side, kept physically apart. You author both in
+          the same workspace; Alembic guarantees that private material can never
+          appear on the public side, even by accident. Where a document lives
+          decides who can see it.
         </p>
         <p>
-          You won&rsquo;t use every part below in every course. A package can be
-          as small as one study guide, and grow from there.
+          You won&rsquo;t use every part below in every course. A package can be as
+          small as one study guide, and grow from there.
         </p>
       </GuideSection>
 
-      <GuideSection heading="The public side — what students receive">
-        <PartList parts={PUBLIC_PARTS} />
+      <GuideSection heading="The blueprint — what you plan">
+        <p>
+          Concise, plain-text documents where you set the framework. This is the
+          layer you work in most.
+        </p>
+        <PartList parts={BLUEPRINT_PARTS} />
+      </GuideSection>
+
+      <GuideSection heading="The course — what students receive">
+        <p>
+          The polished, public-facing documents, assembled from the blueprint —
+          centered on the study guide.
+        </p>
+        <PartList parts={COURSE_PARTS} />
+      </GuideSection>
+
+      <GuideSection heading="Shared across the course">
+        <PartList parts={SHARED_PARTS} />
       </GuideSection>
 
       <GuideSection heading="The private side — what stays with you">
         <PartList parts={PRIVATE_PARTS} />
         <p className="mt-2">
-          When in doubt about whether something is student-facing, keep it
-          private — you can always share a piece later, but the separation is
-          there to protect you by default.
+          When in doubt about whether something is student-facing, keep it private
+          — you can always share a piece later, but the separation is there to
+          protect you by default.
         </p>
       </GuideSection>
     </GuidePageShell>

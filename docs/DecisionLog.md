@@ -6,6 +6,42 @@ design, and what is deferred to the future. Complements [Status.md](Status.md)
 
 ---
 
+## 2026-07-11 — Two-tier course model (blueprint vs. course) + coursewerk
+
+Owner clarification of the product's mental model, refining the guide framing.
+
+**A course has two tiers:**
+
+1. **The blueprint (the plan / true spine).** Concept maps + assessment guides —
+   plain text, concise, easy to maintain. They define *what* is taught, how
+   concepts correlate, the learning objectives, and *how* each is assessed. This
+   is the layer **instructors work in** ("the high ground" — planning).
+2. **The course materials (public-facing, assembled products).** Study guide,
+   slides, practice, quizzes, exams — rich structure, layout, visual design. They
+   are **assembled from the blueprint, largely by AI agents + agent skills**,
+   which handle the editing (accuracy, accessibility, copyright, structure,
+   format, layout) far more reliably than hand-editing. **The study guide is the
+   center of this tier** (the other public docs organize around it and stay
+   traceable to it).
+
+**Consequences / decisions:**
+
+- The earlier "the study guide is the spine" framing was imprecise — it
+  conflated the tiers. Correct framing: *instructors plan the blueprint; AI
+  assembles the course around a central study guide.* The `/guide` content was
+  reframed to **Blueprint → Course** (owner-chosen labels), with a new
+  `BlueprintFigure` (plan → AI → course).
+- **Every file has a markdown source of truth**, editable in the Alembic
+  workspace **or** downloaded and edited locally — the same document either way.
+- **coursewerk** is the owner's pipeline that drives an AI agent to produce a
+  *complete, uploadable* course package. It is the **upstream author** of exactly
+  what Alembic ingests: the [`alembic-package` skill](../.claude/skills/alembic-package/SKILL.md)
+  + `importPackageFromFiles`/`/api/import-package` are its downstream landing
+  contract. The guide names coursewerk explicitly (owner-approved).
+- This does not contradict goal.md: Principle 2 ("study-guide centered") applies
+  to the *course-materials* tier; Principle 8 ("open does not mean flat —
+  concept maps, blueprints as planning layers") is the *blueprint* tier.
+
 ## 2026-07-11 — Offline authoring, document round-trip, pre-upload hardening
 
 Context: making Alembic ready for educators to **author a whole package offline
