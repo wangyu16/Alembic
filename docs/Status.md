@@ -68,6 +68,22 @@ a `--for-discovery` gate. Verified: typecheck + 449 tests + web build. **No migr
 in the event log for now. Future: the AI assistant is the *metered* part (BYO-key / sponsored / paid
 credits) while the platform stays free — messaging pass next, metering machinery later.
 
+**Platform is free/open; AI is metered (messaging, 2026-07-12):** a homepage line + a Core-ideas note
+declare that Alembic the platform is always free and open, while the optional **AI assistant runs on
+credits** (sponsored/grant or purchased) — so the operator is never liable for every user's AI cost. Messaging
+only; the metering machinery (on the existing entitlement seam) is deferred, no billing UX.
+
+**Current-term: syllabus + miscellaneous links — durable half (2026-07-12):** two additions to a course's
+current term, shown on the student site. **Syllabus** = a fixed single-document slot
+`current/<term-id>/syllabus.<ext>` (contract `syllabusPath`/`isSyllabusPath`), rendered as a prominent link
+at the top of "This term"; `gatherCurrentTerm` detects + publishes it. **Miscellaneous** = an
+instructor-managed `{label,url}` list (`manifest.currentTermLinks`), each opening in a **new tab**
+(`rel=noopener`), rendered under a "Miscellaneous" heading — distinct from the existing file-based `misc/`
+section; `setTermLinksAction` persists it (URL schema-validated). Renderer `CourseTermData` gains
+`syllabus` + `miscLinks`. **Durable + tested** (contract + renderer, 473 tests, web build). **Remaining: the
+thin workspace UI** (a syllabus panel + a links editor in `current-collection-view.tsx`) — auth-gated, lands
+next.
+
 **Superseded design (kept for guardrail history):** the 2026-06 “editor overhaul (v2)” — a bespoke three-pane editor with per-section `.md` editing and `.md.html` *export* — was **superseded by the self-contained-editing direction above** (owner decision, 2026-07-03/04) and archived at [docs/archive/spec-workspace-editor-overhaul.md](archive/spec-workspace-editor-overhaul.md). Its durable guardrails (G1–G8) shipped; the bespoke-editor surface did **not** — the workspace hosts the in-file editors instead. The 7-category rail and chapter/publish flows it prototyped carried over into the hosting shell.
 
 **Workspace polish (in progress).** Iterating on the hosting shell's details: the
