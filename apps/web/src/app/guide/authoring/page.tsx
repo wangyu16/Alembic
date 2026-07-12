@@ -59,13 +59,15 @@ export default function AuthoringPage() {
         </p>
       </GuideSection>
 
-      <GuideSection heading="Prefer to edit elsewhere? Download and replace">
+      <GuideSection heading="Take it offline: download and replace">
         <p>
           Every document has <strong>Download</strong>{" "}and{" "}
-          <strong>Replace</strong>{" "}controls. Download the source, edit it in
-          whatever tool you like, and upload it back to replace the current
-          version — its address and identity stay put, so links never break. The
-          full offline story is in{" "}
+          <strong>Replace</strong>{" "}controls. Because the editor is built into the
+          file, you can download it and edit it right on your own computer —
+          nothing to install — or hand it to any AI agent with the agent skill.
+          Upload it back with <strong>Replace</strong>{" "}and it takes the place of
+          the current version; its address and identity stay put, so links never
+          break. The full offline story is in{" "}
           <Link href="/guide/offline">Work offline &amp; upload</Link>.
         </p>
       </GuideSection>

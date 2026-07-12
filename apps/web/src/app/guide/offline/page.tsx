@@ -21,11 +21,16 @@ export default function OfflinePage() {
         figureCaption="Download a document, edit it anywhere, and Replace it — it keeps the same identity, so its links never break."
       >
         <p>
-          On any document — study guide, slides, an asset, a private note — use{" "}
-          <strong>Download</strong>{" "}to take it out, edit it in your own tools, and{" "}
-          <strong>Replace</strong>{" "}to upload the edited version back. Because it
-          returns to the same place, its permalink and history carry straight
-          through; a citation made before the edit still resolves after it.
+          Take a document out with <strong>Download</strong>. Alembic&rsquo;s
+          documents are <strong>self-contained</strong>{" "}— the editor is built into
+          the file — so on your own computer you just open it in a browser and edit
+          in place, with nothing to install and no account needed. Prefer to work
+          with AI? Hand the file to any AI agent along with its{" "}
+          <strong>agent skill</strong>, and it edits with the same structure and
+          identity rules the platform uses. When you&rsquo;re done,{" "}
+          <strong>Replace</strong>{" "}uploads it back — and because it returns to the
+          same place, its permalink and history carry straight through, so a
+          citation made before the edit still resolves.
         </p>
       </GuideSection>
 
