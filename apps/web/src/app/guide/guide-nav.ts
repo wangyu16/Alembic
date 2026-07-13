@@ -34,7 +34,14 @@ export const GUIDE_GROUPS: GuideGroup[] = [
         slug: "ideas",
         href: "/guide/ideas",
         title: "Core ideas",
-        blurb: "What Alembic is, in five plain ideas — and why your work stays yours.",
+        blurb: "The three ideas Alembic is built on — and why your work stays yours.",
+        status: "live",
+      },
+      {
+        slug: "building",
+        href: "/guide/building",
+        title: "How a course gets built",
+        blurb: "What you decide, what AI handles, and what Alembic guarantees — clean provenance, accessibility, and a course that stays consistent.",
         status: "live",
       },
       {

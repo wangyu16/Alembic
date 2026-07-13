@@ -134,6 +134,21 @@ function SmallPieceVignette() {
   );
 }
 
+function AssuranceVignette() {
+  return (
+    <svg viewBox="0 0 48 48" className={vg} aria-hidden>
+      <g {...stroke}>
+        <rect x="9" y="9" width="18" height="24" rx="2" />
+        <path d="M13 16h10M13 21h10M13 26h6" />
+      </g>
+      <g {...stroke} className="text-[var(--accent)]">
+        <path d="M31 12l1.4 3.2L36 16.6l-2.6 2.2.7 3.6-3.1-1.9-3.1 1.9.7-3.6L23 16.6l3.6-.4z" />
+        <path d="M25 36l4 4 8-9" />
+      </g>
+    </svg>
+  );
+}
+
 function CopySourceVignette() {
   return (
     <svg viewBox="0 0 48 48" className={vg} aria-hidden>
@@ -161,6 +176,7 @@ function CopySourceVignette() {
 /** A small line vignette per guide page, reused as card art on the hub. */
 const CARD_ART: Record<string, React.ReactNode> = {
   ideas: <TruthVignette />,
+  building: <AssuranceVignette />,
   anatomy: <PackageVignette />,
   structure: <StudentCopyVignette />,
   permalinks: <CopySourceVignette />,

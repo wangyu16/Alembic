@@ -47,11 +47,13 @@ export default function OfflinePage() {
           structure, accessibility, attribution, and layout.
         </p>
         <p>
-          <a href="https://github.com/wangyu16/coursewerk" target="_blank" rel="noreferrer">
-            coursewerk
+          <a href="https://github.com/wangyu16/orz-coursewerk" target="_blank" rel="noreferrer">
+            Coursewerk
           </a>{" "}
           is the pipeline that drives that agent end to end, producing a complete,
-          ready-to-upload package.
+          ready-to-upload package — with the same provenance, accessibility, and
+          consistency checks Alembic guarantees.{" "}
+          <Link href="/guide/building">How a course gets built &rarr;</Link>
         </p>
       </GuideSection>
 

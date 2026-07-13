@@ -1380,7 +1380,22 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
     (`Current (this term)`); and **List publicly → Discover** added as an explicit
     sharing step, separate from publish (new "5 · Share it" on Getting started and
     a lead "List your work publicly" section on Share & adapt; `StepsFigure`
-    extended to 5 steps with the broadcast/list step). **Follow-up (optional):**
+    extended to 5 steps with the broadcast/list step). **Three-aspect
+    incorporation (2026-07-13, owner-directed).** Distilled a whole-family study
+    (`orz-family/oer_authoring_with_alembic.md` — what Alembic brings the OER
+    community across the six repos) down into the guide. **Core ideas** reframed
+    around the **three pillars** (versioning-and-publishing-without-Git · you
+    lead / AI handles the details · documents carry their own editor), folding
+    the old five ideas in. New **Understand** page **How a course gets built**
+    (`/guide/building`) fills the under-covered "instructor high / AI details"
+    story in a plain-voice **"how it works" layer** — names **Coursewerk** as the
+    whole-package agent path, the six in-workspace scoped AI ops, and the
+    **guarantees** (clean provenance & attribution, accessibility floor,
+    cross-document consistency via the study-guide spine, valid formatting) +
+    free-platform/metered-AI; uses `BlueprintFigure` + `SpineFigure`, new
+    `AssuranceVignette` hub card art. Fixed the `offline` page's Coursewerk link
+    (`wangyu16/orz-coursewerk`) + cross-linked it to `/guide/building`.
+    Typecheck + web build clean; browser-verified. **Follow-up (optional):**
     real workspace screenshots/GIFs — the pages read complete on generated
     figures; captures need an authenticated session.
   - 🔄 **Offline document round-trip (U1).** Download a course document, edit it
