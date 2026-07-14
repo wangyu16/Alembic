@@ -314,14 +314,11 @@ export async function publishSiteAction(
         } catch {
           /* omit the practice link for this chapter */
         }
-        try {
-          const pagedHtml = await generateSelfContainedFile({ kind: "paged", markdown, title: ch.title, delivery: "cdn", metadata: meta });
-          const pagedHref = `paged/${ch.slug}.paged.html`;
-          pageFiles.push({ path: pagedHref, content: pagedHtml });
-          chapter.pagedHref = pagedHref;
-        } catch {
-          /* omit the print link for this chapter */
-        }
+        // Print/paged view DISABLED for now (owner request, 2026-07-14): we
+        // neither generate `paged/<slug>.paged.html` nor set `chapter.pagedHref`,
+        // so course-site renders no "Print" link. To re-enable, restore this
+        // block (`generateSelfContainedFile({ kind: "paged", … })` →
+        // `pageFiles.push` → `chapter.pagedHref = …`).
 
         chapters.push(chapter);
       } catch {
