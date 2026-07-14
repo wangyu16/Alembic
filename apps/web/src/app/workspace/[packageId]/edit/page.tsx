@@ -5,6 +5,7 @@ import {
   listTerms,
   loadStudyGuide,
   loadCourseConceptMap,
+  isPristinePackage,
   type CollectionScopeTree,
   type TermInfo,
 } from "@alembic/package-ops";
@@ -13,6 +14,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
 import { clientForUser, githubConfig, installUrl } from "@/lib/github";
 import { StudioShell, type StudioCategory, type AiAccess } from "./studio-shell";
+import { PopulatePackageBanner } from "../_components/populate-package";
 import { parseWorkspaceView } from "./nav";
 import { syncPackageRegistry } from "@/lib/register";
 import { SupabaseDocumentRegistryStore } from "@/lib/document-registry-store";
@@ -61,6 +63,15 @@ export default async function EditShellPage({
   // R2: keep the documents registry in sync with the package's current files
   // (rebuildable projection; best-effort, never blocks the editor).
   await syncPackageRegistry(supabase, packageId, "created");
+
+  // A published package still holding only its as-created placeholders can be
+  // filled in one shot by uploading the offline-authored .zip (images and all).
+  // Show the upload empty-state only then; once it has content, upload replacing
+  // it is a separate, future feature.
+  const showUploadEmptyState =
+    record.storage === "github" &&
+    Boolean(record.manifest.publicRepo) &&
+    isPristinePackage(await store.listFiles(packageId));
 
   const chapters = await listChapters(store, packageId);
   const activeChapter = chapters.find((c) => c.slug === chapter) ?? chapters[0] ?? null;
@@ -245,7 +256,9 @@ export default async function EditShellPage({
   };
 
   return (
-    <StudioShell
+    <>
+      {showUploadEmptyState && <PopulatePackageBanner packageId={packageId} />}
+      <StudioShell
       packageId={packageId}
       title={record.title}
       unitTerm={record.manifest.unitTerm}
@@ -277,6 +290,7 @@ export default async function EditShellPage({
       currentLinks={record.manifest.currentTermLinks ?? []}
       publishing={publishing}
       aiAccess={aiAccess}
-    />
+      />
+    </>
   );
 }

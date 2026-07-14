@@ -1414,6 +1414,32 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
     reaches those documents, not just the collections. It derives the space from
     the path and reloads after a replace so a hosted editor regenerates from the
     new source.) Raw binaries (no meta island) stay path-based.
+  - 🔄 **Upload a package into a published empty course (2026-07-14, "Case A").**
+    Reframed the whole zip-upload flow so **nothing is left behind** (the old
+    trial import stored text only and skipped images/PDFs). Upload now targets a
+    package that is **already published** to GitHub — so every valid file, text
+    **and** images/PDFs, is committed to the paired repos (images as real blobs
+    via the `encoding` flag), and the as-created placeholders are cleared.
+    **Upload no longer creates a package** (owner decision): the model is *create
+    → publish → upload to populate*, and populate is refused unless the target is
+    published **and** still pristine (replacing a course that already has content
+    is "Case B", deferred). Durable core (`@alembic/package-ops`): `SEED_CONTENT_PATHS`
+    + `isPristinePackage` (path-based, rebuildable — no migration) and the pure
+    planner `planPackagePopulation` (same structural + two-repo + uid validation
+    as import; forces the target's packageId + repo pair onto the uploaded
+    manifest; emits public/private change sets + placeholder deletions) — 11 tests
+    (two-repo boundary, binary-as-blob, identity forcing, deletion logic, validation
+    failures). Thin client: `/api/populate-package` (unzip → guards → plan →
+    projection `putFiles`/`deleteFiles` → `syncFilesToGitHub`/`syncPrivateFilesToGitHub`
+    → manifest adopt → registry re-projection); a fixed **empty-state banner**
+    (`PopulatePackageBanner`) shown in the editor only when published + pristine;
+    the old create-from-zip route + `ImportPackage` button removed, replaced by a
+    guided hint in the workspace list. Guide `offline` page updated to the new
+    flow. Typecheck + all tests (package-ops 268) + web build clean. **Not yet
+    live-verified in the browser** (the empty-state needs a GitHub-published
+    package + auth); durable logic is unit-covered. **Case B (upload-to-replace a
+    non-empty course)** — snapshot-first, diff preview, embedded-identity
+    preservation — deferred as a future feature.
   - ✅ **Durable document identity (U2).** A stable `uid` is embedded in each
     self-contained carrier's `#orz-meta` island — `orz-markdown@1.6.0`
     (`DocMeta.uid`, published) carries it; because `serializeDoc()` never

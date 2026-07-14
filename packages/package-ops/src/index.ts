@@ -28,3 +28,4 @@ export * from "./license-file";
 export * from "./rewrite-refs";
 export * from "./validate-package";
 export * from "./import-package";
+export * from "./populate-package";

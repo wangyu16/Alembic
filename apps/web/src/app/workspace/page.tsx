@@ -4,7 +4,6 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createPackageAction } from "./actions";
 import { reconcileArchivedPackages } from "./lifecycle-actions";
 import { PackageActions } from "./_components/package-actions";
-import { ImportPackage } from "./_components/import-package";
 import { PackageSnapshots } from "./_components/package-snapshots";
 import { ArchivedPackages } from "./_components/archived-packages";
 
@@ -121,7 +120,12 @@ export default async function WorkspacePage() {
             Create
           </button>
         </form>
-        <ImportPackage />
+        <p className="mt-4 border-t border-edge pt-4 text-sm text-muted">
+          Built a package offline (e.g. with an AI agent)?{" "}
+          <span className="text-ink">Create the course above and publish it</span>,
+          then open it and upload your <code className="text-xs">.zip</code> to fill
+          it in — images and all.
+        </p>
       </section>
 
       <section>

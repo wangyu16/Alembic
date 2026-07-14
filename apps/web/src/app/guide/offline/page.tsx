@@ -57,19 +57,21 @@ export default function OfflinePage() {
         </p>
       </GuideSection>
 
-      <GuideSection heading="Import a .zip">
+      <GuideSection heading="Upload a whole package">
         <p>
-          From <Link href="/workspace">your workspace</Link>, choose{" "}
-          <strong>Import a .zip package</strong>. Alembic validates the whole
+          To bring a package in, first <strong>create the course</strong> in{" "}
+          <Link href="/workspace">your workspace</Link> and{" "}
+          <strong>publish</strong> it — that sets up the empty course. Then open it
+          and <strong>upload your .zip</strong>: Alembic validates the whole
           archive — the two-side separation, the required files, every document —
-          and, if it&rsquo;s sound, opens it as a <strong>trial</strong>{" "}you can
-          review and then publish. If anything is off, it tells you exactly what to
-          fix.
+          and, if it&rsquo;s sound, fills the course in. If anything is off, it
+          tells you exactly what to fix.
         </p>
         <p>
-          One thing to expect: a trial lives in Alembic&rsquo;s own storage and is
-          text-only, so images and PDFs are added after you publish. All of the
-          text — study guides, slides, structures, notes — comes in right away.
+          Because the course is already published, <strong>everything commits at
+          once — study guides, slides, and images and all</strong>; nothing is left
+          for later. (Upload fills an <em>empty</em> course; replacing a course that
+          already has content is coming later.)
         </p>
       </GuideSection>
     </GuidePageShell>

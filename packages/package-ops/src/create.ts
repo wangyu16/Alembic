@@ -11,6 +11,45 @@ import {
 import type { PackageFile, PackageRecord, PackageStore } from "./store";
 import { LICENSE_PATH, licenseFileContent } from "./license-file";
 
+/**
+ * The two content placeholders a fresh package is seeded with (paths only — the
+ * welcome study-guide chapter and the private starter note). Root scaffold
+ * (`alembic.json`, `LICENSE`) is not listed here; it is always present and is
+ * overwritten rather than treated as content. Exported so the "populate a
+ * pristine package" path can recognize an as-created package and clear any of
+ * these placeholders the upload doesn't itself provide. Keep in sync with the
+ * `files` seeded in {@link createSandboxPackage}.
+ */
+export const SEED_CONTENT_PATHS = [
+  "study-guide/01-getting-started.md",
+  "private-instructor/notes/getting-started.md",
+] as const;
+
+/**
+ * Root files that are scaffold, not authored content — always present on a
+ * fresh package, and overwritten (never a signal that the package has content).
+ */
+export const ROOT_SCAFFOLD_PATHS = [
+  "alembic.json",
+  "LICENSE",
+  "README.md",
+  "CITATION.cff",
+  ".gitignore",
+] as const;
+
+/**
+ * TRUE when a package still holds only its as-created placeholders — no authored
+ * content has been added. This is the guard for "populate a published *empty*
+ * package from a zip": populate replaces the placeholders, and refuses a package
+ * that already has real content (replacing that is a separate, future feature).
+ * Path-based (rebuildable from repo content, no flag/migration): a package is
+ * pristine iff every file is root scaffold or one of the two seed placeholders.
+ */
+export function isPristinePackage(files: { path: string }[]): boolean {
+  const allowed = new Set<string>([...ROOT_SCAFFOLD_PATHS, ...SEED_CONTENT_PATHS]);
+  return files.every((f) => allowed.has(f.path.replace(/\\/g, "/").replace(/^\/+/, "")));
+}
+
 export interface CreateSandboxPackageInput {
   ownerId: string;
   title: string;
