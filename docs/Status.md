@@ -1413,7 +1413,11 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
     which has no host-level Download/Replace; the bar adds it so the round-trip
     reaches those documents, not just the collections. It derives the space from
     the path and reloads after a replace so a hosted editor regenerates from the
-    new source.) Raw binaries (no meta island) stay path-based.
+    new source.) Raw binaries (no meta island) stay path-based. **Download +
+    Replace are compact icon buttons** (2026-07-14) — a matched
+    down-arrow / up-arrow-into-tray pair (title + `aria-label`), tucked into the
+    editor header cluster and the collection file rows so they add no space vs.
+    the old text buttons.
   - 🔄 **Upload a package into a published empty course (2026-07-14, "Case A").**
     Reframed the whole zip-upload flow so **nothing is left behind** (the old
     trial import stored text only and skipped images/PDFs). Upload now targets a

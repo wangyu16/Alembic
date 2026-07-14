@@ -30,14 +30,30 @@ export function DocumentActionsBar({
   const name = clean.split("/").pop() ?? clean;
 
   return (
-    <div className="flex flex-wrap items-center gap-2">
+    <div className="flex shrink-0 items-center gap-0.5">
       <a
         href={`/api/asset/${packageId}/${clean}`}
         download={name}
-        className="btn btn-ghost btn-xs"
+        aria-label="Download to edit offline"
+        className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-faint transition-colors hover:bg-elevated hover:text-ink"
         title="Download this document to edit offline"
       >
-        Download
+        {/* Download-from-tray — mirrors the Replace glyph (arrow down vs up). */}
+        <svg
+          viewBox="0 0 16 16"
+          width="15"
+          height="15"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.4"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden
+        >
+          <path d="M8 3v7" />
+          <path d="M5 7l3 3 3-3" />
+          <path d="M3 10.5v1.5A1.5 1.5 0 0 0 4.5 13.5h7a1.5 1.5 0 0 0 1.5-1.5v-1.5" />
+        </svg>
       </a>
       <ReplaceFileButton
         packageId={packageId}
@@ -47,7 +63,7 @@ export function DocumentActionsBar({
         onDone={() => window.location.reload()}
         onError={setError}
       />
-      {error && <span className="text-[11px] text-danger">{error}</span>}
+      {error && <span className="ml-1 text-[11px] text-danger">{error}</span>}
     </div>
   );
 }

@@ -82,10 +82,30 @@ export function ReplaceFileButton({
 
   return (
     <label
-      className={`btn btn-ghost btn-xs ${busy || disabled ? "pointer-events-none opacity-60" : "cursor-pointer"}`}
-      title="Upload an edited version to replace this document (keeps its share link)"
+      aria-label={busy ? "Replacing…" : "Replace with an edited version"}
+      aria-busy={busy || undefined}
+      className={`inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-faint transition-colors hover:bg-elevated hover:text-ink ${
+        busy || disabled ? "pointer-events-none opacity-50" : "cursor-pointer"
+      }`}
+      title="Replace with an edited version (upload; keeps its share link)"
     >
-      {busy ? "Replacing…" : "Replace"}
+      {/* Upload-into-tray — mirrors the Download glyph (arrow up vs down). */}
+      <svg
+        viewBox="0 0 16 16"
+        width="15"
+        height="15"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden
+        className={busy ? "animate-pulse" : undefined}
+      >
+        <path d="M8 10V3" />
+        <path d="M5 6l3-3 3 3" />
+        <path d="M3 10.5v1.5A1.5 1.5 0 0 0 4.5 13.5h7a1.5 1.5 0 0 0 1.5-1.5v-1.5" />
+      </svg>
       <input
         ref={ref}
         type="file"
