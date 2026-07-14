@@ -50,8 +50,6 @@ import { ReplaceFileButton } from "./replace-file-button";
  * this file can't reach them — copying their logic verbatim.
  */
 
-const MATERIALS_SPACE = "materials";
-
 /** Per-file share metadata, projected from the registry (keyed by repo path). */
 export interface AssetMeta {
   docId: string;
@@ -123,17 +121,22 @@ function useCopy(): [boolean, (text: string) => void, string | null] {
 
 export function AssetsCollectionView({
   packageId,
+  spaceDir,
   tree,
   chapters,
   assetMeta,
   onDirty,
 }: {
   packageId: string;
+  /** The asset space dir this package uses (`assets` v2 / `materials` v1). */
+  spaceDir: string;
   tree: CollectionScopeTree[];
   chapters: Chapter[];
   assetMeta: Record<string, AssetMeta>;
   onDirty?: (d: boolean) => void;
 }): React.JSX.Element {
+  // Reads (the `tree`) and writes must use the SAME dir this package uses.
+  const MATERIALS_SPACE = spaceDir;
   const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -420,12 +423,23 @@ export function AssetsCollectionView({
       {error && <p className="text-sm text-danger">{error}</p>}
       {note && <p className="text-xs text-ok">{note}</p>}
 
-      {/* Tree */}
-      {tree.length === 0 ? (
-        <p className="text-sm text-faint">No assets yet — upload one above.</p>
+      {/* Tree — scoped to the Scope selector so the dropdown actually changes
+          the view (course-wide vs a chapter), not just the upload target. */}
+      {(() => {
+        const visibleTree = tree.filter((st) =>
+          targetScope.kind === "course"
+            ? st.scope.kind === "course"
+            : st.scope.kind === "chapter" && st.scope.slug === targetScope.slug,
+        );
+        return visibleTree.length === 0 ? (
+        <p className="text-sm text-faint">
+          {tree.length === 0
+            ? "No assets yet — upload one above."
+            : "No assets in this scope — switch Scope above, or upload one here."}
+        </p>
       ) : (
         <div className="flex flex-col gap-4">
-          {tree.map((st) => (
+          {visibleTree.map((st) => (
             <div key={JSON.stringify(st.scope)}>
               <p className="mb-1 text-xs uppercase tracking-wide text-faint">
                 {scopeLabel(st.scope, chapters)}
@@ -434,7 +448,8 @@ export function AssetsCollectionView({
             </div>
           ))}
         </div>
-      )}
+        );
+      })()}
     </div>
   );
 }

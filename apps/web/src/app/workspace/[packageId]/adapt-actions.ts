@@ -401,7 +401,8 @@ export async function adaptElementAction(
     const sourceLicense = (srcPkg?.manifest as { license?: License } | null)?.license;
     if (!sourceLicense) return { ok: false, error: "Couldn't read the source's license." };
 
-    const carrier = await fetchDocBytes(db, doc);
+    // A carrier is a self-contained HTML doc (text); decode the bytes as UTF-8.
+    const carrier = (await fetchDocBytes(db, doc))?.toString("utf8") ?? null;
     if (carrier == null) return { ok: false, error: "Couldn't read that element." };
 
     // Already have this exact object here? Return its permalink, don't duplicate.

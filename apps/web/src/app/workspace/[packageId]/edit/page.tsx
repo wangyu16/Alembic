@@ -113,24 +113,39 @@ export default async function EditShellPage({
     categoryFile = { path: single.path, repo: single.repo, content: f?.content ?? "" };
   }
 
-  // The Private collection (CF3): a folder tree over the private-instructor
-  // space, replacing the old single `private-instructor/notes/<slug>.md` file.
+  // Assets/Private live under either the v1 dir (`materials`/`private-instructor`,
+  // used by in-app–created packages) or the v2 dir (`assets`/`private`, used by
+  // uploaded Coursewerk packages). schemaVersion is an unreliable signal (v1-dir
+  // packages still carry schemaVersion 2 — the "label bump"), so detect the dir a
+  // package ACTUALLY uses from its files and use it for both read and write, so
+  // the collection view isn't empty for an uploaded v2 package.
+  const collectionFiles =
+    category === "assets" || category === "private"
+      ? await store.listFiles(packageId)
+      : [];
+  const usesDir = (repo: "public" | "private", dir: string) =>
+    collectionFiles.some(
+      (f) => f.repo === repo && (f.path === dir || f.path.startsWith(`${dir}/`)),
+    );
+  const assetsSpaceDir = usesDir("public", "assets") ? "assets" : "materials";
+  const privateSpaceDir = usesDir("private", "private") ? "private" : "private-instructor";
+
+  // The Private collection (CF3): a folder tree over the private space.
   const privateTree: CollectionScopeTree[] | null =
     category === "private"
       ? await collectionTree(store, packageId, {
-          spaceDir: "private-instructor",
+          spaceDir: privateSpaceDir,
           repo: "private",
           chapterSlugs: chapters.map((c) => c.slug),
           fileTypes: record.manifest.fileTypes,
         })
       : null;
 
-  // The Assets collection (CF4): a folder tree over the materials space (the v1
-  // asset dir; the registry normalizes it to the `assets` space for Discover).
+  // The Assets collection (CF4): a folder tree over the asset space.
   const assetsTree: CollectionScopeTree[] | null =
     category === "assets"
       ? await collectionTree(store, packageId, {
-          spaceDir: "materials",
+          spaceDir: assetsSpaceDir,
           repo: "public",
           chapterSlugs: chapters.map((c) => c.slug),
           fileTypes: record.manifest.fileTypes,
@@ -282,6 +297,8 @@ export default async function EditShellPage({
       categoryFile={categoryFile}
       privateTree={privateTree}
       assetsTree={assetsTree}
+      assetsSpaceDir={assetsSpaceDir}
+      privateSpaceDir={privateSpaceDir}
       assetMeta={assetMeta}
       terms={terms}
       activeTermId={activeTermId}

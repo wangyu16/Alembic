@@ -28,6 +28,28 @@ export async function fetchPublicRepoFile(
 }
 
 /**
+ * Fetch a public repo file's raw BYTES (not text). Use this for anything that
+ * may be binary (images, PDFs): `fetchPublicRepoFile`'s `res.text()` UTF-8-decodes
+ * the body, which is lossy for binary and corrupts the bytes. Text callers that
+ * only ever read `.md`/`.json` may keep using `fetchPublicRepoFile`.
+ */
+export async function fetchPublicRepoBytes(
+  coords: RepoCoords,
+  path: string,
+  ref = "main",
+  fetchImpl: FetchLike = defaultFetch,
+): Promise<Uint8Array | null> {
+  const url = `https://raw.githubusercontent.com/${coords.owner}/${coords.repo}/${ref}/${path}`;
+  const res = await fetchImpl(url, { method: "GET" });
+  if (res.status === 404) return null;
+  if (!res.ok) {
+    throw new GitHubError(`Public read ${path} failed`, res.status, await res.text().catch(() => undefined));
+  }
+  const ab = await res.arrayBuffer?.();
+  return ab ? new Uint8Array(ab) : null;
+}
+
+/**
  * Thin GitHub REST client over an installation token. Only the operations
  * Alembic needs: create repos from templates, commit a file set atomically
  * (Git Data API), list commits, and read a file at a ref (for restore).

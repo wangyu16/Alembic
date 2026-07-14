@@ -1,5 +1,7 @@
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
+import { isBinaryPath } from "@/lib/collection-upload";
+import { bytesToBody } from "@/lib/doc-content";
 
 /**
  * Serve a package file from the store for the in-app authoring preview — an
@@ -70,7 +72,13 @@ export async function GET(
   // package — so serve active content in an opaque-origin sandbox (scripts run,
   // no same-origin session access). `nosniff` pins the declared type.
   const active = ext === "html" || ext === "svg";
-  return new Response(file.content, {
+  // Binary files (images/PDFs) are stored base64 in the sandbox — decode to real
+  // bytes; serving the base64 string as the body corrupts the image. Text (md/
+  // html/svg) is stored/served as-is.
+  const body: ArrayBuffer | string = isBinaryPath(path)
+    ? bytesToBody(Buffer.from(file.content, "base64"))
+    : file.content;
+  return new Response(body, {
     headers: {
       "content-type": contentType,
       // Authoring preview only; never cache across edits.

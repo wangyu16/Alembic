@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
-import { fetchDocBytes } from "@/lib/doc-content";
+import { fetchDocBytes, bytesToBody } from "@/lib/doc-content";
 
 export const dynamic = "force-dynamic";
 
@@ -161,7 +161,9 @@ export async function GET(
   const content = await fetchDocBytes(db, doc);
   if (content === null) return notFound();
 
-  return new Response(content, {
+  // Serve the true bytes (an ArrayBuffer BodyInit) so binary assets aren't
+  // corrupted — `content` is a Buffer, not a string.
+  return new Response(bytesToBody(content), {
     headers: {
       "content-type": mimeFor(doc.path),
       // Live links: short cache. Pinned-and-matching: immutable.

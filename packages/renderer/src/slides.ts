@@ -140,7 +140,11 @@ body { padding: 0; overflow: hidden; }
 .deck {
   height: 100vh;
   overflow-y: scroll;
-  scroll-snap-type: y mandatory;
+  /* proximity (not mandatory): a slide taller than the viewport — e.g. a
+     step/reveal slide whose items this non-reveal fallback shows all at once —
+     must NOT capture the snap and trap navigation. Keyboard nav below is the
+     authoritative control; snapping only tidies resting position. */
+  scroll-snap-type: y proximity;
   scroll-behavior: smooth;
 }
 .deck::-webkit-scrollbar { width: 0; height: 0; }
@@ -149,11 +153,15 @@ body { padding: 0; overflow: hidden; }
   scroll-snap-align: start;
   display: flex;
   flex-direction: column;
-  justify-content: center;
+  /* flex-start so a slide taller than the viewport starts at the top and scrolls
+     down naturally (center would clip its head off-screen with no way to reach it). */
+  justify-content: flex-start;
   align-items: center;
   padding: clamp(1.5rem, 6vh, 5rem) clamp(1rem, 6vw, 4rem);
   box-sizing: border-box;
 }
+/* Vertically center content that fits, without clipping content that doesn't. */
+.slide .markdown-body { margin-block: auto; }
 .slide .markdown-body {
   background: transparent;
   border: none;
@@ -189,33 +197,49 @@ const DECK_NAV_JS = `
   var counter = document.querySelector(".deck-counter");
   if (!deck || slides.length === 0) return;
 
-  function current() {
+  // Explicit current index is the SOURCE OF TRUTH for keyboard nav. Deriving it
+  // from scrollTop (the old behavior) let mandatory snap re-capture an oversized
+  // slide mid-animation, cancelling the move and trapping the deck — a key press
+  // must always advance regardless of scroll resting position.
+  var idx = 0;
+  var programmatic = false;
+  var settle;
+  function clamp(i) { return Math.max(0, Math.min(slides.length - 1, i)); }
+  function fromScroll() {
     var mid = deck.scrollTop + deck.clientHeight / 2;
-    var idx = 0;
-    for (var i = 0; i < slides.length; i++) {
-      if (slides[i].offsetTop <= mid) idx = i;
-    }
-    return idx;
-  }
-  function go(i) {
-    var clamped = Math.max(0, Math.min(slides.length - 1, i));
-    slides[clamped].scrollIntoView({ behavior: "smooth", block: "start" });
+    var n = 0;
+    for (var i = 0; i < slides.length; i++) { if (slides[i].offsetTop <= mid) n = i; }
+    return n;
   }
   function updateCounter() {
-    if (counter) counter.textContent = (current() + 1) + " / " + slides.length;
+    if (counter) counter.textContent = (idx + 1) + " / " + slides.length;
+  }
+  function go(i) {
+    idx = clamp(i);
+    programmatic = true;               // ignore the scroll events this triggers
+    slides[idx].scrollIntoView({ behavior: "smooth", block: "start" });
+    updateCounter();
+    clearTimeout(settle);
+    settle = setTimeout(function () { programmatic = false; }, 700);
   }
 
   document.addEventListener("keydown", function (e) {
     var k = e.key;
     if (k === "ArrowRight" || k === "ArrowDown" || k === "PageDown" || k === " " || k === "Spacebar") {
       e.preventDefault();
-      go(current() + 1);
+      go(idx + 1);
     } else if (k === "ArrowLeft" || k === "ArrowUp" || k === "PageUp") {
       e.preventDefault();
-      go(current() - 1);
+      go(idx - 1);
     }
   });
-  deck.addEventListener("scroll", updateCounter, { passive: true });
+  // A manual scroll (not one of our own) re-syncs the index so the next key press
+  // continues from where the reader actually is.
+  deck.addEventListener("scroll", function () {
+    if (programmatic) return;
+    idx = fromScroll();
+    updateCounter();
+  }, { passive: true });
   updateCounter();
 })();
 `;

@@ -1418,6 +1418,34 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
     down-arrow / up-arrow-into-tray pair (title + `aria-label`), tucked into the
     editor header cluster and the collection file rows so they add no space vs.
     the old text buttons.
+  - 🔄 **Post-upload viewing fixes (2026-07-14, from a live upload test).**
+    **Bug A — slide deck trapped at a `step`/reveal slide.** With no `WORKER_URL`,
+    published/preview slides render through the renderer's fallback deck
+    (`packages/renderer/src/slides.ts`), which has no orz-slides `step` handling —
+    a `<!-- slide step -->` slide stacks all items into one oversized section and
+    `scroll-snap: y mandatory` + scroll-derived nav traps it. Hardened the
+    fallback: snap `mandatory`→`proximity`, slide `flex-start`+`margin-block:auto`
+    (no clipped head), and **authoritative explicit-index nav** (a key press always
+    advances). Browser-verified on the real 31-slide chapter-2 deck: ArrowDown
+    1→31 and ArrowUp back, past all 5 step slides, no trap. (Proper fix for a
+    deployment is still to set `WORKER_URL` so real orz-slides renders.) **Bug B1
+    — uploaded assets/private missing from the collection view.** `edit/page.tsx`
+    hardcoded the v1 dirs (`materials`/`private-instructor`); a v2 Coursewerk
+    package stores under `assets`/`private`, so the tree filtered them out. Now
+    detects the dir the package actually uses (files, not the unreliable
+    schemaVersion) and threads it to both read (`collectionTree`) and write (the
+    `spaceDir` prop replaces the hardcoded `MATERIALS_SPACE`/`PRIVATE_SPACE`).
+    **Bug B2 — scope dropdown did nothing.** It only set the upload target; the
+    tree rendered all scopes. The Assets + Private views now filter the tree by the
+    selected scope (course-wide vs a chapter). **Bug B3 — binary images corrupted
+    on serve (SVGs fine, JPGs broken).** `fetchPublicRepoFile`'s `res.text()`
+    UTF-8-decoded binary bytes and `/d/[docId]` + `/api/asset` served the base64
+    string as the body — corrupting every image, which F1's permalink rewrite
+    would route through `/d/`. Added `fetchPublicRepoBytes` (arrayBuffer),
+    `fetchDocBytes` now returns real `Buffer` bytes (base64-decoding the sandbox
+    binary), and both routes serve an `ArrayBuffer` (`bytesToBody`). Typecheck +
+    all tests + web build clean. (Raster asset `ridgecrest-road-offset.jpg` failing
+    was this corruption, not a size gate — there is none.)
   - 🔄 **Populate-path ingest fixes (F1–F4, 2026-07-14).** Root-caused four
     failures on a real Coursewerk upload (`wikipedia_plate_tectonics`) and fixed
     the Alembic side (see [upload-contract.md](specs/upload-contract.md) Part 3).

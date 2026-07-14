@@ -250,6 +250,8 @@ export function StudioShell({
   categoryFile,
   privateTree,
   assetsTree,
+  assetsSpaceDir,
+  privateSpaceDir,
   assetMeta,
   terms,
   activeTermId,
@@ -274,6 +276,11 @@ export function StudioShell({
   categoryFile: { path: string; repo: "public" | "private"; content: string } | null;
   privateTree: CollectionScopeTree[] | null;
   assetsTree: CollectionScopeTree[] | null;
+  /** The dir convention this package uses for the asset space (`assets` v2 /
+   *  `materials` v1) and private space (`private` v2 / `private-instructor` v1),
+   *  resolved from its files so reads + writes stay on the same one. */
+  assetsSpaceDir: string;
+  privateSpaceDir: string;
   assetMeta: Record<string, AssetMeta>;
   terms: TermInfo[];
   activeTermId: string | null;
@@ -659,6 +666,7 @@ export function StudioShell({
             <AssetsCollectionView
               key="assets"
               packageId={packageId}
+              spaceDir={assetsSpaceDir}
               tree={assetsTree ?? []}
               chapters={chapters}
               assetMeta={assetMeta}
@@ -680,6 +688,7 @@ export function StudioShell({
             <PrivateCollectionView
               key="private"
               packageId={packageId}
+              spaceDir={privateSpaceDir}
               tree={privateTree ?? []}
               chapters={chapters}
               onDirty={setDirty}
@@ -2389,7 +2398,6 @@ function UploadControl({
  * (`.md`) in the common case, so opening one reuses the plain FileEditor (no
  * hosted iframe → no remount hazard). The tree is a server prop; every mutation
  * calls a server action then router.refresh() to reload it. */
-const PRIVATE_SPACE = "private-instructor";
 
 /** Read a browser File as UTF-8 text, or base64 for a binary. */
 function readFileContent(file: File): Promise<{ content: string; isBinary: boolean }> {
@@ -2426,17 +2434,22 @@ function ClassBadge({ leaf }: { leaf: FileLeaf }) {
 
 function PrivateCollectionView({
   packageId,
+  spaceDir,
   tree,
   chapters,
   onDirty,
   aiAccess,
 }: {
   packageId: string;
+  /** The private space dir this package uses (`private` v2 / `private-instructor` v1). */
+  spaceDir: string;
   tree: CollectionScopeTree[];
   chapters: Chapter[];
   onDirty?: (d: boolean) => void;
   aiAccess: AiAccess;
 }) {
+  // Reads (the `tree`) and writes must use the SAME dir this package uses.
+  const PRIVATE_SPACE = spaceDir;
   const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -2790,23 +2803,34 @@ function PrivateCollectionView({
       {error && <p className="text-sm text-danger">{error}</p>}
       {note && <p className="text-xs text-ok">{note}</p>}
 
-      {/* Tree */}
-      {tree.length === 0 ? (
-        <p className="text-sm text-faint">No private files yet — upload one above.</p>
-      ) : (
-        <div className="flex flex-col gap-4">
-          {tree.map((st) => (
-            <div key={JSON.stringify(st.scope)}>
-              <p className="mb-1 text-xs uppercase tracking-wide text-faint">
-                {scopeLabel(st.scope, chapters)}
-              </p>
-              <div className="panel rounded-lg border border-edge p-2">
-                {renderFolder(st.root, 0)}
+      {/* Tree — scoped to the Scope selector (course-wide vs a chapter). */}
+      {(() => {
+        const visibleTree = tree.filter((st) =>
+          targetScope.kind === "course"
+            ? st.scope.kind === "course"
+            : st.scope.kind === "chapter" && st.scope.slug === targetScope.slug,
+        );
+        return visibleTree.length === 0 ? (
+          <p className="text-sm text-faint">
+            {tree.length === 0
+              ? "No private files yet — upload one above."
+              : "No private files in this scope — switch Scope above, or upload one here."}
+          </p>
+        ) : (
+          <div className="flex flex-col gap-4">
+            {visibleTree.map((st) => (
+              <div key={JSON.stringify(st.scope)}>
+                <p className="mb-1 text-xs uppercase tracking-wide text-faint">
+                  {scopeLabel(st.scope, chapters)}
+                </p>
+                <div className="panel rounded-lg border border-edge p-2">
+                  {renderFolder(st.root, 0)}
+                </div>
               </div>
-            </div>
-          ))}
-        </div>
-      )}
+            ))}
+          </div>
+        );
+      })()}
     </div>
   );
 }
