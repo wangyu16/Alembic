@@ -17,6 +17,13 @@ adapt, cite, share).
   decisions (the "why"), permanent by-design constraints, and the deferred
   future plan. Add an entry when a non-obvious decision or deferral is made.
 - docs/specs/ — written specs (package contract, etc.)
+- [docs/specs/upload-contract.md](docs/specs/upload-contract.md) — **the
+  Alembic⇄Coursewerk package upload contract**: the hard rules a package MUST
+  satisfy to upload/save/publish cleanly (block-id format, asset refs, concept-map
+  path, slide-engine parity, two-repo, manifest), each with its gate cross-check,
+  plus the Alembic-side ingest fixes the populate path still needs. Keep
+  `package-contract`, `release-gates`, the `alembic-package` skill, and
+  Coursewerk's `check_oer.mjs` in sync with it.
 - [docs/SteeringNote.md](docs/SteeringNote.md) — **owner's living steering
   note** (2026-07 direction; refined ahead of the specs — newer thinking wins
   until folded back). Read it before any design/architecture work.
