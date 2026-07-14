@@ -61,14 +61,16 @@ export async function releaseGates(
   });
 
   // 3. Section identifiers valid (across all chapters; IDs are globally unique).
-  const ids = validateBlockIds(
-    blocks.filter((b) => b.id).map((b) => ({ id: b.id! })),
-  );
-  const allHaveIds = blocks.every((b) => b.id);
+  // Per contract v2 §4, a section with NO id is an anonymous section and is
+  // legal — so the gate rejects only *malformed* or *duplicate* ids, never a
+  // merely-absent one. (Requiring every section to have an id contradicted the
+  // contract and blocked publishing a legitimately partial-id guide — e.g. an
+  // uploaded package whose "Chapter Logic"/"Synthesis" sections carry no anchor.)
+  const ids = validateBlockIds(blocks.map((b) => ({ id: b.id })));
   checks.push({
     name: "Section identifiers",
-    ok: ids.ok && allHaveIds,
-    message: "Some sections have missing or duplicate identifiers. Save your study guide and try again.",
+    ok: ids.ok,
+    message: "Some sections have invalid or duplicate identifiers. Save your study guide and try again.",
   });
 
   // 4. Public/private separation — no public file resolves to a private layer.

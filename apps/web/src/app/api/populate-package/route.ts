@@ -4,6 +4,7 @@ import {
   isPristinePackage,
   planPackagePopulation,
   type ImportFile,
+  type PlannedChange,
 } from "@alembic/package-ops";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
@@ -14,6 +15,7 @@ import {
   syncPrivateFilesToGitHub,
 } from "@/lib/github";
 import { syncPackageRegistry } from "@/lib/register";
+import { rewriteMarkdownRefs } from "@/lib/rewrite-md-refs";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -158,13 +160,47 @@ export async function POST(req: NextRequest) {
   await supabase.from("packages").update({ manifest: plan.manifest }).eq("id", packageId);
   await mirrorManifestToSandbox(store, packageId, plan.manifest);
 
-  // Re-project the registry from the now-populated repos.
+  // Re-project the registry from the now-populated repos (assets now have docIds).
   await syncPackageRegistry(supabase, packageId, "uploaded");
+
+  // Now that assets are registered, rewrite each committed .md's relative asset
+  // references (`../assets/x.svg`) to durable `/d/{docId}` permalinks — the same
+  // transform Insert/Replace apply — so figures resolve in the carrier and on the
+  // published site. Assets had to be registered first; this is a second commit
+  // touching only the markdown that actually changed.
+  const resolveRefs = async (
+    changes: PlannedChange[],
+    repo: "public" | "private",
+  ): Promise<PlannedChange[]> => {
+    const out: PlannedChange[] = [];
+    for (const c of changes) {
+      if (c.content === null || !c.path.toLowerCase().endsWith(".md")) continue;
+      const next = await rewriteMarkdownRefs(supabase, packageId, repo, c.path, c.content);
+      if (next !== c.content) out.push({ path: c.path, content: next, encoding: "utf-8" });
+    }
+    return out;
+  };
+  const rewrittenPublic = await resolveRefs(plan.publicChanges, "public");
+  const rewrittenPrivate = await resolveRefs(plan.privateChanges, "private");
+  if (rewrittenPublic.length + rewrittenPrivate.length > 0) {
+    await store.putFiles(packageId, [
+      ...rewrittenPublic.map((c) => ({ repo: "public" as const, path: c.path, content: c.content as string })),
+      ...rewrittenPrivate.map((c) => ({ repo: "private" as const, path: c.path, content: c.content as string })),
+    ]);
+    if (rewrittenPublic.length > 0) {
+      await syncFilesToGitHub(supabase, store, user.id, packageId, rewrittenPublic, "Resolve asset links (Alembic)");
+    }
+    if (rewrittenPrivate.length > 0) {
+      await syncPrivateFilesToGitHub(supabase, store, user.id, packageId, rewrittenPrivate, "Resolve asset links (Alembic)");
+    }
+    await syncPackageRegistry(supabase, packageId, "uploaded");
+  }
 
   return Response.json({
     ok: true,
     packageId,
     filesCommitted: plan.publicChanges.length + plan.privateChanges.length,
     imagesCommitted: plan.binaryPaths.length,
+    linksResolved: rewrittenPublic.length + rewrittenPrivate.length,
   });
 }

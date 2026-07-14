@@ -122,9 +122,12 @@ export async function generateChapterHtmlAction(
     const meta = record ? docMetaForPackage(record.manifest, { title, source: repoUrlOf(record) }) : undefined;
     const html = await generateEditableFile({ kind: "md", markdown, title, theme, metadata: meta });
     return { ok: true, editable: true, html, theme };
-  } catch {
-    // No reachable worker / generation error — degrade to the block editor.
-    return { ok: true, editable: false };
+  } catch (e) {
+    // No reachable worker / generation error — degrade to the block editor, but
+    // surface + log a real generation failure so it isn't silently invisible.
+    const message = e instanceof Error ? e.message : "Document generation failed.";
+    console.error(`generateChapterHtmlAction failed for ${path}: ${message}`);
+    return { ok: true, editable: false, error: message };
   }
 }
 
@@ -163,8 +166,13 @@ export async function generateSlidesHtmlAction(
     const meta = record ? docMetaForPackage(record.manifest, { title, source: repoUrlOf(record) }) : undefined;
     const html = await generateEditableFile({ kind: "slides", markdown: source, title, theme, metadata: meta });
     return { ok: true, editable: true, html, theme };
-  } catch {
-    return { ok: true, editable: false };
+  } catch (e) {
+    // Don't silently degrade: a real orz-slides build failure (e.g. a deck the
+    // pinned engine can't parse) was invisible before — surface + log it so the
+    // deck problem is diagnosable instead of just "stops working".
+    const message = e instanceof Error ? e.message : "Slide generation failed.";
+    console.error(`generateSlidesHtmlAction failed for ${path}: ${message}`);
+    return { ok: true, editable: false, error: message };
   }
 }
 

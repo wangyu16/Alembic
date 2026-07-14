@@ -170,40 +170,40 @@ an open license. **Check:** license in enum; LICENSE present + matching.
 
 ---
 
-## Part 3 — Alembic-side fixes required (Coursewerk rules can't fix these)
+## Part 3 — Alembic-side fixes (✅ landed 2026-07-14)
 
 The populate path (`api/populate-package/route.ts` → `planPackagePopulation`)
-treats uploaded content as inert bytes — unlike the in-workspace write paths,
-which rewrite refs, mint/validate ids, and regenerate through the authoring
-engine. These four must be fixed in Alembic for a clean package to work end to
-end:
+treated uploaded content as inert bytes — unlike the in-workspace write paths,
+which rewrite refs, validate ids, and regenerate through the authoring engine.
+All four are now fixed:
 
-- **F1 · Populate must rewrite relative asset refs → permalinks.** Register
-  assets first, then run the existing `rewriteRelativeRefs` / `rewriteMarkdownRefs`
-  transform over every committed `.md` before commit (the same transform
-  `collection-actions.ts` already uses for insert/replace). Without this, H5-clean
-  refs still render broken. *(Fixes Bug 1.)*
-- **F2 · Ingest must validate + not silently drop block ids.** `blockFromHeading`
-  should surface a malformed/hyphenated id (report it, or normalize on import)
-  rather than nulling it and baking the marker into the heading. And the publish
-  gate's `allHaveIds` (`release-gates.ts`) contradicts the v2 "anonymous sections
-  are legal" rule it cites — relax it to `validateBlockIds`-only so a legitimately
-  partial-id guide can publish. *(Hardens Bug 2 beyond the Coursewerk fix.)*
-- **F3 · Slides: don't downgrade to a foreign deck engine.** For an authored deck,
-  regenerate through orz-slides (the same engine that built it); don't fall back to
-  the renderer's incompatible `splitSlides`, and **surface** the swallowed
-  orz-slides build error in `hosted-actions.ts` instead of returning
-  `editable:false`. *(Fixes Bug 3; versions already match, so the worker path is
-  correct — the fallback is the hazard.)*
-- **F4 · Concept-map loader must read `concepts/course.md`.** Today
-  `loadCourseConceptMap` reads `metadata/course.md` and the structured loader reads
-  `concepts/course.json`; neither reads `concepts/course.md`. Unify on
-  `concepts/course.md` (+ `concepts/<slug>.md`). *(Fixes Bug 4.)*
+- **F1 ✅ · Populate rewrites relative asset refs → permalinks.** The route now
+  registers assets first (`syncPackageRegistry`), then runs the shared
+  `rewriteMarkdownRefs` (`@/lib/rewrite-md-refs`, extracted from
+  `collection-actions`) over every committed `.md` and commits the resolved links
+  — so `../assets/x.svg` becomes a durable `/d/{docId}` that renders in the carrier
+  and on the site. *(Fixes Bug 1.)*
+- **F2 ✅ · Block ids: no silent drop + gate relaxed.** `blockFromHeading`
+  (`block-source.ts`) now detects any `{{attrs[#blk-…]}}` marker (a tolerant
+  regex), strips it from the heading, and treats a non-conforming id as anonymous
+  (null) — so a hyphenated marker no longer pollutes the title or is left as text;
+  the save path re-mints a valid id. The publish gate (`release-gates.ts`) now
+  checks `validateBlockIds` only (dropped `allHaveIds`), matching v2's
+  anonymous-legal rule. *(Fixes Bug 2 on the platform side; Coursewerk H4 still
+  fixes it at the source.)*
+- **F3 ✅ · Slides fallback hardened.** The renderer's `splitSlides` now strips the
+  leading `<!-- deck … -->` config block so it can't become a phantom first slide;
+  `hosted-actions.ts` surfaces + logs the previously-swallowed orz-slides build
+  error instead of silently returning `editable:false`. *(Addresses Bug 3's
+  confirmed defects; the exact deck-halt still wants a live worker repro.)*
+- **F4 ✅ · Concept-map loader reads `concepts/course.md`.** `loadCourseConceptMap`
+  (`metadata.ts`) now reads `concepts/course.md` (the canonical path, matching
+  producers), with a read-fallback to the legacy `metadata/course.md`. *(Fixes
+  Bug 4.)*
 
-Also fix the save-time reference guard's regex gap: `MD_REFERENCE_RE`
-(`assets.ts`) doesn't match an image whose target carries a ` =WxH` size suffix,
-so sized `../` refs skip the traversal check while unsized ones throw —
-inconsistent. Fold this into F1.
+Deferred: the save-time reference guard's ` =WxH` sized-ref regex gap in
+`assets.ts` — moot for the populate path now that F1 rewrites refs to permalinks
+before they are ever saved; revisit if a guard inconsistency surfaces elsewhere.
 
 ---
 

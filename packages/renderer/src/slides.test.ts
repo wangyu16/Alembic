@@ -113,6 +113,17 @@ describe("splitSlides", () => {
     expect(chunks[2]).toBe("# C");
   });
 
+  it("drops the leading `<!-- deck … -->` config block (no phantom first slide)", () => {
+    // An orz-slides–authored deck always opens with this block; it must not
+    // become a blank first slide in the fallback renderer.
+    const chunks = splitSlides(
+      "<!-- deck\ntitle: Demo\ntheme: paper\n-->\n\n<!-- slide -->\n## A\n\nbody a\n<!-- slide -->\n## B",
+    );
+    expect(chunks).toHaveLength(2);
+    expect(chunks[0]).toBe("## A\n\nbody a");
+    expect(chunks[1]).toBe("## B");
+  });
+
   it("yields no slides for empty source", () => {
     expect(splitSlides("")).toEqual([]);
   });

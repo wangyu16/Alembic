@@ -111,7 +111,11 @@ export function slidesSourceFromBlocks(blocks: Array<SlideBlock>): string {
  * chunk. Leading/trailing blank lines are trimmed per chunk.
  */
 export function splitSlides(source: string): string[] {
-  const lines = source.split(/\r?\n/);
+  // Drop the leading `<!-- deck … -->` config block first: it is deck metadata
+  // (title/theme/ratio), not a slide. Left in, it lands in the pre-first-marker
+  // chunk and renders as a blank phantom first slide for an orz-slides–authored
+  // deck (which always opens with this block). orz-slides itself consumes it.
+  const lines = source.replace(DECK_BLOCK_RE, "").split(/\r?\n/);
   const chunks: string[][] = [[]];
   for (const line of lines) {
     const t = line.trim();

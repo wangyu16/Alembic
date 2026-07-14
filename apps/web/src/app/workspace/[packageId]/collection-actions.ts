@@ -11,13 +11,11 @@ import {
   validateBlockIds,
   type CollectionScope,
 } from "@alembic/package-contract";
-import { collectionItemPath, rewriteRelativeRefs } from "@alembic/package-ops";
+import { collectionItemPath } from "@alembic/package-ops";
 import { hasCarrier, extractSource } from "@alembic/carriers";
-import type { SupabaseClient } from "@supabase/supabase-js";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
-import { SupabaseDocumentRegistryStore } from "@/lib/document-registry-store";
-import { appBaseUrl } from "@/lib/app-url";
+import { rewriteMarkdownRefs } from "@/lib/rewrite-md-refs";
 import { syncFilesToGitHub, syncPrivateFilesToGitHub } from "@/lib/github";
 import { syncPackageRegistry } from "@/lib/register";
 import { uploadVerdict } from "@/lib/collection-upload";
@@ -32,33 +30,6 @@ async function requireUser() {
   } = await supabase.auth.getUser();
   if (!user) redirect("/signin");
   return { supabase, user };
-}
-
-/**
- * Rewrite a plain-markdown document's relative asset references to permalinks
- * (U3): `![](figures/x.png)` → `![](https://…/d/{docId})`, so a cross-reference
- * survives the document being moved and still resolves in a downloaded copy —
- * matching what "Insert" bakes in. Best-effort and non-destructive: only `.md`
- * content is touched, only references that resolve to a REGISTERED asset in the
- * same repo are rewritten, and it no-ops when the app origin isn't configured
- * (server needs `NEXT_PUBLIC_APP_URL`). Carriers (`.md.html`/…) keep their own
- * refs (Insert + publish resolution cover them); binaries are never markdown.
- */
-async function rewriteMarkdownRefs(
-  supabase: SupabaseClient,
-  packageId: string,
-  repo: "public" | "private",
-  path: string,
-  content: string,
-): Promise<string> {
-  if (!path.toLowerCase().endsWith(".md")) return content;
-  const base = appBaseUrl();
-  if (!base) return content;
-  const registry = new SupabaseDocumentRegistryStore(supabase);
-  return rewriteRelativeRefs(content, path, async (repoPath) => {
-    const rec = await registry.getByLocation(packageId, repo, repoPath);
-    return rec ? `${base}/d/${rec.docId}` : null;
-  });
 }
 
 export interface UploadCollectionFileInput {

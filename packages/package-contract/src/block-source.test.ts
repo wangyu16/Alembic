@@ -64,6 +64,19 @@ after
     const { blocks } = parseStudyGuide("## Bad{{attrs[#blk-XYZ]}}\n\nbody");
     expect(blocks[0]?.id).toBeNull();
   });
+
+  it("strips a hyphenated (malformed) marker from the title instead of leaving it as text", () => {
+    // An offline producer emitted a semantic-slug id with hyphens (upload-contract
+    // H4 violation). It must NOT match the strict pattern, so the block is
+    // anonymous — but the marker must still be removed from the heading, not baked
+    // into the title as literal text.
+    const { blocks } = parseStudyGuide(
+      "## 2.1 Fault Loading{{attrs[#blk-hazard-fault]}}\n\nbody",
+    );
+    expect(blocks[0]?.id).toBeNull();
+    expect(blocks[0]?.title).toBe("2.1 Fault Loading");
+    expect(blocks[0]?.title).not.toContain("attrs");
+  });
 });
 
 describe("serializeStudyGuide / formatBlock", () => {

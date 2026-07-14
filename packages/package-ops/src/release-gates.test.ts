@@ -54,6 +54,41 @@ describe("releaseGates", () => {
     expect(result.checks.find((c) => c.name === "Study guide")?.ok).toBe(false);
   });
 
+  it("Section identifiers: anonymous (no-id) sections are legal (contract v2 §4)", async () => {
+    const store = new MemoryPackageStore();
+    const { packageId } = await createSandboxPackage(store, input);
+    const path = (await loadStudyGuide(store, packageId)).path;
+    // Raw content (bypasses saveStudyGuide's id-minting) with a mix of an
+    // anchored section and two anonymous ones — exactly an uploaded package's shape.
+    await store.putFiles(packageId, [
+      {
+        repo: "public",
+        path,
+        content:
+          "# Chapter\n\n## Overview{{attrs[#blk-aaaaaaaa]}}\n\nbody\n\n## Chapter Logic\n\nno anchor\n\n## Synthesis\n\nalso none\n",
+      },
+    ]);
+    const result = await releaseGates(store, packageId);
+    expect(result.checks.find((c) => c.name === "Section identifiers")?.ok).toBe(true);
+  });
+
+  it("Section identifiers: a DUPLICATE id still fails", async () => {
+    const store = new MemoryPackageStore();
+    const { packageId } = await createSandboxPackage(store, input);
+    const path = (await loadStudyGuide(store, packageId)).path;
+    await store.putFiles(packageId, [
+      {
+        repo: "public",
+        path,
+        content:
+          "# Chapter\n\n## A{{attrs[#blk-aaaaaaaa]}}\n\nx\n\n## B{{attrs[#blk-aaaaaaaa]}}\n\ny\n",
+      },
+    ]);
+    const result = await releaseGates(store, packageId);
+    expect(result.ok).toBe(false);
+    expect(result.checks.find((c) => c.name === "Section identifiers")?.ok).toBe(false);
+  });
+
   it("passes the Answer keys & embargo gate for a clean package", async () => {
     const store = new MemoryPackageStore();
     const { packageId } = await createSandboxPackage(store, input);

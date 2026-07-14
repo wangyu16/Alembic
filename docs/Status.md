@@ -1418,6 +1418,24 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
     down-arrow / up-arrow-into-tray pair (title + `aria-label`), tucked into the
     editor header cluster and the collection file rows so they add no space vs.
     the old text buttons.
+  - 🔄 **Populate-path ingest fixes (F1–F4, 2026-07-14).** Root-caused four
+    failures on a real Coursewerk upload (`wikipedia_plate_tectonics`) and fixed
+    the Alembic side (see [upload-contract.md](specs/upload-contract.md) Part 3).
+    **F1** — the populate route registers assets, then rewrites `../assets/x.svg`
+    relative refs to `/d/{docId}` permalinks via the shared `rewriteMarkdownRefs`
+    (`lib/rewrite-md-refs`, extracted from `collection-actions`) and commits the
+    resolved links, so figures render. **F2** — `blockFromHeading` no longer
+    silently drops a malformed/hyphenated `{{attrs[#blk-…]}}` id or leaves the
+    marker in the heading (tolerant detect + strip → anonymous, re-minted on
+    save); the publish gate dropped `allHaveIds` for `validateBlockIds`-only
+    (v2 anonymous-legal). **F3** — the renderer's `splitSlides` strips the leading
+    `<!-- deck … -->` block (no phantom first slide) and `hosted-actions`
+    surfaces + logs the previously-swallowed slide-generation error. **F4** —
+    `loadCourseConceptMap` reads `concepts/course.md` (canonical) with a legacy
+    `metadata/course.md` fallback. Typecheck + all tests (package-contract 238,
+    package-ops 272, renderer 73) + web build clean. The corresponding **producer
+    rules** (block-id format, asset refs, slide parity, concept-map path) are the
+    hard rules in the upload contract for Coursewerk to enforce.
   - 🔄 **Upload a package into a published empty course (2026-07-14, "Case A").**
     Reframed the whole zip-upload flow so **nothing is left behind** (the old
     trial import stored text only and skipped images/PDFs). Upload now targets a

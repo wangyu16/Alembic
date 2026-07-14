@@ -31,8 +31,18 @@ export interface ParsedStudyGuide {
 
 const H2_RE = /^##\s+(.*)$/;
 const FENCE_RE = /^(```|~~~)/;
-/** The canonical block-ID marker; capture the ID. */
+/** The canonical (well-formed) block-ID marker; capture the ID. */
 export const BLOCK_MARKER_RE = /\{\{attrs\[#(blk-[a-z0-9]+)\]\}\}/;
+/**
+ * TOLERANT detector: any block-ID marker `{{attrs[#blk-…]}}`, well-formed OR
+ * not (e.g. a malformed id containing hyphens like `blk-hazard-fault`, which an
+ * offline producer may emit — see docs/specs/upload-contract.md H4). We must
+ * still detect + strip it from the heading; if we only matched the strict form,
+ * a malformed marker would be left as literal text polluting the title AND its
+ * id silently lost. A non-conforming id is treated as anonymous (null) — the
+ * save path then re-mints a fresh valid id for it.
+ */
+const ANY_BLOCK_MARKER_RE = /\{\{attrs\[#(blk-[^\]]*)\]\}\}/;
 
 /** Render the canonical marker for a block ID. */
 export function formatBlockMarker(id: string): string {
@@ -40,11 +50,10 @@ export function formatBlockMarker(id: string): string {
 }
 
 function blockFromHeading(headingText: string, bodyLines: string[]): StudyGuideBlock {
-  const markerMatch = headingText.match(BLOCK_MARKER_RE);
-  const id = markerMatch?.[1] && BLOCK_ID_PATTERN.test(markerMatch[1])
-    ? markerMatch[1]
-    : null;
-  const title = headingText.replace(BLOCK_MARKER_RE, "").trim();
+  const markerMatch = headingText.match(ANY_BLOCK_MARKER_RE);
+  const raw = markerMatch?.[1];
+  const id = raw && BLOCK_ID_PATTERN.test(raw) ? raw : null;
+  const title = headingText.replace(ANY_BLOCK_MARKER_RE, "").trim();
   const body = bodyLines.join("\n").trim();
   return { id, title, body };
 }
