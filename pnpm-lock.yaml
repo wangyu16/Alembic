@@ -149,8 +149,8 @@ importers:
         specifier: ^0.7.0
         version: 0.7.0(@types/markdown-it@14.1.2)
       orz-slides:
-        specifier: ^0.8.1
-        version: 0.8.1(@types/markdown-it@14.1.2)
+        specifier: ^0.8.2
+        version: 0.8.2(@types/markdown-it@14.1.2)
     devDependencies:
       '@alembic/carriers':
         specifier: workspace:*
@@ -2624,8 +2624,8 @@ packages:
     resolution: {integrity: sha512-NGBGCv0EBpAD4z74FnnNCu82ehIMEUJmjVjNlG6alfRbwPk4TyKZkQ+PnEv/V1zWu0LgDPFzLU6In6BbHEf8dA==}
     hasBin: true
 
-  orz-slides@0.8.1:
-    resolution: {integrity: sha512-Cz9vopjO4bwZOZygJi7EeexAt9EL/P/zFxoRy6C4WYXcltwaWKe90/z3jPGCGJWQSBKGZvWdZS+SZb4bYNiqLQ==}
+  orz-slides@0.8.2:
+    resolution: {integrity: sha512-zG4pFlbNnxemZLDm50n6+Jq4zr5GpoU9Nb7nQTdIcp7NbLCvve47l6ycvZLB9zAqW4y96AwIi/CiSPGZJWf3Uw==}
     hasBin: true
 
   own-keys@1.0.1:
@@ -5643,7 +5643,7 @@ snapshots:
     transitivePeerDependencies:
       - '@types/markdown-it'
 
-  orz-slides@0.8.1(@types/markdown-it@14.1.2):
+  orz-slides@0.8.2(@types/markdown-it@14.1.2):
     dependencies:
       orz-markdown: 1.6.0(@types/markdown-it@14.1.2)
       reveal.js: 5.2.1
