@@ -40,3 +40,7 @@ pnpm dev:web      # Next.js dev server
 
 Environment variables (local only, never committed): copy `.env.example` to
 `apps/web/.env.local` and fill in values.
+
+## License
+
+[MIT](LICENSE) © 2026 Yu Wang

@@ -3,6 +3,8 @@
   "private": true,
   "version": "0.1.0",
   "description": "Alembic — an open educational resource ecosystem for STEM",
+  "license": "MIT",
+  "author": "Yu Wang",
   "engines": {
     "node": ">=22"
   },
