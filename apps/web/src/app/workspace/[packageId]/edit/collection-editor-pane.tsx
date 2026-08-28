@@ -161,7 +161,9 @@ function MarkdownSource({
           setText(e.target.value);
           onDirty(true);
         }}
-        placeholder="# Heading\n\nWrite Markdown here…"
+        // A real newline: in a plain string `\n` would show up literally in the
+        // placeholder, which is what an empty file used to greet you with.
+        placeholder={"# Heading\n\nWrite Markdown here…"}
       />
       <div className="flex justify-end">
         <button

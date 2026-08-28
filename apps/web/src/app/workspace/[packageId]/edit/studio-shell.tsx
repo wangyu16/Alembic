@@ -608,6 +608,7 @@ export function StudioShell({
                       path={activePath}
                       chapterTitle={chapters.find((c) => c.slug === activeSlug)?.title ?? title}
                       initial={content}
+                      doc="content"
                       onDirty={setDirty}
                       aiAccess={aiAccess}
                     />
@@ -621,6 +622,9 @@ export function StudioShell({
                       packageId={packageId}
                       path={slidesPathFor(activePath)}
                       chapterTitle={`${chapters.find((c) => c.slug === activeSlug)?.title ?? title} · Slides`}
+                      starterText={slidesStarter(
+                        chapters.find((c) => c.slug === activeSlug)?.title ?? title,
+                      )}
                       onDirty={setDirty}
                       aiAccess={aiAccess}
                     />
@@ -635,7 +639,8 @@ export function StudioShell({
                       path={practicePathFor(activePath)}
                       chapterTitle={`${chapters.find((c) => c.slug === activeSlug)?.title ?? title} · Practice`}
                       initial={{ preamble: "", blocks: [] }}
-                      emptyTemplate={PRACTICE_TEMPLATE}
+                      doc="practice"
+                      starterText={PRACTICE_STARTER}
                       onDirty={setDirty}
                       aiAccess={aiAccess}
                     />
@@ -643,17 +648,24 @@ export function StudioShell({
                     <CategoryPlaceholder label={DOC_LABELS[view.doc]} />
                   )
                 ) : categoryFile ? (
-                  <FileEditor
+                  <SingleFileDocument
                     key={`${view.doc}:${categoryFile.path}`}
                     packageId={packageId}
-                    category={DOC_OPERATION_CATEGORY[view.doc]}
-                    label={DOC_LABELS[view.doc]}
+                    doc={view.doc}
                     help={
                       view.doc === "concept-map"
                         ? "The chapter's concept map + learning objectives (markdown). Public-repo but not shown on the student site; the coherence agent checks content against it."
                         : "How each concept/topic should be assessed across homework, discussion, quiz, and exam — instructions, not a question bank. Markdown."
                     }
                     file={categoryFile}
+                    {...(view.doc === "concept-map"
+                      ? {
+                          starterText: conceptMapStarter(
+                            chapters.find((c) => c.slug === activeSlug)?.title ?? title,
+                            "chapter",
+                          ),
+                        }
+                      : {})}
                     onDirty={setDirty}
                     aiAccess={aiAccess}
                   />
@@ -1458,8 +1470,8 @@ const practicePathFor = (studyGuidePath: string) =>
   studyGuidePath.replace(/^study-guide\//, "practice/");
 
 /* Slide decks live in the `slides` space as a per-chapter document, edited
-   through the hosted `.slides.html` (orz-slides) framework at a sibling path;
-   the deck is seeded from the study guide on first open, then authored freely. */
+   through the hosted `.slides.html` (orz-slides) framework at a sibling path.
+   Nothing is seeded: an unwritten deck opens on its empty state. */
 const slidesPathFor = (studyGuidePath: string) =>
   studyGuidePath.replace(/^study-guide\//, "slides/");
 
@@ -1567,7 +1579,9 @@ function HostedStudyGuideEditor(props: {
           Edit inline — your changes save with the <span className="text-muted">Save</span> button in
           the document’s toolbar. “Save online” in the header is a separate step that publishes.
         </p>
-        <DocumentActionsBar packageId={packageId} path={path} />
+        {/* `starter` is set only when this document had no file and the educator
+            just chose how to start it — so there is still nothing to download. */}
+        <DocumentActionsBar packageId={packageId} path={path} hasFile={starter === undefined} />
       </div>
       <ModuleMount
         kind="md"
@@ -1713,7 +1727,9 @@ function HostedSlidesEditor(props: {
           Edit inline — your changes save with the <span className="text-muted">Save</span> button in
           the deck’s toolbar. “Save online” in the header is a separate step that publishes.
         </p>
-        <DocumentActionsBar packageId={packageId} path={path} />
+        {/* Same rule as the study guide: a deck opened from a starter has no
+            file behind it yet, so Download stays inert until the first save. */}
+        <DocumentActionsBar packageId={packageId} path={path} hasFile={starter === undefined} />
       </div>
       <ModuleMount
         kind="slides"
@@ -2005,6 +2021,7 @@ function FileEditor({
   label,
   help,
   file,
+  hasFile = true,
   onDirty,
   aiAccess,
 }: {
@@ -2013,6 +2030,9 @@ function FileEditor({
   label: string;
   help: string;
   file: { path: string; repo: "public" | "private"; content: string };
+  /** False while this document has no file on disk yet — Download has nothing
+   *  to serve, but Replace (create-or-replace) stays available. */
+  hasFile?: boolean;
   onDirty?: (d: boolean) => void;
   aiAccess: AiAccess;
 }) {
@@ -2085,7 +2105,9 @@ function FileEditor({
             </button>
           </div>
           <AIAssistant packageId={packageId} category={category} path={file.path} repo={file.repo} current={text} aiAccess={aiAccess} />
-          {file.repo === "public" && <DocumentActionsBar packageId={packageId} path={file.path} />}
+          {file.repo === "public" && (
+            <DocumentActionsBar packageId={packageId} path={file.path} hasFile={hasFile} />
+          )}
           <button onClick={save} disabled={pending || !dirty} className="btn btn-primary btn-sm">
             {pending ? "Saving…" : "Save"}
           </button>

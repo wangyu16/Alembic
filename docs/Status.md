@@ -52,6 +52,28 @@ same commit as the work it tracks. Statuses: ✅ done · 🔄 partially shipped 
 
 > **Current direction — self-contained editing (owner-locked, 2026-07).** Editing and viewing both live *in the files*: the workspace **hosts** the in-file editors of `.md.html` / `.slides.html` / `.paged.html` (orz-family) and **builds no editor of its own**; published pages **are** those self-contained files (thin CDN delivery — study guide ~74 KB, framework from jsDelivr, verified live 2026-07-06); every file gets a permalink. **Committed source of record (revised, 2026-07-08 — "lean-source model"):** a chapter's study guide, slides, and practice questions are each committed as lean markdown (`study-guide/`, `slides/`, `practice/` — `.md`, not `.md.html`); the self-contained `.md.html`/`.slides.html` is generated on demand, purely as the editing/viewing surface, and never itself committed. This supersedes the original plan (below, and in the specs) of `.md.html` as the committed source — the specs haven't all been updated to match yet; this line is authoritative until they are. Authoritative docs: [SteeringNote.md](SteeringNote.md), [self-contained-editing.md](specs/self-contained-editing.md), [workspace-framework.md](specs/workspace-framework.md), and the module-based [Roadmap.md](Roadmap.md) (Modules R/E/P/T/I/S/W — supersedes the phase-based plan). **Code state today:** the classic editor is **retired** (~2.2k lines removed; `/workspace/[id]` redirects to `/edit`); the local **Studio (`/studio`) is removed**, replaced by `/guide`; the workspace three-pane shell now *hosts* the in-file editors (`HostedStudyGuideEditor` for study guide + practice; `HostedSlidesEditor` for authored slide decks). The durable guardrails **G1–G8** (two-repo reference enforcement, block-ID reconcile on import, whole-package fork, single-source course metadata, AI-entitlement seam) that the earlier editor-overhaul design drove all **landed + tested**.
 
+**Waves 2–3 complete — empty states, publish parity, resumable uploads (2026-08-28).**
+**T23:** the automatic scaffolds are gone (slides first-open seeding, concept-map pre-fill, practice
+starter). All five chapter documents show a "Not started yet" empty state naming what the document is for,
+with **click-to-insert** starter outlines (the old template prose, now offered rather than written) — and
+`DocumentActionsBar` renders on empty documents, so the upload/Replace door is reachable for a
+never-opened document (the UI half of C4). **T24:** the study guide is treated as a slot like the other
+four — a chapter with no study-guide content is skipped from the published site *and* the preview through
+one shared `slotHasContent` predicate, with the skipped chapters named back to the educator; the release
+gate and the site build agree by construction. The `alembic-package` skill, `upload-contract` and
+`package-layout` no longer require the per-chapter documents. **T31/T32:** the zip now uploads **straight
+to the private staging bucket** via a signed URL, so the ~4.5 MB Vercel body cap that made every
+image-bearing package fail is out of the path; the route takes only `{packageId, stagingPath}`, validates
+the path server-side, and runs **repos-first** (commit → project). It is **idempotent and resumable**: each
+run replans from current state and writes only the remainder, so an interrupted upload continues instead of
+hitting the old "this course already has content" dead end — with distinct educator-facing messages for
+too-large / interrupted / partial / needs-fixing / already-up-to-date. The brittle pristine gate is
+replaced by a **plan-diff confirmation** (adds, overwrites, unchanged, cleared) plus an explicit
+"empty this course and upload" path for genuine conflicts. Practical ceiling: 50 MB (a stated product
+limit now, not a platform artifact) and ~12 chained passes of commit time. Verified: typecheck +
+**1048 tests** + web build green; the only remaining legacy write path is the exempt publish/graduation
+truth-flip.
+
 **Waves 1.5 + 2 (partial) landed — one validator, empty packages, upsert replace (2026-08-28).**
 **T15:** all 12 compute-and-write package-ops functions split into validate-only `prepare*` + persist, so
 the write-through ordering (commit before project) holds everywhere; the block-ID/`TEXT_EXT` rules that had

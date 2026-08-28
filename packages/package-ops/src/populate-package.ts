@@ -108,6 +108,12 @@ export type PopulatePlanResult =
       privateChanges: PlannedChange[];
       /** Binary files (images/PDFs) committed as blobs — for the caller's summary. */
       binaryPaths: string[];
+      /**
+       * Advisory issues that did NOT block the plan — e.g. a declared chapter
+       * with no study-guide content yet, which the slot model allows. Worth
+       * showing next to the confirmation ("heads up"), never a refusal.
+       */
+      warnings: ValidationIssue[];
     }
   | { ok: false; issues: ValidationIssue[] };
 
@@ -231,7 +237,51 @@ export function planPackagePopulation(input: PopulatePlanInput): PopulatePlanRes
     }
   }
 
-  return { ok: true, manifest, publicChanges, privateChanges, binaryPaths };
+  return {
+    ok: true,
+    manifest,
+    publicChanges,
+    privateChanges,
+    binaryPaths,
+    warnings: structural.issues.filter(isWarning),
+  };
+}
+
+/* -------------------------------------------------------------------------- *
+ * Size limit — one number, quoted in the UI and enforced at both doors
+ * -------------------------------------------------------------------------- */
+
+/**
+ * Largest package archive we accept, in bytes.
+ *
+ * The old ~4.5 MB ceiling was not this number — it was Vercel's request-body
+ * limit hit before the route ran. Now that the browser uploads straight to the
+ * staging bucket, the only real limits are GitHub's per-file/repo comfort range
+ * and the unzip cost, so the historical 50 MB stands: it comfortably covers a
+ * whole illustrated course, and anything past it is a sign that media should be
+ * linked rather than embedded (storage-and-write-paths.md §6, "today's policy:
+ * link out"). Both doors — the signed-URL route and the populate route — check
+ * it, and the client states it up front.
+ */
+export const MAX_PACKAGE_ZIP_BYTES = 50 * 1024 * 1024;
+
+/** The limit as the educator sees it. Keep in step with the constant. */
+export const MAX_PACKAGE_ZIP_LABEL = "50 MB";
+
+/** Round bytes to a short human size ("68 MB", "900 KB"). */
+export function describeBytes(bytes: number): string {
+  if (bytes >= 1024 * 1024) return `${Math.round(bytes / (1024 * 1024))} MB`;
+  if (bytes >= 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${Math.max(0, Math.round(bytes))} bytes`;
+}
+
+/** The educator-facing "too large" message — one wording, used everywhere. */
+export function packageTooLargeMessage(bytes: number): string {
+  return (
+    `That .zip is ${describeBytes(bytes)}, and a course upload can be at most ` +
+    `${MAX_PACKAGE_ZIP_LABEL}. Take out the largest images or videos (link to ` +
+    `them instead) and upload again.`
+  );
 }
 
 /* -------------------------------------------------------------------------- *

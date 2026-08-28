@@ -40,13 +40,24 @@ export const ROOT_SCAFFOLD_PATHS = [
 
 /**
  * TRUE when a package still holds only its as-created placeholders — no authored
- * content has been added. This is the guard for "populate a published *empty*
- * package from a zip": populate replaces the placeholders, and refuses a package
- * that already has real content (replacing that is a separate, future feature).
- * Path-based (rebuildable from repo content, no flag/migration): a package is
- * pristine iff every file is root scaffold or one of the two legacy seed
- * placeholders. (Unchanged by design — a fresh package now has no content files
- * at all, which this already accepts; replacing the gate is Wave 3's work.)
+ * content has been added. Path-based, so it is rebuildable from repo content
+ * with no flag or migration: a package is pristine iff every file is root
+ * scaffold or one of the two legacy seed placeholders.
+ *
+ * **No longer a gate (2026-08-28).** This used to *refuse* the zip upload on any
+ * package that wasn't pristine, which turned every interrupted upload into a
+ * dead end ("This course already has content") and made the door depend on
+ * whether the educator happened to have opened a document first. Populate now
+ * asks {@link diffPopulatePlan} what the upload would add, replace and leave
+ * alone, shows that to the educator, and takes an explicit confirmation —
+ * see `populate-package.ts`, which also owns
+ * {@link authoredContentFiles} / {@link packageAwaitsUpload}, the predicates the
+ * upload door and the "this course is empty" call-to-action now share.
+ *
+ * What remains here is the plain question this function's name asks — "does this
+ * package still hold only its placeholders?" — kept for callers that genuinely
+ * want it (package creation tests, lifecycle checks). It must not be used to
+ * decide whether an upload is allowed.
  */
 export function isPristinePackage(files: { path: string }[]): boolean {
   const allowed = new Set<string>([...ROOT_SCAFFOLD_PATHS, ...SEED_CONTENT_PATHS]);

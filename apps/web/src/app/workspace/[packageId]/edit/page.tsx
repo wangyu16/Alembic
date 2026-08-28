@@ -5,7 +5,7 @@ import {
   listTerms,
   loadStudyGuide,
   loadCourseConceptMap,
-  isPristinePackage,
+  packageAwaitsUpload,
   type CollectionScopeTree,
   type TermInfo,
 } from "@alembic/package-ops";
@@ -64,14 +64,17 @@ export default async function EditShellPage({
   // (rebuildable projection; best-effort, never blocks the editor).
   await syncPackageRegistry(supabase, packageId, "created");
 
-  // A published package still holding only its as-created placeholders can be
-  // filled in one shot by uploading the offline-authored .zip (images and all).
-  // Show the upload empty-state only then; once it has content, upload replacing
-  // it is a separate, future feature.
+  // A published package that hasn't been written in yet can be filled in one
+  // shot by uploading an offline-authored .zip (images and all). Same predicate
+  // as the upload door itself (`packageAwaitsUpload`), so the offer and the
+  // upload can never disagree — and it stays visible after an upload that
+  // stopped partway, which is what makes such an upload resumable rather than a
+  // dead end. Uploading into a course that already has work is allowed too, but
+  // only from the confirmation the upload shows; it isn't advertised here.
   const showUploadEmptyState =
     record.storage === "github" &&
     Boolean(record.manifest.publicRepo) &&
-    isPristinePackage(await store.listFiles(packageId));
+    packageAwaitsUpload(await store.listFiles(packageId));
 
   const chapters = await listChapters(store, packageId);
   const activeChapter = chapters.find((c) => c.slug === chapter) ?? chapters[0] ?? null;
