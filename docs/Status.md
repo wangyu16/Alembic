@@ -52,6 +52,19 @@ same commit as the work it tracks. Statuses: ✅ done · 🔄 partially shipped 
 
 > **Current direction — self-contained editing (owner-locked, 2026-07).** Editing and viewing both live *in the files*: the workspace **hosts** the in-file editors of `.md.html` / `.slides.html` / `.paged.html` (orz-family) and **builds no editor of its own**; published pages **are** those self-contained files (thin CDN delivery — study guide ~74 KB, framework from jsDelivr, verified live 2026-07-06); every file gets a permalink. **Committed source of record (revised, 2026-07-08 — "lean-source model"):** a chapter's study guide, slides, and practice questions are each committed as lean markdown (`study-guide/`, `slides/`, `practice/` — `.md`, not `.md.html`); the self-contained `.md.html`/`.slides.html` is generated on demand, purely as the editing/viewing surface, and never itself committed. This supersedes the original plan (below, and in the specs) of `.md.html` as the committed source — the specs haven't all been updated to match yet; this line is authoritative until they are. Authoritative docs: [SteeringNote.md](SteeringNote.md), [self-contained-editing.md](specs/self-contained-editing.md), [workspace-framework.md](specs/workspace-framework.md), and the module-based [Roadmap.md](Roadmap.md) (Modules R/E/P/T/I/S/W — supersedes the phase-based plan). **Code state today:** the classic editor is **retired** (~2.2k lines removed; `/workspace/[id]` redirects to `/edit`); the local **Studio (`/studio`) is removed**, replaced by `/guide`; the workspace three-pane shell now *hosts* the in-file editors (`HostedStudyGuideEditor` for study guide + practice; `HostedSlidesEditor` for authored slide decks). The durable guardrails **G1–G8** (two-repo reference enforcement, block-ID reconcile on import, whole-package fork, single-source course metadata, AI-entitlement seam) that the earlier editor-overhaul design drove all **landed + tested**.
 
+**Storage & write-path model recorded + plan + acceptance spec (2026-08-28):**
+[specs/storage-and-write-paths.md](specs/storage-and-write-paths.md) — the three-store contract (GitHub =
+only permanent store; Postgres = trial store + rebuildable projection, roles never mixed; ephemeral
+surfaces + a new TTL staging bucket), the **repo-first write-through rule** (validate → commit → project →
+record SHA; fail-loudly, no silent local-only writes; trial = DB-only branch), slots-not-placeholders, the
+job-scoped raw-materials policy, and the **R2 verdict: skipped** with three recorded revisit triggers.
+Implementation plan: [StorageWritePathPlan.md](StorageWritePathPlan.md) (Phases H hotfixes → W
+write-through → S slots → P populate/staging → V verification). Acceptance:
+[blind-critique/acceptance-spec.md](blind-critique/acceptance-spec.md) **frozen today, before
+implementation** (user-language, blocks A–H incl. regression items for the F1/F3 findings), with the
+operator guide [blind-critique/README.md](blind-critique/README.md) for the context-denied review
+(blind-critique skill). Implementation not started.
+
 **Workspace issues examined (2026-08-28):** test-use reports (disappearing chapters, opaque zip-upload
 failures, replace-upload failures, placeholder design) traced to root causes —
 [reports/workspace-issues-2026-08-28.md](reports/workspace-issues-2026-08-28.md). Headline: **the manifest

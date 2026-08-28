@@ -17,6 +17,14 @@ adapt, cite, share).
   decisions (the "why"), permanent by-design constraints, and the deferred
   future plan. Add an entry when a non-obvious decision or deferral is made.
 - docs/specs/ — written specs (package contract, etc.)
+- [docs/specs/storage-and-write-paths.md](docs/specs/storage-and-write-paths.md) —
+  **the three-store contract + repo-first write-through rule**: GitHub is the
+  only permanent store; Postgres is trial store + rebuildable projection
+  (never a write input); published writes go validate → commit → project →
+  record SHA, fail-loudly; slots not placeholders. Implementation:
+  [docs/StorageWritePathPlan.md](docs/StorageWritePathPlan.md); acceptance is
+  verified blind against [docs/blind-critique/acceptance-spec.md](docs/blind-critique/acceptance-spec.md)
+  (frozen — amend only via its dated Amendment log, never quietly).
 - [docs/specs/educator-version-contract.md](docs/specs/educator-version-contract.md) —
   **the "just enough git" contract**: the closed list of educator version-control
   verbs and their Git translations, the permanent exclusions (branch/merge/PR/

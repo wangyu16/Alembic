@@ -1,0 +1,109 @@
+# Storage & Write Paths — the three-store contract
+
+**Status:** adopted (owner decision, 2026-08-28). Governs every byte the
+platform stores and every write path. Companion implementation plan:
+[../StorageWritePathPlan.md](../StorageWritePathPlan.md).
+**Related:** [educator-version-contract.md](educator-version-contract.md)
+(Save's promise), [worker-tier.md](worker-tier.md),
+[../reports/workspace-issues-2026-08-28.md](../reports/workspace-issues-2026-08-28.md)
+(the findings this model answers), CLAUDE.md rules 1, 3, 4, 5.
+
+## 1. Principle
+
+Alembic deliberately has **no platform-owned permanent storage**: all users'
+files live in their own GitHub repositories (the no-lock-in promise). The
+platform's other stores exist only to serve the trial phase and to cache.
+The weakness found in test use was never a missing storage tier — it was one
+store (Postgres) playing three roles with unwritten contracts. This spec
+names the roles and fixes the ordering.
+
+## 2. The three stores — one role each
+
+| Store | Role | Truth status | Lifecycle |
+|---|---|---|---|
+| **GitHub repos** (paired public/private, educator-owned) | the ONLY permanent store | **source of truth** for every published package (rule 4) | forever; survives Alembic |
+| **Postgres — trial store** (`sandbox_files` rows of trial packages) | entire storage for trial packages; **text-only** (permanent policy) | canonical *for trials only* | ends at publish (graduation) |
+| **Postgres — projection** (file cache + registry rows of published packages) | derived cache of repo content | **never authoritative; rebuildable** via reconcile | refreshed, droppable |
+| **Ephemeral surfaces** (generated carriers, per-tab HTML memo, job sandboxes, staging bucket) | regenerable working state | disposable by definition | TTL / per-job / per-tab |
+
+New (and only) object-storage use: a **Supabase Storage staging bucket**
+(TTL-cleaned) for zip/raw-material intake — already in the stack, previously
+unused. It is staging, never a home: nothing durable lives there.
+
+## 3. The write-ordering rule (repo-first write-through)
+
+For a **published** package, every write — editor save, upload, replace,
+chapter/manifest op, populate — goes through one shared path:
+
+> validate (contract, two-repo, block anchors) → build `CommitPlan` →
+> **commit to GitHub** → update the projection *from the commit result* →
+> `recordSyncedSha`.
+
+- If the commit fails, **nothing changed anywhere**; the educator sees a
+  retryable, plain-language failure. A save that didn't reach permanence
+  didn't happen — this is the version contract's "Save records a permanent
+  version" made literal. **No silent local-only writes, no silent skips**
+  (the `if (!gh) return` pattern is abolished).
+- For a **trial** package the trial store *is* the truth: write DB only.
+  One branch, decided in one place.
+- Cost accepted: Save on a published package carries the latency of a
+  GitHub commit (~1–2 s) behind a visible saving state. A pending-outbox
+  ("1 change not yet saved") is a possible future refinement — fail-loudly
+  ships first because it never lies.
+
+Corollaries:
+
+- **One manifest owner.** The manifest is written only through
+  `updateManifest()` inside the same write-through; the file copy is
+  authoritative, the `packages.manifest` column is a derived read cache no
+  writer may use as input. Optimistic concurrency (content-hash/version
+  conditional write + retry) kills lost updates.
+- **Reconcile keeps its direction** (repo → projection); with every commit
+  recording its SHA, foreign-commit detection is exact.
+- **Populate becomes retry-safe**: repos-first means a half-failed populate
+  left real commits; retry replans against the repo head and continues —
+  the pristine-gate dead end disappears.
+- **Graduation** (trial → published) is the one legitimate bulk DB→GitHub
+  write: initial commits of all trial files, then the truth flips and the
+  rows become projection.
+
+## 4. Slots, not placeholders
+
+The per-chapter documents (concept map, study guide, slides, assessment
+guide, practice) are **declared slots** rendered from the manifest — no
+seeded placeholder files, no first-open lazy scaffolds, no welcome prose in
+committed files (empty-state guidance lives in the UI). A file exists iff
+real content exists. Consequences: Replace is an **upsert into the slot**
+(any picked filename normalizes to the slot's canonical path, and carriers
+are source-extracted at the door); empty slots never publish; "pristine" =
+no content files — no magic filenames.
+
+## 5. Raw materials & job artifacts (agent lane)
+
+Uploaded raw sources (Word/PDF/PPT) are **job-scoped**: staged in the
+bucket, consumed in the job sandbox, **bytes discarded after the run**
+(the educator keeps their originals); what persists in the package is
+provenance *records*, and generated artifacts only after review. Job state
+lives on the job's own sandbox disk. Nothing here needs a platform store.
+
+## 6. Object storage (R2-class): skipped — with revisit triggers
+
+Evaluated 2026-08-28 across the full scenario inventory
+(reports/workspace-issues-2026-08-28.md + §5 above): no current scenario
+needs it, and a platform byte-store for published content would work
+*against* the educator-owned-repos promise. Recorded triggers that reopen
+the question — and only these:
+
+1. **Hosted large media** becomes a product requirement (beyond the
+   50–100 MB GitHub range; today's policy: link out). Design if triggered:
+   a per-file large-media store referenced by permalink and registered in
+   the registry — an extension, not a rework.
+2. **GitHub API rate limits demonstrably bite** on private/trial serving
+   (mitigate with Cloudflare response caching first).
+3. **The worker lane needs a cross-job artifact store.**
+
+## 7. Known-truncation fix
+
+`listFiles` must paginate (PostgREST caps result sets); any whole-package
+operation over a silently truncated file list is invalid. Part of the plan's
+hotfix phase.
