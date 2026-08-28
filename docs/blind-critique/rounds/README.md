@@ -64,3 +64,40 @@ spec was frozen.
   `storage.objects` policies). Without it every zip upload fails at the
   signed-URL step and C7/C8 are BLOCKED, not FAIL. Also schedule the 24-hour
   orphan sweep — see [../../Deployment.md](../../Deployment.md) §1.
+
+---
+
+## Verification status at the end of the implementation effort (2026-08-28)
+
+**What HAS been verified** (code-level, by the implementers and by an
+adversarial sweep that owned no source files):
+
+- typecheck, **1235 tests**, and the production web build, green at `99ff6c6`;
+- adversarial verification of the new invariants — commit-failure atomicity
+  (byte-identical store snapshots), manifest compare-and-swap under
+  interleaving, the two-repo invariant across 30+ private-path spellings
+  through every new door, slot drift (table-driven so a new slot is covered
+  automatically), populate idempotence/resume/traversal refusal, carrier
+  fuzzing, and 1200-file scale;
+- four invariant gaps that sweep found were closed and re-tested.
+
+**What has NOT been verified, and cannot be from this repository:** every item
+in [../acceptance-spec.md](../acceptance-spec.md). Nothing in the list above
+tells us the product works *for a person*. The bugs that prompted this whole
+effort — chapters vanishing, uploads failing without a reason, replace
+dead-ending — all passed typecheck, tests, and the build at the time they were
+live. That is precisely the condition this method exists to distrust.
+
+Running the round needs the operator steps at the top of this file. The
+blocking one is environmental, not procedural: this machine's
+`apps/web/.env.local` points at **production** Supabase and a live GitHub App,
+and context-denied agents mutate and delete as a matter of course.
+
+**Highest-value items to run first**, because they are regressions of bugs
+that were live in test use rather than new features: **B7** (chapters survive
+unrelated edits — including *publishing*, which was the worst path), **C3/C6**
+(round-trip a downloaded document; wrong-file refusals), **C4/C5** (replace a
+never-opened document; a mismatched filename), **C7/C8** (a zip with images;
+recovery after a failed upload), and **D5** (private material never reachable
+from the public site or repo — the hardest promise, and the one no unit test
+can fully stand in for).
