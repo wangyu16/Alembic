@@ -13,6 +13,12 @@ public/private boundary; Status.md updated in the same commit as each phase.
 [blind-critique/README.md](blind-critique/README.md)). Plan items cite the
 acceptance items they must make true.
 
+> **Execution decomposition:** the phases below are decomposed into
+> file-disjoint, independently verifiable subtasks (waves, concurrent
+> subagents, integrator gates) in
+> [StorageWritePathTasks.md](StorageWritePathTasks.md) — including the
+> pre-execution conflict review. Execute from THAT document.
+
 ## Phase H — Hotfixes (stop live data loss; ship first, small and surgical)
 
 - **H1. Manifest clobber stop** *(F1 → acceptance B7)*. Every action that
