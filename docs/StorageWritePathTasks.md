@@ -191,6 +191,15 @@ call-site inventory; the original three tasks covered only 13 of 26 sites)
   NEW package — that is a graduation-class bulk write; keep its existing
   creation path and migrate only its post-creation writes.
 
+### T14b — `PackageOps` return-type widening (integrator-added, small)
+- **Owns:** `packages/package-ops/src/ops.ts`.
+- **Do:** `renameChapter` / `reorderChapters` / `deleteChapter` in the
+  `PackageOps` interface return `Promise<void>`, which forced T11's
+  equivalents to stay void and the web actions to re-read the manifest
+  after each call. Widen them to return the updated manifest (as
+  `createChapter` and `renameChapterPageName` now do) and drop the
+  re-reads in `chapter-actions.ts`. Purely mechanical; typecheck proves it.
+
 ### T15 — Consolidate the prepare/validate half (integrator-added
 2026-08-28, after T12/T13 reports; runs as a Wave-1.5 cleanup)
 - **Owns:** `packages/package-ops/src/editor-edit.ts`, `study-guide.ts`,
@@ -242,7 +251,15 @@ SHA (W4 audit).
   legacy. **Do NOT change `isPristinePackage`** (Wave 3 owns that gate).
   Optional tidy op: delete a file whose content hash equals a known seed
   and was never edited — offered, never automatic.
-- **Accept:** B3 (no boilerplate-as-content), A3.
+- **ALSO FIX (third instance of the slot-drift bug family, found by T11
+  2026-08-28):** `deleteChapter` deletes only the study-guide file, so
+  deleting a chapter **orphans its other four slot documents** (concept
+  map, assessment guide, slides, practice) as stray files in the repo.
+  Same fix as the rename: derive the delete set from `chapterSlotPaths()`
+  + the two `.json` planning records, deleting only paths that exist.
+  Regression test mirroring T11's rename test (write all seven, delete the
+  chapter, assert nothing keyed to that slug remains).
+- **Accept:** B3 (no boilerplate-as-content), A3, B2 (delete).
 - **Watchpoint (audit done 2026-08-28 by integrator — act on it):**
   `chapters.ts` derives `IMPLICIT_CHAPTER_SLUG` from
   `DEFAULT_STUDY_GUIDE_PATH`, and `effectiveChapters()` materializes that
