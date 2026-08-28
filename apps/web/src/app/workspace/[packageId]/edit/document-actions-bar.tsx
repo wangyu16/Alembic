@@ -33,10 +33,18 @@ function noticeKey(packageId: string, path: string): string {
 export function DocumentActionsBar({
   packageId,
   path,
+  hasFile = true,
 }: {
   packageId: string;
   /** The document's repo-relative path (e.g. `study-guide/01-energy.md`). */
   path: string;
+  /**
+   * False when this document has no file yet. The bar still renders — Replace
+   * is a create-or-replace, and it is the ONLY way to bring an already-written
+   * file into a document nobody has opened — but Download has nothing to serve,
+   * so it renders inert rather than linking at a 404.
+   */
+  hasFile?: boolean;
 }) {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -58,32 +66,46 @@ export function DocumentActionsBar({
     }
   }, [packageId, clean]);
 
+  /* Download-from-tray — mirrors the Replace glyph (arrow down vs up). */
+  const downloadGlyph = (
+    <svg
+      viewBox="0 0 16 16"
+      width="15"
+      height="15"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M8 3v7" />
+      <path d="M5 7l3 3 3-3" />
+      <path d="M3 10.5v1.5A1.5 1.5 0 0 0 4.5 13.5h7a1.5 1.5 0 0 0 1.5-1.5v-1.5" />
+    </svg>
+  );
+
   return (
     <div className="flex shrink-0 items-center gap-0.5">
-      <a
-        href={`/api/asset/${packageId}/${clean}`}
-        download={name}
-        aria-label="Download to edit offline"
-        className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-faint transition-colors hover:bg-elevated hover:text-ink"
-        title="Download this document to edit offline"
-      >
-        {/* Download-from-tray — mirrors the Replace glyph (arrow down vs up). */}
-        <svg
-          viewBox="0 0 16 16"
-          width="15"
-          height="15"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.4"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          aria-hidden
+      {hasFile ? (
+        <a
+          href={`/api/asset/${packageId}/${clean}`}
+          download={name}
+          aria-label="Download to edit offline"
+          className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-faint transition-colors hover:bg-elevated hover:text-ink"
+          title="Download this document to edit offline"
         >
-          <path d="M8 3v7" />
-          <path d="M5 7l3 3 3-3" />
-          <path d="M3 10.5v1.5A1.5 1.5 0 0 0 4.5 13.5h7a1.5 1.5 0 0 0 1.5-1.5v-1.5" />
-        </svg>
-      </a>
+          {downloadGlyph}
+        </a>
+      ) : (
+        <span
+          aria-disabled="true"
+          className="inline-flex h-7 w-7 shrink-0 cursor-default items-center justify-center rounded-md text-faint opacity-50"
+          title="Nothing to download yet — this document is empty"
+        >
+          {downloadGlyph}
+        </span>
+      )}
       <ReplaceFileButton
         packageId={packageId}
         space={space}

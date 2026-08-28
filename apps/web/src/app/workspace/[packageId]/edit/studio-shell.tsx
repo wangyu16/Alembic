@@ -971,10 +971,17 @@ function useReportDirty(dirty: boolean, onDirty?: (d: boolean) => void) {
   useEffect(() => () => onDirty?.(false), [onDirty]);
 }
 
-/* ── Course home: details card + concept map (G6) ─────────────────────────── */
-/* Empty-state scaffold for the concept map — free-form notes, so this is just
-   a light nudge toward a useful shape, not a required structure. */
-function conceptMapTemplate(title: string): string {
+/* ── Empty documents: starter outlines + the empty state ──────────────────────
+ * A document with no content opens EMPTY (docs/specs/storage-and-write-paths.md
+ * §4 "slots, not placeholders"). Nothing is seeded into a file, and nothing is
+ * pre-filled into an editor as if the educator had typed it. Where a shape
+ * genuinely helps — concept map, slides, practice — the former scaffold text
+ * lives here as a starter the educator INSERTS with a click. It still isn't
+ * saved until they save. */
+
+/** Concept map — free-form notes, so this is a light nudge toward a useful
+ *  shape, not a required structure. */
+function conceptMapStarter(title: string, scope: "course" | "chapter"): string {
   return `# ${title} — concept map
 
 ## Key concepts
@@ -985,11 +992,149 @@ function conceptMapTemplate(title: string): string {
 
 -
 
-## Course-level learning objectives
+## ${scope === "course" ? "Course-level learning objectives" : "Learning objectives"}
 
 -
 `;
 }
+
+/** Practice questions — organized by learning objective, labelled by level. */
+const PRACTICE_STARTER = `# Practice questions
+
+Questions for this chapter, organized by **learning objective** (from the concept
+map). Add multiple questions per objective, and label each with its intended
+level: **assignment · discussion · quiz · exam**.
+
+## Objective 1 — <state the objective>
+
+**Assignment.** <a homework-level question>
+
+**Quiz.** <a shorter check-for-understanding question>
+
+## Objective 2 — <state the objective>
+
+**Discussion.** <an open-ended prompt for class discussion>
+
+**Exam.** <an exam-level question>
+`;
+
+/** Slides — a deck config (NO `theme:`: the theme is a GLOBAL setting applied at
+ *  generation, so a baked-in deck theme would override it), a title slide, two
+ *  content slides and a closing slide. Mirrors orz-slides' `examples/demo.md`. */
+function slidesStarter(title: string): string {
+  const t = title.trim() || "Slides";
+  return `<!-- deck
+title: ${t}
+ratio: 16:9
+-->
+
+<!-- slide template=title -->
+# ${t}
+## <subtitle>
+**<your name>**
+
+<!-- slide -->
+## <First topic>
+
+- <key point>
+- <key point>
+- <key point>
+
+<!-- slide -->
+## <Second topic>
+
+- <key point>
+- <key point>
+- <key point>
+
+<!-- slide template=closing -->
+# Thank you
+
+Questions?
+`;
+}
+
+/** A blank deck still needs one slide to edit ON — orz-slides splits a deck at
+ *  its `<!-- slide -->` markers, so a source with none has zero slides and
+ *  nothing to type into. This is structure, not content: one empty slide. */
+const BLANK_DECK = `<!-- slide -->
+`;
+
+/** One line saying what each document is for, in educator language. Shown when
+ *  the document has no content yet — never as prose inside the document. */
+const DOC_EMPTY_BLURB: Record<ChapterDoc, string> = {
+  "concept-map":
+    "What this chapter covers — its key concepts, how they relate, and the learning objectives that follow. Kept with your course, but not shown to students.",
+  "assessment-guide":
+    "How each concept in this chapter should be assessed across homework, discussion, quizzes and exams — instructions for you, not a bank of questions.",
+  content:
+    "The main written material for this chapter — the pages your students read on the course site.",
+  slides: "The deck you present from in class, published alongside this chapter.",
+  practice:
+    "Questions your students work through to practise this chapter, organized by learning objective.",
+};
+
+/* ── The empty state for one document ─────────────────────────────────────────
+ * Says what the document is for, then offers every honest way to start it:
+ * write it here, insert a starter outline (only where one helps), or bring in a
+ * file already written elsewhere. That last door is DocumentActionsBar, which
+ * MUST be reachable here: Replace is a create-or-replace, and for a document
+ * nobody has opened this is the only place it appears. Download is inert —
+ * there is nothing to download yet. */
+function DocumentEmptyState({
+  packageId,
+  path,
+  label,
+  blurb,
+  startLabel = "Start writing",
+  onStart,
+  starterLabel = "Insert a starter outline",
+  onInsertStarter,
+}: {
+  packageId: string;
+  /** The document's canonical path — where Replace will put an uploaded file. */
+  path: string;
+  label: string;
+  blurb: string;
+  startLabel?: string;
+  onStart: () => void;
+  starterLabel?: string;
+  /** Omitted where a starter outline wouldn't help (study guide, assessment guide). */
+  onInsertStarter?: () => void;
+}) {
+  return (
+    <div className="flex h-full min-h-0 flex-col items-start gap-4 overflow-y-auto">
+      <div className="panel max-w-prose rounded-xl border border-edge p-5">
+        <h2 className="font-serif text-lg text-ink">{label}</h2>
+        <p className="mt-0.5 text-xs uppercase tracking-wide text-faint">Not started yet</p>
+        <p className="mt-3 text-sm text-muted">{blurb}</p>
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          <button type="button" onClick={onStart} className="btn btn-primary btn-sm">
+            {startLabel}
+          </button>
+          {onInsertStarter && (
+            <button type="button" onClick={onInsertStarter} className="btn btn-ghost btn-sm">
+              {starterLabel}
+            </button>
+          )}
+        </div>
+        {onInsertStarter && (
+          <p className="mt-2 text-xs text-faint">
+            The outline is a suggestion you can rewrite or delete — nothing is kept until you
+            save.
+          </p>
+        )}
+        <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-edge-soft pt-3">
+          <span className="text-xs text-muted">Already written it somewhere else?</span>
+          <DocumentActionsBar packageId={packageId} path={path} hasFile={false} />
+          <span className="text-xs text-faint">Upload it here — it keeps this document’s link.</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Course home: details card + concept map (G6) ─────────────────────────── */
 
 const DESCRIPTION_MAX_WORDS = 200;
 function wordCount(s: string): number {
@@ -1015,7 +1160,9 @@ function CourseHome({
   aiAccess: AiAccess;
 }) {
   const hasInitial = !!(initial && initial.trim());
-  const [md, setMd] = useState(hasInitial ? initial! : conceptMapTemplate(title));
+  // Opens EMPTY when nothing is written yet — the outline below is offered as a
+  // button, never pre-filled as if it were the educator's own notes.
+  const [md, setMd] = useState(hasInitial ? initial! : "");
   const [dirty, setDirty] = useState(false);
   const [pending, start] = useTransition();
   const [note, setNote] = useState<string | null>(null);
@@ -1234,8 +1381,28 @@ function CourseHome({
         course-level learning objectives, in any structure you like. Markdown.
         Never published: it doesn&apos;t appear on the course home page or
         Discover.
-        {hasInitial ? "" : " Not started yet — the outline below is just a suggestion."}
       </p>
+      {/* Not started yet: offer the outline as a click, never as pre-filled
+          text (§4 "slots, not placeholders"). Disappears the moment there is
+          anything in the box. */}
+      {!md.trim() && (
+        <div className="flex max-w-prose flex-wrap items-center gap-2 rounded-lg border border-edge-soft px-3 py-2">
+          <span className="text-xs text-muted">Not started yet.</span>
+          <button
+            type="button"
+            onClick={() => {
+              setMd(conceptMapStarter(title, "course"));
+              setDirty(true);
+            }}
+            className="btn btn-ghost btn-sm"
+          >
+            Insert a starter outline
+          </button>
+          <span className="text-xs text-faint">
+            A suggestion you can rewrite — nothing is kept until you save.
+          </span>
+        </div>
+      )}
       {mode === "source" ? (
         <textarea
           value={md}
@@ -1244,6 +1411,7 @@ function CourseHome({
             setDirty(true);
           }}
           {...sel.selectionProps}
+          placeholder="Concepts and topics, how they relate, and your course-level learning objectives — in any structure you like."
           className="field min-h-[55vh] w-full flex-1 resize-y font-mono text-sm"
         />
       ) : (
@@ -1301,46 +1469,37 @@ const HOSTED_SLIDES_AI_OPS = operationsForCategory("slides")
   .filter((o) => o.selection && o.surface === "assistant")
   .map((o) => ({ id: o.id, title: o.title, selection: true }));
 
-/* Starter scaffold shown when a chapter's practice document is first created. */
-const PRACTICE_TEMPLATE = `# Practice questions
-
-Questions for this chapter, organized by **learning objective** (from the concept
-map). Add multiple questions per objective, and label each with its intended
-level: **assignment · discussion · quiz · exam**.
-
-## Objective 1 — <state the objective>
-
-**Assignment.** <a homework-level question>
-
-**Quiz.** <a shorter check-for-understanding question>
-
-## Objective 2 — <state the objective>
-
-**Discussion.** <an open-ended prompt for class discussion>
-
-**Exam.** <an exam-level question>
-`;
-
 /* ── E3: host the chapter's .md.html in-file editor ───────────────────────────
  * The study guide is edited through the self-contained file's OWN editor. We
  * generate the `.md.html` on demand (worker) as the editing surface, host it via
  * ModuleMount, and persist the extracted markdown on save. When no editable file
  * can be produced (no worker / generation error) we fall back to the block
- * editor, so editing never breaks. */
+ * editor, so editing never breaks.
+ *
+ * A document with nothing in it is NOT generated at all: the action reports the
+ * empty slot and we show `DocumentEmptyState` (§4 "slots, not placeholders").
+ * Only when the educator picks how to start does `starter` get sent — `""` for a
+ * blank document, `starterText` for "Insert a starter outline". */
 function HostedStudyGuideEditor(props: {
   packageId: string;
   path: string;
   chapterTitle: string;
   initial: { preamble: string; blocks: StudyGuideBlock[] };
-  /** Starter markdown used when the file doesn't exist yet (e.g. Practice). */
-  emptyTemplate?: string;
+  /** Which document this is, for the empty state's label and one-liner. */
+  doc: ChapterDoc;
+  /** Outline offered (never inserted automatically) when the document is empty. */
+  starterText?: string;
   onDirty?: (d: boolean) => void;
   aiAccess: AiAccess;
 }) {
-  const { packageId, path, chapterTitle, onDirty, emptyTemplate, aiAccess } = props;
+  const { packageId, path, chapterTitle, onDirty, doc, starterText, aiAccess } = props;
   const aiApproved = aiAccess === "approved";
+  // The educator's explicit choice for an empty document: `undefined` until they
+  // click. `""` (start writing) and the outline text are both real choices, so
+  // this is deliberately `undefined`-vs-string, not falsy-vs-truthy.
+  const [starter, setStarter] = useState<string | undefined>(undefined);
   const [state, setState] = useState<
-    { s: "loading" } | { s: "hosted"; html: string } | { s: "fallback" }
+    { s: "loading" } | { s: "hosted"; html: string } | { s: "fallback" } | { s: "empty" }
   >(() => {
     // Session memo: a document we've already generated this session mounts
     // instantly — no "Preparing…" flash, no worker round-trip. Pure peek (no
@@ -1360,10 +1519,12 @@ function HostedStudyGuideEditor(props: {
       };
     }
     setState({ s: "loading" });
-    generateChapterHtmlAction(packageId, path, chapterTitle, emptyTemplate)
+    generateChapterHtmlAction(packageId, path, chapterTitle, starter)
       .then((r) => {
         if (cancelled) return;
-        if (r.ok && r.editable && r.html) {
+        if (r.ok && r.empty) {
+          setState({ s: "empty" });
+        } else if (r.ok && r.editable && r.html) {
           storeEditorHtml(packageId, path, chapterTitle, r.html, r.theme);
           setState({ s: "hosted", html: r.html });
         } else {
@@ -1374,13 +1535,25 @@ function HostedStudyGuideEditor(props: {
     return () => {
       cancelled = true;
     };
-  }, [packageId, path, chapterTitle, emptyTemplate]);
+  }, [packageId, path, chapterTitle, starter]);
 
   if (state.s === "loading") {
     return (
       <div className="flex h-full min-h-[60vh] items-center justify-center text-sm text-muted">
         Preparing the editor…
       </div>
+    );
+  }
+  if (state.s === "empty") {
+    return (
+      <DocumentEmptyState
+        packageId={packageId}
+        path={path}
+        label={DOC_LABELS[doc]}
+        blurb={DOC_EMPTY_BLURB[doc]}
+        onStart={() => setStarter("")}
+        {...(starterText ? { onInsertStarter: () => setStarter(starterText) } : {})}
+      />
     );
   }
   if (state.s === "fallback") {
@@ -1448,22 +1621,28 @@ function HostedStudyGuideEditor(props: {
 
 /* ── E3d: host the chapter's AUTHORED slide deck (.slides.html) ───────────────
  * Slides are their own per-chapter document in the `slides` space, edited through
- * orz-slides' in-file editor. We generate the `.slides.html` on demand (worker) —
- * seeded from the study guide on first open — host it via ModuleMount, and persist
- * the edited deck source on save. When no editable file can be produced (no worker
- * / generation error) we show a short notice rather than a view-only file (slides
- * have no block-editor fallback). */
+ * orz-slides' in-file editor. We generate the `.slides.html` on demand (worker),
+ * host it via ModuleMount, and persist the edited deck source on save. When no
+ * editable file can be produced (no worker / generation error) we show a short
+ * notice rather than a view-only file (slides have no block-editor fallback).
+ *
+ * A deck nobody has written is never invented: the action reports the empty slot
+ * and the educator chooses a blank deck or the starter outline. */
 function HostedSlidesEditor(props: {
   packageId: string;
   path: string;
   chapterTitle: string;
+  /** Outline offered (never inserted automatically) when the deck is empty. */
+  starterText: string;
   onDirty?: (d: boolean) => void;
   aiAccess: AiAccess;
 }) {
-  const { packageId, path, chapterTitle, onDirty, aiAccess } = props;
+  const { packageId, path, chapterTitle, starterText, onDirty, aiAccess } = props;
   const aiApproved = aiAccess === "approved";
+  // `undefined` until the educator picks; then the deck source to open with.
+  const [starter, setStarter] = useState<string | undefined>(undefined);
   const [state, setState] = useState<
-    { s: "loading" } | { s: "hosted"; html: string } | { s: "unavailable" }
+    { s: "loading" } | { s: "hosted"; html: string } | { s: "unavailable" } | { s: "empty" }
   >(() => {
     // Session memo (same rationale as the study-guide editor): a deck already
     // generated this session mounts instantly, no worker round-trip.
@@ -1482,10 +1661,12 @@ function HostedSlidesEditor(props: {
       };
     }
     setState({ s: "loading" });
-    generateSlidesHtmlAction(packageId, path, chapterTitle)
+    generateSlidesHtmlAction(packageId, path, chapterTitle, starter)
       .then((r) => {
         if (cancelled) return;
-        if (r.ok && r.editable && r.html) {
+        if (r.ok && r.empty) {
+          setState({ s: "empty" });
+        } else if (r.ok && r.editable && r.html) {
           storeEditorHtml(packageId, path, chapterTitle, r.html, r.theme);
           setState({ s: "hosted", html: r.html });
         } else {
@@ -1496,13 +1677,26 @@ function HostedSlidesEditor(props: {
     return () => {
       cancelled = true;
     };
-  }, [packageId, path, chapterTitle]);
+  }, [packageId, path, chapterTitle, starter]);
 
   if (state.s === "loading") {
     return (
       <div className="flex h-full min-h-[60vh] items-center justify-center text-sm text-muted">
         Preparing the slides…
       </div>
+    );
+  }
+  if (state.s === "empty") {
+    return (
+      <DocumentEmptyState
+        packageId={packageId}
+        path={path}
+        label={DOC_LABELS["slides"]}
+        blurb={DOC_EMPTY_BLURB["slides"]}
+        startLabel="Start a blank deck"
+        onStart={() => setStarter(BLANK_DECK)}
+        onInsertStarter={() => setStarter(starterText)}
+      />
     );
   }
   if (state.s === "unavailable") {
@@ -1746,6 +1940,61 @@ function ContentEditor({
         </div>
       </div>
     </div>
+  );
+}
+
+/* ── A single-file chapter document (concept map, assessment guide) ───────────
+ * `categoryFile` is always present for these two — the SLOT is declared even
+ * when no file exists, in which case its content is "". So emptiness is decided
+ * here, not by a missing prop: an untouched document shows its empty state (with
+ * the upload door), and only an explicit click mounts the editor. */
+function SingleFileDocument({
+  packageId,
+  doc,
+  file,
+  help,
+  starterText,
+  onDirty,
+  aiAccess,
+}: {
+  packageId: string;
+  doc: ChapterDoc;
+  file: { path: string; repo: "public" | "private"; content: string };
+  help: string;
+  /** Outline offered (never inserted automatically) when the document is empty. */
+  starterText?: string;
+  onDirty?: (d: boolean) => void;
+  aiAccess: AiAccess;
+}) {
+  // `undefined` until the educator picks how to start an empty document.
+  const [starter, setStarter] = useState<string | undefined>(undefined);
+  const stored = file.content;
+
+  if (!stored.trim() && starter === undefined) {
+    return (
+      <DocumentEmptyState
+        packageId={packageId}
+        path={file.path}
+        label={DOC_LABELS[doc]}
+        blurb={DOC_EMPTY_BLURB[doc]}
+        onStart={() => setStarter("")}
+        {...(starterText ? { onInsertStarter: () => setStarter(starterText) } : {})}
+      />
+    );
+  }
+  return (
+    <FileEditor
+      packageId={packageId}
+      category={DOC_OPERATION_CATEGORY[doc]}
+      label={DOC_LABELS[doc]}
+      help={help}
+      // The stored bytes win; `starter` only ever fills a document that has none.
+      file={stored.trim() ? file : { ...file, content: starter ?? "" }}
+      // Nothing is on disk until a save lands, so Download stays inert.
+      hasFile={stored.trim().length > 0}
+      {...(onDirty ? { onDirty } : {})}
+      aiAccess={aiAccess}
+    />
   );
 }
 

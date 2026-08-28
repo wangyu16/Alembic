@@ -1,6 +1,6 @@
 /**
- * Populate a published EMPTY package from an uploaded package (the zip-upload
- * path, "Case A"). Unlike {@link importPackageFromFiles} — which creates a new
+ * Populate a published package from an uploaded package (the zip-upload path,
+ * "Case A"). Unlike {@link importPackageFromFiles} — which creates a new
  * *trial* and can only hold text — this targets a package that is already
  * published to GitHub, so every valid file (text AND images/PDFs) is committed
  * to the paired repos and nothing is left behind.
@@ -9,9 +9,9 @@
  * structural + two-repo checks the platform runs on import) and, if valid,
  * returns the commit plan — the public/private file changes to write, plus
  * deletions for any as-created placeholder the upload doesn't itself provide.
- * It performs no IO and never talks to GitHub; the caller (a web action) maps
- * the planned changes onto the GitHub bridge and the store projection. The
- * two-repo invariant is preserved end to end: every path is routed by
+ * It performs no IO and never talks to GitHub; the caller (the populate route)
+ * maps the planned changes onto `writeThrough` (commit first, then project).
+ * The two-repo invariant is preserved end to end: every path is routed by
  * `repoForPath` and re-checked with `assertPathAllowedInEitherContract`, and
  * the bridge validates the plan once more before any network call.
  *
@@ -19,6 +19,27 @@
  * metadata (title, description, chapters, license, …) is adopted, but the
  * existing `packageId` and repo coordinates are forced — the upload populates
  * *this* package, it does not become a different one.
+ *
+ * ## The gate: a plan diff, not a pristine test (2026-08-28, Wave 3)
+ *
+ * Populate used to refuse any target that was not byte-for-byte pristine, which
+ * turned every interrupted upload into a dead end ("This course already has
+ * content") — the projection was written *before* the commits, so a half-failed
+ * run poisoned its own retry. That gate is gone. In its place:
+ *
+ * - {@link diffPopulatePlan} says exactly what the upload would **add**,
+ *   **replace**, leave **unchanged**, and **remove**, plus the **blockers** —
+ *   authored files already in the course that this package does not cover. The
+ *   caller shows that summary and takes an explicit confirmation (Tier 3).
+ * - {@link pendingPopulateChanges} drops the unchanged files, which is what
+ *   makes a re-run **idempotent**: re-uploading the same zip after a failure
+ *   re-plans against the current state and commits only the remainder.
+ * - {@link emptyCourseChanges} is the deliberate escape hatch: with the
+ *   educator's second confirmation, the blockers are turned into deletions that
+ *   go through the same commit path (so the course is emptied *in the repos*,
+ *   not just in the cache).
+ * - {@link chunkChanges} keeps each commit inside the function's time budget;
+ *   whatever does not fit is completed by the next (resumed) run.
  */
 
 import {
@@ -33,11 +54,18 @@ import type { ImportFile } from "./import-package";
 import { LICENSE_PATH, licenseFileContent } from "./license-file";
 import { extractEmbeddedUid } from "./document-registry";
 import { validatePackageForImport } from "./validate-package";
-import { SEED_CONTENT_PATHS } from "./create";
+import { ROOT_SCAFFOLD_PATHS, SEED_CONTENT_PATHS } from "./create";
 
 const MANIFEST_PATH = "alembic.json";
 const norm = (p: string) => p.replace(/\\/g, "/").replace(/^\/+/, "");
-const isWarning = (i: ValidationIssue) => i.message.startsWith("Heads up:");
+/**
+ * Advisory issues never block an upload. Two spellings are accepted: the
+ * explicit `severity` field (added 2026-08-28 when "declared chapter has no
+ * study guide yet" became a warning under the slot model) and the older
+ * "Heads up:" message prefix that predates it.
+ */
+const isWarning = (i: ValidationIssue) =>
+  i.severity === "warning" || i.message.startsWith("Heads up:");
 
 /** One planned repository write. `content: null` is a deletion. */
 export interface PlannedChange {
@@ -51,11 +79,23 @@ export interface RepoRef {
   name: string;
 }
 
+/**
+ * A file the target package already holds. `content` is optional — supply it
+ * (the store's projection does) and the diff can tell "already there, identical"
+ * from "would be replaced", which is what makes a re-run skip work instead of
+ * repeating it. Omit it and every existing path counts as a replacement.
+ */
+export interface ExistingPackageFile {
+  repo: RepoKind;
+  path: string;
+  content?: string;
+}
+
 export interface PopulatePlanInput {
   /** The published target package — its id and repo pair are forced onto the result. */
   target: { packageId: string; publicRepo: RepoRef; privateRepo: RepoRef };
-  /** The current (pristine) files of the target, to compute placeholder deletions. */
-  existingFiles: { repo: RepoKind; path: string }[];
+  /** The target's current files. Used for placeholder deletions and the plan diff. */
+  existingFiles: ExistingPackageFile[];
   /** The uploaded, unpacked package files (text as UTF-8, binary as base64). */
   uploaded: ImportFile[];
 }
@@ -73,8 +113,12 @@ export type PopulatePlanResult =
 
 /**
  * Validate the uploaded package and, if valid, build the commit plan to populate
- * the (pristine, published) target. Returns `{ ok: false, issues }` on any
- * error-level problem (nothing to commit), else the public/private change sets.
+ * the published target. Returns `{ ok: false, issues }` on any error-level
+ * problem (nothing to commit), else the public/private change sets.
+ *
+ * The plan is the **whole** intent — every uploaded file, whether or not the
+ * target already has it. Ask {@link diffPopulatePlan} what that means for this
+ * target, and {@link pendingPopulateChanges} for the subset still to write.
  */
 export function planPackagePopulation(input: PopulatePlanInput): PopulatePlanResult {
   const files = input.uploaded.map((f) => ({ ...f, path: norm(f.path) }));
@@ -188,4 +232,242 @@ export function planPackagePopulation(input: PopulatePlanInput): PopulatePlanRes
   }
 
   return { ok: true, manifest, publicChanges, privateChanges, binaryPaths };
+}
+
+/* -------------------------------------------------------------------------- *
+ * The gate: plan diff, idempotent replan, deliberate empty-out
+ * -------------------------------------------------------------------------- */
+
+/** One entry of the plan diff — enough for the caller to name the file. */
+export interface PopulateDiffEntry {
+  repo: RepoKind;
+  path: string;
+}
+
+/** A planned change tagged with the repo it belongs to. */
+export type RepoPlannedChange = PlannedChange & { repo: RepoKind };
+
+/**
+ * What this upload would actually do to this target, in the educator's terms.
+ * Every list is sorted by path so the preview reads the same on every run.
+ */
+export interface PopulateDiff {
+  /** Files the course does not have yet. */
+  adds: PopulateDiffEntry[];
+  /** Files the course already has, with DIFFERENT content — overwritten. */
+  replaces: PopulateDiffEntry[];
+  /** Files already present byte-for-byte. Skipped: this is the resume path. */
+  unchanged: PopulateDiffEntry[];
+  /** Legacy starter placeholders the upload clears out. */
+  removes: PopulateDiffEntry[];
+  /**
+   * Authored files already in this course that the package does NOT cover.
+   * They would survive the upload and be mixed in with it — so they are the
+   * blockers the educator has to resolve (keep them, or empty the course).
+   */
+  blockers: PopulateDiffEntry[];
+  /** Images/PDFs among adds+replaces, for the summary line. */
+  images: number;
+}
+
+const changeKey = (repo: RepoKind, path: string) => `${repo} ${norm(path)}`;
+const byPath = (a: PopulateDiffEntry, b: PopulateDiffEntry) =>
+  a.path.localeCompare(b.path) || a.repo.localeCompare(b.repo);
+
+/** Paths that are scaffold or legacy starter placeholders — never "content". */
+const NON_CONTENT_PATHS: ReadonlySet<string> = new Set<string>([
+  ...ROOT_SCAFFOLD_PATHS,
+  ...SEED_CONTENT_PATHS,
+]);
+
+/**
+ * The files that represent *authored content*: everything that is neither root
+ * scaffold (`alembic.json`, `LICENSE`, …) nor one of the two legacy starter
+ * placeholders older packages were seeded with. Under "slots, not placeholders"
+ * (storage-and-write-paths.md §4) a file exists iff real content exists, so this
+ * is a straight subtraction — no filename magic beyond the legacy tolerance,
+ * which exists only because those two files are still out there.
+ */
+export function authoredContentFiles<T extends { path: string }>(files: T[]): T[] {
+  return files.filter((f) => !NON_CONTENT_PATHS.has(norm(f.path)));
+}
+
+/**
+ * TRUE when a published course is still waiting to be filled in — the condition
+ * for offering the "upload your package" empty state.
+ *
+ * Two states qualify, and the second one matters as much as the first:
+ *  1. **Nothing authored yet** — a freshly created (or freshly published)
+ *     course.
+ *  2. **Content, but no study guide anywhere** — the signature of an upload
+ *     that stopped partway: populate commits the manifest, the license and the
+ *     assets before the chapter documents, so an interrupted run leaves exactly
+ *     this shape. Keeping the offer visible is what makes an interrupted upload
+ *     resumable *after a page reload* instead of a dead end.
+ *
+ * A course an educator has actually written in has study-guide content, so it
+ * is never mistaken for either state.
+ */
+export function packageAwaitsUpload(files: { path: string }[]): boolean {
+  const content = authoredContentFiles(files);
+  if (content.length === 0) return true;
+  return !content.some((f) => norm(f.path).startsWith("study-guide/"));
+}
+
+/** Flatten a successful plan into one repo-tagged change list (public first). */
+export function allPlannedChanges(plan: {
+  publicChanges: PlannedChange[];
+  privateChanges: PlannedChange[];
+}): RepoPlannedChange[] {
+  return [
+    ...plan.publicChanges.map((c) => ({ ...c, repo: "public" as const })),
+    ...plan.privateChanges.map((c) => ({ ...c, repo: "private" as const })),
+  ];
+}
+
+/**
+ * Compare a plan against what the target already holds. Pure; the caller turns
+ * this into the confirmation summary the educator approves.
+ */
+export function diffPopulatePlan(
+  plan: {
+    publicChanges: PlannedChange[];
+    privateChanges: PlannedChange[];
+    binaryPaths?: string[];
+  },
+  existingFiles: ExistingPackageFile[],
+): PopulateDiff {
+  const existing = new Map<string, ExistingPackageFile>();
+  for (const f of existingFiles) existing.set(changeKey(f.repo, f.path), f);
+
+  const binaries = new Set((plan.binaryPaths ?? []).map(norm));
+  const diff: PopulateDiff = {
+    adds: [],
+    replaces: [],
+    unchanged: [],
+    removes: [],
+    blockers: [],
+    images: 0,
+  };
+
+  const covered = new Set<string>();
+  for (const change of allPlannedChanges(plan)) {
+    const path = norm(change.path);
+    const k = changeKey(change.repo, path);
+    covered.add(k);
+    const entry: PopulateDiffEntry = { repo: change.repo, path };
+    const had = existing.get(k);
+
+    if (change.content === null) {
+      // A deletion only counts when there is something to delete.
+      if (had) diff.removes.push(entry);
+      continue;
+    }
+    if (!had) {
+      diff.adds.push(entry);
+    } else if (had.content !== undefined && had.content === change.content) {
+      diff.unchanged.push(entry);
+      continue;
+    } else {
+      diff.replaces.push(entry);
+    }
+    if (binaries.has(path)) diff.images += 1;
+  }
+
+  // Blockers: authored content already in the course that this package neither
+  // replaces nor removes. Scaffold is excluded — it is always overwritten.
+  for (const f of authoredContentFiles(existingFiles)) {
+    const k = changeKey(f.repo, f.path);
+    if (!covered.has(k)) diff.blockers.push({ repo: f.repo, path: norm(f.path) });
+  }
+
+  diff.adds.sort(byPath);
+  diff.replaces.sort(byPath);
+  diff.unchanged.sort(byPath);
+  diff.removes.sort(byPath);
+  diff.blockers.sort(byPath);
+  return diff;
+}
+
+/**
+ * The changes still worth writing: the plan minus every file already present
+ * with identical content, and minus deletions of files that are already gone.
+ *
+ * This is the whole of the idempotence story. Re-running populate with the same
+ * zip after an interrupted run re-plans from the current state and returns only
+ * the remainder; running it again after a *complete* run returns nothing at all.
+ */
+export function pendingPopulateChanges(
+  plan: { publicChanges: PlannedChange[]; privateChanges: PlannedChange[] },
+  existingFiles: ExistingPackageFile[],
+): RepoPlannedChange[] {
+  const existing = new Map<string, ExistingPackageFile>();
+  for (const f of existingFiles) existing.set(changeKey(f.repo, f.path), f);
+
+  return allPlannedChanges(plan).filter((change) => {
+    const had = existing.get(changeKey(change.repo, change.path));
+    if (change.content === null) return Boolean(had); // nothing to delete
+    if (!had) return true;
+    return had.content === undefined || had.content !== change.content;
+  });
+}
+
+/**
+ * Turn the diff's blockers into deletions — the "empty this course and upload"
+ * action. Deliberate and separately confirmed: it removes authored files, and
+ * because the deletions travel the same commit path as everything else, they
+ * leave the educator's repositories too (not just the cache). Scaffold and the
+ * uploaded files themselves are never touched.
+ */
+export function emptyCourseChanges(diff: PopulateDiff): RepoPlannedChange[] {
+  return diff.blockers.map((b) => ({
+    repo: b.repo,
+    path: b.path,
+    content: null,
+    encoding: "utf-8" as const,
+  }));
+}
+
+export interface ChunkOptions {
+  /** Most files in one commit. */
+  maxFiles?: number;
+  /** Most content bytes in one commit (base64 length counts as written). */
+  maxBytes?: number;
+}
+
+/**
+ * Split a change list into per-repo commit chunks, in order, so no single
+ * commit is unbounded in files or bytes.
+ *
+ * Chunks never mix repos: a commit belongs to exactly one repository, and
+ * single-repo change sets are what storage-and-write-paths.md §3 asks writers to
+ * prefer. Order is preserved, so a run that stops after chunk *k* has committed
+ * a prefix of the plan and the next run picks up the rest.
+ */
+export function chunkChanges(
+  changes: RepoPlannedChange[],
+  options: ChunkOptions = {},
+): RepoPlannedChange[][] {
+  const maxFiles = options.maxFiles ?? 40;
+  const maxBytes = options.maxBytes ?? 4 * 1024 * 1024;
+  const chunks: RepoPlannedChange[][] = [];
+  let current: RepoPlannedChange[] = [];
+  let bytes = 0;
+
+  for (const change of changes) {
+    const size = change.content?.length ?? 0;
+    const repoChanged = current.length > 0 && current[0]!.repo !== change.repo;
+    const tooMany = current.length >= maxFiles;
+    // A single oversized file still gets its own chunk rather than being split.
+    const tooBig = current.length > 0 && bytes + size > maxBytes;
+    if (repoChanged || tooMany || tooBig) {
+      chunks.push(current);
+      current = [];
+      bytes = 0;
+    }
+    current.push(change);
+    bytes += size;
+  }
+  if (current.length > 0) chunks.push(current);
+  return chunks;
 }

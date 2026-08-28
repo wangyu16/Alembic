@@ -124,13 +124,20 @@ export default async function SitePreviewPage({
 
   const chapters: CourseChapter[] = [];
   for (const ch of await listChapters(store, packageId)) {
+    // Same slot rule as the publish path (`site-actions.ts`): a chapter whose
+    // study guide is still empty gets no page and no row on the student site,
+    // so the preview must not show one either — a preview that disagrees with
+    // the published site is its own bug.
+    const guide = await loadStudyGuide(store, packageId, ch.path);
+    if (!slotHasContent(serializeStudyGuide(guide.preamble, guide.blocks))) continue;
+
     const chapter: CourseChapter = { slug: ch.slug, title: ch.title, viewHref: `chapters/${ch.slug}.md.html` };
 
     const deck = await loadSlidesDeck(store, packageId, chapterSlidesPath(ch.slug));
-    if (deck.source.trim()) chapter.slidesHref = `slides/${ch.slug}.slides.html`;
+    if (slotHasContent(deck.source)) chapter.slidesHref = `slides/${ch.slug}.slides.html`;
 
     const practiceDoc = await loadStudyGuide(store, packageId, chapterPracticePath(ch.slug));
-    if (serializeStudyGuide(practiceDoc.preamble, practiceDoc.blocks).trim()) {
+    if (slotHasContent(serializeStudyGuide(practiceDoc.preamble, practiceDoc.blocks))) {
       chapter.practiceHref = `practice/${ch.slug}.md.html`;
     }
 

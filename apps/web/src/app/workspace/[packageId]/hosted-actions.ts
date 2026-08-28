@@ -19,46 +19,6 @@ import { supabaseEventLogger } from "@/lib/events";
 import { setCourseThemeAction } from "./metadata-actions";
 
 /**
- * Minimal starter deck for a freshly-created chapter slide set: a deck config
- * (NO `theme:` — the theme is a GLOBAL setting applied at generation, so a
- * baked-in deck theme would override it), a title slide, two content slides, and
- * a closing slide. Authored freely thereafter; NOT derived from the study guide.
- * Mirrors orz-slides' own `examples/demo.md` structure, pared down.
- */
-function slidesTemplate(title: string): string {
-  const t = title.trim() || "Slides";
-  return `<!-- deck
-title: ${t}
-ratio: 16:9
--->
-
-<!-- slide template=title -->
-# ${t}
-## <subtitle>
-**<your name>**
-
-<!-- slide -->
-## <First topic>
-
-- <key point>
-- <key point>
-- <key point>
-
-<!-- slide -->
-## <Second topic>
-
-- <key point>
-- <key point>
-- <key point>
-
-<!-- slide template=closing -->
-# Thank you
-
-Questions?
-`;
-}
-
-/**
  * E3 — hosted study-guide editing. The chapter's committed source of record
  * stays lean markdown (`study-guide/NN.md`, owner decision); the self-contained
  * `.md.html` is generated on demand purely as the EDITING SURFACE. The workspace
@@ -82,6 +42,15 @@ export interface ChapterHtmlResult {
   /** The self-contained `.md.html` to host (present only when editable). */
   html?: string;
   /**
+   * The document has no content yet AND the caller supplied no `starter`, so
+   * nothing was generated: the slot is empty and stays empty (§4 "slots, not
+   * placeholders"). The caller shows its empty state; when the educator picks
+   * a way to start, it calls again with `starter` (`""` for a blank document,
+   * the outline text for "Insert a starter outline"). Nothing is written to a
+   * file either way — only a save writes.
+   */
+  empty?: boolean;
+  /**
    * The theme resolved SERVER-side and baked into `html` (undefined → the
    * framework's built-in default). The client can't derive this itself, so it
    * is returned for the session HTML memo to key/invalidate honestly — see
@@ -102,22 +71,30 @@ function repoUrlOf(record: { manifest: { publicRepo?: { owner: string; name: str
  * Generate the chapter's `.md.html` for hosted editing. Returns `editable:false`
  * (no html) when no worker is configured or generation fails — the caller then
  * falls back to the block editor rather than mounting a view-only file.
+ *
+ * `starter` is the educator's explicit choice of what to open an EMPTY document
+ * with, sent only after they clicked something ("" = start blank, or the text of
+ * the starter outline). Absent + no stored content ⇒ `empty:true` and nothing is
+ * generated: a document nobody has written stays empty (§4 "slots, not
+ * placeholders"), and the shell shows an empty state instead of prose the
+ * educator never typed.
  */
 export async function generateChapterHtmlAction(
   packageId: string,
   path: string,
   title?: string,
-  emptyTemplate?: string,
+  starter?: string,
 ): Promise<ChapterHtmlResult> {
   const { supabase } = await requireUser();
-  if (!workerConfigured()) return { ok: true, editable: false };
   try {
     const store = new SupabaseSandboxStore(supabase);
     const record = await store.getPackage(packageId);
     const doc = await loadStudyGuide(store, packageId, path);
-    let markdown = serializeStudyGuide(doc.preamble, doc.blocks);
-    // A freshly-created document (no file yet) opens with a starter template.
-    if (!markdown.trim() && emptyTemplate) markdown = emptyTemplate;
+    const stored = serializeStudyGuide(doc.preamble, doc.blocks);
+    // Nothing written yet and nothing asked for → report the empty slot.
+    if (!stored.trim() && starter === undefined) return { ok: true, empty: true };
+    const markdown = stored.trim() ? stored : starter!;
+    if (!workerConfigured()) return { ok: true, editable: false };
     // Open the editing surface in the SPACE's global theme (study guide vs
     // practice can differ), so the in-file theme picker reflects that space's
     // current choice and a change persists to it on save.
@@ -139,28 +116,31 @@ export async function generateChapterHtmlAction(
 
 /**
  * E3d — generate a chapter's AUTHORED slide deck (`slides/NN.md`) as an editable
- * `.slides.html` (orz-slides, protocol-bearing). On first open the committed
- * deck is empty, so it is SEEDED from the chapter's study guide
- * (`slidesSourceFromBlocks`); thereafter the deck is its own document and edits
+ * `.slides.html` (orz-slides, protocol-bearing), hosted via ModuleMount; edits
  * persist through `hostSaveSlidesAction`. The deck opens in the `slides` space's
  * own theme (orz-slides theme namespace, independent of the course theme).
  * Returns `editable:false` (no html) when no worker is configured or generation
  * fails — the caller degrades gracefully rather than mounting a view-only file.
+ *
+ * A deck with no content is NOT seeded (§4 "slots, not placeholders"): it
+ * reports `empty:true` and the shell offers the educator a blank deck or a
+ * starter outline. `starter` carries whichever they picked.
  */
 export async function generateSlidesHtmlAction(
   packageId: string,
   path: string,
   title?: string,
+  starter?: string,
 ): Promise<ChapterHtmlResult> {
   const { supabase } = await requireUser();
-  if (!workerConfigured()) return { ok: true, editable: false };
   try {
     const store = new SupabaseSandboxStore(supabase);
     const record = await store.getPackage(packageId);
     const deck = await loadSlidesDeck(store, packageId, path);
-    // First open starts from a minimal deck scaffold (title · 2 content ·
-    // closing); the educator authors it freely (not derived from the study guide).
-    const seeded = deck.source.trim() ? deck.source : slidesTemplate(title ?? "Slides");
+    // Nothing authored yet and nothing asked for → report the empty slot.
+    if (!deck.source.trim() && starter === undefined) return { ok: true, empty: true };
+    const seeded = deck.source.trim() ? deck.source : starter!;
+    if (!workerConfigured()) return { ok: true, editable: false };
     // Slides carry their OWN theme (orz-slides ids like `paper`), independent of
     // the study-guide/course theme; absent → orz-slides' built-in default. The
     // course-wide default wins over whatever this specific deck's own config

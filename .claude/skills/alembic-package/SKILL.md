@@ -46,11 +46,15 @@ A valid package MUST contain, at the tree root:
 1. **`alembic.json`** — the manifest (see §2). Required.
 2. **`LICENSE`** — the full license text matching the manifest's `license` field. Required.
 
-And for every chapter you declare in the manifest, its study guide must exist:
+**That is the entire enforced minimum.** Everything else is optional.
 
-3. `study-guide/<chapter-slug>.md` — one per declared chapter (see §3).
+### Per-chapter documents are optional slots
 
-That is the enforced minimum. A real course adds slides, practice, assets, and private answer keys.
+A chapter's five documents — concept map (`concepts/<slug>.md`), study guide (`study-guide/<slug>.md`), slides (`slides/<slug>.md`), assessment guide (`assessment-support/<slug>.md`), practice (`practice/<slug>.md`) — are **declared slots, not required files**. A file exists only when there is real content for it; **absence means "not started yet" and is never an error.** Never ship an empty or boilerplate file ("TODO", "Coming soon", a lone heading) to fill a slot — write the document or leave it out.
+
+A package legitimately arrives with some slots empty; that is the normal state of a course still being written, and Alembic ingests it. The validator will *note* a declared chapter with no study guide as a **warning** ("no study-guide content yet") so an author who meant to include it finds out — it never blocks the upload. Alembic's own published site simply omits what isn't written: a chapter with no study-guide content gets no student page and no link, and a chapter with no deck or no practice set omits just those links.
+
+One consequence worth knowing: publishing the student website needs at least one chapter with study-guide content — a course where nothing is written yet has no site to publish. A real course of course adds slides, practice, assets, and private answer keys.
 
 ---
 
@@ -74,7 +78,7 @@ A single JSON file at the tree root. **You provide the content; Alembic assigns 
 | `keywords` | string[] | Discovery tags. |
 | `discipline` | string | Defaults to `"chemistry"`. Set it for other fields. |
 | `courseContext` | object | `{ courseName?, level?, institutionType?, instructor?, courseNumber?, department? }` — all optional strings. |
-| `chapters` | `{ slug, title }[]` | Ordered units. `slug` must match `^[a-z0-9]+(?:-[a-z0-9]+)*$` (lowercase, digits, single hyphens). Each needs a `study-guide/<slug>.md`. Omit for a single-unit course. |
+| `chapters` | `{ slug, title }[]` | Ordered units. `slug` must match `^[a-z0-9]+(?:-[a-z0-9]+)*$` (lowercase, digits, single hyphens). Its documents share the slug (`study-guide/<slug>.md`, …) but none of them is required — a declared chapter with nothing written yet is legal (§1). Omit for a single-unit course. |
 | `unitTerm` | enum | Wording for a unit: `chapter`\|`module`\|`lesson`\|`unit`\|`week`. Display only. |
 | `theme` | string | An orz theme id (e.g. `light-neat-3`, `dark-elegant-1`). |
 | `themes` | object | Per-space theme overrides, keyed by space name. |
@@ -246,13 +250,13 @@ Before zipping or pushing, the package must pass Alembic's structural validator 
 Conceptually, the validator (`validatePackageForImport` in `@alembic/package-ops`, wrapping the pure `validateProject` in `@alembic/package-contract`) checks:
 1. `alembic.json` parses and is a valid manifest; `alembic.json` and `LICENSE` are present.
 2. Every file sits in a folder allowed for its repo (the two-repo invariant) — derive each file's repo with `repoForPath(path)`.
-3. Every declared chapter has its `study-guide/<slug>.md`.
+3. A declared chapter with no `study-guide/<slug>.md` is reported as a **warning**, not an error — an unwritten slot never blocks ingest (§1).
 4. Every renderable object (`.ketcher.svg`/`.plot.svg`/`.md.html`/`.slides.html`/`.paged.html`) is in a public folder.
 
 Self-check without the code:
 - [ ] `alembic.json` at root, valid, `createdAt` ends in `Z`, no `publicRepo`/`privateRepo`.
 - [ ] `LICENSE` at root, matching the manifest license.
-- [ ] Each chapter in the manifest has `study-guide/<slug>.md` (plain markdown).
+- [ ] Every chapter document you DID write is plain markdown at its slug path (`study-guide/<slug>.md`, …); no empty or placeholder file stands in for one you didn't.
 - [ ] Nothing student-facing is under `private/`; no answer keys/solutions outside `private/`.
 - [ ] No renderable object under `private/`.
 - [ ] Only recognized top-level folders (§0); no stray files at the root beyond the allowlist.

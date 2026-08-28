@@ -404,6 +404,21 @@ open each doc → save one → publish flow dry-run in tests).
 
 ---
 
+## Cross-repo follow-up (owner decision needed, 2026-08-28)
+
+**Coursewerk `check_oer.mjs:186-190` still ERRORS** where Alembic now warns:
+*"Chapter … is declared but its study guide … is missing."* CLAUDE.md requires
+`package-contract`, `release-gates`, the `alembic-package` skill, and
+coursewerk's `check_oer.mjs` to stay in sync, so the two are now out of step
+on exactly this rule.
+
+Arguably defensible as-is: coursewerk is a **producer** and may hold itself to
+stricter completeness than the platform accepts (its other quality-lane
+presence rules at `:464-472` are producer-only by design). The question is
+whether a declared-but-unwritten chapter should block a coursewerk run the way
+it no longer blocks an Alembic import. **Not changed here** — coursewerk is a
+separate repository and this is a product call, not a mechanical sync.
+
 ## Conflict review (performed 2026-08-28, pre-execution)
 
 **Hotspots & resolutions**

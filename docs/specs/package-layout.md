@@ -20,6 +20,10 @@ with no chapters) — the "start small" path. The manifest links the pair.
 
 ## 2. Public repository layout
 
+The tree below names the **slots** a package may fill, not a checklist of
+files it must contain: only `alembic.json` is required, and every
+per-chapter document appears only once it has real content (§4).
+
 ```
 alembic.json                        # manifest — the one required file
                                      # (course description + tags/keywords
@@ -85,9 +89,20 @@ served publicly, or included in adaptation. (Decided: `private/`; v1's
   `.pdf`, …) in the spaces.
 - **Space file names:** URL-safe (`[A-Za-z0-9._-]`, no spaces) — they
   become permalink paths and site URLs.
-- Not every chapter needs every file: a chapter is valid with only its
-  study guide; slides/practice/concept map/assessment guide are optional
-  per chapter.
+- **Every per-chapter file is optional.** The five per-chapter documents
+  (concept map, study guide, slides, assessment guide, practice) are
+  declared **slots**, not files that must be present: a file exists iff
+  real content exists, and there are no seeded placeholders
+  ([storage-and-write-paths.md](storage-and-write-paths.md) §4). A chapter
+  with none of them written is legal — absence means "not started", never
+  an error — for a package created in the workspace, uploaded, or pushed
+  straight to GitHub alike. Registration and ingest therefore never
+  require a chapter's files (a declared chapter with no study guide is
+  surfaced as a *warning* only), and the published student site simply
+  omits an empty slot: no page and no link for it, and a chapter with no
+  study-guide content does not appear on the course home at all.
+  Publishing the site does need at least one chapter with study-guide
+  content — a publish gate on the finished course, not a layout rule.
 
 ## 5. The manifest (`alembic.json`, schema v2 sketch)
 

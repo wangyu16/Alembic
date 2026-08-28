@@ -38,6 +38,23 @@ The rules split the way Coursewerk's own architecture does
 
 ## Part 1 — HARD RULES (a producer MUST satisfy)
 
+**What "MUST" applies to.** Every rule below constrains the files a package
+*ships*; only `alembic.json` and `LICENSE` are files a package must *contain*.
+The per-chapter documents (concept map, study guide, slides, assessment guide,
+practice) are **declared slots, not required files** — a file exists iff real
+content exists (docs/specs/storage-and-write-paths.md §4). A missing chapter
+document means "not started yet", is a legitimate state for a package from any
+producer, and **is never an ingest error**: Alembic's `validateProject` records
+a declared chapter with no study guide as a *warning*
+(`packages/package-contract/src/validate.ts`, §3 of the checks), so partially
+written courses upload cleanly. The corollary producers must respect: **never
+emit an empty or boilerplate file to fill a slot** — no "TODO" stub, no
+heading-only document. Alembic publishes nothing for an empty slot (no page, no
+link), so a stub is the only way to put an empty page on a student's screen.
+Publishing the student website does require at least one chapter with
+study-guide content — that is a publish gate on the finished course, not an
+upload requirement.
+
 ### H1 · Manifest
 `alembic.json` at the archive root: `schemaVersion` (1 or 2), a `packageId`
 (placeholder like `"pending"` is fine — Alembic mints the real one), `title`,
@@ -70,9 +87,11 @@ Every section-anchor marker `{{attrs[#blk-…]}}` MUST match:
 ```
 
 **No hyphens, no uppercase, no underscores, no punctuation** after `blk-`. IDs
-must be **unique within the file**. And because Alembic's publish gate currently
-requires it, **every `##` section in a study guide must carry one** (see §Part 3
-for the gate-relaxation fix; until then, id every H2 section).
+must be **unique within the file**. Anonymous sections (no id) are **legal** —
+the publish gate was relaxed to check `validateBlockIds` only, and contract v2
+makes ids optional anchors (see Part 3 F2). Giving every `##` section an id is
+still recommended: ids are what let citations, permalink fragments, and
+AI-assisted merges point at a specific section across revisions.
 
 - **Why:** Alembic's marker regex is `\{\{attrs\[#(blk-[a-z0-9]+)\]\}\}`. A
   hyphenated id like `blk-hazard-fault` **does not match** — Alembic then
@@ -109,6 +128,8 @@ image `src`). Do **not** hardcode Alembic permalinks — Alembic assigns them
   also perform the ingest rewrite (Part 3, F1). Both are required.
 
 ### H6 · Per-deliverable format contracts
+*(These govern each deliverable the package actually ships; a slot left empty
+is simply absent — see the note opening Part 1.)*
 Concept maps + assessment guides are **plain Markdown, no graphics**. Study
 guides are rich orz-markdown: learning objectives up top, `##` sections, at least
 one worked example in `:::: tabs`, a synthesis, and at least one visual. Practice
@@ -134,9 +155,13 @@ see Part 3, F3, for Alembic's side of this bug.)*
 
 ### H9 · Concept-map path + format  ⚠️ *(Bug 4)*
 The course concept map is `concepts/course.md`; each chapter map is
-`concepts/<slug>.md`; all **plain Markdown**. **Check:** `concepts/course.md`
-exists and every chapter has `concepts/<slug>.md`. *(Coursewerk already emits
-this; Alembic must read this path — Part 3, F4.)*
+`concepts/<slug>.md`; all **plain Markdown**. This rule fixes *where* a concept
+map goes, not that one must exist — a producer that writes concept maps (as
+Coursewerk does) must use exactly these paths, and a package with none is still
+valid. **Check:** every concept map present is at `concepts/course.md` /
+`concepts/<slug>.md` and nowhere else; a producer whose own contract promises a
+map per chapter may additionally assert presence, but Alembic does not.
+*(Coursewerk already emits this; Alembic must read this path — Part 3, F4.)*
 
 ### H10 · Ship lean — no framework carriers
 The package contains **only lean sources** (`.md`, and self-contained

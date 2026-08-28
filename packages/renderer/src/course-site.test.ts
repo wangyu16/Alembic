@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildCourseSite } from "./course-site";
+import { buildCourseSite, slotHasContent } from "./course-site";
 
 const course = {
   title: "General Chemistry",
@@ -108,6 +108,19 @@ describe("buildCourseSite — course home hub", () => {
     expect(index.content).toContain("<h1>Empty</h1>");
     expect(index.content).not.toContain('<ol class="module-list">');
     expect(index.content).toContain("No modules published yet.");
+  });
+
+  it("shows nothing at all for a chapter the caller left out (empty study guide)", () => {
+    // The publish path drops a chapter whose study-guide slot is still empty
+    // (acceptance D3): no page file, no row, and therefore no dangling link.
+    const index = buildCourseSite({
+      title: "Partly written",
+      chapters: course.chapters.filter((c) => c.slug !== "acids"),
+      builtAt: course.builtAt,
+    }).find((f) => f.path === "index.html")!;
+    expect(index.content).not.toContain("Acids");
+    expect(index.content).not.toContain("acids.md.html");
+    expect(index.content).toContain("2 modules");
   });
 
   it("credits Alembic and orz-markdown in the footer, opening in a new tab", () => {
@@ -376,5 +389,29 @@ describe("buildCourseSite — rights notice", () => {
     expect(html).not.toContain('<p class="site-license">');
     expect(html).not.toContain("©");
     expect(html).not.toContain("Licensed under");
+  });
+});
+
+describe("slotHasContent — declared slots, not placeholders", () => {
+  it("treats an absent slot as not-started, never an error", () => {
+    // A chapter document that was never written has no file: the loader hands
+    // back an empty document, and the site must publish nothing for it.
+    expect(slotHasContent(undefined)).toBe(false);
+    expect(slotHasContent(null)).toBe(false);
+    expect(slotHasContent("")).toBe(false);
+  });
+
+  it("treats a whitespace-only slot as empty (a blank page is still an empty page)", () => {
+    expect(slotHasContent("   ")).toBe(false);
+    expect(slotHasContent("\n\n\t\n")).toBe(false);
+  });
+
+  it("publishes a slot with any real content, including preamble-only prose", () => {
+    expect(slotHasContent("## Heat and work\n\nEnergy in transit…")).toBe(true);
+    // Text above the first "##" is real authored content too — it renders on
+    // the page, so the chapter is not empty even though the publish gate
+    // counts only "##" sections.
+    expect(slotHasContent("# Energy\n\nAn intro paragraph.")).toBe(true);
+    expect(slotHasContent("x")).toBe(true);
   });
 });
