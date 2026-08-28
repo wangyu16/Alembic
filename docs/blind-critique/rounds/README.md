@@ -34,3 +34,33 @@ Until that exists, every acceptance item is **UNVERIFIED BY THE METHOD** —
 the code-level gates (typecheck, unit/adversarial tests, production build)
 are not a substitute, and this project's own history is the argument: the
 bugs that prompted this work all passed those gates.
+
+## Seed-construction notes for the operator (added 2026-08-28 by T42)
+
+The frozen spec is **not** amended by anything here — these are build
+instructions for the environment sheet, resolving states the spec names but
+does not spell out. They matter because the implementation changed after the
+spec was frozen.
+
+- **SEED-C ("a published course that is *empty* — just created + published")
+  means step ① only.** Publishing is two steps (acceptance D1): ① *Save to
+  GitHub*, which creates the repo pair and makes the course GitHub-backed, and
+  ② *Publish web page*, which builds the student site. Since "slots, not
+  placeholders" shipped, **a brand-new course is genuinely empty and therefore
+  cannot pass step ②** — the "Study guide" release gate requires at least one
+  `##` section, and "empty slots never publish" is the intended rule (D3
+  depends on it). So build SEED-C by running **① only, and stop**. That is all
+  C7/C8 need: the whole-course zip-upload door requires a GitHub-backed
+  package, not a live site. **Do not** record "cannot publish the website" as a
+  C7 blocker — put SEED-C's live-site state on the environment sheet so
+  verifiers judge C7 without inferring it. (SEED-B, by contrast, explicitly
+  requires a live student website, and has real content to build one from.)
+- **SEED-F's oversized file:** the whole-course **zip** limit is now a stated
+  **50 MB** product limit (`MAX_PACKAGE_ZIP_BYTES`), separate from whatever
+  per-file collection limit C1 exercises. The spec's ">100 MB file" clears both,
+  so it still tests what C1 intends — keep it comfortably above 100 MB.
+- **`0020_staging_bucket.sql` is load-bearing for C7/C8** and needs
+  owner/service-role privileges (it writes `storage.buckets` and
+  `storage.objects` policies). Without it every zip upload fails at the
+  signed-URL step and C7/C8 are BLOCKED, not FAIL. Also schedule the 24-hour
+  orphan sweep — see [../../Deployment.md](../../Deployment.md) §1.

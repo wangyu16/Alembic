@@ -3,7 +3,20 @@
 > **Authoritative schema is now [package-contract-v2.md](package-contract-v2.md)**
 > (2026-07-05). This doc's §5–6 (permalinks, pin-at-publish, raw-GitHub links)
 > are **[SUPERSEDED]** — pin-at-insert and ID-based `/d/{docId}` win. The
-> carrier codec + kind registry (§1–4) remain authoritative.
+> carrier **codec + kind registry** (§1–4) remain authoritative.
+>
+> ⚠️ **But not §1–4's *document* model (correction 2026-08-28).** Where §1's
+> role table, §3's "Scope" note, and §4's slide conventions say documents are
+> **derived from study-guide blocks** and regenerated — *"we do not build a
+> WYSIWYG slide editor"*, *"one slide per study-guide section"*, staleness
+> flagging — that is **no longer true**. Slides and practice questions are
+> **independently authored documents** with their own committed `.md` source
+> (`slides/<slug>.md`, `practice/<slug>.md`), edited in **hosted in-file
+> editors** (`HostedSlidesEditor`), and the site builds a deck from its own
+> source. See [document-model.md](document-model.md) rows 3 and 5 and
+> [course-structure.md](course-structure.md). The **codec** claims around them —
+> `orz-carrier` island, format versions, embed/extract, the kind registry — are
+> unaffected and remain authoritative.
 >
 > **Supersession note (2026-07-04):** the carrier *codec* and *kind
 > registry* here remain authoritative. Superseded by newer specs: asset
@@ -79,7 +92,7 @@ This distinction drives the entire design; do not conflate them.
 | Role | Source of truth | Examples | Produced by | Data flow |
 | --- | --- | --- | --- | --- |
 | **Asset** | the carrier file itself | `.ketcher.svg`, `.plot.svg` | a dedicated editor (Ketcher, Plotly) | authored once → **reused by reference** |
-| **Document** | study-guide blocks | `.md.html`, `.slides.html`, `.md.pdf` | Alembic's renderer | **derived** → regenerated from blocks |
+| **Document** | ~~study-guide blocks~~ **its own committed `.md`** | `.md.html`, `.slides.html`, `.paged.html` (generated surfaces) | authored by the educator in a hosted in-file editor | **authored** → the carrier is generated on demand from the document's own source *(corrected 2026-08-28 — see the banner at the top; slides and practice stopped being derived from study-guide blocks on 2026-07-09)* |
 
 - An **asset** is an addressable, reusable media element. Editing it updates
   every document that references it.
@@ -178,10 +191,16 @@ Five properties make this genuinely independent (not just separate files):
    editor}`; the plot format can evolve without touching Ketcher.
 
 **Scope:** dedicated editors are for **assets** (Ketcher, Plotly — interactive
-editors that *produce* the file). For **documents** (`.slides.html`, `.md.pdf`)
-the source of truth is blocks, so the "editor" is the existing block editor +
-renderer generation — not a separate hand-editor. We do not build a WYSIWYG
-slide editor; documents are regenerated from blocks.
+editors that *produce* the file). ~~For **documents** (`.slides.html`,
+`.md.pdf`) the source of truth is blocks, so the "editor" is the existing block
+editor + renderer generation — not a separate hand-editor. We do not build a
+WYSIWYG slide editor; documents are regenerated from blocks.~~ **Reversed
+2026-07-09 / recorded 2026-08-28:** documents are independently authored over
+their own committed `.md`, and Alembic *does* host a slide editor — it just
+didn't **build** one. The in-file editors of the orz-family formats are
+**hosted** through the `editor-kit` seam (`HostedSlidesEditor`,
+`HostedStudyGuideEditor`), which is the self-contained-editing direction: the
+workspace plugs in the file's own editor and builds none of its own.
 
 ---
 
@@ -228,11 +247,16 @@ are what should flow **back into the extensions**:
 | Three divergent embed mechanisms; in Alembic `.md.html` used its own `id="md-source"` | One HTML mechanism (`id="orz-carrier"`) for `md`+`slides`; one PDF-attachment mechanism for `pdf`. `.md.html` migrated; old `md-source` files read as format 0 |
 
 Conventions:
-- **Slide boundaries:** an explicit `---` line (thematic break) in the deck
-  source. In Alembic the deck is derived **one slide per study-guide section**.
-- **Staleness:** document carriers are M3 derived artifacts (source-block
-  hashes) — edit a block → the deck/PDF reads "out of date" → regenerate.
-  Regeneration is deterministic and idempotent (one deck per chapter).
+- **Slide boundaries:** orz-slides' own deck grammar (`<!-- slide -->` markers
+  plus a leading `<!-- deck … -->` config block) in the deck source. ~~In
+  Alembic the deck is derived **one slide per study-guide section**.~~
+  **No longer** — the deck is authored, so its boundaries are the author's.
+- **Staleness:** ~~document carriers are M3 derived artifacts (source-block
+  hashes) — edit a block → the deck/PDF reads "out of date" → regenerate.~~
+  **Does not apply to authored documents.** A deck edited by hand has no
+  upstream to go stale against. Staleness tracking remains meaningful only for
+  genuinely *derived* artifacts (worksheets, and the legacy
+  `slidesSourceFromBlocks` path).
 - **`.md.pdf`:** generated **worker-side** (Chromium/paged.js, per goal.md
   "builds run app-side in the worker tier"), source embedded as a `source.md`
   attachment + markers. Until the worker tier lands, the interim path is
@@ -278,9 +302,11 @@ public repo (their own infrastructure) and never sit in Postgres as base64. This
 keeps the trial DB footprint bounded — no Supabase Storage / object-store tier
 needed — while still letting educators start and do basic editing in a trial.
 
-Implementation note (when binary upload ships): the upload affordance should be
-disabled for sandbox packages with a one-line reminder ("Save to GitHub to add
-images, PDFs, or audio"), and enabled only when `storage === "github"`.
+Implementation note — ✅ **shipped**: `uploadVerdict`
+(`apps/web/src/lib/collection-upload.ts`) refuses a binary on a trial package
+with exactly that reminder and allows it only on a published one, and also
+carries the size warn/block thresholds. *(This paragraph said "when binary
+upload ships"; it has.)*
 
 ### Identity & provenance
 
@@ -361,8 +387,14 @@ the *same* validation locally that the importer runs server-side — no surprise
 Deliverables:
 
 - a `validate(project)` function in `package-contract` (pure) — checks manifest,
-  chapter layout, `materials/` carrier rules, naming, block-ID rules, and that every
-  carrier's `kind`/`format` is registered;
+  chapter layout, carrier-space rules, naming, block-ID rules, and that every
+  carrier's `kind`/`format` is registered. ✅ Shipped as `validateProject`.
+  **Two of those checks are weaker than this line implies, deliberately:**
+  block IDs are **optional** (only *malformed* or *duplicate* ids fail; missing
+  is legal), and a declared chapter with no study-guide file is a **warning**,
+  not an error — `ValidationIssue` carries `severity: "error" | "warning"` and
+  `ok` flips only on errors. A producer must not read this bullet as "every
+  chapter must ship all its documents with ids on every section".
 - the **Agent Skill** (project-layout contract in prose), generated from the
   kind registry + schema so it can't drift — this also *finishes* the unshipped
   Agent Skill the consolidation plan flags;

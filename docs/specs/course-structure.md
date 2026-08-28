@@ -53,8 +53,12 @@ chapters are a *naming convention within layers*, not a new top-level concept:
 │   ├── 01-stoichiometry.md           # one file == one chapter == one webpage
 │   ├── 02-thermochemistry.md
 │   └── …
-├── materials/
-│   └── slides/ch01.slides.html …     # derived slides per chapter
+├── slides/
+│   └── 01-stoichiometry.md …         # authored deck per chapter (orz-slides
+│                                     # deck markdown; the .slides.html is
+│                                     # GENERATED, never committed)
+│                                     # [was: materials/slides/ch01.slides.html
+│                                     #  — corrected 2026-08-28]
 ├── assessment-support/
 │   └── question-templates/ch01.json… # public-safe question-template rules
 ├── provenance/ · metadata/
@@ -66,11 +70,20 @@ chapters are a *naming convention within layers*, not a new top-level concept:
     └── answer-keys/…                 # keys for generated questions
 ```
 
-## What v0.1 does today (the degenerate case)
+## ~~What v0.1 does today (the degenerate case)~~ — historical
 
-A v0.1 package is a **one-chapter course**: a single
+> **Superseded 2026-08-28.** Multi-chapter shipped (M9), and package creation
+> changed: a new package declares its first chapter (slug `01-getting-started`)
+> **explicitly in the manifest with no file behind it** — under "slots, not
+> placeholders" a file exists only once real content does. The path
+> `study-guide/01-getting-started.md` is now **legacy-only**
+> (`SEED_CONTENT_PATHS` in `packages/package-ops/src/create.ts`): packages
+> created before the change may still have it; a fresh one never does. The
+> implicit-chapter fallback described below also serves legacy packages only.
+
+A v0.1 package was a **one-chapter course**: a single
 `study-guide/01-getting-started.md` rendered to a single-page site, with flat
-worksheets under `materials/`. This is the n=1 special case of the model above,
+worksheets under `materials/`. This was the n=1 special case of the model above,
 chosen deliberately for the demo.
 
 ## Why it isn't foreclosed (current code is already general where it counts)
@@ -84,7 +97,14 @@ chosen deliberately for the demo.
 | One site per course | Already true — a package builds to one Pages site. |
 | Derived-artifact drift tracking | Already records source block IDs + hashes; applies per chapter unchanged. |
 
-## Contained changes to reach the target (all additive)
+## Contained changes to reach the target (all additive) — ✅ ALL FIVE SHIPPED
+
+> **Status added 2026-08-28.** Items 1–5 below all landed (M9 + Phase 2–4
+> work); read this section as the record of how it was staged, not as
+> outstanding work. One clarification on item 1: a fresh manifest now **always
+> declares `chapters` explicitly**, so the "absent → treat the single
+> study-guide file as the one chapter" fallback is a **legacy-package** path,
+> not the normal case.
 
 None require migrating existing single-chapter packages.
 
@@ -116,9 +136,15 @@ model is unchanged (a unit is always a `ChapterRef { slug, title }`):
   (`study-guide/<slug>.md`) and the public URL segment (`chapters/<slug>.html`);
   `title` is the display name and the page **h1**. They are independent: set
   both at creation, rename the title freely, and rename the page name via
-  `renameChapterPageName` — which moves **every** slug-keyed file (study-guide
-  page, chapter `concepts/<slug>.json`, `objectives/<slug>.json`) and updates
-  the manifest. Block IDs are untouched, so derived artifacts stay linked. The
+  `renameChapterPageName` — which moves **every** slug-keyed file and updates
+  the manifest. That set is now derived from the slot table
+  (`chapterSlotPaths()`), so it is **all five chapter documents** (concept map,
+  study guide, slides, assessment guide, practice) plus the two chapter-scoped
+  planning records `concepts/<slug>.json` and `objectives/<slug>.json`.
+  *(Corrected 2026-08-28: this listed only three families, which was also the
+  bug — the rename moved three and **orphaned four of the five documents** at
+  the old slug. `deleteChapter` had the same defect. Both now derive their file
+  set from the slot table so it cannot drift again.)* Block IDs are untouched, so derived artifacts stay linked. The
   page name change alters the public URL, so the UI warns first.
 - **Chapter title as h1.** Each chapter page renders its title as an `<h1>` at
   the top, injected at render time from the manifest title (single source of

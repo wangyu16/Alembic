@@ -1,6 +1,14 @@
 # Design update: self-contained editing, document contract, universal permalinks
 
-**Date:** 2026-07-03 · **Status:** direction locked (owner decision), implementation not started.
+**Date:** 2026-07-03 · **Status:** direction locked (owner decision);
+**substantially implemented** — Studio removed (§2), the registration record and
+migration `0014_documents` shipped, the `/d/{docId}` resolver ships, and the
+hosted in-file editors for `.md.html` / `.slides.html` are live. *(Header
+corrected 2026-08-28 — it said "implementation not started", which caused
+readers to discount a doc that mostly describes shipped behavior. Three specific
+passages below are now WRONG rather than merely pending: the `.md.html`-native
+study guide in §6, "block IDs … never rewritten" in §4, and the 302-redirect
+resolution model in §7. Each carries its own correction.)*
 **Companion:** [../SteeringNote.md](../SteeringNote.md) — the owner's living
 steering note for this direction; it is refined ahead of this spec, so treat
 it as newer thinking where the two disagree.
@@ -57,7 +65,14 @@ same for internal and external origins. A registration records at least:
 - embedded-source hash where the format carries source;
 - provenance (origin: workspace-created / workspace-uploaded / external
   commit; author; time);
-- block IDs where the content is block-bearing (validated, never rewritten);
+- block IDs where the content is block-bearing — **a well-formed existing id is
+  preserved** across saves and AI rewrites (that is the immutability rule).
+  "Never rewritten" overstates it: a save **mints** an id for a block that has
+  none, and **re-mints** one for a marker that is present but malformed. Missing
+  ids are legal (anonymous sections); only malformed or duplicate ids fail
+  validation. *(Corrected 2026-08-28; matches
+  [upload-contract.md](upload-contract.md) and
+  [package-contract-v2.md](package-contract-v2.md) §4.)*
 - public/private status — the two-repo invariant applies identically to
   uploaded and externally committed files (fail-closed).
 
@@ -106,19 +121,28 @@ mechanism generalizes; permalinks are no longer an asset-only feature.
   with what functions — the detailed per-type descriptions. This is the
   next most important set of questions and blocks the document contract's
   schema. The owner asked to be reminded to continue with these.
-- ~~Study-guide source of record~~ **DECIDED (2026-07-04,
-  [document-model.md](document-model.md))**: `.md.html`-native — the
-  chapter study guide IS one `.md.html` file; registration extracts and
-  hashes the embedded source.
-- ~~Fate of the studio-shell block editor~~ **DECIDED**: it is the interim
-  surface; retires at parity when the hosted in-file editor lands
-  (Roadmap E3).
+- ~~Study-guide source of record~~ ~~**DECIDED (2026-07-04):** `.md.html`-native~~
+  → **RE-DECIDED, and this is the permanent answer (2026-07-08, confirmed
+  2026-08-28): lean `.md`.** The committed source of record is
+  `study-guide/<slug>.md`; the `.md.html` is a **generated** editing/viewing
+  surface and is never committed. Meaningful per-file history and the
+  no-lock-in legibility promise both require lean sources. Registration still
+  extracts and hashes embedded source — that is how an *uploaded* `.md.html` is
+  absorbed back into its `.md`. See
+  [educator-version-contract.md](educator-version-contract.md) §7.
+- ~~Fate of the studio-shell block editor~~ **DECIDED, and done**: it was the
+  interim surface and the hosted in-file editors reached parity —
+  `HostedStudyGuideEditor` (study guide + practice) and `HostedSlidesEditor`
+  (authored decks) are live; the block editor remains only as a fallback.
 - ~~`.md.pdf` vs `.paged.html`~~ **DECIDED**: `.paged.html` (+ browser
   print-to-PDF) replaces the `.md.pdf` export target (see goal.md).
-- Upload policy vs the trial-storage decision (trial packages are text-only
-  in Postgres; binary upload gated to published packages) — how uploads of
-  self-contained HTML files (text, but potentially large) are classified.
-  *(Still open; owner to rule when Module E4 reaches upload limits.)*
+- ~~Upload policy vs the trial-storage decision~~ **DECIDED and shipped.**
+  `uploadVerdict` (`apps/web/src/lib/collection-upload.ts`) classifies by
+  text-vs-binary and size: binaries need a published package (trials stay
+  text-only in Postgres, the permanent policy), with a warn threshold and a hard
+  block above it. Whole-course zips have their own stated **50 MB** limit
+  (`MAX_PACKAGE_ZIP_BYTES`) and travel through the staging bucket, not a request
+  body. *(Corrected 2026-08-28 — this was still listed as open.)*
 
 ## 7. Permalink mechanism (proposal — recommended, pending owner approval)
 
@@ -137,13 +161,19 @@ doing the serving wherever possible.**
   contract's registration record; the ID→current-path mapping is updated on
   rename/move/transfer while the ID never changes. This is a primary reason
   registration must be origin-agnostic (§3).
-- **Resolution, layered:** public + published files → **302 redirect to the
-  educator's GitHub Pages site** (correct MIME, renders the self-contained
-  formats, educator-owned, survives without Alembic — keeps the no-lock-in
-  promise honest). Private / trial-sandbox / owner-only files → served
-  through the platform (github-bridge App token or Supabase) with access
-  checks and correct content-type — the existing `/api/asset/{pkg}/{path}`
-  pattern generalized.
+- **Resolution, layered.** *(Corrected 2026-08-28 — the proposal below was
+  **not** what shipped, and the difference is deliberate.)* The `/d/{docId}`
+  resolver (`apps/web/src/app/d/[docId]/route.ts`) **does not 302-redirect**.
+  Public + GitHub-backed files are **platform-served from the public repo with
+  the correct MIME type**: `raw.githubusercontent.com` is an internal transport
+  only — it answers `text/plain` with `nosniff`, so a self-contained HTML
+  document redirected there would display as source code instead of rendering.
+  Private / trial-sandbox / owner-only files are served through the platform
+  (github-bridge App token or Supabase) with access checks — the
+  `/api/asset/{pkg}/{path}` pattern generalized, as proposed. The no-lock-in
+  argument is unaffected: the educator's own Pages site and repositories are
+  still the durable, Alembic-independent copy; the permalink is a stable
+  *citation* address, not the only way to reach the file.
 - **Per-class behavior (see §4):**
   - *Document permalinks* (final views; never embedded): share → browser
     renders the file, whose built-in viewer/editor satisfy "editor and

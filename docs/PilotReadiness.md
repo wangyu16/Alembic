@@ -30,9 +30,22 @@ code. Check each off before the live passes.
   (the base guide originally listed only 0001–0004). Confirm `profiles`,
   `suggestions`, `portal_reports`, and `ai_invocations` exist, and that
   `packages.archived_at` exists (0012, package archive/restore).
+- [ ] **Migrations 0014–0020 applied** (added 2026-08-28). `0016`–`0018` are
+  the security + user-governance set and have **deploy-order constraints in
+  both directions** — see the banners in [Status.md](Status.md). `0019` gates
+  asset tags/metadata. **`0020_staging_bucket` needs owner/service-role
+  privileges and must be applied BEFORE the Wave-3 code is deployed**, or every
+  whole-course zip upload fails at the signed-URL step. Full list and
+  special-handling table: [Deployment.md](Deployment.md) §1.
+- [ ] **Staging-bucket cleanup sweep scheduled** — Supabase Storage has no
+  automatic TTL. Something (cron/operator task, service role) must delete
+  `staging` objects older than **24 hours**; the happy path already deletes each
+  object on consumption, so this only collects orphans from failed runs.
 - [ ] **`SUPABASE_SECRET_KEY`** set in Vercel (Production) — required for
   `/admin` and the research export.
-- [ ] **AI gateway (Portkey)** wired in Vercel: `AI_GATEWAY_URL`,
+- [ ] **AI gateway** wired in Vercel — **self-hosted LiteLLM** as of 2026-08-28
+  (**Portkey superseded**; see [specs/worker-tier.md](specs/worker-tier.md)
+  §1.5). The variables are unchanged, only the host and model-id form: `AI_GATEWAY_URL`,
   `AI_GATEWAY_API_KEY`, `AI_MODEL_DEFAULT`, `AI_MODEL_STRONG` (Model-Catalog
   `@<provider-slug>/<model>` form). The app prefers the gateway when the URL +
   key are present; otherwise it falls back to `GEMINI_API_KEY`.

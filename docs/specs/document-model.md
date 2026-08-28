@@ -54,8 +54,14 @@ remain there until the specs rebuild reaches it).
 | 7 | **Current** (space) | any; prefer `.paged.html` for exam sheets/handouts | Current teaching cycle: this semester's assignment list, completed exams with keys for student review, …. Newest set shown on the website; on semester turnover the old set is archived. | Public-facing (website shows newest set; inclusion per instructor) | **Not** auto-included |
 | 8 | **Private** (space) | any; prefer `.paged.html` for exams/handouts | Confidential (exam questions with keys), personal notes, unfinished drafts | **Private repo** — no public link, not discoverable, not adaptable | Never |
 
-Rows 1–5 are one file per chapter each; 6–8 are file spaces with a file
-organization interface in the workspace.
+Rows 1–5 are **at most** one file per chapter each — they are declared **slots**
+("slots, not placeholders", [storage-and-write-paths.md](storage-and-write-paths.md)
+§4): the manifest declares the chapter, and a file exists **iff real content
+exists**. A chapter with zero of the five is a legitimate "not started yet"
+state, not an error — a declared chapter with no study guide is a validator
+**warning**, empty slots never publish, and the workspace shows an empty state
+rather than seeded prose. Rows 6–8 are file spaces with a file organization
+interface in the workspace.
 
 ## 3. Element lifecycle: publish → discover → improve → fork
 

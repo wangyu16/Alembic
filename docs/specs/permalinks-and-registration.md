@@ -26,7 +26,7 @@ record is a **rebuildable projection** (repos stay the source of truth):
 | permalink class | **document** (final view) or **object** (insertable) |
 | source hash | for carrier formats: hash of embedded markdown source |
 | provenance | origin (created / uploaded / external-commit), author, time, `adapted-from` lineage |
-| description / alt text | required for objects (a11y + element search) |
+| description / alt text | for objects (a11y + element search) — **captured lazily**: an object registers without one and is flagged *needs description* for follow-up. Required before the file can be **shared / made discoverable**, never a blocker on registration itself. *(Corrected 2026-08-28: this said "required", contradicting [package-contract-v2.md](package-contract-v2.md) §3 and [package-layout.md](package-layout.md), which the code follows.)* |
 | license | inherited from package unless overridden per file |
 | discoverable | boolean; set only by the owner's one-click **"share this"** (default false) |
 
@@ -37,11 +37,15 @@ its permalink resolves to a "no longer available" page with provenance).
 ## 2. Permalink forms
 
 ```
-alembic.orz.how/d/{docId}                 live — the current version
-alembic.orz.how/d/{docId}@{version}       pinned — one exact version
-alembic.orz.how/p/{packageId}             package share point (site / portal / cite)
-alembic.orz.how/p/{packageId}@{snapshot}  package at a named snapshot
+alembic.orz.how/d/{docId}                 live — the current version        [SHIPPED]
+alembic.orz.how/d/{docId}@{version}       pinned — one exact version        [SHIPPED]
+alembic.orz.how/p/{packageId}             package share point               [PLANNED — no route yet]
+alembic.orz.how/p/{packageId}@{snapshot}  package at a named snapshot       [PLANNED — no route yet]
 ```
+
+*(Shipped/planned markers added 2026-08-28: `/d` resolves
+(`apps/web/src/app/d/[docId]/route.ts`); there is no `/p` route in the app.
+The two forms sat in one table with nothing to distinguish them.)*
 
 - `{version}` for files is a **short content hash** of the file version
   (decided; educators see it as a dated entry in the file's history, never
@@ -65,7 +69,7 @@ alembic.orz.how/p/{packageId}@{snapshot}  package at a named snapshot
 
 | File state | Resolution |
 |---|---|
-| public + published | **302 redirect** to the file on the educator's GitHub Pages site (correct MIME + CORS; renders self-contained formats; survives without Alembic) |
+| public + published | **served through the platform** from the educator's public repo with the correct MIME type. *(Corrected 2026-08-28: this row said "302 redirect to the file on the educator's GitHub Pages site". The shipped resolver deliberately does NOT redirect — `raw.githubusercontent.com` answers `text/plain` with `nosniff`, so a redirected self-contained HTML document would display as source instead of rendering. It stays an internal transport only. The no-lock-in promise is carried by the repos and the educator's own Pages site, not by the permalink's hop.)* |
 | public + pinned | served **through the platform** from the Git object store with correct MIME (decided) — Pages keeps only the current build, and retaining snapshot builds on Pages would bloat repos |
 | private / trial / unpublished | served through the platform (GitHub-App token or Supabase) with owner/access checks — the `/api/asset/…` pattern generalized |
 | deleted | tombstone page (provenance, successor pointer if forked/renamed) |
@@ -86,7 +90,16 @@ fallback, never recommended.
 - Generated files are stamped with their canonical permalink in carrier
   metadata (self-describing downloads).
 
-## 4b. Change significance (owner decision, 2026-07-04)
+## 4b. Change significance (owner decision, 2026-07-04) — ⏸ DORMANT, not live
+
+> **Status (added 2026-08-28):** the `changeKind` **field** exists in the
+> version schema, but the behavior described in this section is **deliberately
+> not built** for MVP — no save-time prompt, no notification wiring. It rides
+> with element notifications, which
+> [package-contract-v2.md](package-contract-v2.md) §9 defers explicitly. The
+> field is kept dormant so enabling this later needs no migration. §5 below
+> (insertion registry + notifications) is deferred on the same terms. Read both
+> sections as the design for when it is switched on, not as current behavior.
 
 When saving a new version of a file that is **discoverable or has downstream
 references**, the educator tags the change (ordinary WIP saves never ask;
@@ -193,5 +206,9 @@ remains opt-in via **List publicly** (Tier 3).
 - `livePermalink()` / `pinnedPermalink()` in package-contract currently
   emit raw-GitHub URLs — they will emit `/d/{docId}` forms once the
   resolver exists; `classifyReference()` gains the `/d/` scheme.
+  **⚠️ Still outstanding as of 2026-08-28, though its stated condition is now
+  met:** the resolver ships (`apps/web/src/app/d/[docId]/route.ts`) and these
+  two helpers still emit raw-GitHub URLs. This is a real open work item, not a
+  waiting-on-dependency note.
 - The asset-only permalink scope: permalinks now cover **every** registered
   file, in two classes.

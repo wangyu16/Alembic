@@ -13,9 +13,33 @@ that code; where they differ, fix the doc or the code deliberately, never
 silently.
 
 Non-negotiable invariants (unchanged from v1): two-repo public/private
-separation enforced fail-closed on every write; `packageOps` is the one
-validated write path; repos are the source of truth (all app state is a
-rebuildable projection).
+separation enforced fail-closed on every write; the `@alembic/package-ops`
+write-through seam is the one validated write path; repos are the source of
+truth (all app state is a rebuildable projection).
+
+> ### Correction — committed source format (2026-08-28, T42)
+>
+> **The committed source of record for every chapter document is lean `.md`,
+> permanently.** Where §1's table and §7's migration said `.md.html` /
+> `.slides.html`, they described the *target* of a plan that has since been
+> **dropped**: [educator-version-contract.md](educator-version-contract.md) §7
+> and [../DecisionLog.md](../DecisionLog.md) (2026-08-28, ruling 5) amend
+> Roadmap R1/E3 — meaningful per-file history and the no-lock-in legibility
+> promise both require lean sources, and committing carriers would bury content
+> changes under framework bytes. The dual-extension files are **generated
+> editing/viewing surfaces**, never committed; an uploaded `.md.html` is
+> absorbed by extracting its embedded source at the door.
+>
+> Code is unambiguous: `packages/package-contract/src/slots.ts` gives all five
+> chapter slots the `.md` extension (`CHAPTER_SLOT_SPECS`). §1's table and §7's
+> Stage A/B text are corrected below to match; this note records that the change
+> was a deliberate reversal, not a typo.
+>
+> Also corrected here: the invariant line above said "`packageOps` is the one
+> validated write path". The *package* is still the one write path, but the
+> `packageOps()` **object** is not the seam — every writer calls
+> `writeThrough()` / `updateManifest()` directly. See
+> [storage-and-write-paths.md](storage-and-write-paths.md) §3.
 
 ## 1. Spaces (v2 replaces "layer" with "space")
 
@@ -27,9 +51,9 @@ registration classification; there is one term, one meaning.
 
 | Space | Folder | Repo | Holds |
 |---|---|---|---|
-| `study-guide` | `study-guide/` | public | chapter study guides — one `.md.html` per chapter (§4) |
-| `slides` | `slides/` | public | `.slides.html` decks |
-| `practice` | `practice/` | public | `.md.html` example/practice questions |
+| `study-guide` | `study-guide/` | public | chapter study guides — one **`.md`** per chapter |
+| `slides` | `slides/` | public | chapter slide decks — **`.md`** (orz-slides deck markdown) |
+| `practice` | `practice/` | public | example/practice questions — **`.md`** |
 | `concepts` | `concepts/` | public | course + chapter concept maps (`.md`), off-website |
 | `assessment-support` | `assessment-support/` | public | assessment guide (`.md`), off-website |
 | `assets` | `assets/` | public | reusable objects (images, structures, plots, md fragments, media) |
@@ -150,9 +174,18 @@ AI, reconcile, and derived artifacts.
 **Block IDs demote to optional anchors.** A section may carry a block id
 (`{{attrs[#blk-…]}}`) for fine-grained citation / provenance / AI-merge, but
 **missing ids are legal**. Save-time validation rejects only *malformed or
-duplicate* ids; it never requires their presence. (Code note: the current
-`validateBlockIds` null-cast must be fixed to treat null as "anonymous
-section," not a string.)
+duplicate* ids; it never requires their presence. ✅ **Shipped** —
+`validateBlockIds` takes `id: string | null | undefined` and skips absent ids as
+"anonymous section" (`packages/package-contract/src/blocks.ts`); the publish
+gate dropped its `allHaveIds` check for `validateBlockIds` alone. *(The old code
+note here asked for a fix that has since landed.)*
+
+**But ids are minted, not merely validated.** "Never rewritten" is too strong:
+a save mints a fresh id for any block that has none, and re-mints one for a
+marker that is present but malformed (`packages/package-ops/src/study-guide.ts`,
+`packages/package-contract/src/block-source.ts`). What is guaranteed is that a
+**well-formed existing id is preserved** across saves and AI rewrites — that is
+the immutability rule, and it is what CLAUDE.md rule 7 means.
 
 ## 5. Discoverability & change significance
 
@@ -190,8 +223,12 @@ a pre-migration GitHub snapshot (no in-place downgrade). Staged to de-risk:
 3. **Stage C (rides later modules):** new fields exercised (`changeKind`,
    file-level `adaptedFrom`) — additive.
 
-Old `.md` study guides become `.md.html` (source embedded) in Stage A/B;
-the `.md` is removed after the `.md.html` is generated and verified.
+**~~Old `.md` study guides become `.md.html` (source embedded) in Stage A/B;
+the `.md` is removed after the `.md.html` is generated and verified.~~
+Dropped 2026-08-28** — see the correction banner at the top of this document.
+Lean `.md` is the permanent committed source; nothing converts. Carrier
+*extraction* (Stage A) still ships and is what absorbs an uploaded `.md.html`
+back into its `.md`.
 
 ## 8. Adaptation lineage — two scales, defined
 

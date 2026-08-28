@@ -55,6 +55,17 @@ The part of the URL before `.supabase.co` (here `abcdefgh`) is your
      (required for the M3 AI features)
 3. Confirm in **Table Editor** that the five tables exist.
 
+> **Beyond M1 sign-in.** `0001` + `0002` are the minimum to sign in and author.
+> To exercise later features locally, run the rest of
+> [`supabase/migrations/`](../supabase/migrations/) in order too — the full list
+> and the ones needing special handling are in
+> [Deployment.md §1](Deployment.md). Two matter most for local work:
+> **`0020_staging_bucket`** is required before the whole-course **zip upload**
+> works at all (the zip goes straight to a private `staging` bucket via a signed
+> URL), and it must be run **as the project owner** in the SQL editor because it
+> writes `storage.buckets` and `storage.objects` policies. **`0019_document_tags`**
+> is needed for asset tags/metadata.
+
 ## 5. Local environment file
 
 Create `apps/web/.env.local` (gitignored) with the values from step 1:
@@ -76,8 +87,10 @@ pnpm dev:web
 ```
 
 Open http://localhost:3000 → **Sign in** → **Continue with GitHub**. After
-authorizing, you land in the workspace. Create a package, open the editor,
-add a section, watch the live preview, and save.
+authorizing, you land in the workspace. Create a package — it starts **empty**
+(no sample content; the chapter's five documents are declared slots that get a
+file only once you write something) — then open the editor, add a section to the
+study guide, watch the live preview, and save.
 
 ### Quick checks if something's off
 

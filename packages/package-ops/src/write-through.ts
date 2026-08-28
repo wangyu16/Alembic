@@ -108,7 +108,33 @@ const TEXT_EXT = /\.(md|md\.html|html|svg)$/;
  *  2. the public reference guard on public text carriers being written.
  */
 export function validateChanges(changes: WriteThroughChange[]): void {
+  const seen = new Set<string>();
   for (const change of changes) {
+    // The repo must be one the contract knows. A value outside the union (it
+    // can arrive from an untyped DB column, not only from bad TypeScript)
+    // matches neither commit group below, so the change would be projected
+    // into the store and NEVER committed — a silent local-only write, exactly
+    // what this module exists to prevent. Root-allowlisted paths like
+    // `alembic.json` short-circuit the path check, so this is the only guard.
+    if (change.repo !== "public" && change.repo !== "private") {
+      throw new Error(
+        `Unknown repository "${String(change.repo)}" for ${change.path}.`,
+      );
+    }
+
+    // One entry per (repo, path) per change set. The committer applies changes
+    // in order while the projection applies puts then deletes, so a set that
+    // both deleted and re-created a path would leave the repo and the
+    // projection disagreeing. Rather than silently pick an order, refuse the
+    // ambiguity: a change set names each path exactly once.
+    const key = `${change.repo}:${change.path}`;
+    if (seen.has(key)) {
+      throw new Error(
+        `${change.path} appears more than once in one change set.`,
+      );
+    }
+    seen.add(key);
+
     assertPathAllowedInEitherContract(change.path, change.repo);
     if (
       change.repo === "public" &&

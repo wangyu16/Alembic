@@ -6,6 +6,35 @@ design, and what is deferred to the future. Complements [Status.md](Status.md)
 
 ---
 
+## 2026-08-28 — Storage & write-path implementation: four rulings made during execution
+
+**Context.** Implementing [specs/storage-and-write-paths.md](specs/storage-and-write-paths.md)
+(Waves H→3, [StorageWritePathTasks.md](StorageWritePathTasks.md)) forced four
+decisions that the spec had left as direction rather than ruling. All four are
+now shipped behavior, recorded here so they aren't re-litigated.
+
+| # | Decision | Why |
+|---|---|---|
+| 1 | **A published package that cannot reach GitHub REFUSES the write** — with an educator-facing reason and "Nothing was changed" — instead of writing to the projection and skipping the commit. One place decides: `committerFor` resolves `trial` \| `github` \| `unavailable`, and an *unknown* package resolves `unavailable`, never `trial`. | "Save records a permanent version" is the version contract's promise; a save that didn't reach permanence didn't happen. The old `if (!gh) return;` accumulated invisible local-only work that reappeared as data loss later. Cost accepted: a disconnected educator is **blocked rather than silently diverging** — the trade is loud-and-recoverable over quiet-and-wrong. A pending-outbox would soften it and is the recorded future refinement; fail-loudly ships first because it never lies. Trial packages are unaffected. |
+| 2 | **Slots, not placeholders — as shipped behavior, not a target.** A new package is **two files** (`alembic.json`, `LICENSE`) with an explicit first chapter declared in the manifest and no file; `createChapter` writes no file at all; the first-open scaffolds (slides template, practice starter, concept-map pre-fill) are gone. The former template prose became **click-to-insert** empty-state guidance in the UI. | A file must exist iff real content exists, or "does this course have content?" has no honest answer — which is what poisoned the old upload gate and put boilerplate on published sites. Two consequences accepted deliberately: the manifest must declare that first chapter explicitly (the implicit-chapter fallback would otherwise show a phantom chapter pointing at a file that does not exist — legacy packages only now), and **a freshly created package no longer passes the release gates**, which is correct under "empty slots never publish". `SEED_CONTENT_PATHS` survives as *legacy recognition* for packages created before this rule, not as a creation path. |
+| 3 | **A declared chapter with no study guide is a WARNING, not an error**, and `ValidationIssue` gained an optional **`severity: "error" \| "warning"`** (absent = error, for backward compatibility) so importers and UIs can tell a blocker from an advisory. | Under decision 2 the old rule made empty chapters impossible — chapters are now *created* without a file, so the platform's own creation path would have produced packages its own validator rejected. Incremental assembly (an author, or coursewerk, building a course chapter by chapter) is a legitimate state, and an import must not refuse it. The absence is still reported, because an author who *meant* to include that content wants to know. |
+| 4 | **The pristine gate is replaced by a plan-diff confirmation.** Whole-course upload no longer asks "is this package untouched?"; it plans the upload against **repo head + registry**, shows the educator what would be added, overwritten, left unchanged and cleared, and takes an explicit confirmation — with an explicit "empty this course and upload" path (Tier-3) for genuine conflicts. `isPristinePackage` remains as the plain predicate its name asks, but **must not gate an upload**. | The old gate was filename-magic over a silently truncated file list: touching *anything* first (adding a chapter, opening a document) made a package non-pristine, so every interrupted upload became a permanent dead end — "This course already has content" — with no statement of which files. Repos-first populate is idempotent and resumable, which makes replanning the natural gate: a retry replans against what is actually there and writes only the remainder. |
+
+**Also settled in passing:** the zip bypasses the Vercel function body entirely
+(signed URL → private `staging` bucket, migration `0020`), so the ~4.5 MB body
+cap is out of the path and the limit is a stated **50 MB product limit**;
+`mirrorManifestToSandbox` and the `syncFilesToGitHub` helpers survive only on
+the deliberately exempt publish/graduation truth-flip.
+
+**Open (not decided here).** Coursewerk's `check_oer.mjs` still **errors** where
+Alembic now warns (decision 3), so the two are out of step on exactly that rule.
+Defensible as-is — coursewerk is a *producer* and may hold itself to stricter
+completeness than the platform accepts — but it is a product call for the owner,
+not a mechanical sync, and it is a separate repository. Tracked in
+[StorageWritePathTasks.md](StorageWritePathTasks.md) ("Cross-repo follow-up").
+
+---
+
 ## 2026-08-28 — AI gateway: self-hosted LiteLLM on the owner's Oracle VPS (Portkey superseded)
 
 **Decision.** The gateway control plane is **self-hosted LiteLLM**, deployed on the owner's Oracle Cloud

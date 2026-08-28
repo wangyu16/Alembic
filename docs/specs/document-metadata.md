@@ -132,6 +132,14 @@ A lone author who wants the metadata in their markdown simply writes the block.
 
 ## 7. Subtasks
 
+> The version in each ✅ below is **the release the change landed in**, not the
+> current pin. The pins have moved on since (read
+> `packages/generators/package.json` for the live numbers — as of 2026-08-28:
+> `orz-markdown ^1.6.0`, `orz-mdhtml ^0.9.0`, `orz-slides ^0.8.2`,
+> `orz-paged ^0.7.0`). Anything that must match a pin — notably
+> [upload-contract.md](upload-contract.md) H8's orz-slides parity rule — should
+> read that file, never this list.
+
 - **M1 — `orz-markdown` ✅** (1.4.0, commit `eeafbff`). Hoisted `scanNymlBlocks`
   into `nyml-blocks.ts`; added `doc-meta.ts` (`DocMeta`, `extractDocMeta`,
   `mergeDocMeta`, `renderDocMetaHead`, `renderDocMetaIsland`,

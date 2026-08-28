@@ -5,6 +5,25 @@ disappearing chapters, opaque zip-upload failures, replace-upload failures,
 and placeholder design problems. Each finding lists evidence, mechanism,
 a reproduction sequence, and confidence. Design proposals follow.
 
+> ## ✅ RESOLVED — this is a historical record, not a to-do list
+>
+> **All four findings were fixed on 2026-08-28**, the same day this was written
+> (Waves H→3 of [../StorageWritePathTasks.md](../StorageWritePathTasks.md); see
+> [../Status.md](../Status.md)). **Everything below written in the present tense
+> describes the code BEFORE those fixes.** Read it for the root-cause analysis,
+> never as a description of current behavior. What shipped:
+>
+> | Finding | Fixed by |
+> |---|---|
+> | **F1** two manifest copies, split writers | The **file** manifest is the single authoritative copy; every writer patches it through `updateManifest` (compare-and-swap + retry) and `packages.manifest` became a derived read cache no writer may use as input. Also fixed the same bug in `publishToGitHubAction`, which had been erasing every chapter added since creation in the first GitHub commit. |
+> | **F2** ~4.5 MB body cap, poisoned pristine gate, truncated `listFiles` | The zip goes **straight to a private `staging` bucket via a signed URL** (limit now a stated 50 MB); populate is **repos-first, idempotent and resumable**; the pristine gate is replaced by a **plan-diff confirmation**; `listFiles` paginates. |
+> | **F3** replace-not-create + raw `.md.html` stored into a `.md` slot | Replace on a slot path is **create-or-replace** and normalizes any filename to the canonical slot path; `normalizeIncomingText` extracts a carrier's embedded source at the door. |
+> | **F4** placeholders across three lifecycles | **Slots, not placeholders**: packages and chapters are created empty, first-open scaffolds are gone, and the starter prose is click-to-insert UI guidance. A declared chapter with no study guide became a validator **warning**. |
+>
+> D1–D4 below were adopted essentially as proposed; the one deliberate change is
+> that D3's plan is now also the *gate* (plan-diff confirmation), not just the
+> execution order.
+
 ---
 
 ## F1 — Disappearing chapters: two manifest copies, split writers

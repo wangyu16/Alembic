@@ -45,13 +45,18 @@ concepts/
                                      # (packages/package-contract/src/concepts.ts,
                                      # deferred — data layer only, no editor yet)
 study-guide/
-  <chapter>.md.html                 # chapter study guide — source of truth
+  <chapter>.md                      # chapter study guide — committed source of
+                                     # truth (lean markdown, permanent — see
+                                     # educator-version-contract.md §7; the
+                                     # .md.html is a GENERATED surface, never
+                                     # committed)
 slides/
-  <chapter>.slides.html             # chapter slide deck
+  <chapter>.md                      # chapter slide deck (orz-slides deck
+                                     # markdown; .slides.html is generated)
 assessment-support/
   <chapter>.md                      # assessment guide (methods, plain md)
 practice/
-  <chapter>.md.html                 # example & practice questions
+  <chapter>.md                      # example & practice questions
 assets/                             # the shared-elements space (decided)
   **/*                              # any depth; kind by extension
 current/                            # this-term space (pointer model)

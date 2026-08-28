@@ -79,7 +79,11 @@ describe("forkPackage", () => {
     expect(forked.manifest.privateRepo).toBeUndefined();
   });
 
-  it("regenerates manifest + provenance and seeds a private note", async () => {
+  // No private starter note any more: under "slots, not placeholders" a file
+  // exists only once it holds real content, and `createSandboxPackage` seeds
+  // nothing either — seeding here was an asymmetry between the two ways a new
+  // course begins.
+  it("regenerates manifest + provenance, and seeds no placeholder files", async () => {
     const s = await source();
     const forked = forkPackage({
       source: { packageId: s.packageId, manifest: s.manifest, publicFiles: s.publicFiles },
@@ -89,7 +93,9 @@ describe("forkPackage", () => {
     const paths = forked.files.map((f) => f.path);
     expect(paths.filter((p) => p === "alembic.json")).toHaveLength(1);
     expect(forked.files.find((f) => f.path === ADAPTATIONS_PROVENANCE_PATH)).toBeDefined();
-    expect(forked.files.some((f) => f.repo === "private")).toBe(true);
+    // The fork carries the source's real content and its lineage — nothing else.
+    expect(forked.files.some((f) => f.repo === "private")).toBe(false);
+    expect(paths).not.toContain("private-instructor/notes/getting-started.md");
   });
 
   it("refuses an incompatible license (ShareAlike → non-SA)", () => {

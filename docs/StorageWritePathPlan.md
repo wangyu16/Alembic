@@ -19,6 +19,20 @@ acceptance items they must make true.
 > [StorageWritePathTasks.md](StorageWritePathTasks.md) — including the
 > pre-execution conflict review. Execute from THAT document.
 
+> ## ✅ EXECUTED 2026-08-28 — historical plan
+>
+> **Phases H, W, S and P all shipped the same day** (Waves H→3; see
+> [Status.md](Status.md) for what each delivered). Phase V is the only one
+> outstanding: T41 adversarial sweep ⬜ and T43 blind-critique round ⬜ (T42 doc
+> coherence ✅). **The phase bodies below are the plan as written before
+> execution** — where a phase says "becomes" or "will", that change has since
+> landed; where the shipped result differs from the plan, the difference is
+> recorded in Status.md and [DecisionLog.md](DecisionLog.md) (2026-08-28
+> "Storage & write-path implementation"). The most consequential divergence:
+> **S4/P2's pristine gate was not rewritten but replaced** — `isPristinePackage`
+> survives only as a plain predicate for legacy packages, and the upload gate is
+> now a plan-diff confirmation (`diffPopulatePlan`).
+
 ## Phase H — Hotfixes (stop live data loss; ship first, small and surgical)
 
 - **H1. Manifest clobber stop** *(F1 → acceptance B7)*. Every action that

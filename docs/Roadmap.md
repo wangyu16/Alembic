@@ -36,7 +36,14 @@ Modules stay independent because each concern has exactly one owner:
    module touches the schema; they consume it.
 2. **One write path.** Every write — in-place edit, upload, AI edit,
    reconcile absorb — goes through `packageOps` validation. Editors,
-   inboxes, and AI never gain a side door.
+   inboxes, and AI never gain a side door. *(Realized 2026-08-28 as
+   `writeThrough()` / `updateManifest()` in `package-ops` — **repo-first**: for
+   a published package it validates, commits to GitHub, and only then projects
+   into the store, so a failed commit changes nothing anywhere and a
+   disconnected published package **refuses** the write rather than diverging
+   silently; a trial package writes DB-only. See
+   [specs/storage-and-write-paths.md](specs/storage-and-write-paths.md) §3. The
+   one deliberate exemption is publish/graduation, which IS the truth-flip.)*
 3. **One metadata source.** The registration record (a rebuildable
    Supabase projection of repo content) is the *only* place file metadata
    lives. Permalinks, discovery, notifications, version lists, and the

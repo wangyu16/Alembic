@@ -348,16 +348,18 @@ export function forkPackage(input: ForkPackageInput): ForkedPackage {
     createdAt,
   });
 
-  // 4. Assemble files: manifest + cloned public + fresh lineage + a private seed.
+  // 4. Assemble files: manifest + cloned public + fresh lineage.
+  //
+  // No private starter note. A fork used to seed one, but under "slots, not
+  // placeholders" (docs/specs/storage-and-write-paths.md §4) a file exists only
+  // once it holds real content — and `createSandboxPackage` stopped seeding the
+  // same note, so seeding it here was an asymmetry that put boilerplate in one
+  // kind of new course and not the other. The private space's purpose is
+  // explained by the workspace's empty state, not by a committed file.
   const files: PackageFile[] = [
     { repo: "public", path: "alembic.json", content: JSON.stringify(manifest, null, 2) + "\n" },
     ...finalCloned,
     { repo: "public", path: ADAPTATIONS_PROVENANCE_PATH, content: JSON.stringify(lineage, null, 2) },
-    {
-      repo: "private",
-      path: "private-instructor/notes/getting-started.md",
-      content: `## Private notes\n\nNotes here are **never published**. (Adapted from ${input.source.manifest.title}.)\n`,
-    },
   ];
   for (const f of files) assertPathAllowedInRepo(f.path, f.repo);
 

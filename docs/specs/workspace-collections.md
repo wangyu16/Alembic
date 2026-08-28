@@ -1,6 +1,10 @@
 # Workspace collections + navigation restructure
 
-**Status: design approved (owner, 2026-07-09), not yet built.** Implementation
+**Status: design approved (owner, 2026-07-09); largely BUILT.** *(Header
+corrected 2026-08-28 — it still said "not yet built", which its own body
+contradicts: Phase 1 is marked ✅ done and Phase 5 ✅ landed as CF5. Treat each
+phase's own marker as the status of record; anything unmarked is the part still
+outstanding.)* Implementation
 plan for the three **collections** (Assets, Current, Private) and the workspace
 navigation they require. Grounded in
 [document-model.md](document-model.md), [package-layout.md](package-layout.md),
@@ -281,8 +285,10 @@ warn.
   accepts a caller-chosen `input.path`, so it needs only the scope-aware caller.
 - UI: scope selector, `Shared across course` band, `Add to <scope>` button.
   Reuse `AssetEditor`, `ShareControl`, `AdaptControl`, `UploadControl` verbatim.
-- `api/asset/[packageId]/[...path]` already refuses non-`materials` layers and
-  serves nested paths — no change.
+- ~~`api/asset/[packageId]/[...path]` already refuses non-`materials` layers and
+  serves nested paths — no change.~~ **Changed after all:** that
+  `layerForPath === "materials"` gate 400'd the v2 `current/` space, so Open
+  failed for term files. The route's gate was widened; see its own comment.
 
 ### Phase 4 — Private collection
 
@@ -295,11 +301,23 @@ warn.
   `private-instructor/chapters/<slug>/…`.
 - Touch points to update, not just add:
   - `edit/page.tsx:77` — delete the hardcoded `notes/<slug>.md` resolution.
-  - `create.ts:95` and `adaptation.ts:311` — seed a course-level
-    `private-instructor/notes.md` instead of `notes/getting-started.md`.
-- Writes already route through `applyEditorEdit` (dual-mode) +
-  `syncPrivateFilesToGitHub`. Registration auto-locks `private` as
-  non-discoverable (`registration.ts:109`), so nothing leaks.
+  - ~~`create.ts:95` and `adaptation.ts:311` — seed a course-level
+    `private-instructor/notes.md` instead of `notes/getting-started.md`.~~
+    **Obsolete for `create.ts` (2026-08-28, "slots, not placeholders"):**
+    package creation seeds **no content file at all** — a new package is
+    `alembic.json` + `LICENSE` and nothing else, so there is no private starter
+    note to relocate. Still open for `adaptation.ts`, where `forkPackage` does
+    write `private-instructor/notes/getting-started.md`; that asymmetry (fork
+    seeds, create doesn't) is worth resolving deliberately.
+- **Write path (corrected 2026-08-28):** writes do **not** route through
+  `applyEditorEdit` + `syncPrivateFilesToGitHub` — that best-effort mirror is
+  abolished and has zero callers. Every collection write goes through
+  `writeThrough()` behind `committerFor`, which is **repo-first** (commit, then
+  project) and **refuses** the write on a published package it cannot reach
+  rather than silently skipping the commit. See
+  [storage-and-write-paths.md](storage-and-write-paths.md) §3. Registration
+  auto-locks `private` as non-discoverable (`registration.ts`), so nothing
+  leaks.
 
 ### Phase 5 — Current collection + the term dimension (**needs Phase 1**)
 

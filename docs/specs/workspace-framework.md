@@ -15,12 +15,20 @@ updated design.
   The shell at `/workspace/[packageId]/edit` is *the* editor.
   `PublishingState` moved to `_components/publish-header.tsx`.
 - **Site header is full width** (app chrome, not a centered column).
-- **Categories = the document model**, in taxonomy order: Concept map ·
+- ~~**Categories = the document model**, in taxonomy order: Concept map ·
   Study guide (was "content") · Slides · Assessment guide · Practice
   questions · Assets · **Current (this term)** · Private. "Current" renders
   an explanatory space view (uploads + semester archiving arrive with the
-  document contract; contract-v2 layer question tracked in
-  document-model.md §6).
+  document contract).~~
+  **Superseded — the category rail is gone (see
+  [workspace-collections.md](workspace-collections.md); `CATEGORY_RAIL` has zero
+  occurrences in the app).** Navigation is **Course / Chapters / Collections**:
+  a chapter resolves its five documents through the slot table (`slotPath`,
+  `edit/nav.ts`), and Assets / Current / Private are the three collections. The
+  document *taxonomy* above is still correct — it is the rail as a navigation
+  device that was replaced. "Current" is also no longer an explanatory
+  placeholder view: the term dimension shipped (CF5 — uploads, syllabus slot,
+  miscellaneous links, semester archiving).
 - **Upload affordances (origin parity, door #2):** the Study-guide pane
   accepts `.md` / `.md.html` uploads (block-ID reconciling merge — re-upload
   updates in place); the Assets pane accepts carrier files
@@ -107,10 +115,19 @@ capability any embedder can use, documented in the file README, *not* in
 the save protocol. A pure Alembic-side overlay was rejected as fragile
 (can't see the file's read/edit mode → stray patch in read mode).
 
-- Study guide becomes one `.md.html` file per chapter with its **in-file
-  editor hosted** in the editor pane (orz-mdhtml via the `editor-kit`
-  seam); the block editor is the interim surface until then.
-- Slides/practice/paged: hosted in-file editors the same way.
+- Study guide keeps **lean `.md`** as its committed source (permanent — see
+  [educator-version-contract.md](educator-version-contract.md) §7) and gets its
+  **in-file editor hosted** in the editor pane, mounted on a `.md.html`
+  *generated* on demand (orz-mdhtml via the `editor-kit` seam). ✅ **Shipped**
+  (`HostedStudyGuideEditor`); the block editor is now a fallback, not the
+  primary surface. *(Corrected 2026-08-28: this said the study guide "becomes
+  one `.md.html` file per chapter" — that committed-carrier target was
+  dropped — and called the block editor interim "until then", which has since
+  happened.)*
+- Slides/practice: hosted in-file editors the same way — ✅ shipped
+  (`HostedSlidesEditor` for authored decks; practice rides the study-guide
+  editor). **paged:** ⬜ its in-file editor has not been built, so the hosted
+  path has nothing to mount yet.
 - Assets / Current / Private become real **file spaces** with a file
   organization interface, per-file registration, "share this", permalinks.
 - Concept maps + assessment guide stay plain `.md` with the minimal

@@ -48,9 +48,29 @@ function isPlainTextPath(path: string): boolean {
  * - Anything else (plain text for a plain target, carrier content aimed at a
  *   carrier path, HTML without an island, …) → return `content` unchanged.
  */
+/**
+ * Island opening tags, by id. `hasCarrier` requires a CLOSED `</script>`, so a
+ * download truncated mid-island reads as "not a carrier" and the raw envelope
+ * would be written verbatim into a plain markdown file — the exact silent
+ * corruption this module exists to stop, arriving through the likeliest
+ * accident there is. Detecting the OPENING tag lets us refuse it instead.
+ * (Found by the T41 adversarial sweep, 2026-08-28.)
+ */
+const ISLAND_OPENING =
+  /<script\b[^>]*\bid=["'](?:orz-carrier|orz-src|orz-deck|md-source)["']/i;
+
 export function normalizeIncomingText(targetPath: string, content: string): string {
   if (!isPlainTextPath(targetPath)) return content;
-  if (!hasCarrier(content)) return content;
+  if (!hasCarrier(content)) {
+    // No readable island — but if one was STARTED and never closed, the file is
+    // a truncated carrier, not plain text. Refuse rather than store the shell.
+    if (ISLAND_OPENING.test(content)) {
+      throw new IncomingTextError(
+        "That file looks like a saved web page, but it's incomplete — the text inside it was cut off. Download the document again and edit from that copy.",
+      );
+    }
+    return content;
+  }
   try {
     return extractSource(content).source;
   } catch {

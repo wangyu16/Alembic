@@ -15,6 +15,7 @@
 
 import { z } from "zod";
 import { LAYER_DIR, LAYER_REPO, PACKAGE_LAYERS, layerForPath } from "./layers";
+import { PACKAGE_SPACES, SPACE_DIR } from "./spaces";
 
 export const ASSET_ID_PATTERN = /^ast-[a-z0-9]{8,}$/;
 
@@ -142,7 +143,16 @@ export function assertPublicReference(repoRelativePath: string): void {
 
 /** Markdown image/link target capture: `![alt](target …)` and `[text](target …)`. */
 const MD_REFERENCE_RE = /!?\[[^\]]*\]\(\s*<?([^)>\s]+)>?(?:\s+["'][^)]*["'])?\s*\)/g;
-const LAYER_DIRS = new Set(PACKAGE_LAYERS.map((l) => LAYER_DIR[l]));
+// Directories the reference guard enforces on. BOTH contracts, deliberately:
+// v1 layer dirs AND v2 space dirs. Checking only v1 left `private/` (the v2
+// private space) unguarded — a public document could link straight at private
+// material and the guard would skip the link entirely, because `private/` is
+// not a v1 layer dir. New packages are stamped v2, so that was the live
+// layout. (Found by the T41 adversarial sweep, 2026-08-28.)
+const LAYER_DIRS = new Set<string>([
+  ...PACKAGE_LAYERS.map((l) => LAYER_DIR[l]),
+  ...PACKAGE_SPACES.map((sp) => SPACE_DIR[sp]),
+]);
 
 /**
  * Scan a markdown body and fail closed if any **repo-relative reference** points

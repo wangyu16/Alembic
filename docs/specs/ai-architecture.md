@@ -138,8 +138,11 @@ Nothing here requires reworking what exists:
   drop-in, plus a small **task→model routing map**.
 - The **Agent Workers** module (Roadmap Phase 3) is the home for Tier B *only*,
   not for all AI.
-- The gateway operationalizes goal.md §11 (managed credits, BYO keys,
-  institution billing, cost visibility).
+- The gateway operationalizes goal.md §11 (managed credits, institution
+  billing, cost visibility). ***BYO keys removed 2026-08-28*** — the platform
+  provides the key; see [worker-tier.md](worker-tier.md) §1 (goal.md §11 was
+  amended). The consequence is that metering + **hard per-run budget caps** are
+  required before launch, since every runaway loop is now the operator's bill.
 
 ## Decision status
 
@@ -160,9 +163,19 @@ OpenAI-compatible) selectable by env, **per-task model routing**
 Usage is attributable via the `ai_invocations` governance log.
 
 **Gateway wiring (how to switch from Gemini-direct):** set `AI_GATEWAY_URL` +
-`AI_GATEWAY_API_KEY` (the app then prefers the gateway over Gemini). For
-**Portkey** (the chosen control plane) the primary recipe uses the **Model
-Catalog** form: `AI_GATEWAY_URL=https://api.portkey.ai/v1`,
+`AI_GATEWAY_API_KEY` (the app then prefers the gateway over Gemini).
+
+> ⚠️ **The chosen control plane is self-hosted LiteLLM, not Portkey**
+> (decided 2026-08-28 — Portkey was acquired by Palo Alto Networks and refolded
+> into an enterprise security product; see [worker-tier.md](worker-tier.md) §1.5
+> and the [DecisionLog](../DecisionLog.md)). `GatewayProvider` is
+> OpenAI-compatible, so the swap is **config-only**: point `AI_GATEWAY_URL` at
+> the LiteLLM proxy and use its model ids. **Do not configure a deployment from
+> the Portkey recipe below** — it is retained only for reading older
+> environments and the `.env.example` history.
+
+For **Portkey** *(superseded — see the warning above)* the recipe used the
+**Model Catalog** form: `AI_GATEWAY_URL=https://api.portkey.ai/v1`,
 `AI_GATEWAY_API_KEY=<portkey-key>` (the Portkey key goes in `Authorization:
 Bearer`), and the model ids name the catalog provider slug —
 `AI_MODEL_DEFAULT=@<provider-slug>/<model>` (plus the optional

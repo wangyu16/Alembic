@@ -7,6 +7,28 @@ tasks inside a wave own disjoint files and may run as concurrent subagents;
 waves are sequential with an integrator gate between them. Conflict review
 at the bottom — read it before executing.
 
+## Execution status (updated 2026-08-28 by T42)
+
+| Wave | Tasks | Status |
+|---|---|---|
+| **H** — hotfixes | TH1–TH4 | ✅ shipped (`c66f622`) |
+| **0** — contracts & seams | T01–T03 | ✅ shipped (`72ebea6`) |
+| **1** — adopt write-through | T11–T14, T14b | ✅ shipped (`0e5560a`, `b201577`) |
+| **1.5** — consolidate prepare/validate | T15 | ✅ shipped (`b201577`) |
+| **2** — slots, not placeholders | T21, T21b, T22, T23, T24 | ✅ shipped (`b201577`, `b522d7b`, `fe95e73`, `851bcef`) |
+| **3** — populate & staging | T31, T32 | ✅ shipped (`851bcef`) |
+| **4** — verification | T41 adversarial sweep | 🔄 in progress (uncommitted `*.adversarial.test.ts` files present in the working tree at the time of this update) |
+| | T42 doc coherence pass | ✅ done (this update) |
+| | T43 blind-critique round | ⬜ blocked on an operator-prepared environment ([blind-critique/rounds/README.md](blind-critique/rounds/README.md)) |
+
+**Correction to the Wave-1 integrator greps (T42, verified at `851bcef`):** the
+instruction "`mirrorManifestToSandbox` callers = 0 → delete it" was **not**
+carried out, and should not be — it has exactly **one** caller,
+`github-actions.ts:252`, which is the deliberately exempt publish/graduation
+truth-flip. It stays for that path only. The genuinely dead code the grep should
+have caught is `syncFilesToGitHub` / `syncPrivateFilesToGitHub`
+(`apps/web/src/lib/github.ts:124,150`), which now have **zero** callers.
+
 ## Execution protocol (applies to every wave)
 
 - **One owner per file per wave.** A task may edit only the files it owns
@@ -403,6 +425,34 @@ open each doc → save one → publish flow dry-run in tests).
   fresh re-verify; report under `docs/blind-critique/rounds/`.
 
 ---
+
+## Open findings from the adversarial sweep (T41, 2026-08-28)
+
+Four of the seven findings were fixed at the gate (F1 duplicate paths in one
+change set, F2 the v1-only reference guard, F3 out-of-contract repo values,
+F5 truncated carriers). Three remain, deliberately:
+
+- **F4 — a failed manifest commit during `renameChapterPageName` leaves all
+  five documents under the NEW slug while the manifest still names the old
+  one.** Verified recoverable: a plain retry finds nothing at the old paths,
+  moves nothing, and updates the manifest — it converges. But the
+  ordering-rule comment in `chapters.ts` undersells this case ("at worst an
+  empty slot" is true for delete, not for rename). **Do:** correct the
+  comment and surface an educator-facing "try that again" prompt on this
+  specific failure.
+- **F6 — `matchScriptById` (`packages/carriers/src/html.ts`) reads the island
+  opening tag with `<script\b([^>]*)>`,** so a `>` inside an attribute value
+  (e.g. `data-x="a > b"`) makes extraction compute the body from the wrong
+  offset and **succeed with markup bleeding into the "source"**. Not live
+  (Alembic's writers emit fixed attributes), but silent success is the wrong
+  failure mode for a door. **Do:** parse the tag properly or fail closed.
+- **F7 — `SupabaseSandboxStore.replaceFileIf` puts the ENTIRE expected content
+  into a PostgREST filter** (`.eq("content", …)`), i.e. into the request URL's
+  query string. A course with many chapters can push the manifest past typical
+  URI length limits (HTTP 414). Today's manifests are small, so this is a
+  scale bug, not a live one. **Do:** add a `content_sha` column (the additive
+  `0021` migration anticipated in T02) and CAS on the hash, or move the
+  compare-and-swap into an RPC that takes the content in the body.
 
 ## Cross-repo follow-up (owner decision needed, 2026-08-28)
 

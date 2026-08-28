@@ -179,9 +179,16 @@ Disjoint pieces are marked ∥ (parallelizable via subagents).
   registry metadata), deterministic order. `folderOps` (create/rename/move/
   delete within a scope; cross-scope move = re-associate). Pure over the store.
 - **CF2 — the generalized door.** The single collection writer: `(packageId,
-  space, scope, folder, filename, bytes|source)` → resolve type → `packageOps`
-  write → register → (published) commit. Enforce the storage gate + size
-  policy. `importFileAction` *will* fold in (it still owns the study-guide
+  space, scope, folder, filename, bytes|source)` → resolve type → **validate →
+  (published) commit → project into the store → register**. Enforce the storage
+  gate + size policy. *(Ordering corrected 2026-08-28: this said "`packageOps`
+  write → register → (published) commit", i.e. store-first with the commit
+  trailing. The shipped path is **repo-first** — `writeThrough` commits before
+  it projects, so a failed commit leaves nothing changed anywhere, and a
+  published package that cannot reach GitHub refuses the write instead of
+  writing DB-only. Registry rows are written only **after** the commit succeeds,
+  so a failed write never leaves a registration claiming a file that isn't
+  there. See [storage-and-write-paths.md](storage-and-write-paths.md) §3.)* `importFileAction` *will* fold in (it still owns the study-guide
   section-merge upload until callers migrate). Adversarial: binary on a trial
   package rejected with a clear message; path traversal rejected; private space
   never reaches the public repo. (Binary uploads now commit as real bytes via

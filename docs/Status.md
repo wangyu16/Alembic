@@ -52,11 +52,86 @@ same commit as the work it tracks. Statuses: ✅ done · 🔄 partially shipped 
 
 > **Current direction — self-contained editing (owner-locked, 2026-07).** Editing and viewing both live *in the files*: the workspace **hosts** the in-file editors of `.md.html` / `.slides.html` / `.paged.html` (orz-family) and **builds no editor of its own**; published pages **are** those self-contained files (thin CDN delivery — study guide ~74 KB, framework from jsDelivr, verified live 2026-07-06); every file gets a permalink. **Committed source of record (revised, 2026-07-08 — "lean-source model"):** a chapter's study guide, slides, and practice questions are each committed as lean markdown (`study-guide/`, `slides/`, `practice/` — `.md`, not `.md.html`); the self-contained `.md.html`/`.slides.html` is generated on demand, purely as the editing/viewing surface, and never itself committed. This supersedes the original plan (below, and in the specs) of `.md.html` as the committed source — the specs haven't all been updated to match yet; this line is authoritative until they are. Authoritative docs: [SteeringNote.md](SteeringNote.md), [self-contained-editing.md](specs/self-contained-editing.md), [workspace-framework.md](specs/workspace-framework.md), and the module-based [Roadmap.md](Roadmap.md) (Modules R/E/P/T/I/S/W — supersedes the phase-based plan). **Code state today:** the classic editor is **retired** (~2.2k lines removed; `/workspace/[id]` redirects to `/edit`); the local **Studio (`/studio`) is removed**, replaced by `/guide`; the workspace three-pane shell now *hosts* the in-file editors (`HostedStudyGuideEditor` for study guide + practice; `HostedSlidesEditor` for authored slide decks). The durable guardrails **G1–G8** (two-repo reference enforcement, block-ID reconcile on import, whole-package fork, single-source course metadata, AI-entitlement seam) that the earlier editor-overhaul design drove all **landed + tested**.
 
+**Wave 4 / T42 — doc coherence pass (2026-08-28).** Docs-only sweep after the storage/write-path waves
+(the CLAUDE.md "after each phase, run a coherence pass" rule). Corrected: the Waves-2–3 test count
+(**1081**, not 1048 — re-counted at commit `851bcef`); "Implementation not started" and "Fixes not yet
+applied" on the two 2026-08-28 planning entries (both were complete the same day); the pending-operator
+list now carries **`0020_staging_bucket`** (owner/service-role privileges, migration-before-code, 24h
+sweep). Four historical entries that described now-changed behavior got dated *superseded* pointers rather
+than rewrites (the 2026-07-14 populate/pristine entry, the 2026-07-09 slides-seeding entry, the
+`welcomeChapter()` seed invariant, the two `mirrorManifestToSandbox` entries). Sub-module rows updated:
+**12.4** bulk upload 🔄 → ✅, **11.0e** validator gains the `severity` field + warning downgrade.
+[Deployment.md](Deployment.md) gained the full migration list, the special-handling table, and the staging
+bucket's TTL contract; [LocalSetup.md](LocalSetup.md) points at it. [DecisionLog.md](DecisionLog.md) gained
+one entry for the four rulings made during execution (fail-loudly refusal, slots-as-shipped, validator
+downgrade, plan-diff gate).
+**Spec cross-check (14 specs read in full against code).** Corrected: the **committed-source format** —
+`package-contract-v2` §1/§7 and `package-layout` still said `.md.html`/`.slides.html` per chapter, which
+the educator-version-contract had already dropped in favor of permanent lean `.md` (code: all five slots
+are `.md`); **write ordering** — `collections-framework` CF2, `package-lifecycle` (rename) and
+`workspace-collections` still described store-first + trailing/best-effort commit, and
+`forward-compatibility` named the `packageOps()` *object* as the seam (it has zero callers; the seam is
+`writeThrough`/`updateManifest`); **the closed-set guardrail** in `forward-compatibility` still named the
+v1 layers rather than the v2 spaces the code stamps; **the permalink resolver** —
+`permalinks-and-registration` §3 and `self-contained-editing` §7 both specified a 302 redirect to GitHub
+Pages, which the shipped resolver deliberately rejects (raw.githubusercontent serves `text/plain` +
+nosniff, so a self-contained page would show as source); **the gateway** — `ai-architecture` still handed
+readers a Portkey recipe as "the primary recipe" and listed BYO keys, both superseded (also fixed in
+Deployment/PilotReadiness); **the category rail** in `workspace-framework`, removed in code; **slides as
+derived-from-blocks** across `carriers-and-assets` §1/§3/§4, reversed on 2026-07-09; plus stale seeding
+claims (`workspace-collections`, `course-structure`), two "not yet built"/"not started" status headers on
+substantially-shipped specs (`self-contained-editing`, `workspace-collections`), `changeKind`/§5 marked
+DORMANT in `permalinks-and-registration`, `/p/{packageId}` marked PLANNED (no such route), and
+"block IDs never rewritten" corrected to "a well-formed existing id is preserved" (saves mint ids for
+anonymous blocks and re-mint malformed ones). `upload-contract` H3 was missing `current/` and
+`provenance/` from its recognized-space list and H8 pinned a stale orz-slides version — both corrected
+against code.
+**Findings referred out (not fixed here — code, not docs):**
+`validateProject`'s own header comment (`packages/package-contract/src/validate.ts:163-165`) still
+describes check 3 as a plain existence requirement, contradicting the warning behavior 70 lines below; and
+`syncFilesToGitHub`/`syncPrivateFilesToGitHub` (`apps/web/src/lib/github.ts:124,150`) now have **zero**
+callers and are dead exports; `mirrorManifestToSandbox`'s own doc comment
+(`apps/web/src/lib/github.ts:174-184`) still tells the reader that *any* direct `packages.manifest` writer
+MUST call it, which is true only for the one exempt path; `livePermalink()`/`pinnedPermalink()`
+(`packages/package-contract/src/assets.ts`) still emit raw-GitHub URLs even though the `/d/{docId}`
+resolver they were waiting on has shipped; and `forkPackage` (`packages/package-ops/src/adaptation.ts`)
+still seeds `private-instructor/notes/getting-started.md`, so **fork seeds a starter file while create no
+longer does** — an unintended asymmetry under "slots, not placeholders", worth an owner call.
+
+**Wave 4 — verification (2026-08-28).** **T41 adversarial sweep:** 186 new tests across three files
+attacking the new seams. Confirmed holding: commit-failure atomicity (byte-identical store snapshots),
+manifest CAS under interleaving (both writers survive; bounded retries), the two-repo invariant across 30+
+private-path spellings through every new door (committer never called), slot drift (table-driven, so a NEW
+slot is automatically covered), populate idempotence/resume/traversal refusal, carrier fuzz (15-case
+corpus), and 1200-file scale. **Seven findings; four fixed at the gate:** *F1* a change set naming one path
+twice committed "present" while the projection ended "absent" — duplicate `(repo, path)` is now refused;
+*F2* the public-reference guard enumerated **v1 layer dirs only**, so a public document could link at the
+**v2 `private/` space** — the layout new packages actually use — and the guard skipped it; now covers both
+contracts; *F3* an out-of-contract `repo` value (reachable from the untyped DB column) was projected but
+never committed — a silent local-only write — now refused; *F5* a carrier truncated mid-island read as
+"not a carrier", so the raw HTML envelope was stored verbatim in a `.md` — now refused with an
+educator-facing message. **Three recorded, not fixed** (in StorageWritePathTasks.md): F4 rename-vs-manifest
+commit failure (recoverable by retry; needs a comment fix + retry prompt), F6 `>` inside an island
+attribute corrupts extraction silently, F7 `replaceFileIf` puts whole content in a PostgREST filter (URI
+length risk at scale; wants the anticipated `content_sha` migration).
+**T42 coherence pass:** corrected drift across ~26 docs — specs still describing store-first/best-effort
+writes, `.md.html` as the committed chapter source (contradicting the shipped slot table), seeded
+placeholders, the permalink 302 claim, Portkey/BYO-keys, and stale "not started" statuses; Deployment.md
+now carries the migration table incl. `0020`'s owner-privilege requirement and the staging bucket's 24h
+TTL. It also **corrected two errors in this tracker**: the test count was understated, and "all five
+documents get click-to-insert starters" was wrong (only slides, practice, concept map do).
+**Integrator follow-ups from its docs-only findings:** `forkPackage` still seeded a private starter note
+(de-seeded — it was an asymmetry with `createSandboxPackage`), the dead `syncFilesToGitHub` /
+`syncPrivateFilesToGitHub` exports were removed (zero callers), and the `validate.ts` / `mirrorManifestToSandbox`
+doc comments were corrected to match shipped behavior. Verified: typecheck + **1235 tests** + web build green.
+
 **Waves 2–3 complete — empty states, publish parity, resumable uploads (2026-08-28).**
 **T23:** the automatic scaffolds are gone (slides first-open seeding, concept-map pre-fill, practice
-starter). All five chapter documents show a "Not started yet" empty state naming what the document is for,
-with **click-to-insert** starter outlines (the old template prose, now offered rather than written) — and
-`DocumentActionsBar` renders on empty documents, so the upload/Replace door is reachable for a
+starter). All five chapter documents show a "Not started yet" empty state naming what the document is for;
+where an outline actually helps (slides, practice, concept map) it is offered as a **click-to-insert**
+button — the old template prose, now offered rather than silently written — while the study guide and
+assessment guide get the empty state without one *(precision added by T42: the entry originally implied all
+five carry a starter)*. And `DocumentActionsBar` renders on empty documents, so the upload/Replace door is reachable for a
 never-opened document (the UI half of C4). **T24:** the study guide is treated as a slot like the other
 four — a chapter with no study-guide content is skipped from the published site *and* the preview through
 one shared `slotHasContent` predicate, with the skipped chapters named back to the educator; the release
@@ -71,8 +146,11 @@ too-large / interrupted / partial / needs-fixing / already-up-to-date. The britt
 replaced by a **plan-diff confirmation** (adds, overwrites, unchanged, cleared) plus an explicit
 "empty this course and upload" path for genuine conflicts. Practical ceiling: 50 MB (a stated product
 limit now, not a platform artifact) and ~12 chained passes of commit time. Verified: typecheck +
-**1048 tests** + web build green; the only remaining legacy write path is the exempt publish/graduation
-truth-flip.
+**1081 tests** + web build green *(re-counted 2026-08-28 by the T42 coherence pass at commit `851bcef`;
+the entry originally said 1048)*; the only remaining legacy write path is the exempt publish/graduation
+truth-flip — `mirrorManifestToSandbox` and the `syncFilesToGitHub`/`syncPrivateFilesToGitHub` helpers now
+have **no caller outside it** (`github-actions.ts:252`; the last two are unreferenced), so the Wave-1
+"delete once callers reach zero" note is superseded: they stay for the exempt path only.
 
 **Waves 1.5 + 2 (partial) landed — one validator, empty packages, upsert replace (2026-08-28).**
 **T15:** all 12 compute-and-write package-ops functions split into validate-only `prepare*` + persist, so
@@ -166,7 +244,10 @@ write-through → S slots → P populate/staging → V verification). Acceptance
 [blind-critique/acceptance-spec.md](blind-critique/acceptance-spec.md) **frozen today, before
 implementation** (user-language, blocks A–H incl. regression items for the F1/F3 findings), with the
 operator guide [blind-critique/README.md](blind-critique/README.md) for the context-denied review
-(blind-critique skill). Implementation not started.
+(blind-critique skill). ✅ **Implementation complete the same day** — Waves H→3 shipped (see the entries
+above); Wave 4 remaining: **T41** adversarial sweep 🔄 (in progress), **T42** doc coherence pass ✅ (this pass),
+**T43** blind-critique round ⬜ (needs an operator-prepared environment — see
+[blind-critique/rounds/README.md](blind-critique/rounds/README.md)).
 
 **Workspace issues examined (2026-08-28):** test-use reports (disappearing chapters, opaque zip-upload
 failures, replace-upload failures, placeholder design) traced to root causes —
@@ -178,7 +259,9 @@ cap 413s real zips before `/api/populate-package` runs, failures poison the pris
 refused (F2); replace-not-create vs lazy doc seeding, and the replace door storing a picked `.md.html`
 raw into a `.md` slot (F3, corruption); placeholder lifecycle spread across three layers (F4). Proposed:
 single manifest owner (D1), slots-not-placeholders (D2), storage-first job-shaped populate (D3), loud
-sync failures (D4); quick-win fix order in the report. **Fixes not yet applied.**
+sync failures (D4); quick-win fix order in the report. ✅ **All four fixed the same day** (Waves H→3
+above) — the report is kept as the dated root-cause record, not a to-do list; its "current behavior"
+passages describe the pre-fix code.
 
 **Worker tier decided (2026-08-28):** [specs/worker-tier.md](specs/worker-tier.md) — **platform-provided
 AI key (BYO-key promise removed**; goal.md §11 amended; metering + hard per-run budget caps become
@@ -296,7 +379,7 @@ theme-in-save).
 
 These are the only things blocking full production parity with the code:
 
-1. **Migrations pending: `0019` (required for CF4) and `0013` (optional).** `0019_document_tags` adds the per-file `tags` column the Assets collection (CF4.1/4.2) reads/writes — **apply it before relying on asset tags/metadata in production** (CF4 asset writes are otherwise held; see the CF4 entry). `0013_drop_portal_eligible` drops the now-unused `profiles.portal_eligible` column — optional cleanup, apply anytime; no code references it. Applied: 0005–0012, **0014** (documents), **0015** (portal keywords, 2026-07-09), and **0016–0018** (profile column grants + user governance + ban backstop, ✅ **applied 2026-07-10** — see the security/UG banners above). Config notes: 0007's budget stays dormant until `AI_TOKEN_BUDGET` is set; portal listing is now open to all educators (the `portal_eligible` gate + admin toggle were removed); to reach `/admin`, **flag yourself `is_admin=true`** (dashboard) and set **`SUPABASE_SECRET_KEY`** (service-role reads) — optionally `RESEARCH_EXPORT_SALT`.
+1. **Migrations pending: `0020` (required for zip upload), `0019` (required for CF4), `0013` (optional).** `0020_staging_bucket` creates the private `staging` bucket + owner-prefix RLS that the whole-course zip upload writes through — **it needs owner/service-role privileges** (it writes `storage.buckets` and `storage.objects` policies, which the anon/authenticated roles cannot) and **must be applied BEFORE the Wave-3 code is deployed**, or every zip upload fails at the signed-URL step. Supabase Storage has no automatic TTL, so the bucket's 24-hour lifetime also needs an **operator/cron sweep** deleting objects older than 24h (the happy path deletes each object on consumption); see [Deployment.md §1](Deployment.md). `0019_document_tags` adds the per-file `tags` column the Assets collection (CF4.1/4.2) reads/writes — **apply it before relying on asset tags/metadata in production** (CF4 asset writes are otherwise held; see the CF4 entry). `0013_drop_portal_eligible` drops the now-unused `profiles.portal_eligible` column — optional cleanup, apply anytime; no code references it. Applied: 0005–0012, **0014** (documents), **0015** (portal keywords, 2026-07-09), and **0016–0018** (profile column grants + user governance + ban backstop, ✅ **applied 2026-07-10** — see the security/UG banners above). Config notes: 0007's budget stays dormant until `AI_TOKEN_BUDGET` is set; portal listing is now open to all educators (the `portal_eligible` gate + admin toggle were removed); to reach `/admin`, **flag yourself `is_admin=true`** (dashboard) and set **`SUPABASE_SECRET_KEY`** (service-role reads) — optionally `RESEARCH_EXPORT_SALT`.
 2. ✅ **Done** — Vercel build command is `node ../../scripts/fetch-vendor.mjs && next build`; Plotly is vendored and the plot editor (M11b) works live.
 3. **Interactive verification passes** (can't run in CI): slides render (M13), the in-file hosted editors (`.md.html`/`.slides.html`/`.paged.html` save round-trip via the worker tier), and the AI/reconcile live runs (M18 coherence agent, M9.6 draft-from-plan, M20 reconcile, M23 question generation, M26–M28 adapt/pull/suggest-back) once Portkey is on Vercel. Ketcher (M11) and plots (M11b) are verified live.
 4. **Set the Portkey env vars in Vercel** (`AI_GATEWAY_URL=https://api.portkey.ai/v1`, `AI_GATEWAY_API_KEY`, `AI_MODEL_DEFAULT/FAST/STRONG` = `@<provider-slug>/<model>`) to verify the **M18 coherence agent** live. Local dev can't reach Portkey from this machine (the dev Mac's security/firewall blocks the `node` binary's outbound — `curl` works, `node` ETIMEDOUTs — not an app issue); Vercel's egress is clean. See [ai-architecture.md](specs/ai-architecture.md).
@@ -550,7 +633,7 @@ adding the next type a registration, not a rewrite. See
 | 11.0b | Kind registry (`CarrierKind`: id, role, extension, payload, formatVersion) | a new kind registers without touching consumers | ✅ `registerKind`/`getKind`/`getKindByExtension` (longest-suffix)/`listKinds`/`BUILTIN_KINDS` (ketcher, plot = svg/asset; md, slides = html/document); editors bound web-side |
 | 11.0c | Carrier reference resolver over the public `materials` layer (public-only refs, fail-closed) — **no new layer** (contract v1 layer set is closed; `materials` already covers diagrams/images/charts) | public docs cannot reference private files; path rules hold | ✅ contract `assertPublicReference` (throws on private layer), `classifyReference` (live/pinned/external), `livePermalink`/`pinnedPermalink` |
 | 11.0d | Asset records (stable id + content hash, reusing M3 hashing) + required alt text | asset round-trips with stable id; alt text travels | ✅ contract `AssetRecordSchema` (`ast-…` id, path, kind, payload, `hashContent`, required `altText`); package-ops `listAssets`/`readAsset`/`writeAsset` over `materials/` (5 tests) |
-| 11.0e | `validate(project, {knownKinds})` (pure) — one contract, two surfaces (validator == Agent Skill) | a conforming local project passes the same check the importer runs | ✅ contract `validateProject(input, {knownCarrierExtensions})` — manifest parse, path/repo rules, chapter existence, carrier-in-public-layer; collects issues, injects kinds (no registry dep) |
+| 11.0e | `validate(project, {knownKinds})` (pure) — one contract, two surfaces (validator == Agent Skill) | a conforming local project passes the same check the importer runs | ✅ contract `validateProject(input, {knownCarrierExtensions})` — manifest parse, path/repo rules, chapter study-guide presence, carrier-in-public-layer; collects issues, injects kinds (no registry dep). **Updated 2026-08-28:** `ValidationIssue` gained optional `severity: "error" \| "warning"` (absent = error), and a declared chapter with no study guide is now a **warning** (`ok` stays true) — under "slots, not placeholders" an unwritten chapter is a legitimate state and must not block an import |
 
 *Exit:* ✅ an asset carrier round-trips through the codec; a registered kind is
 consumed by package-ops asset ops without bespoke code (editor/importer/renderer
@@ -604,10 +687,10 @@ Lossless carrier re-import + lossy foreign import + bulk local-project upload.
 | 12.1 | Lossless re-import of any registered carrier (`.ketcher.svg`/`.plot.svg`/`.md.html`/…) | carrier `extract()`ed → asset/document registered, no AI | ✅ package-ops `classifyImport` (asset→store under `materials/`; document→extract markdown; markdown passthrough; binary→unknown); web `importFileAction` (asset stored + synced; document/markdown → blocks appended deterministically). 5 import tests |
 | 12.2 | Lossy foreign import: Word (.docx), PDF, PPTX, images → normalized | each format yields normalized content | 🔄 **deferred to the worker tier** (heavy parsers: mammoth/pdf/pptx, npm-flaky here). Text path is covered via 12.3; binary types report "coming (server-side)" |
 | 12.3 | AI-assisted restructuring into blocks (Tier-2 queue) | imported doc becomes reviewable study-guide blocks | ✅ ai-assist `restructureToBlocks` (6 tests); web `restructureImportAction` → Tier-2 `import-blocks` change; accept branch appends the reviewed sections. Paste notes → reviewable study guide |
-| 12.4 | Bulk local-project upload = lossless re-import over a tree, validated by `validate()` | a conforming local project uploads with zero friction | 🔄 single-file import shipped; bulk **zip/folder** upload deferred (needs a zip dep + ties to M17 local mode) — `validate()` from M11.0 is ready to gate it |
+| 12.4 | Bulk local-project upload = lossless re-import over a tree, validated by `validate()` | a conforming local project uploads with zero friction | ✅ **shipped 2026-08-28 (Wave 3)** — whole-course **zip** upload into a published course: signed URL → private `staging` bucket (no request-body cap; **50 MB** product limit) → `/api/populate-package` plans against repo head + registry, gated by a **plan-diff confirmation**, then writes **repos-first** through `writeThrough`; **idempotent + resumable**, so an interrupted run continues. `validatePackageForImport` (over `validate()`) is the gate. Folder (non-zip) upload and direct-to-GitHub ingest remain deferred |
 | 12.5 | Provenance + imported-markdown ID fallback (sidecar/content-hash until native IDs) | imports carry source + attribution; un-ID'd matched (contract §6 r9) | 🔄 `import.completed` event records the source; imported markdown gets block IDs minted on save (existing path). Full content-hash sidecar matching later |
 
-*Exit (demo):* re-import a carrier (`.ketcher.svg` / `.md.html`) or Markdown losslessly, or paste notes → AI-restructured reviewable sections. Foreign binaries + bulk zip upload are designed and deferred to the worker tier.
+*Exit (demo):* re-import a carrier (`.ketcher.svg` / `.md.html`) or Markdown losslessly, paste notes → AI-restructured reviewable sections, or upload a whole course as a zip (12.4, shipped 2026-08-28). **Foreign binaries** (.docx/.pdf/.pptx parsing, 12.2) remain designed and deferred to the worker tier.
 
 ### M15 — Snapshots & citation
 
@@ -1066,7 +1149,16 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
   print view renders from the study-guide content. E3 now covers all three
   formats.
 - **E3d landed (2026-07-09): Slides are now an AUTHORED document** (owner
-  decision — the E3b seam above was activated). Slides moved from a derived view
+  decision — the E3b seam above was activated).
+  > **Partly superseded 2026-08-28 (Wave 2 / T23, "slots, not placeholders").**
+  > The automatic first-open seeding described below is **gone**:
+  > `generateSlidesHtmlAction` no longer writes a scaffold into an empty deck —
+  > it reports `empty: true` and the shell shows a "Not started yet" state where
+  > the educator picks a blank deck or **click-to-inserts** the starter outline.
+  > The `slidesTemplate` prose survives as that offered outline, not as a
+  > committed file. Everything else in this entry (authored source of record at
+  > `slides/<slug>.md`, the hosted editor, the slides theme namespace) still
+  > holds. Slides moved from a derived view
   to a first-class per-chapter document in the **`slides` space** (activated in
   `PACKAGE_LAYERS`; the v2 space already existed): committed source of record is
   the orz-slides deck markdown at `slides/<slug>.md` (package-ops
@@ -1616,6 +1708,22 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
     rules** (block-id format, asset refs, slide parity, concept-map path) are the
     hard rules in the upload contract for Coursewerk to enforce.
   - 🔄 **Upload a package into a published empty course (2026-07-14, "Case A").**
+    > **Largely superseded 2026-08-28 (Wave 3 / T31+T32).** Three things below
+    > are no longer how it works: (a) the zip no longer travels in the request
+    > body — it goes **straight to the private `staging` bucket via a signed
+    > URL**, so the ~4.5 MB Vercel cap is out of the path and the limit is a
+    > stated **50 MB**; (b) the **pristine gate is gone** — populate plans
+    > against repo head + registry and takes a **plan-diff confirmation**
+    > (adds/overwrites/unchanged/cleared) plus an explicit "empty this course and
+    > upload" path, so "Case B" (upload into a non-empty course) is **no longer
+    > deferred**; (c) the route is **repos-first** through `writeThrough`
+    > (commit → project), not `putFiles` → `syncFilesToGitHub`, and is
+    > **idempotent + resumable**, so an interrupted upload continues instead of
+    > dead-ending. `SEED_CONTENT_PATHS`/`isPristinePackage` survive only to
+    > recognize *legacy* packages' placeholders. The rest of the entry (the
+    > create → publish → upload model, binary-as-blob commits, identity forcing,
+    > the two-repo split) still holds.
+
     Reframed the whole zip-upload flow so **nothing is left behind** (the old
     trial import stored text only and skipped images/PDFs). Upload now targets a
     package that is **already published** to GitHub — so every valid file, text
@@ -1728,6 +1836,10 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
     — audit confirmed it's currently benign (the file-based write already
     happens first, same value), but added the call anyway so a future
     reorder can't silently reopen the split-brain bug here too.
+    *(Superseded 2026-08-28, Wave 1 / T14: `renamePackageAction` now goes
+    through `updateManifest`, which owns the file↔column relationship;
+    `mirrorManifestToSandbox` survives only on the exempt
+    publish/graduation path.)*
   - **Dangling references cleaned up**: a stale comment in
     `studio-shell.tsx` still named `saveCourseDescriptionAction` (renamed
     to `saveCourseConceptMapAction` earlier today); the orphaned
@@ -1920,14 +2032,24 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
   one real block, so a fresh course/chapter clears the study-guide release
   gate immediately. Green (typecheck across all 13 workspaces + full test
   suite, 193 package-ops tests + 50 renderer tests + web build).
+  *(Superseded 2026-08-28, Wave 2 / T21 "slots, not placeholders":
+  `welcomeChapter()` and `seedChapter()` are **gone** — a new package is
+  `alembic.json` + `LICENSE` with an explicit first chapter declared in the
+  manifest and no file, and `createChapter` writes no file at all. The
+  invariant pinned here is deliberately reversed: **a fresh course no longer
+  clears the study-guide release gate**, which is correct under "empty slots
+  never publish". The `#`-vs-`##` heading fix in the renderer still holds.)*
 - **Root-caused the third symptom from the same report: a "study guide
   section" publish-gate false negative (2026-07-09).** Not a bug in the
   strict sense — `parseStudyGuide` (`package-contract/block-source.ts`)
   only treats text under a `##` (H2) line as a "section"; a single `#` is
   reserved for the chapter's own auto-rendered page title (chapter-mgmt
   overhaul, above). The owner's module opened blank (an old/pre-seed
-  package — new packages seed `## Getting started…` via `welcomeChapter()`
-  in `create.ts`) and they typed `# Module 01` — an H1, so `parseStudyGuide`
+  package — new packages then seeded `## Getting started…` via
+  `welcomeChapter()` in `create.ts`; **no longer, as of 2026-08-28 — every new
+  package now opens blank**, so this "blank module" state is the normal one and
+  the save-time warning below is what carries the explanation) and they typed
+  `# Module 01` — an H1, so `parseStudyGuide`
   filed it as unstructured `preamble`, not a block; the text saved
   correctly, it just didn't count as a "section." The real gap: nothing
   said so at save time, and the eventual gate message didn't mention heading
@@ -1993,7 +2115,12 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
   and its Pages site were completely intact. **Fixed**: added
   `mirrorManifestToSandbox` (`apps/web/src/lib/github.ts`) and call it from
   all four sites so the DB column and the sandbox file mirror can no longer
-  diverge. **Recovery for already-affected packages** (no direct DB access
+  diverge. *(Superseded 2026-08-28: the mirror-both-copies approach was
+  itself the split-brain. TH1 + Wave 1 made the **file** manifest the sole
+  authoritative copy — every writer patches it via `updateManifest` and the
+  `packages.manifest` column became a derived read cache no writer may use as
+  input. `mirrorManifestToSandbox` now has one caller, the exempt
+  publish/graduation path.)* **Recovery for already-affected packages** (no direct DB access
   from here to hand-repair the owner's live row): clicking "① Save to
   GitHub" again is safe and self-healing — `publishToGitHubAction` derives
   the repo names deterministically from the immutable `packageId` + title,

@@ -161,8 +161,10 @@ function matchesKnownCarrier(path: string, extensions: string[]): boolean {
  * Checks (all collected; never throws on a validation problem):
  *  1. The manifest parses (zod errors → one issue per problem).
  *  2. Every file path is allowed in its declared repo (two-repo invariant).
- *  3. If the manifest declares chapters, each chapter's study-guide file
- *     (`study-guide/<slug>.md`) exists in `files`.
+ *  3. If the manifest declares chapters, a chapter whose study-guide file
+ *     (`study-guide/<slug>.md`) is absent is reported as a WARNING — under
+ *     "slots, not placeholders" an unwritten chapter is "not started yet", a
+ *     legitimate state, so this never fails validation.
  *  4. Every KNOWN carrier file sits in a PUBLIC layer (assets/documents are
  *     public). A known carrier under a private layer is an ERROR.
  *  5. A file that LOOKS like a carrier (.svg/.html/.pdf under materials/) but

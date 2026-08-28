@@ -74,7 +74,8 @@ Alembic's `validateCommitPlan` and `releaseGates`.)*
 
 ### H3 · Recognized folders only
 Every file sits under a known space — `study-guide/ concepts/ slides/ practice/
-assessment-support/ assets/ metadata/ private/` — or is a root-allowlist file
+assessment-support/ assets/ current/ metadata/ provenance/ private/` — or is a
+root-allowlist file
 (`alembic.json`, `LICENSE`, `README.md`, `CITATION.cff`, `.gitignore`). Anything
 else fails ingest, fail-closed. **Check:** `repoForPath` recognizes every path;
 no stray root files. *(Coursewerk already does this.)*
@@ -146,9 +147,10 @@ a real `orzMarkdown.render()` pass. *(Coursewerk already does this.)*
 ### H8 · Slides build under the pinned engine  ⚠️ *(Bug 3)*
 Decks use the **orz-slides deck grammar**, one `<!-- slide -->` (or `<!-- slide
 <layout> -->`) marker **explicitly between every slide**, and MUST build cleanly
-under the **same orz-slides version Alembic pins** (currently `^0.8.0`; keep
+under the **same orz-slides version Alembic pins** (currently `^0.8.2`; keep
 Coursewerk's `orz-slides` dependency equal to
-`Alembic/packages/generators`). **Check:** `build_carriers.mjs` reports
+`Alembic/packages/generators` — read the number from that `package.json` rather
+than from this line, which will drift). **Check:** `build_carriers.mjs` reports
 `failed: 0` for every `slides/<slug>.md`, and the `<!-- slide -->` marker count
 matches the intended slide count. *(Version parity is the key new obligation —
 see Part 3, F3, for Alembic's side of this bug.)*

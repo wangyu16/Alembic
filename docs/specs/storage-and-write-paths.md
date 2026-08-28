@@ -1,6 +1,14 @@
 # Storage & Write Paths — the three-store contract
 
-**Status:** adopted (owner decision, 2026-08-28). Governs every byte the
+**Status:** adopted (owner decision, 2026-08-28) and **fully implemented the
+same day** (Waves H→3; [../StorageWritePathTasks.md](../StorageWritePathTasks.md),
+[../Status.md](../Status.md)). Everything in §§1–4 and §7 is shipped behavior,
+not a target — `writeThrough()`/`updateManifest()` (`packages/package-ops`) are
+the seam, `committerFor` (`apps/web/src/lib/committer.ts`) is the one place the
+trial / published / unreachable branch is decided, and migration
+`0020_staging_bucket.sql` creates the bucket (**operator action** — see
+[../Deployment.md](../Deployment.md) §1). §6's R2 verdict remains a decision,
+and only its three named triggers reopen it. Governs every byte the
 platform stores and every write path. Companion implementation plan:
 [../StorageWritePathPlan.md](../StorageWritePathPlan.md).
 **Related:** [educator-version-contract.md](educator-version-contract.md)
@@ -80,9 +88,16 @@ Corollaries:
   conditional write + retry) kills lost updates.
 - **Reconcile keeps its direction** (repo → projection); with every commit
   recording its SHA, foreign-commit detection is exact.
-- **Populate becomes retry-safe**: repos-first means a half-failed populate
-  left real commits; retry replans against the repo head and continues —
-  the pristine-gate dead end disappears.
+- **Populate is retry-safe** (shipped): repos-first means a half-failed
+  populate left real commits; a retry replans against repo head + registry and
+  writes only the remainder. The pristine gate is **gone** — the door is now a
+  **plan-diff confirmation** (`diffPopulatePlan`: adds / overwrites / unchanged
+  / cleared) plus an explicit "empty this course and upload" path for genuine
+  conflicts, so an interrupted upload never dead-ends. `isPristinePackage`
+  survives only as a plain predicate for legacy packages and **must not gate an
+  upload**. The zip reaches the server through the staging bucket via a signed
+  URL, so the request-body ceiling is out of the path; the limit is a stated
+  product one (`MAX_PACKAGE_ZIP_BYTES` = 50 MB).
 - **Graduation** (trial → published) is the one legitimate bulk DB→GitHub
   write: initial commits of all trial files, then the truth flips and the
   rows become projection.
@@ -136,5 +151,6 @@ the question — and only these:
 ## 7. Known-truncation fix
 
 `listFiles` must paginate (PostgREST caps result sets); any whole-package
-operation over a silently truncated file list is invalid. Part of the plan's
-hotfix phase.
+operation over a silently truncated file list is invalid. ✅ Shipped 2026-08-28
+(Wave H / TH3): `SupabaseSandboxStore.listFiles` pages with `.range()` until a
+short page. Anything added later that reads a whole package must go through it.

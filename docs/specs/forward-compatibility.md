@@ -20,18 +20,38 @@ must not create parallel mechanisms that fight the durable core.
 1. **No business logic in React components.** A feature = contract schema (pure)
    + an operation (`package-ops` / bridge / worker) + a thin UI. The UI rewrite
    reuses the operations untouched.
-2. **One validated write path: `packageOps()`.** All package mutations — UI
-   server actions, the Phase-3 agent/worker, the local studio — go through
-   `packageOps(store, packageId)` (`@alembic/package-ops`), which carries the
-   two-repo, block-ID, and layer validation. **Never** add a second commit path
-   that bypasses it. (`github-bridge.validateCommitPlan` remains the final gate.)
+2. **One validated write path: the `@alembic/package-ops` write-through seam.**
+   All package mutations — UI server actions, the agent/worker, plugged-in
+   in-file editors — go through **`writeThrough()` / `updateManifest()`**, which
+   carry the two-repo, reference, and block-ID validation and are **repo-first**:
+   for a published package they validate, commit to GitHub, and only then
+   project into the store, so a failed commit changes nothing anywhere. A
+   published package that cannot reach GitHub **refuses** the write rather than
+   diverging silently; a trial package writes DB-only. **Never** add a second
+   commit path that bypasses it. (`github-bridge.validateCommitPlan` remains the
+   final gate; publish/graduation is the one recorded exemption — it *is* the
+   truth-flip.) See [storage-and-write-paths.md](storage-and-write-paths.md) §3.
+   *(Corrected 2026-08-28: this guardrail formerly named the `packageOps()`
+   object as the seam. It is not — no caller in `apps/web` uses it. The
+   **package** is the write path; `writeThrough`/`updateManifest` are the
+   functions. The "local studio" it also named was removed on 2026-07-04.)*
 3. **Extend via existing seams; never fork a parallel mechanism:**
    - new media/document types → the **carrier kind registry** (`@alembic/carriers`)
    - new AI/automatic changes → **`CHANGE_KINDS` + tiers** (review/undo come free)
    - new gating (role / paid / phase) → the **entitlement resolver** (`lib/entitlements`)
    - new analytics → the **`research-events` enum** (append-only)
    - new package data → **manifest additive + `PACKAGE_SCHEMA_VERSION` bump + forward-only migration**
-   - **layers are closed** (contract v1 §2) — reuse `materials` / `private-instructor` / …, don't invent one
+   - **the space set is closed** — reuse an existing space, don't invent one.
+     *(Corrected 2026-08-28: this said "layers are closed (contract v1 §2) —
+     reuse `materials` / `private-instructor`". The **v2 space set** superseded
+     the v1 layer set and is what the code stamps on new packages
+     (`PACKAGE_SPACES` in `packages/package-contract/src/spaces.ts`;
+     `PACKAGE_SCHEMA_VERSION = 2`): `study-guide`, `slides`, `practice`,
+     `concepts`, `assessment-support`, `assets`, `current`, `metadata`,
+     `provenance`, `private`. That was a deliberate, versioned, migrated
+     replacement — exactly what this guardrail asks for — not a violation of it.
+     The guardrail itself is unchanged: **that** set is now the closed one. See
+     [package-contract-v2.md](package-contract-v2.md) §1.)*
 4. **Presentation lives in `@alembic/renderer` (viewing) and the thin client
    (editing).** Agent patches, assessment items, LMS exports, portal records are
    **typed data**, never pre-rendered HTML baked into a durable package.
@@ -49,12 +69,19 @@ must not create parallel mechanisms that fight the durable core.
 
 `packageOps(store, packageId)` exposes the canonical **content** operations
 (study guide, chapters, carrier assets, derived-artifact listing) as one typed
-object. Cloud (Supabase store), local studio (FSA store), and the agent/worker
-bind the same interface to different stores — so the operations, and the
-validation inside them, are identical regardless of caller. AI generation,
-GitHub sync, and governance are separate concerns layered on top, not part of
-this surface. New writers target `PackageOps`; this is what makes the client
-swappable and gives Phase 3 a clean, safe target.
+object, bindable over any `PackageStore` — so the operations, and the validation
+inside them, are identical regardless of caller.
+
+> **Status correction (2026-08-28).** `PackageOps` is a *convenience facade*,
+> not the boundary new writers target. No caller in `apps/web` uses it; every
+> server action calls `writeThrough()` / `updateManifest()` (and the `prepare*`
+> validators) from `@alembic/package-ops` directly, passing a `Committer`
+> resolved by `committerFor`. That is the seam the "swappable client" argument
+> now rests on, and it is stronger than the old one because it also owns the
+> **commit ordering**, not just the content validation. The "local studio (FSA
+> store)" binding named here never shipped — `/studio` was removed 2026-07-04.
+> AI generation and governance remain separate concerns layered on top; GitHub
+> sync is no longer separate — it is *inside* the write path by design.
 
 ## How each phase stays decoupled
 

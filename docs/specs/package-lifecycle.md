@@ -27,7 +27,7 @@ Two distinct concepts — keep them separate:
 
 | Kind | Allowed? | What happens |
 | --- | --- | --- |
-| **Title** (display name) | Yes — cheap, safe, anytime | Update `title` in the manifest/metadata. Sandbox: update the `packages` row + `alembic.json`. GitHub-backed: same, plus commit the updated `alembic.json`; the next site build picks up the new heading. Repo names and `packageId` are unchanged. |
+| **Title** (display name) | Yes — cheap, safe, anytime | Update `title` in the manifest. **Trial:** `updateManifest` writes `alembic.json`, then the `packages` row is refreshed from it. **GitHub-backed:** the same call **commits `alembic.json` first** and updates the row only after the commit succeeds — and if GitHub is unreachable the rename is **refused** with an educator-facing reason, nothing changed. The next site build picks up the new heading. Repo names and `packageId` are unchanged. *(Ordering corrected 2026-08-28: this row read "update the row + `alembic.json` … plus commit", i.e. DB-first with a trailing best-effort commit. See [storage-and-write-paths.md](storage-and-write-paths.md) §3.)* |
 | **Identity / repo names** | Out of scope | `packageId` never changes. Renaming the GitHub repos is GitHub's own operation (with redirects) and only needs to be *tolerated* on sync — not a platform feature. |
 
 Rationale: title is pure metadata with no traceability impact; identity rename
