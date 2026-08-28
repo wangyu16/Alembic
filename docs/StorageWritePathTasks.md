@@ -268,6 +268,16 @@ SHA (W4 audit).
 - **Owns (renderer):** `course-site` types/build; **(web)**
   `site-actions.ts` inputs; **(docs/skills)** `alembic-package` SKILL,
   `upload-contract.md`, `package-layout.md`, template repo notes.
+- **Scope narrowed (integrator audit 2026-08-28):** the site build ALREADY
+  skips empty slides (`site-actions.ts:285` `authored.source.trim()`) and
+  empty practice (`:307` `practiceMarkdown.trim()`), and the renderer
+  already emits the links conditionally
+  (`course-site.ts:464-465`). So T24's remaining site work is only: (a)
+  confirm/handle an EMPTY OR ABSENT study guide (does a chapter with no
+  study-guide file still get a page?) — that is the one unverified slot;
+  (b) mirror whatever it does in `site-preview/page.tsx:129-133`, which
+  duplicates the same decisions. Do NOT rewrite the working slides/practice
+  logic.
 - **Do:** site build receives only slots with content; nav omits empty
   docs; update the authoring skill + contracts: per-chapter docs OPTIONAL
   (absence = not-started, never an error), no placeholder expectations.
