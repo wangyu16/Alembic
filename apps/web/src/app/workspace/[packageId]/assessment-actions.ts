@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import {
   newQuestionTemplateId,
   questionTemplatePath,
+  QuestionTemplateSchema,
   type Difficulty,
   type QuestionTemplate,
 } from "@alembic/package-contract";
@@ -12,13 +13,15 @@ import {
   listQuestionItems,
   listQuestionTemplates,
   loadQuestionTemplate,
-  saveQuestionTemplate,
+  writeThrough,
+  CommitFailedError,
+  CommitUnavailableError,
 } from "@alembic/package-ops";
 import { generateQuestions } from "@alembic/ai-assist";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
 import { supabaseEventLogger } from "@/lib/events";
-import { syncFilesToGitHub } from "@/lib/github";
+import { committerFor } from "@/lib/committer";
 import { governedProvider, RateLimitError, BudgetExceededError } from "@/lib/ai";
 import { recordChange } from "@/lib/changes";
 
@@ -75,18 +78,35 @@ export async function saveTemplateAction(
       parameters: [],
       misconceptionTargets: fields.misconceptionTargets ?? [],
     };
-    await saveQuestionTemplate(store, packageId, template);
-    await syncFilesToGitHub(
-      supabase,
+    // Schema-validated before any IO — a malformed template is rejected, never
+    // repaired, and nothing is written anywhere.
+    const parsed = QuestionTemplateSchema.parse(template);
+
+    const resolved = await committerFor(supabase, store, user.id, packageId);
+    if (resolved.kind === "unavailable") {
+      return { ok: false, error: resolved.reason };
+    }
+    await writeThrough(
       store,
-      user.id,
+      resolved.kind === "github" ? resolved.committer : null,
       packageId,
-      [{ path: questionTemplatePath(template.id), content: JSON.stringify(template, null, 2) }],
-      "Add question template (Alembic)",
+      {
+        changes: [
+          {
+            repo: "public",
+            path: questionTemplatePath(parsed.id),
+            content: JSON.stringify(parsed, null, 2),
+          },
+        ],
+        summary: "Add question template (Alembic)",
+      },
     );
     revalidatePath(`/workspace/${packageId}`);
     return { ok: true };
-  } catch {
+  } catch (e) {
+    if (e instanceof CommitFailedError || e instanceof CommitUnavailableError) {
+      return { ok: false, error: e.message };
+    }
     return { ok: false, error: "Couldn't save the template. Please try again." };
   }
 }

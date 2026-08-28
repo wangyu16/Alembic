@@ -2,13 +2,21 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { listAssets, readAsset, writeAsset, type AssetInfo } from "@alembic/package-ops";
+import {
+  listAssets,
+  readAsset,
+  writeAsset,
+  writeThrough,
+  CommitFailedError,
+  CommitUnavailableError,
+  type AssetInfo,
+} from "@alembic/package-ops";
 import { suggestStructureAltText } from "@alembic/ai-assist";
 import { getKind } from "@alembic/carriers";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
 import { supabaseEventLogger } from "@/lib/events";
-import { syncFilesToGitHub } from "@/lib/github";
+import { committerFor } from "@/lib/committer";
 import { governedProvider, RateLimitError, BudgetExceededError } from "@/lib/ai";
 
 async function requireUser() {
@@ -73,15 +81,30 @@ export async function saveAssetAction(
     const dir = ASSET_DIR[input.kind] ?? "figures";
     const path =
       input.path ?? `materials/${dir}/${slugify(input.name ?? input.kind)}${kind.extension}`;
+
+    // Resolve the write path BEFORE building anything: a published package with
+    // no reachable online home refuses the write outright rather than saving
+    // locally and pretending (docs/specs/storage-and-write-paths.md §3).
+    const resolved = await committerFor(supabase, store, user.id, packageId);
+    if (resolved.kind === "unavailable") {
+      return { ok: false, error: resolved.reason };
+    }
+    // `writeAsset` validates placement (public `materials/`, registered kind)
+    // and builds the carrier; `writeThrough` then makes those exact bytes
+    // permanent (commit first) and re-projects them.
     const { carrier } = await writeAsset(store, packageId, {
       path,
       rendered: input.svg,
       source: input.source,
     });
-    await syncFilesToGitHub(
-      supabase, store, user.id, packageId,
-      [{ path, content: carrier }],
-      `Save ${input.kind} asset (Alembic)`,
+    await writeThrough(
+      store,
+      resolved.kind === "github" ? resolved.committer : null,
+      packageId,
+      {
+        changes: [{ repo: "public", path, content: carrier }],
+        summary: `Save ${input.kind} asset (Alembic)`,
+      },
     );
     await supabaseEventLogger(supabase).log({
       type: "artifact.generated",
@@ -93,6 +116,9 @@ export async function saveAssetAction(
     revalidatePath(`/workspace/${packageId}`);
     return { ok: true, path, altText: input.altText };
   } catch (e) {
+    if (e instanceof CommitFailedError || e instanceof CommitUnavailableError) {
+      return { ok: false, error: e.message };
+    }
     const error =
       e instanceof Error && e.message.includes("materials")
         ? e.message

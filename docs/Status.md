@@ -52,6 +52,24 @@ same commit as the work it tracks. Statuses: ✅ done · 🔄 partially shipped 
 
 > **Current direction — self-contained editing (owner-locked, 2026-07).** Editing and viewing both live *in the files*: the workspace **hosts** the in-file editors of `.md.html` / `.slides.html` / `.paged.html` (orz-family) and **builds no editor of its own**; published pages **are** those self-contained files (thin CDN delivery — study guide ~74 KB, framework from jsDelivr, verified live 2026-07-06); every file gets a permalink. **Committed source of record (revised, 2026-07-08 — "lean-source model"):** a chapter's study guide, slides, and practice questions are each committed as lean markdown (`study-guide/`, `slides/`, `practice/` — `.md`, not `.md.html`); the self-contained `.md.html`/`.slides.html` is generated on demand, purely as the editing/viewing surface, and never itself committed. This supersedes the original plan (below, and in the specs) of `.md.html` as the committed source — the specs haven't all been updated to match yet; this line is authoritative until they are. Authoritative docs: [SteeringNote.md](SteeringNote.md), [self-contained-editing.md](specs/self-contained-editing.md), [workspace-framework.md](specs/workspace-framework.md), and the module-based [Roadmap.md](Roadmap.md) (Modules R/E/P/T/I/S/W — supersedes the phase-based plan). **Code state today:** the classic editor is **retired** (~2.2k lines removed; `/workspace/[id]` redirects to `/edit`); the local **Studio (`/studio`) is removed**, replaced by `/guide`; the workspace three-pane shell now *hosts* the in-file editors (`HostedStudyGuideEditor` for study guide + practice; `HostedSlidesEditor` for authored slide decks). The durable guardrails **G1–G8** (two-repo reference enforcement, block-ID reconcile on import, whole-package fork, single-source course metadata, AI-entitlement seam) that the earlier editor-overhaul design drove all **landed + tested**.
 
+**Wave 1 landed — every writer on the write-through seam (2026-08-28).** Four concurrent tasks migrated
+**all 26 sync call sites** (chapters/manifest, editor saves, collections/import, and the
+planning/asset/assessment/change/adapt/lifecycle group) off `putFiles`+best-effort-commit onto
+`writeThrough`/`updateManifest`. A published package that is disconnected from GitHub now **refuses** the
+write with an educator-facing reason instead of writing DB-only (intended; recorded in the spec).
+**Bug fixed:** `renameChapterPageName` moved only 3 file families, orphaning four of a chapter's five
+documents — the move set is now derived from `chapterSlotPaths()` so it cannot drift (7-file regression
+test). **Newly atomic:** file rename (was write-new-then-delete-old across two store writes and a commit),
+folder delete, batch review-accept (was marking rows accepted before a single sync), and the answer-key
+accept (public item + private key now one validated change set). **Trust ordering established:** every
+change-queue/provenance/permalink row is written only AFTER its commit succeeds, so a failed commit leaves
+the item pending/undoable rather than falsely resolved. Remaining legacy callers are exactly the two
+deferred paths (populate route → Wave 3; publish/graduation → exempt), so `mirrorManifestToSandbox` stays
+until then. **Three follow-ups queued from agent findings:** T14b (widen `PackageOps` return types),
+**T15** (one owner for the prepare/validate half — it is now duplicated in four modules, and ~10 package-ops
+functions still project before committing), and a third slot-drift instance (`deleteChapter` orphans four
+documents → T21). Verified: typecheck + **959 tests** + web build green.
+
 **Wave 0 landed — write-through seam, committer, staging bucket, slot contract (2026-08-28).**
 `writeThrough()` + `updateManifest()` (`package-ops`) are the one validated write path: validate
 (dual-mode two-repo check + public-reference guard, fail-closed, before any IO) → published: commit via a

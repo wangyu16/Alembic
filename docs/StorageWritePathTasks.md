@@ -213,8 +213,21 @@ call-site inventory; the original three tasks covered only 13 of 26 sites)
   places (`editor-edit.ts`, `write-through.ts`, `lib/editor-save.ts`,
   `import-prepare.ts`). Rule 3 says there is one validated write path;
   four copies of its validator is that rule decaying.
+- **Scope EXPANDED (T14 report, 2026-08-28):** the projects-before-commit
+  problem is not limited to editor saves. These package-ops functions all
+  compute content *and* project it, so any caller that then commits has the
+  projection ahead of the repo — and `CommitFailedError`'s "nothing was
+  changed" copy is then not literally true: `saveStudyGuide`, `writeAsset`,
+  `adaptBlocksInto`, `adaptGivenBlocksInto`, `adaptAssetInto`,
+  `applyUpstreamUpdate`, `applyEditorEdit`, `saveQuestionItem`,
+  `saveAnswerKey`, `applyProposedChangeSet`. **Constraint discovered by
+  T14:** `batchAcceptReviewAction` RELIES on the current projecting
+  behavior to accumulate several accepted changes onto one file in order,
+  so the prepare/persist split must keep an in-order staging story (a
+  `prepare` that takes the pending in-memory state, not just the store).
 - **Do:** export validate-only `prepareEditorEdit` / `prepareStudyGuideSave`
-  / `prepareSlidesSave` from package-ops; re-express `applyEditorEdit` /
+  / `prepareSlidesSave` (and the equivalents for the list above) from
+  package-ops; re-express `applyEditorEdit` /
   `saveStudyGuide` / `saveSlidesDeck` as `prepare + putFiles` (behavior
   identical, tests unchanged); collapse the two web copies to thin
   re-exports. **Also migrate the orphan** `saveStudyGuideAction` in

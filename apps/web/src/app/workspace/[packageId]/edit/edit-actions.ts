@@ -2,13 +2,14 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { applyEditorEdit } from "@alembic/package-ops";
+import { writeThrough } from "@alembic/package-ops";
 import type { RepoKind } from "@alembic/package-contract";
 import { editFile } from "@alembic/ai-assist";
 import { operationById, PLATFORM_SCOPE } from "@alembic/ai-operations";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
-import { syncFilesToGitHub, syncPrivateFilesToGitHub } from "@/lib/github";
+import { committerFor } from "@/lib/committer";
+import { prepareEditorSave, saveFailureMessage } from "@/lib/editor-save";
 import { governedProvider, RateLimitError, BudgetExceededError } from "@/lib/ai";
 
 async function requireUser() {
@@ -20,16 +21,36 @@ async function requireUser() {
   return { supabase, user };
 }
 
+/**
+ * What a save reports back. `ok` alone is what the current editors read; the
+ * extra fields are the minimal saving-state contract for the UI (T12) and are
+ * optional so existing consumers keep compiling:
+ *
+ *  - `committed` — true when the change reached the permanent (GitHub) copy.
+ *    False on a trial package, where the platform store IS the truth; the save
+ *    is still complete and permanent for that package.
+ *  - `retryable` — on failure, whether pressing Save again could succeed
+ *    (a commit that didn't go through) as opposed to content the contract
+ *    refuses (a private reference), which needs an edit first.
+ */
 export interface FileSaveResult {
   ok: boolean;
   error?: string;
+  committed?: boolean;
+  retryable?: boolean;
 }
 
 /**
- * Save a file's content through the validated write path (`applyEditorEdit`
- * re-asserts the two-repo invariant + study-guide block-ID/reference checks),
- * then mirror to the correct repo. The new shell's generic category editors use
- * this for markdown/text files.
+ * Save a file's content through the ONE validated write path
+ * (docs/specs/storage-and-write-paths.md §3): validate → commit → project.
+ *
+ * `prepareEditorSave` performs exactly the checks `applyEditorEdit` did (two-repo
+ * invariant, study-guide block-ID integrity, public reference guard) but writes
+ * nothing; `writeThrough` then commits to the right repo FIRST and projects into
+ * the store only from a successful commit. If the commit fails — or the package
+ * is published and its online home is unreachable — nothing is changed anywhere
+ * and the educator is told so. There is no silent local-only save: a save that
+ * didn't reach permanence didn't happen (educator-version-contract.md, "Save").
  */
 export async function saveFileAction(
   packageId: string,
@@ -40,16 +61,29 @@ export async function saveFileAction(
   const { supabase, user } = await requireUser();
   const store = new SupabaseSandboxStore(supabase);
   try {
-    await applyEditorEdit(store, packageId, { path, repo, source: content });
-    if (repo === "private") {
-      await syncPrivateFilesToGitHub(supabase, store, user.id, packageId, [{ path, content }], "Edit (Alembic)");
-    } else {
-      await syncFilesToGitHub(supabase, store, user.id, packageId, [{ path, content }], "Edit (Alembic)");
+    // 1. Validate + canonicalize. Throws before any IO happens.
+    const write = prepareEditorSave({ path, repo, source: content });
+
+    // 2. Decide the write path in one place. Published-but-unreachable is a
+    //    refusal, never a degrade-to-local.
+    const resolution = await committerFor(supabase, store, user.id, packageId);
+    if (resolution.kind === "unavailable") {
+      return { ok: false, error: resolution.reason, retryable: true };
     }
+
+    // 3. Commit, then project.
+    const result = await writeThrough(
+      store,
+      resolution.kind === "github" ? resolution.committer : null,
+      packageId,
+      { changes: [write], summary: `Update ${write.path}` },
+    );
+
     revalidatePath(`/workspace/${packageId}/edit`);
-    return { ok: true };
-  } catch {
-    return { ok: false, error: "Couldn't save. Check that nothing references a private file." };
+    return { ok: true, committed: result.committed };
+  } catch (e) {
+    const { message, retryable } = saveFailureMessage(e);
+    return { ok: false, error: message, retryable };
   }
 }
 

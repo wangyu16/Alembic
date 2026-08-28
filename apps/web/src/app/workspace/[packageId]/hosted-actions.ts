@@ -2,14 +2,20 @@
 
 import { redirect } from "next/navigation";
 import { parseStudyGuide, serializeStudyGuide } from "@alembic/package-contract";
-import { loadStudyGuide, loadSlidesDeck, saveSlidesDeck } from "@alembic/package-ops";
+import { loadStudyGuide, loadSlidesDeck, writeThrough } from "@alembic/package-ops";
 import { slidesSourceFromBlocks, deckThemeFromSource, withDeckTheme } from "@alembic/renderer";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
 import { generateEditableFile, generateSelfContainedFile, workerConfigured } from "@/lib/worker-client";
 import { docMetaForPackage } from "@/lib/doc-metadata";
-import { syncFilesToGitHub } from "@/lib/github";
-import { saveStudyGuideAction } from "./actions";
+import { committerFor } from "@/lib/committer";
+import {
+  prepareSlidesSave,
+  prepareStudyGuideSave,
+  saveFailureMessage,
+  studyGuideHeadingWarning,
+} from "@/lib/editor-save";
+import { supabaseEventLogger } from "@/lib/events";
 import { setCourseThemeAction } from "./metadata-actions";
 
 /**
@@ -179,8 +185,10 @@ export async function generateSlidesHtmlAction(
 /**
  * Persist a save the hosted `.slides.html` editor initiated (orz-host-save). The
  * committed source of record is the deck markdown itself (`slides/NN.md`), saved
- * verbatim through the validated `saveSlidesDeck` path (two-repo invariant +
- * public-reference guard), then committed to GitHub best-effort. Never persists
+ * verbatim through the ONE validated write path — validate (two-repo invariant +
+ * public-reference guard) → commit → project (docs/specs/storage-and-write-paths.md
+ * §3). The commit is no longer best-effort: if it doesn't go through, nothing is
+ * changed anywhere and the deck's own save indicator reports the failure. Never persists
  * the file's `rendered` HTML — the editable surface is always regenerated
  * server-side from source, so shipping it back over the wire is dead weight
  * (orz-slides' inline bundle alone exceeds 1 MB). Theme resolves from the deck's
@@ -199,21 +207,23 @@ export async function hostSaveSlidesAction(
     return { ok: false, error: "The deck arrived empty — nothing was saved." };
   }
   const store = new SupabaseSandboxStore(supabase);
+  let committed: boolean;
   try {
-    await saveSlidesDeck(store, packageId, { path, source: payload.source });
-  } catch {
-    return { ok: false, error: "Your slides couldn’t be saved. Please try again." };
-  }
-  // Commit to GitHub — best-effort; the local save already landed.
-  let warning: string | undefined;
-  try {
-    await syncFilesToGitHub(
-      supabase, store, user.id, packageId,
-      [{ path, content: payload.source }],
-      `Update ${path}`,
+    const write = prepareSlidesSave(path, payload.source);
+    const resolution = await committerFor(supabase, store, user.id, packageId);
+    if (resolution.kind === "unavailable") {
+      return { ok: false, error: resolution.reason, retryable: true };
+    }
+    const result = await writeThrough(
+      store,
+      resolution.kind === "github" ? resolution.committer : null,
+      packageId,
+      { changes: [write], summary: `Update ${path}` },
     );
-  } catch {
-    warning = "Saved here, but syncing to GitHub didn't complete.";
+    committed = result.committed;
+  } catch (e) {
+    const { message, retryable } = saveFailureMessage(e);
+    return { ok: false, error: message, retryable };
   }
   // Capture the deck's theme as the slides space's global default (independent
   // of the study-guide theme; last write wins across chapters; no-op if same).
@@ -225,7 +235,7 @@ export async function hostSaveSlidesAction(
       /* keep the save even if the theme couldn't persist */
     }
   }
-  return { ok: true, error: warning };
+  return { ok: true, committed };
 }
 
 export interface ChapterViewResult {
@@ -274,18 +284,37 @@ export async function generateChapterViewAction(
   }
 }
 
+/**
+ * What a hosted (in-file) save reports back to the document's own save
+ * indicator. `ok`/`error` are what the mounted editors read today; the rest is
+ * the minimal saving-state contract added by T12 and is optional so existing
+ * consumers keep compiling:
+ *
+ *  - `committed` — true when the change reached the permanent (GitHub) copy;
+ *    false on a trial package, whose platform storage IS its truth.
+ *  - `retryable` — on failure, whether saving again could succeed (a commit
+ *    that didn't go through) rather than content the contract refuses.
+ *  - `warning`  — a non-fatal note on a SUCCESSFUL save. It is also mirrored
+ *    into `error` because the in-file editors surface exactly one message
+ *    string; `ok` stays true, so it never reads as a failure.
+ */
 export interface HostSaveResult {
   ok: boolean;
   error?: string;
+  committed?: boolean;
+  retryable?: boolean;
+  warning?: string;
 }
 
 /**
  * Persist a save the hosted `.md.html` editor initiated (orz-host-save). Takes
  * ONLY the extracted markdown `source` (+ `theme`) — never the file's `rendered`
  * HTML, which the lean-source model never persists anyway (the editable surface
- * is always regenerated server-side from source). `source` is parsed and written
- * through `saveStudyGuideAction` (block-ID validation + reconcile-first GitHub
- * sync). Unlike slides, mdhtml's theme lives OUTSIDE the extracted markdown (as
+ * is always regenerated server-side from source). `source` is parsed, validated
+ * (block-ID integrity, two-repo invariant, public reference guard) and then
+ * written through the ONE write path — commit first, project after
+ * (docs/specs/storage-and-write-paths.md §3), so a failed commit changes nothing
+ * anywhere and says so. Unlike slides, mdhtml's theme lives OUTSIDE the extracted markdown (as
  * a `data-theme` attribute on the regenerated `<html>` shell, not in the source
  * text), so it still needs its own protocol field rather than being parseable
  * out of `source`.
@@ -295,16 +324,59 @@ export async function hostSaveStudyGuideAction(
   path: string,
   payload: { source: string; theme?: string },
 ): Promise<HostSaveResult> {
-  await requireUser();
+  const { supabase, user } = await requireUser();
   if (!payload.source.trim()) {
     return { ok: false, error: "The document arrived empty — nothing was saved." };
   }
-  const { preamble, blocks } = parseStudyGuide(payload.source);
-  const res = await saveStudyGuideAction(packageId, { path, preamble, blocks });
+  const store = new SupabaseSandboxStore(supabase);
+  const started = Date.now();
+
+  let committed: boolean;
+  let warning: string | undefined;
+  try {
+    // 1. Parse + validate + canonicalize (mint IDs, reject broken ones,
+    //    serialize, reference-guard). Nothing has been written yet.
+    const parsed = parseStudyGuide(payload.source);
+    const { write, blocks } = prepareStudyGuideSave(path, parsed.preamble, parsed.blocks);
+    warning = studyGuideHeadingWarning(parsed.preamble, blocks);
+
+    // 2. One place decides the write path; published-but-unreachable refuses.
+    const resolution = await committerFor(supabase, store, user.id, packageId);
+    if (resolution.kind === "unavailable") {
+      return { ok: false, error: resolution.reason, retryable: true };
+    }
+
+    // 3. Commit, then project.
+    const result = await writeThrough(
+      store,
+      resolution.kind === "github" ? resolution.committer : null,
+      packageId,
+      { changes: [write], summary: `Update ${path}` },
+    );
+    committed = result.committed;
+
+    // Research logging never breaks an educator workflow (CLAUDE.md).
+    try {
+      await supabaseEventLogger(supabase).log({
+        type: "save.completed",
+        userId: user.id,
+        packageId,
+        durationMs: Date.now() - started,
+        detail: { path, blockCount: blocks.length },
+        occurredAt: new Date().toISOString(),
+      });
+    } catch {
+      /* ignore */
+    }
+  } catch (e) {
+    const { message, retryable } = saveFailureMessage(e);
+    return { ok: false, error: message, retryable };
+  }
+
   // The study guide carries the course theme: capture the educator's pick as the
   // course-wide default (last write wins across chapters; no-op if unchanged).
   // Best-effort — a theme-persist hiccup never fails the study-guide save.
-  if (res.ok && payload.theme) {
+  if (payload.theme) {
     const space = path.split("/")[0]; // study-guide vs practice: independent themes
     try {
       await setCourseThemeAction(packageId, payload.theme, space);
@@ -312,7 +384,8 @@ export async function hostSaveStudyGuideAction(
       /* keep the save even if the theme couldn't persist */
     }
   }
-  // A GitHub-sync warning (outside changes) still means the local save landed;
-  // surface it as the ack message so the educator sees it in the file.
-  return { ok: res.ok, error: res.error ?? res.warning };
+
+  // The save landed; a note (e.g. "this isn't a section yet") rides along as the
+  // in-file ack message, with `ok` still true.
+  return { ok: true, committed, ...(warning ? { warning, error: warning } : {}) };
 }

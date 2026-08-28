@@ -4,11 +4,18 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import {
   PackageRenameError,
-  renamePackageTitle,
+  normalizeTitle,
+  withTitle,
+  updateManifest,
+  CommitFailedError,
+  CommitUnavailableError,
+  ManifestConflictError,
+  ManifestNotFoundError,
 } from "@alembic/package-ops";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
-import { syncFilesToGitHub, clientForUser, mirrorManifestToSandbox } from "@/lib/github";
+import { clientForUser } from "@/lib/github";
+import { committerFor } from "@/lib/committer";
 import { supabaseEventLogger } from "@/lib/events";
 
 export interface LifecycleResult {
@@ -26,10 +33,13 @@ async function requireUser() {
 }
 
 /**
- * Rename a package's display title. Updates the manifest (alembic.json, source
- * of truth) through the validated store path, refreshes the projection row, and
- * — for published packages — mirrors the manifest to the public repo. The
- * `packageId` and repo names never change.
+ * Rename a package's display title. The title lives in the manifest
+ * (`alembic.json`, the source of truth), so the rename goes through
+ * `updateManifest` — the ONE manifest owner: read the FILE manifest → patch →
+ * commit (published packages) → compare-and-swap the projection, retrying on a
+ * concurrent write. The `packages` row is then refreshed from the manifest
+ * `updateManifest` returns, never from a separately-built copy, so the column
+ * can never drift from the file. `packageId` and repo names never change.
  */
 export async function renamePackageAction(
   packageId: string,
@@ -39,27 +49,28 @@ export async function renamePackageAction(
   const store = new SupabaseSandboxStore(supabase);
   const started = Date.now();
   try {
-    const updated = await renamePackageTitle(store, packageId, title);
+    // Validate the title (PackageRenameError → educator message) before any IO.
+    const newTitle = normalizeTitle(title);
+
+    const resolved = await committerFor(supabase, store, user.id, packageId);
+    if (resolved.kind === "unavailable") {
+      return { ok: false, error: resolved.reason };
+    }
+    const { manifest } = await updateManifest(
+      store,
+      resolved.kind === "github" ? resolved.committer : null,
+      packageId,
+      (m) => withTitle(m, newTitle),
+      { summary: "Rename course (Alembic)" },
+    );
+
     const { error } = await supabase
       .from("packages")
-      .update({ title: updated.title, manifest: updated })
+      .update({ title: manifest.title, manifest })
       .eq("id", packageId);
     if (error) {
       return { ok: false, error: "Could not save the new name. Please try again." };
     }
-    // renamePackageTitle already wrote `updated` to sandbox_files (file-based),
-    // so this is a no-op today — kept for consistency with every other direct
-    // packages.manifest writer, so a future reorder in renamePackageTitle can't
-    // silently reopen the split-brain bug (2026-07-09) here too.
-    await mirrorManifestToSandbox(store, packageId, updated);
-    await syncFilesToGitHub(
-      supabase,
-      store,
-      user.id,
-      packageId,
-      [{ path: "alembic.json", content: JSON.stringify(updated, null, 2) + "\n" }],
-      "Rename course (Alembic)",
-    );
     await supabaseEventLogger(supabase).log({
       type: "package.renamed",
       userId: user.id,
@@ -73,6 +84,14 @@ export async function renamePackageAction(
     return { ok: true };
   } catch (e) {
     if (e instanceof PackageRenameError) return { ok: false, error: e.message };
+    if (
+      e instanceof CommitFailedError ||
+      e instanceof CommitUnavailableError ||
+      e instanceof ManifestConflictError ||
+      e instanceof ManifestNotFoundError
+    ) {
+      return { ok: false, error: e.message };
+    }
     return { ok: false, error: "That rename didn't complete. Please try again." };
   }
 }

@@ -5,33 +5,44 @@ import { redirect } from "next/navigation";
 import {
   ChapterNotFoundError,
   ChapterOperationError,
+  CommitFailedError,
+  CommitUnavailableError,
+  ManifestConflictError,
   createChapter,
   deleteChapter,
   renameChapter,
   renameChapterPageName,
   reorderChapters,
   setUnitTerm,
+  type Committer,
 } from "@alembic/package-ops";
-import { parseManifest, UnitTermSchema } from "@alembic/package-contract";
-import { commitFiles, type FileChange } from "@alembic/github-bridge";
+import { UnitTermSchema, type PackageManifest } from "@alembic/package-contract";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
-import { clientForUser, recordSyncedSha } from "@/lib/github";
+import { committerFor } from "@/lib/committer";
+import { manifestFromFiles } from "@/lib/manifest-read";
+
+/**
+ * Chapter operations, on the one write path
+ * (docs/specs/storage-and-write-paths.md §3).
+ *
+ * Every action here resolves the package's write path ONCE via `committerFor`
+ * and hands the result to package-ops, which writes the manifest through
+ * `updateManifest` and chapter files through `writeThrough`. A published
+ * package whose online home is unreachable is refused outright — there is no
+ * "saved here but not there" half-success any more, because a save that didn't
+ * reach permanence didn't happen.
+ */
 
 export interface ChapterResult {
   ok: boolean;
   slug?: string;
   error?: string;
-  /**
-   * Set when the change saved to the workspace but could not be mirrored to
-   * GitHub (missing connection or a failed commit). The save itself succeeded.
-   */
-  warning?: string;
 }
 
-/** Educator-facing notice when the workspace saved but the GitHub mirror didn't. */
-const SYNC_WARNING =
-  "Saved in your workspace, but not to GitHub yet — your next Save to GitHub will catch it up.";
+/** Educator-facing wording for a same-time edit by another tab or person. */
+const CONFLICT_MESSAGE =
+  "Someone changed this course at the same time. Reload and try again.";
 
 async function requireUser() {
   const supabase = await createSupabaseServerClient();
@@ -43,6 +54,11 @@ async function requireUser() {
 }
 
 function friendly(e: unknown): string {
+  if (e instanceof ManifestConflictError) return CONFLICT_MESSAGE;
+  // Both carry educator-facing copy already (no Git vocabulary).
+  if (e instanceof CommitUnavailableError || e instanceof CommitFailedError) {
+    return e.message;
+  }
   if (e instanceof ChapterOperationError || e instanceof ChapterNotFoundError) {
     return e.message;
   }
@@ -50,85 +66,44 @@ function friendly(e: unknown): string {
 }
 
 /**
- * Outcome of mirroring a change to GitHub:
- * - "synced"    — nothing to mirror (sandbox package) or the commit landed.
- * - "no-github" — the package is GitHub-backed but no client/repo was
- *                 available, so the mirror was skipped.
- * - "failed"    — the commit was attempted and failed.
+ * Resolve the package's write path. `null` committer = trial package (its
+ * store IS the truth); a committer = published (commit first, then project);
+ * an `error` = published but unreachable, which must NOT be written at all.
  */
-type SyncStatus = "synced" | "no-github" | "failed";
-
-/**
- * For GitHub-backed packages, mirror chapter changes to the public repo so the
- * repo source stays in step with the projection. (Sandbox packages need no
- * sync — the projection is canonical until graduation.)
- *
- * Never throws: the caller's DB write has already succeeded, so a mirror
- * problem is reported as a status the action turns into an educator-visible
- * warning — never a silent skip.
- */
-async function syncToGitHub(
+async function writePathFor(
   supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
   store: SupabaseSandboxStore,
   userId: string,
   packageId: string,
-  changes: FileChange[],
-): Promise<SyncStatus> {
-  const record = await store.getPackage(packageId);
-  if (record?.storage !== "github") return "synced";
-  const repo = record.manifest.publicRepo;
-  if (!repo) return "no-github";
-  const gh = await clientForUser(supabase, userId);
-  if (!gh) return "no-github";
-  try {
-    const { commitSha } = await commitFiles(
-      gh.client,
-      { owner: repo.owner, repo: repo.name },
-      { repo: "public", summary: "Update course chapters", changes },
-    );
-    // Advance the synced pointer so chapter edits aren't read as foreign commits.
-    await recordSyncedSha(supabase, packageId, commitSha);
-    return "synced";
-  } catch {
-    return "failed";
-  }
-}
-
-async function fileContent(
-  store: SupabaseSandboxStore,
-  packageId: string,
-  path: string,
-): Promise<string | null> {
-  const files = await store.listFiles(packageId);
-  return files.find((f) => f.repo === "public" && f.path === path)?.content ?? null;
+): Promise<{ committer: Committer | null } | { error: string }> {
+  const resolution = await committerFor(supabase, store, userId, packageId);
+  if (resolution.kind === "unavailable") return { error: resolution.reason };
+  return {
+    committer: resolution.kind === "github" ? resolution.committer : null,
+  };
 }
 
 /**
- * The `packages.manifest` DB column is a derived read cache of the file
- * manifest (alembic.json). Chapter ops write only through the file-based path
- * (sandbox_files), while column readers (e.g. edit/page.tsx) read the column —
- * so it must be refreshed after every operation that changed the manifest, or
- * the editor keeps serving the stale copy.
- *
- * Returns the raw manifest file content (for mirroring to GitHub), or null if
- * the file is missing.
+ * The `packages.manifest` DB column is a derived read cache of the manifest
+ * FILE (alembic.json), which `updateManifest` owns. Column readers (e.g.
+ * edit/page.tsx) would otherwise keep serving the pre-change copy, so refresh
+ * it from the manifest the write path just returned — never by re-deriving it.
  */
 async function refreshManifestColumn(
   supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
-  store: SupabaseSandboxStore,
   packageId: string,
-): Promise<string | null> {
-  const content = await fileContent(store, packageId, "alembic.json");
-  if (content === null) return null;
-  const manifest = parseManifest(JSON.parse(content));
+  manifest: PackageManifest,
+): Promise<void> {
   await supabase.from("packages").update({ manifest }).eq("id", packageId);
-  return content;
 }
 
-function resultFor(sync: SyncStatus, slug?: string): ChapterResult {
-  return sync === "synced"
-    ? { ok: true, slug }
-    : { ok: true, slug, warning: SYNC_WARNING };
+/** The manifest as it now stands, read from the authoritative file copy. Used
+ *  by the operations whose package-ops signature returns nothing. */
+async function currentManifest(
+  store: SupabaseSandboxStore,
+  packageId: string,
+): Promise<PackageManifest> {
+  return manifestFromFiles(await store.listFiles(packageId));
 }
 
 export async function createChapterAction(
@@ -140,16 +115,18 @@ export async function createChapterAction(
   if (!title.trim()) return { ok: false, error: "Give the chapter a title." };
   const store = new SupabaseSandboxStore(supabase);
   try {
+    const writePath = await writePathFor(supabase, store, user.id, packageId);
+    if ("error" in writePath) return { ok: false, error: writePath.error };
     const slug = pageName?.trim() || undefined;
-    const chapter = await createChapter(store, packageId, { title: title.trim(), slug });
-    const manifest = await refreshManifestColumn(supabase, store, packageId);
-    const body = await fileContent(store, packageId, chapter.path);
-    const changes: FileChange[] = [];
-    if (manifest !== null) changes.push({ path: "alembic.json", content: manifest });
-    if (body !== null) changes.push({ path: chapter.path, content: body });
-    const sync = await syncToGitHub(supabase, store, user.id, packageId, changes);
+    const chapter = await createChapter(
+      store,
+      packageId,
+      { title: title.trim(), slug },
+      writePath.committer,
+    );
+    await refreshManifestColumn(supabase, packageId, chapter.manifest);
     revalidatePath(`/workspace/${packageId}`);
-    return resultFor(sync, chapter.slug);
+    return { ok: true, slug: chapter.slug };
   } catch (e) {
     return { ok: false, error: friendly(e) };
   }
@@ -164,16 +141,16 @@ export async function renameChapterAction(
   if (!title.trim()) return { ok: false, error: "Give the chapter a title." };
   const store = new SupabaseSandboxStore(supabase);
   try {
-    await renameChapter(store, packageId, slug, title.trim());
-    const manifest = await refreshManifestColumn(supabase, store, packageId);
-    let sync: SyncStatus = "synced";
-    if (manifest !== null) {
-      sync = await syncToGitHub(supabase, store, user.id, packageId, [
-        { path: "alembic.json", content: manifest },
-      ]);
-    }
+    const writePath = await writePathFor(supabase, store, user.id, packageId);
+    if ("error" in writePath) return { ok: false, error: writePath.error };
+    await renameChapter(store, packageId, slug, title.trim(), writePath.committer);
+    await refreshManifestColumn(
+      supabase,
+      packageId,
+      await currentManifest(store, packageId),
+    );
     revalidatePath(`/workspace/${packageId}`);
-    return resultFor(sync);
+    return { ok: true };
   } catch (e) {
     return { ok: false, error: friendly(e) };
   }
@@ -186,16 +163,16 @@ export async function reorderChaptersAction(
   const { supabase, user } = await requireUser();
   const store = new SupabaseSandboxStore(supabase);
   try {
-    await reorderChapters(store, packageId, orderedSlugs);
-    const manifest = await refreshManifestColumn(supabase, store, packageId);
-    let sync: SyncStatus = "synced";
-    if (manifest !== null) {
-      sync = await syncToGitHub(supabase, store, user.id, packageId, [
-        { path: "alembic.json", content: manifest },
-      ]);
-    }
+    const writePath = await writePathFor(supabase, store, user.id, packageId);
+    if ("error" in writePath) return { ok: false, error: writePath.error };
+    await reorderChapters(store, packageId, orderedSlugs, writePath.committer);
+    await refreshManifestColumn(
+      supabase,
+      packageId,
+      await currentManifest(store, packageId),
+    );
     revalidatePath(`/workspace/${packageId}`);
-    return resultFor(sync);
+    return { ok: true };
   } catch (e) {
     return { ok: false, error: friendly(e) };
   }
@@ -204,27 +181,32 @@ export async function reorderChaptersAction(
 export async function deleteChapterAction(
   packageId: string,
   slug: string,
-  path: string,
+  // The chapter's file path, kept in the signature for the caller's clarity;
+  // package-ops derives the path it deletes from the manifest itself.
+  _path: string,
 ): Promise<ChapterResult> {
   const { supabase, user } = await requireUser();
   const store = new SupabaseSandboxStore(supabase);
   try {
-    await deleteChapter(store, packageId, slug);
-    const manifest = await refreshManifestColumn(supabase, store, packageId);
-    const changes: FileChange[] = [{ path, content: null }];
-    if (manifest !== null) changes.push({ path: "alembic.json", content: manifest });
-    const sync = await syncToGitHub(supabase, store, user.id, packageId, changes);
+    const writePath = await writePathFor(supabase, store, user.id, packageId);
+    if ("error" in writePath) return { ok: false, error: writePath.error };
+    await deleteChapter(store, packageId, slug, writePath.committer);
+    await refreshManifestColumn(
+      supabase,
+      packageId,
+      await currentManifest(store, packageId),
+    );
     revalidatePath(`/workspace/${packageId}`);
-    return resultFor(sync);
+    return { ok: true };
   } catch (e) {
     return { ok: false, error: friendly(e) };
   }
 }
 
 /**
- * Rename a chapter's page name (file name + public URL). Moves every slug-keyed
- * file and mirrors the move to GitHub (write new paths, delete old). Changes the
- * chapter's public URL — the UI warns before calling this.
+ * Rename a chapter's page name (file name + public URL). Moves every one of the
+ * chapter's documents to the new name. Changes the chapter's public URL — the
+ * UI warns before calling this.
  */
 export async function renameChapterPageNameAction(
   packageId: string,
@@ -235,23 +217,22 @@ export async function renameChapterPageNameAction(
   if (!newSlug.trim()) return { ok: false, error: "Give the page a name." };
   const store = new SupabaseSandboxStore(supabase);
   try {
-    const { slug, moved } = await renameChapterPageName(
+    const writePath = await writePathFor(supabase, store, user.id, packageId);
+    if ("error" in writePath) return { ok: false, error: writePath.error };
+    const { slug, manifest } = await renameChapterPageName(
       store,
       packageId,
       oldSlug,
       newSlug.trim(),
+      writePath.committer,
     );
-    const changes: FileChange[] = [];
-    for (const m of moved) {
-      const content = await fileContent(store, packageId, m.to);
-      if (content !== null) changes.push({ path: m.to, content });
-      changes.push({ path: m.from, content: null });
-    }
-    const manifest = await refreshManifestColumn(supabase, store, packageId);
-    if (manifest !== null) changes.push({ path: "alembic.json", content: manifest });
-    const sync = await syncToGitHub(supabase, store, user.id, packageId, changes);
+    await refreshManifestColumn(
+      supabase,
+      packageId,
+      manifest ?? (await currentManifest(store, packageId)),
+    );
     revalidatePath(`/workspace/${packageId}`);
-    return resultFor(sync, slug);
+    return { ok: true, slug };
   } catch (e) {
     return { ok: false, error: friendly(e) };
   }
@@ -267,16 +248,16 @@ export async function setUnitTermAction(
   const { supabase, user } = await requireUser();
   const store = new SupabaseSandboxStore(supabase);
   try {
-    await setUnitTerm(store, packageId, parsed.data);
-    const manifestContent = await refreshManifestColumn(supabase, store, packageId);
-    let sync: SyncStatus = "synced";
-    if (manifestContent !== null) {
-      sync = await syncToGitHub(supabase, store, user.id, packageId, [
-        { path: "alembic.json", content: manifestContent },
-      ]);
-    }
+    const writePath = await writePathFor(supabase, store, user.id, packageId);
+    if ("error" in writePath) return { ok: false, error: writePath.error };
+    await setUnitTerm(store, packageId, parsed.data, writePath.committer);
+    await refreshManifestColumn(
+      supabase,
+      packageId,
+      await currentManifest(store, packageId),
+    );
     revalidatePath(`/workspace/${packageId}`);
-    return resultFor(sync);
+    return { ok: true };
   } catch (e) {
     return { ok: false, error: friendly(e) };
   }

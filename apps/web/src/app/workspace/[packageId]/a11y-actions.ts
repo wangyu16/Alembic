@@ -3,13 +3,19 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { suggestA11yFix } from "@alembic/ai-assist";
-import { listChapters, loadStudyGuide } from "@alembic/package-ops";
+import {
+  CommitFailedError,
+  CommitUnavailableError,
+  ManifestConflictError,
+  listChapters,
+  loadStudyGuide,
+  updateManifest,
+} from "@alembic/package-ops";
 import type { AccessibilityStatus } from "@alembic/package-contract";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
 import { supabaseEventLogger } from "@/lib/events";
-import { mirrorManifestToSandbox } from "@/lib/github";
-import { manifestFromFiles } from "@/lib/manifest-read";
+import { committerFor } from "@/lib/committer";
 import { governedProvider, RateLimitError, BudgetExceededError } from "@/lib/ai";
 import { recordChange } from "@/lib/changes";
 import { auditDoc, type FixableRule } from "@/lib/a11y";
@@ -21,6 +27,19 @@ async function requireUser() {
   } = await supabase.auth.getUser();
   if (!user) redirect("/signin");
   return { supabase, user };
+}
+
+/** Educator-facing wording for a same-time edit by another tab or person. */
+const CONFLICT_MESSAGE =
+  "Someone changed this course at the same time. Reload and try again.";
+
+/** Educator-facing copy for a write-path failure, or the caller's fallback. */
+function writeError(e: unknown, fallback: string): string {
+  if (e instanceof ManifestConflictError) return CONFLICT_MESSAGE;
+  if (e instanceof CommitUnavailableError || e instanceof CommitFailedError) {
+    return e.message;
+  }
+  return fallback;
 }
 
 export interface RecheckResult {
@@ -56,15 +75,25 @@ export async function recheckA11yAction(packageId: string): Promise<RecheckResul
       checkedAt: new Date().toISOString(),
     };
 
-    const record = await store.getPackage(packageId);
-    if (record) {
-      // Base the manifest write on the FILE manifest (the source of truth) —
-      // record.manifest is a stale read cache and would erase newer chapters.
-      const base = manifestFromFiles(await store.listFiles(packageId));
-      const manifest = { ...base, accessibility: status };
-      await supabase.from("packages").update({ manifest }).eq("id", packageId);
-      await mirrorManifestToSandbox(store, packageId, manifest);
+    // The rolled-up status lives in the manifest, so it goes through the ONE
+    // manifest owner (`updateManifest`): patched onto the FILE copy, committed
+    // for a published package, then compare-and-swapped into the projection.
+    // A published package we cannot reach is refused rather than written
+    // locally (docs/specs/storage-and-write-paths.md §3).
+    const resolution = await committerFor(supabase, store, user.id, packageId);
+    if (resolution.kind === "unavailable") {
+      return { ok: false, error: resolution.reason };
     }
+    const { manifest } = await updateManifest(
+      store,
+      resolution.kind === "github" ? resolution.committer : null,
+      packageId,
+      (m) => ({ ...m, accessibility: status }),
+      { summary: "Record accessibility check (Alembic)" },
+    );
+    // Refresh the derived `packages.manifest` read cache from what the write
+    // path returned — never by re-deriving it.
+    await supabase.from("packages").update({ manifest }).eq("id", packageId);
 
     await supabaseEventLogger(supabase).log({
       type: "a11y.checked",
@@ -75,8 +104,14 @@ export async function recheckA11yAction(packageId: string): Promise<RecheckResul
     });
     revalidatePath(`/workspace/${packageId}`);
     return { ok: true, status };
-  } catch {
-    return { ok: false, error: "Couldn't run the accessibility check. Please try again." };
+  } catch (e) {
+    return {
+      ok: false,
+      error: writeError(
+        e,
+        "Couldn't run the accessibility check. Please try again.",
+      ),
+    };
   }
 }
 

@@ -16,12 +16,13 @@ import { hasCarrier, extractSource } from "@alembic/carriers";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
 import { rewriteMarkdownRefs } from "@/lib/rewrite-md-refs";
-import { syncFilesToGitHub, syncPrivateFilesToGitHub } from "@/lib/github";
+import { committerFor } from "@/lib/committer";
 import { syncPackageRegistry } from "@/lib/register";
 import { uploadVerdict } from "@/lib/collection-upload";
 import { generateEditableFile } from "@/lib/worker-client";
 import { docMetaForPackage } from "@/lib/doc-metadata";
 import { seedSourceFor } from "@/lib/collection-seeds";
+import { writeChanges } from "./write-changes";
 
 async function requireUser() {
   const supabase = await createSupabaseServerClient();
@@ -82,7 +83,7 @@ export async function uploadCollectionFileAction(
 
   // Two-repo invariant, enforced early (fail-closed): a `private*` space must
   // go to the private repo; everything else to public. `validateCommitPlan`
-  // (via syncFilesToGitHub) is the backstop, but reject a mismatch up front so
+  // (via the write path) is the backstop, but reject a mismatch up front so
   // private-instructor content can never be aimed at the public repo.
   const wantsPrivate = input.space.startsWith("private");
   if (wantsPrivate && input.repo !== "private") {
@@ -128,26 +129,26 @@ export async function uploadCollectionFileAction(
     ? input.content
     : await rewriteMarkdownRefs(supabase, packageId, input.repo, target, input.content);
 
-  // Persist (the one validated write path), then best-effort commit (published
-  // → real commit; sandbox → no-op) and registry projection. Store base64
-  // as-is for binaries; do not decode.
-  await store.putFiles(packageId, [
-    { repo: input.repo, path: target, content },
-  ]);
-  // Route the commit by repo: the public helper only ever targets the public
-  // repo (github.ts), so a private-space file must go through the private one or
-  // it would silently never reach GitHub. Both are no-ops for a sandbox package.
-  const commit = input.repo === "private" ? syncPrivateFilesToGitHub : syncFilesToGitHub;
-  await commit(
-    supabase,
+  // Write through the one validated path: published → commit to the repo the
+  // space belongs to and only then project; trial → the trial store is the
+  // truth. Never a silent DB-only write on a published package. Binary content
+  // is base64 — `encoding: "base64"` commits the bytes (not the base64 text)
+  // and the store keeps the base64 as-is; do not decode.
+  const written = await writeChanges({
     store,
-    user.id,
+    resolution: await committerFor(supabase, store, user.id, packageId),
     packageId,
-    // Binary content is base64 — commit it as a blob so the bytes (not the
-    // base64 text) reach GitHub; text goes inline.
-    [{ path: target, content, encoding: input.isBinary ? "base64" : "utf-8" }],
-    "Upload file (Alembic)",
-  );
+    changes: [
+      {
+        repo: input.repo,
+        path: target,
+        content,
+        ...(input.isBinary ? { encoding: "base64" as const } : {}),
+      },
+    ],
+    summary: "Upload file (Alembic)",
+  });
+  if (!written.ok) return { ok: false, error: written.error };
   await syncPackageRegistry(supabase, packageId);
 
   revalidatePath(`/workspace/${packageId}`);
@@ -155,9 +156,9 @@ export async function uploadCollectionFileAction(
 }
 
 // ── CF3: open / delete / rename within a collection ──────────────────────────
-// Commits route by repo (private → the private helper), and deletions reach
-// GitHub via a `content: null` change (github-bridge FileChange). All no-ops for
-// a sandbox package.
+// Each operation is ONE `writeChanges` call: `writeThrough` routes the changes
+// to the right repo, deletions travel as `content: null`, and the whole set
+// commits before anything is projected. A trial package writes the DB only.
 
 /** Boundary-aware: `path` is at or under folder `prefix` (`a/b` never `a/bc`). */
 function underPrefix(path: string, prefix: string): boolean {
@@ -207,16 +208,16 @@ export async function deleteCollectionEntryAction(
   );
   if (targets.length === 0) return { ok: false, error: "Nothing to delete." };
 
-  await store.deleteFiles(packageId, targets.map((f) => ({ repo, path: f.path })));
-  const commit = repo === "private" ? syncPrivateFilesToGitHub : syncFilesToGitHub;
-  await commit(
-    supabase,
+  // One write-through for the WHOLE subtree: every deletion of a folder lands
+  // as a single commit, so a folder can no longer be half-deleted.
+  const written = await writeChanges({
     store,
-    user.id,
+    resolution: await committerFor(supabase, store, user.id, packageId),
     packageId,
-    targets.map((f) => ({ path: f.path, content: null })),
-    isFolder ? "Delete folder (Alembic)" : "Delete file (Alembic)",
-  );
+    changes: targets.map((f) => ({ repo, path: f.path, content: null })),
+    summary: isFolder ? "Delete folder (Alembic)" : "Delete file (Alembic)",
+  });
+  if (!written.ok) return { ok: false, error: written.error };
   await syncPackageRegistry(supabase, packageId);
   revalidatePath(`/workspace/${packageId}`);
   return { ok: true, count: targets.length };
@@ -251,20 +252,20 @@ export async function renameCollectionFileAction(
     return { ok: false, error: "A file already exists at that name." };
   }
 
-  await store.putFiles(packageId, [{ repo, path: to, content: source.content }]);
-  await store.deleteFiles(packageId, [{ repo, path: from }]);
-  const commit = repo === "private" ? syncPrivateFilesToGitHub : syncFilesToGitHub;
-  await commit(
-    supabase,
+  // Both halves of the move in ONE write-through: the new path and the removal
+  // of the old one commit together and project together, so a rename can never
+  // leave two copies (or none).
+  const written = await writeChanges({
     store,
-    user.id,
+    resolution: await committerFor(supabase, store, user.id, packageId),
     packageId,
-    [
-      { path: from, content: null },
-      { path: to, content: source.content },
+    changes: [
+      { repo, path: to, content: source.content },
+      { repo, path: from, content: null },
     ],
-    "Rename file (Alembic)",
-  );
+    summary: "Rename file (Alembic)",
+  });
+  if (!written.ok) return { ok: false, error: written.error };
   await syncPackageRegistry(supabase, packageId);
   revalidatePath(`/workspace/${packageId}`);
   return { ok: true, path: to };
@@ -305,16 +306,14 @@ export async function saveCollectionFileAction(
   const rewritten = await rewriteMarkdownRefs(supabase, packageId, repo, clean, content);
 
   const store = new SupabaseSandboxStore(supabase);
-  await store.putFiles(packageId, [{ repo, path: clean, content: rewritten }]);
-  const commit = repo === "private" ? syncPrivateFilesToGitHub : syncFilesToGitHub;
-  await commit(
-    supabase,
+  const written = await writeChanges({
     store,
-    user.id,
+    resolution: await committerFor(supabase, store, user.id, packageId),
     packageId,
-    [{ path: clean, content: rewritten }],
-    "Edit file (Alembic)",
-  );
+    changes: [{ repo, path: clean, content: rewritten }],
+    summary: "Edit file (Alembic)",
+  });
+  if (!written.ok) return { ok: false, error: written.error };
   await syncPackageRegistry(supabase, packageId);
   revalidatePath(`/workspace/${packageId}`);
   return { ok: true };
@@ -444,16 +443,21 @@ export async function replaceCollectionFileAction(
     ? input.content
     : await rewriteMarkdownRefs(supabase, packageId, repo, clean, text);
 
-  await store.putFiles(packageId, [{ repo, path: clean, content }]);
-  const commit = repo === "private" ? syncPrivateFilesToGitHub : syncFilesToGitHub;
-  await commit(
-    supabase,
+  const written = await writeChanges({
     store,
-    user.id,
+    resolution: await committerFor(supabase, store, user.id, packageId),
     packageId,
-    [{ path: clean, content, encoding: input.isBinary ? "base64" : "utf-8" }],
-    "Replace with edited version (Alembic)",
-  );
+    changes: [
+      {
+        repo,
+        path: clean,
+        content,
+        ...(input.isBinary ? { encoding: "base64" as const } : {}),
+      },
+    ],
+    summary: "Replace with edited version (Alembic)",
+  });
+  if (!written.ok) return { ok: false, error: written.error };
   await syncPackageRegistry(supabase, packageId);
 
   revalidatePath(`/workspace/${packageId}`);
@@ -559,16 +563,14 @@ export async function createCollectionFileAction(
     });
   }
 
-  await store.putFiles(packageId, [{ repo, path: target, content }]);
-  const commit = repo === "private" ? syncPrivateFilesToGitHub : syncFilesToGitHub;
-  await commit(
-    supabase,
+  const written = await writeChanges({
     store,
-    user.id,
+    resolution: await committerFor(supabase, store, user.id, packageId),
     packageId,
-    [{ path: target, content }],
-    "Create file (Alembic)",
-  );
+    changes: [{ repo, path: target, content }],
+    summary: "Create file (Alembic)",
+  });
+  if (!written.ok) return { ok: false, error: written.error };
   await syncPackageRegistry(supabase, packageId);
   revalidatePath(`/workspace/${packageId}`);
   return { ok: true, path: target };

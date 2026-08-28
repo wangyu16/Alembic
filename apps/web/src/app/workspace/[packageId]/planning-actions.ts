@@ -4,20 +4,23 @@ import { redirect } from "next/navigation";
 import {
   conceptMapPath,
   objectivesPath,
+  ConceptMapSchema,
+  ObjectivesSchema,
   type Concept,
   type Objective,
 } from "@alembic/package-contract";
 import {
   loadConceptMap,
   loadObjectives,
-  saveConceptMap,
-  saveObjectives,
+  writeThrough,
+  CommitFailedError,
+  CommitUnavailableError,
 } from "@alembic/package-ops";
 import { draftOutlineFromPlan } from "@alembic/ai-assist";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
 import { supabaseEventLogger } from "@/lib/events";
-import { syncFilesToGitHub } from "@/lib/github";
+import { committerFor } from "@/lib/committer";
 import { governedProvider, RateLimitError, BudgetExceededError } from "@/lib/ai";
 import { recordChange } from "@/lib/changes";
 
@@ -55,9 +58,12 @@ export async function loadPlanningAction(packageId: string): Promise<PlanningRes
 }
 
 /**
- * Save the course-level concept map + objectives through the validated write
- * path, then sync both files to the public repo (they live in the public repo
- * and are adaptable, but are not rendered on the student site).
+ * Save the course-level concept map + objectives through the ONE validated
+ * write path (`writeThrough`): for a published package the two files reach the
+ * public repo BEFORE the projection is touched, so a failed commit leaves
+ * nothing changed anywhere; for a trial package the store is the truth and the
+ * DB write is all there is. (They live in the public repo and are adaptable,
+ * but are not rendered on the student site.)
  */
 export async function savePlanningAction(
   packageId: string,
@@ -66,24 +72,45 @@ export async function savePlanningAction(
   const { supabase, user } = await requireUser();
   const store = new SupabaseSandboxStore(supabase);
   try {
-    const conceptMap = { scope: "course" as const, concepts: data.concepts };
-    const objectives = { scope: "course" as const, objectives: data.objectives };
-    // Zod-validated inside the ops; an invalid map throws and writes nothing.
-    await saveConceptMap(store, packageId, conceptMap);
-    await saveObjectives(store, packageId, objectives);
-    await syncFilesToGitHub(
-      supabase,
+    // Zod-validated before any IO; an invalid map throws and writes nothing.
+    const conceptMap = ConceptMapSchema.parse({
+      scope: "course" as const,
+      concepts: data.concepts,
+    });
+    const objectives = ObjectivesSchema.parse({
+      scope: "course" as const,
+      objectives: data.objectives,
+    });
+
+    const resolved = await committerFor(supabase, store, user.id, packageId);
+    if (resolved.kind === "unavailable") {
+      return { ok: false, error: resolved.reason };
+    }
+    await writeThrough(
       store,
-      user.id,
+      resolved.kind === "github" ? resolved.committer : null,
       packageId,
-      [
-        { path: conceptMapPath("course"), content: JSON.stringify(conceptMap, null, 2) },
-        { path: objectivesPath("course"), content: JSON.stringify(objectives, null, 2) },
-      ],
-      "Update concept map & objectives (Alembic)",
+      {
+        changes: [
+          {
+            repo: "public",
+            path: conceptMapPath("course"),
+            content: JSON.stringify(conceptMap, null, 2),
+          },
+          {
+            repo: "public",
+            path: objectivesPath("course"),
+            content: JSON.stringify(objectives, null, 2),
+          },
+        ],
+        summary: "Update concept map & objectives (Alembic)",
+      },
     );
     return { ok: true, data: { concepts: conceptMap.concepts, objectives: objectives.objectives } };
-  } catch {
+  } catch (e) {
+    if (e instanceof CommitFailedError || e instanceof CommitUnavailableError) {
+      return { ok: false, error: e.message };
+    }
     return { ok: false, error: "Couldn't save the concept map. Check the entries and try again." };
   }
 }

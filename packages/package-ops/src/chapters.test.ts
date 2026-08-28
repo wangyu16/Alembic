@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { BLOCK_ID_PATTERN, parseManifest, parseStudyGuide } from "@alembic/package-contract";
+import {
+  BLOCK_ID_PATTERN,
+  CHAPTER_SLOTS,
+  chapterSlotPaths,
+  parseManifest,
+  parseStudyGuide,
+} from "@alembic/package-contract";
 import { createSandboxPackage } from "./create";
 import { MemoryPackageStore } from "./memory-store";
 import {
@@ -14,6 +20,19 @@ import {
   setUnitTerm,
 } from "./chapters";
 import { DEFAULT_STUDY_GUIDE_PATH, chapterStudyGuidePath } from "./study-guide";
+import type { CommitPlanInput, Committer } from "./write-through";
+
+/** Records every commit plan it is handed (mirrors write-through.test.ts). */
+function recordingCommitter(): Committer & { plans: CommitPlanInput[] } {
+  const plans: CommitPlanInput[] = [];
+  return {
+    plans,
+    async commit(plan) {
+      plans.push(plan);
+      return { commitSha: `sha-${plans.length}` };
+    },
+  };
+}
 
 function paths(store: MemoryPackageStore, packageId: string) {
   return store.listFiles(packageId).then((fs) =>
@@ -362,5 +381,150 @@ describe("manifest patches based on the FILE manifest (TH1 regression)", () => {
     const m = await readManifest(store, packageId);
     expect(m.description).toBe("A term of thermo.");
     expect(m.chapters).toHaveLength(2);
+  });
+});
+
+describe("renameChapterPageName moves EVERY chapter document (T11 regression)", () => {
+  /**
+   * The bug: the move list was hand-written from three file families (study
+   * guide + the two `.json` planning records), so renaming a page name left
+   * the chapter's concept map, assessment guide, slides and practice
+   * documents stranded at the old slug — four of five documents orphaned.
+   * The list is now derived from the slot table, so it cannot drift again.
+   */
+  it("moves all five slot documents plus both planning records", async () => {
+    const { store, packageId } = await seeded();
+    await createChapter(store, packageId, { title: "Kinetics", slug: "kin" });
+
+    const oldSlots = chapterSlotPaths("kin");
+    const newSlots = chapterSlotPaths("kinetics");
+    await store.putFiles(packageId, [
+      ...CHAPTER_SLOTS.map((slot) => ({
+        repo: "public" as const,
+        path: oldSlots[slot],
+        content: `${slot} body`,
+      })),
+      {
+        repo: "public" as const,
+        path: "concepts/kin.json",
+        content: '{"scope":"chapter","concepts":[]}',
+      },
+      {
+        repo: "public" as const,
+        path: "objectives/kin.json",
+        content: '{"scope":"chapter","objectives":[]}',
+      },
+    ]);
+
+    const res = await renameChapterPageName(store, packageId, "kin", "kinetics");
+
+    const all = await paths(store, packageId);
+    const files = await store.listFiles(packageId);
+    for (const slot of CHAPTER_SLOTS) {
+      expect(all).toContain(newSlots[slot]);
+      expect(all).not.toContain(oldSlots[slot]);
+      // content travels with the move, byte for byte
+      expect(
+        files.find((f) => f.repo === "public" && f.path === newSlots[slot])!.content,
+      ).toBe(`${slot} body`);
+    }
+    expect(all).toContain("concepts/kinetics.json");
+    expect(all).toContain("objectives/kinetics.json");
+    expect(all).not.toContain("concepts/kin.json");
+    expect(all).not.toContain("objectives/kin.json");
+
+    // Nothing whatsoever is left behind under the old slug.
+    expect(all.filter((p) => /(^|\/)kin\.[a-z.]+$/.test(p))).toEqual([]);
+    expect(res.moved).toHaveLength(CHAPTER_SLOTS.length + 2);
+    expect(res.manifest?.chapters?.some((c) => c.slug === "kinetics")).toBe(true);
+  });
+
+  it("moves only the documents that exist (empty slots stay empty)", async () => {
+    const { store, packageId } = await seeded();
+    await createChapter(store, packageId, { title: "Optics", slug: "opt" });
+    // Only slides exist alongside the seeded study guide.
+    await store.putFiles(packageId, [
+      {
+        repo: "public",
+        path: chapterSlotPaths("opt").slides,
+        content: "deck",
+      },
+    ]);
+
+    const res = await renameChapterPageName(store, packageId, "opt", "optics");
+    expect(res.moved.map((m) => m.to).sort()).toEqual(
+      [chapterSlotPaths("optics").slides, chapterStudyGuidePath("optics")].sort(),
+    );
+    const all = await paths(store, packageId);
+    expect(all).not.toContain(chapterSlotPaths("optics")["concept-map"]);
+  });
+});
+
+describe("chapter writes go through the permanent store when one is supplied", () => {
+  it("commits the manifest and the seeded file on create", async () => {
+    const { store, packageId } = await seeded();
+    const committer = recordingCommitter();
+    const created = await createChapter(
+      store,
+      packageId,
+      { title: "Enthalpy" },
+      committer,
+    );
+
+    const committed = committer.plans.flatMap((p) =>
+      p.changes.map((c) => c.path),
+    );
+    expect(committed).toContain("alembic.json");
+    expect(committed).toContain(created.path);
+    expect(committer.plans.every((p) => p.repo === "public")).toBe(true);
+  });
+
+  it("commits every moved document on a page-name rename", async () => {
+    const { store, packageId } = await seeded();
+    await createChapter(store, packageId, { title: "Kinetics", slug: "kin" });
+    const oldSlots = chapterSlotPaths("kin");
+    await store.putFiles(
+      packageId,
+      CHAPTER_SLOTS.map((slot) => ({
+        repo: "public" as const,
+        path: oldSlots[slot],
+        content: `${slot} body`,
+      })),
+    );
+
+    const committer = recordingCommitter();
+    await renameChapterPageName(store, packageId, "kin", "kinetics", committer);
+
+    const committed = committer.plans.flatMap((p) =>
+      p.changes.map((c) => `${c.path}=${c.content === null ? "DELETE" : "KEEP"}`),
+    );
+    for (const slot of CHAPTER_SLOTS) {
+      expect(committed).toContain(`${chapterSlotPaths("kinetics")[slot]}=KEEP`);
+      expect(committed).toContain(`${oldSlots[slot]}=DELETE`);
+    }
+    expect(committed).toContain("alembic.json=KEEP");
+  });
+
+  it("does not touch the store when the commit fails", async () => {
+    const { store, packageId } = await seeded();
+    const before = (await store.listFiles(packageId))
+      .map((f) => `${f.repo}\t${f.path}\t${f.content}`)
+      .sort()
+      .join("\n");
+    const failing: Committer = {
+      async commit() {
+        throw new Error("network down");
+      },
+    };
+
+    await expect(
+      createChapter(store, packageId, { title: "Enthalpy" }, failing),
+    ).rejects.toThrow("network down");
+
+    const after = (await store.listFiles(packageId))
+      .map((f) => `${f.repo}\t${f.path}\t${f.content}`)
+      .sort()
+      .join("\n");
+    expect(after).toBe(before);
   });
 });

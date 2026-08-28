@@ -22,11 +22,15 @@ import {
   saveQuestionItem,
   saveAnswerKey,
   tidyStudyGuide,
+  writeThrough,
+  CommitFailedError,
+  CommitUnavailableError,
+  type WriteThroughChange,
 } from "@alembic/package-ops";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
 import { supabaseEventLogger } from "@/lib/events";
-import { syncFilesToGitHub, syncPrivateFilesToGitHub } from "@/lib/github";
+import { committerFor } from "@/lib/committer";
 import { applyA11yFix } from "@/lib/a11y";
 import {
   getChange,
@@ -52,6 +56,14 @@ async function requireUser() {
 
 const rev = (packageId: string) => revalidatePath(`/workspace/${packageId}`);
 
+/** A commit that didn't go through must never look like a completed change:
+ *  the queue row stays where it was and the educator sees the retryable reason. */
+function commitError(e: unknown): string | null {
+  return e instanceof CommitFailedError || e instanceof CommitUnavailableError
+    ? e.message
+    : null;
+}
+
 /**
  * Tier-1 "tidy formatting": content-neutral. Auto-applies and records an
  * undoable change — unless the package's review policy says review everything,
@@ -73,7 +85,29 @@ export async function tidyChapterAction(
 
     const reviewAll = await getReviewAll(supabase, packageId);
     if (canAutoApply("formatting-tidy", { minTier: reviewAll ? 2 : 1 })) {
-      await saveStudyGuide(store, packageId, tidied);
+      // Resolve the write path first: a published package we can't reach
+      // refuses the tidy outright rather than applying it only here.
+      const resolved = await committerFor(supabase, store, user.id, packageId);
+      if (resolved.kind === "unavailable") {
+        return { ok: false, error: resolved.reason };
+      }
+      // `saveStudyGuide` re-validates block-ID integrity and mints an id for any
+      // block that lacked one; commit exactly what it stored.
+      const { blocks } = await saveStudyGuide(store, packageId, tidied);
+      await writeThrough(
+        store,
+        resolved.kind === "github" ? resolved.committer : null,
+        packageId,
+        {
+          changes: [
+            { repo: "public", path, content: serializeStudyGuide(tidied.preamble, blocks) },
+          ],
+          summary: "Tidy formatting (Alembic)",
+        },
+      );
+      // Only now is the change real. Recording it as `applied` (and therefore
+      // undoable) before the commit landed would advertise an undo for a change
+      // that never reached the package's permanent copy.
       await recordChange(supabase, {
         packageId,
         userId: user.id,
@@ -90,11 +124,6 @@ export async function tidyChapterAction(
         detail: { kind: "formatting-tidy", path },
         occurredAt: new Date().toISOString(),
       });
-      await syncFilesToGitHub(
-        supabase, store, user.id, packageId,
-        [{ path, content: after }],
-        "Tidy formatting (Alembic)",
-      );
       rev(packageId);
       return { ok: true, message: "Formatting tidied." };
     }
@@ -118,7 +147,9 @@ export async function tidyChapterAction(
     });
     rev(packageId);
     return { ok: true, message: "Sent to the review queue." };
-  } catch {
+  } catch (e) {
+    const commit = commitError(e);
+    if (commit) return { ok: false, error: commit };
     return { ok: false, error: "Couldn't tidy formatting. Please try again." };
   }
 }
@@ -136,7 +167,23 @@ export async function undoChangeAction(
       return { ok: false, error: "This change can no longer be undone." };
     }
     const { path, content } = change.inverse as { path: string; content: string };
-    await store.putFiles(packageId, [{ repo: "public", path, content }]);
+
+    const resolved = await committerFor(supabase, store, user.id, packageId);
+    if (resolved.kind === "unavailable") {
+      return { ok: false, error: resolved.reason };
+    }
+    // Restore the inverse through the one write path — permanence first. If the
+    // commit fails, nothing changed anywhere and the row stays `applied`, so the
+    // educator can undo again; marking it `undone` first would burn the undo.
+    await writeThrough(
+      store,
+      resolved.kind === "github" ? resolved.committer : null,
+      packageId,
+      {
+        changes: [{ repo: "public", path, content }],
+        summary: "Undo tidy formatting (Alembic)",
+      },
+    );
     await setChangeStatus(supabase, changeId, "undone");
     await supabaseEventLogger(supabase).log({
       type: "change.undone",
@@ -145,14 +192,11 @@ export async function undoChangeAction(
       detail: { changeId, kind: change.kind },
       occurredAt: new Date().toISOString(),
     });
-    await syncFilesToGitHub(
-      supabase, store, user.id, packageId,
-      [{ path, content }],
-      "Undo tidy formatting (Alembic)",
-    );
     rev(packageId);
     return { ok: true };
-  } catch {
+  } catch (e) {
+    const commit = commitError(e);
+    if (commit) return { ok: false, error: commit };
     return { ok: false, error: "Undo didn't complete. Please try again." };
   }
 }
@@ -171,14 +215,29 @@ export async function setReviewAllAction(
   return { ok: true };
 }
 
-/** Apply one pending change by kind; returns the committed file (if any). */
+/** What one accepted change turns into: the files to make permanent, plus an
+ *  optional kind-specific commit summary. */
+interface AppliedChange {
+  changes: WriteThroughChange[];
+  summary?: string;
+}
+
+/**
+ * Work out (and stage into the projection) what accepting one pending change
+ * means, and return the resulting file set — WITHOUT resolving the queue row.
+ *
+ * Resolving the row is the caller's job, and only after `writeThrough` has made
+ * the files permanent: if the commit fails, the row must stay pending so the
+ * educator can accept again. The per-kind ops below are the validated
+ * packageOps write path (block-ID minting/integrity, answer-key privacy,
+ * proposal re-validation); they also refresh the projection, which is what lets
+ * a batch accumulate several accepted changes onto the same file in order.
+ */
 async function applyAccepted(
-  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
   store: SupabaseSandboxStore,
   packageId: string,
-  userId: string,
   change: { id: number; kind: string; detail: Record<string, unknown> },
-): Promise<{ path: string; content: string } | null> {
+): Promise<AppliedChange> {
   const detail = change.detail as {
     path: string;
     title?: string;
@@ -202,7 +261,10 @@ async function applyAccepted(
     suggestedBody?: string;
     repo?: "public" | "private";
   };
-  let committed: { path: string; content: string } | null = null;
+  const changes: WriteThroughChange[] = [];
+  let summary: string | undefined;
+  const publicFile = (path: string, content: string) =>
+    changes.push({ repo: "public" as const, path, content });
 
   if (change.kind === "import-blocks" && detail.blocks?.length) {
     // AI-restructured import: append the reviewed sections to the chapter.
@@ -215,7 +277,7 @@ async function applyAccepted(
         ...detail.blocks.map((b) => ({ id: null, title: b.title, body: b.body })),
       ],
     });
-    committed = { path: detail.path, content: serializeStudyGuide(doc.preamble, blocks) };
+    publicFile(detail.path, serializeStudyGuide(doc.preamble, blocks));
   } else if (change.kind === "a11y-fix" && detail.rule && detail.url != null && detail.suggestion != null) {
     // Apply the accepted fix to whichever block still contains the target.
     const doc = await loadStudyGuide(store, packageId, detail.path);
@@ -238,7 +300,7 @@ async function applyAccepted(
         preamble: doc.preamble,
         blocks: nextBlocks,
       });
-      committed = { path: detail.path, content: serializeStudyGuide(doc.preamble, blocks) };
+      publicFile(detail.path, serializeStudyGuide(doc.preamble, blocks));
     }
     // If the target vanished (educator already edited it), accept silently with no commit.
   } else if (change.kind === "draft-section") {
@@ -251,7 +313,7 @@ async function applyAccepted(
         { id: null, title: detail.title ?? "New section", body: detail.body ?? "" },
       ],
     });
-    committed = { path: detail.path, content: serializeStudyGuide(doc.preamble, blocks) };
+    publicFile(detail.path, serializeStudyGuide(doc.preamble, blocks));
   } else if (change.kind === "coherence-edit" && detail.op) {
     // A reviewed Tier-B coherence operation — apply it through the validated
     // packageOps write path (applyProposedChangeSet preserves/mints IDs and
@@ -268,15 +330,16 @@ async function applyAccepted(
     try {
       await applyProposedChangeSet(store, packageId, set);
       const doc = await loadStudyGuide(store, packageId, detail.path);
-      committed = { path: detail.path, content: serializeStudyGuide(doc.preamble, doc.blocks) };
+      publicFile(detail.path, serializeStudyGuide(doc.preamble, doc.blocks));
     } catch {
       // Stale proposal — the educator already moved on. Accept with no commit.
     }
   } else if (change.kind === "assessment-edit" && detail.stem && detail.answer && detail.templateId) {
-    // A reviewed (Tier-3) generated question: write the public-safe item to the
-    // public repo and the answer key to the PRIVATE repo. The two syncs are
-    // handled here (not via the public-only `committed` path) so the key never
-    // routes through the public commit.
+    // A reviewed (Tier-3) generated question: the public-safe item goes to the
+    // public repo and the answer key to the PRIVATE repo. Both are staged into
+    // ONE change set, so `writeThrough` commits each to its own repo (and
+    // `validateChanges` fails closed if a key path ever appeared in the public
+    // half) before either is projected.
     const itemId = newQuestionItemId();
     const item: QuestionItem = {
       id: itemId,
@@ -288,17 +351,13 @@ async function applyAccepted(
     const key: AnswerKey = { itemId, answer: detail.answer, rationale: detail.rationale ?? "" };
     await saveQuestionItem(store, packageId, item); // public partition
     await saveAnswerKey(store, packageId, key); // private partition (assertAnswerKeyPrivate)
-    await syncFilesToGitHub(
-      supabase, store, userId, packageId,
-      [{ path: questionItemPath(itemId), content: JSON.stringify(item, null, 2) }],
-      "Accept question item (Alembic)",
-    );
-    await syncPrivateFilesToGitHub(
-      supabase, store, userId, packageId,
-      [{ path: answerKeyPath(itemId), content: JSON.stringify(key, null, 2) }],
-      "Add answer key (Alembic)",
-    );
-    // committed stays null — both repos already synced above.
+    publicFile(questionItemPath(itemId), JSON.stringify(item, null, 2));
+    changes.push({
+      repo: "private",
+      path: answerKeyPath(itemId),
+      content: JSON.stringify(key, null, 2),
+    });
+    summary = "Accept question item & answer key (Alembic)";
   } else if (change.kind === "suggest-back" && detail.suggestBlockId && detail.suggestedBody !== undefined) {
     // An adapter's suggested edit to one of THIS package's blocks (M28). Apply
     // the suggested title/body to the addressed block (id preserved), via the
@@ -309,44 +368,30 @@ async function applyAccepted(
       if (detail.suggestedTitle) block.title = detail.suggestedTitle;
       block.body = detail.suggestedBody;
       const { blocks } = await saveStudyGuide(store, packageId, doc);
-      committed = { path: detail.path, content: serializeStudyGuide(doc.preamble, blocks) };
+      publicFile(detail.path, serializeStudyGuide(doc.preamble, blocks));
     }
   } else if (change.kind === "formatting-tidy" && detail.content) {
-    await store.putFiles(packageId, [{ repo: "public", path: detail.path, content: detail.content }]);
-    committed = { path: detail.path, content: detail.content };
+    // The reviewed content is already final — no op to run, and `writeThrough`
+    // is the only writer of this file (commit first, then project).
+    publicFile(detail.path, detail.content);
   } else if (
     change.kind === "editor-ai-edit" &&
     detail.content != null &&
     (detail.repo === "public" || detail.repo === "private")
   ) {
     // Generic in-editor AI edit (G3): carrier-agnostic source replacement,
-    // routed by layer through the validated write path. Public files sync via
-    // `committed`; private files sync here so they never touch the public commit.
+    // routed by layer through the validated write path. The change carries its
+    // own repo, so a private file is committed to the private repo and never
+    // travels in the public commit.
     await applyEditorEdit(store, packageId, {
       path: detail.path,
       repo: detail.repo,
       source: detail.content,
     });
-    if (detail.repo === "public") {
-      committed = { path: detail.path, content: detail.content };
-    } else {
-      await syncPrivateFilesToGitHub(
-        supabase, store, userId, packageId,
-        [{ path: detail.path, content: detail.content }],
-        "Edit (Alembic)",
-      );
-    }
+    changes.push({ repo: detail.repo, path: detail.path, content: detail.content });
   }
 
-  await setChangeStatus(supabase, change.id, "accepted");
-  await supabaseEventLogger(supabase).log({
-    type: "ai.suggestion.accepted",
-    userId,
-    packageId,
-    detail: { kind: change.kind, surface: "review-queue" },
-    occurredAt: new Date().toISOString(),
-  });
-  return committed;
+  return summary === undefined ? { changes } : { changes, summary };
 }
 
 /** Accept a queued Tier-2 item, applying it by kind. */
@@ -361,17 +406,35 @@ export async function acceptReviewAction(
     if (!change || change.status !== "pending") {
       return { ok: false, error: "This item is no longer pending." };
     }
-    const committed = await applyAccepted(supabase, store, packageId, user.id, change);
-    if (committed) {
-      await syncFilesToGitHub(
-        supabase, store, user.id, packageId,
-        [committed],
-        "Accept reviewed change (Alembic)",
-      );
+    const resolved = await committerFor(supabase, store, user.id, packageId);
+    if (resolved.kind === "unavailable") {
+      return { ok: false, error: resolved.reason };
     }
+    const applied = await applyAccepted(store, packageId, change);
+    // Permanence FIRST. A throw here leaves the queue row pending — the accept
+    // simply didn't happen, and the educator can accept it again.
+    await writeThrough(
+      store,
+      resolved.kind === "github" ? resolved.committer : null,
+      packageId,
+      {
+        changes: applied.changes,
+        summary: applied.summary ?? "Accept reviewed change (Alembic)",
+      },
+    );
+    await setChangeStatus(supabase, changeId, "accepted");
+    await supabaseEventLogger(supabase).log({
+      type: "ai.suggestion.accepted",
+      userId: user.id,
+      packageId,
+      detail: { kind: change.kind, surface: "review-queue" },
+      occurredAt: new Date().toISOString(),
+    });
     rev(packageId);
     return { ok: true };
-  } catch {
+  } catch (e) {
+    const commit = commitError(e);
+    if (commit) return { ok: false, error: commit };
     return { ok: false, error: "Couldn't accept the change. Please try again." };
   }
 }
@@ -385,24 +448,46 @@ export async function batchAcceptReviewAction(
   try {
     const { listPendingReviews } = await import("@/lib/changes");
     const pending = await listPendingReviews(supabase, packageId);
-    const committed: { path: string; content: string }[] = [];
+    const resolved = await committerFor(supabase, store, user.id, packageId);
+    if (resolved.kind === "unavailable") {
+      return { ok: false, error: resolved.reason };
+    }
+    // Each accepted item is applied in order (later items see earlier ones), and
+    // only the FINAL state of each touched file is committed — once.
+    const byFile = new Map<string, WriteThroughChange>();
+    const accepted: { id: number; kind: string }[] = [];
     for (const change of pending) {
       // Tier-3 items (assessments, answer keys, …) are itemized review only —
       // never batch-accepted. The educator accepts each individually.
       if (change.tier >= 3) continue;
-      const c = await applyAccepted(supabase, store, packageId, user.id, change);
-      if (c) committed.push(c);
+      const applied = await applyAccepted(store, packageId, change);
+      for (const c of applied.changes) byFile.set(`${c.repo}:${c.path}`, c);
+      accepted.push({ id: change.id, kind: change.kind });
     }
-    // Commit the final state of each touched path once.
-    const byPath = new Map(committed.map((c) => [c.path, c.content]));
-    await syncFilesToGitHub(
-      supabase, store, user.id, packageId,
-      [...byPath.entries()].map(([path, content]) => ({ path, content })),
-      "Accept reviewed changes (Alembic)",
+    await writeThrough(
+      store,
+      resolved.kind === "github" ? resolved.committer : null,
+      packageId,
+      { changes: [...byFile.values()], summary: "Accept reviewed changes (Alembic)" },
     );
+    // Batch accept is all-or-nothing: the rows are resolved only after the one
+    // commit lands, so a failure leaves every item pending, not half-accepted.
+    const events = supabaseEventLogger(supabase);
+    for (const change of accepted) {
+      await setChangeStatus(supabase, change.id, "accepted");
+      await events.log({
+        type: "ai.suggestion.accepted",
+        userId: user.id,
+        packageId,
+        detail: { kind: change.kind, surface: "review-queue" },
+        occurredAt: new Date().toISOString(),
+      });
+    }
     rev(packageId);
     return { ok: true };
-  } catch {
+  } catch (e) {
+    const commit = commitError(e);
+    if (commit) return { ok: false, error: commit };
     return { ok: false, error: "Couldn't accept all items. Please try again." };
   }
 }

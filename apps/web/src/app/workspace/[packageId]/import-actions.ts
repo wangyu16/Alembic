@@ -7,17 +7,17 @@ import {
   loadStudyGuide,
   parseImportedMarkdown,
   reconcileImportedBlocks,
-  saveStudyGuide,
 } from "@alembic/package-ops";
 import { restructureToBlocks } from "@alembic/ai-assist";
 import { getKind } from "@alembic/carriers";
-import { serializeStudyGuide } from "@alembic/package-contract";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
 import { supabaseEventLogger } from "@/lib/events";
-import { syncFilesToGitHub } from "@/lib/github";
+import { committerFor } from "@/lib/committer";
 import { governedProvider, RateLimitError, BudgetExceededError } from "@/lib/ai";
 import { recordChange } from "@/lib/changes";
+import { writeChanges, writeErrorMessage } from "./write-changes";
+import { prepareStudyGuide } from "./import-prepare";
 
 async function requireUser() {
   const supabase = await createSupabaseServerClient();
@@ -68,8 +68,14 @@ export async function importFileAction(
       const ext = getKind(c.kind)?.extension ?? "";
       const base = slugify(filename.replace(/\.[^.]*$/, "").replace(/\.(ketcher|plot)$/, ""));
       const path = `materials/${dir}/${base}${ext}`;
-      await store.putFiles(packageId, [{ repo: "public", path, content: c.carrier }]);
-      await syncFilesToGitHub(supabase, store, user.id, packageId, [{ path, content: c.carrier }], "Import asset (Alembic)");
+      const written = await writeChanges({
+        store,
+        resolution: await committerFor(supabase, store, user.id, packageId),
+        packageId,
+        changes: [{ repo: "public", path, content: c.carrier }],
+        summary: "Import asset (Alembic)",
+      });
+      if (!written.ok) return { ok: false, error: written.error };
       await events.log({ type: "import.completed", userId: user.id, packageId, detail: { kind: c.kind, mode: "asset", filename }, occurredAt: new Date().toISOString() });
       revalidatePath(`/workspace/${packageId}`);
       return { ok: true, message: `Imported ${base}${ext}.`, assetPath: path };
@@ -84,16 +90,21 @@ export async function importFileAction(
     if (incoming.length === 0) return { ok: false, error: "No sections found to import." };
     const doc = await loadStudyGuide(store, packageId, activePath);
     const reconciled = reconcileImportedBlocks(doc.blocks, incoming);
-    const { blocks } = await saveStudyGuide(store, packageId, {
-      path: activePath,
+    // Mint/validate block IDs and serialize BEFORE any write (rule 7), then
+    // commit-and-project those exact bytes in one write-through: the chapter is
+    // never updated in the cache without also reaching its permanent copy.
+    const prepared = prepareStudyGuide({
       preamble: doc.preamble,
       blocks: reconciled.blocks,
     });
-    await syncFilesToGitHub(
-      supabase, store, user.id, packageId,
-      [{ path: activePath, content: serializeStudyGuide(doc.preamble, blocks) }],
-      "Import content (Alembic)",
-    );
+    const written = await writeChanges({
+      store,
+      resolution: await committerFor(supabase, store, user.id, packageId),
+      packageId,
+      changes: [{ repo: "public", path: activePath, content: prepared.content }],
+      summary: "Import content (Alembic)",
+    });
+    if (!written.ok) return { ok: false, error: written.error };
     await events.log({ type: "import.completed", userId: user.id, packageId, detail: { mode: c.type, filename, updated: reconciled.updated, added: reconciled.added }, occurredAt: new Date().toISOString() });
     revalidatePath(`/workspace/${packageId}`);
     const parts = [
@@ -101,8 +112,11 @@ export async function importFileAction(
       reconciled.added ? `${reconciled.added} new` : "",
     ].filter(Boolean);
     return { ok: true, message: `Imported${parts.length ? ` (${parts.join(", ")})` : ""}.` };
-  } catch {
-    return { ok: false, error: "Couldn't import that file. Please try again." };
+  } catch (e) {
+    // A write that couldn't reach the package's permanent copy explains itself
+    // (and promises nothing was changed) — don't flatten it into the generic
+    // "try again". Everything else keeps the original catch-all message.
+    return { ok: false, error: writeErrorMessage(e) ?? "Couldn't import that file. Please try again." };
   }
 }
 

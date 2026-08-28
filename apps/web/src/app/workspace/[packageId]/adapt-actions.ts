@@ -22,8 +22,12 @@ import {
   DEFAULT_STUDY_GUIDE_PATH,
   AdaptationNotAllowedError,
   ADAPTATIONS_PROVENANCE_PATH,
+  writeThrough,
+  CommitFailedError,
+  CommitUnavailableError,
   type UpstreamUpdate,
   type PullUpdateMode,
+  type WriteThroughChange,
 } from "@alembic/package-ops";
 import { fetchPublicRepoFile } from "@alembic/github-bridge";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -33,7 +37,7 @@ import { SupabaseDocumentRegistryStore } from "@/lib/document-registry-store";
 import { fetchDocBytes } from "@/lib/doc-content";
 import { registerAdaptedFile } from "@/lib/register";
 import { supabaseEventLogger } from "@/lib/events";
-import { syncFilesToGitHub } from "@/lib/github";
+import { committerFor } from "@/lib/committer";
 import { recordChange } from "@/lib/changes";
 import {
   sendSuggestion,
@@ -55,6 +59,13 @@ export interface ForkResult {
   ok: boolean;
   packageId?: string;
   error?: string;
+}
+
+/** Educator-facing failure text for a write that couldn't be made permanent. */
+function commitError(e: unknown): string | null {
+  return e instanceof CommitFailedError || e instanceof CommitUnavailableError
+    ? e.message
+    : null;
 }
 
 /**
@@ -151,6 +162,13 @@ export async function adaptChapterAction(
     const sourceRec = await store.getPackage(sourcePackageId);
     if (!target || !sourceRec) return { ok: false, error: "Package not found." };
 
+    // Refuse before adapting anything if this package's permanent home is out of
+    // reach — an adaptation that can't be made permanent isn't made at all.
+    const resolved = await committerFor(supabase, store, user.id, packageId);
+    if (resolved.kind === "unavailable") {
+      return { ok: false, error: resolved.reason };
+    }
+
     const res = await adaptBlocksInto(store, {
       source: { packageId: sourcePackageId }, // source default chapter, all blocks
       target: { packageId, path: targetPath, license: target.manifest.license },
@@ -164,18 +182,35 @@ export async function adaptChapterAction(
     });
     if (res.newBlockIds.length === 0) return { ok: false, error: "The source has no sections to adapt." };
 
-    // Sync the updated target chapter + the provenance record to GitHub.
+    // Make the adapted chapter + its provenance record permanent together, so
+    // the lineage can never be committed without the content it describes.
     const doc = await loadStudyGuide(store, packageId, targetPath);
     const provFile = (await store.listFiles(packageId)).find(
       (f) => f.repo === "public" && f.path === ADAPTATIONS_PROVENANCE_PATH,
     );
-    await syncFilesToGitHub(
-      supabase, store, user.id, packageId,
-      [
-        { path: targetPath, content: serializeStudyGuide(doc.preamble, doc.blocks) },
-        ...(provFile ? [{ path: ADAPTATIONS_PROVENANCE_PATH, content: provFile.content }] : []),
-      ],
-      `Adapt sections from "${sourceRec.title}" (Alembic)`,
+    await writeThrough(
+      store,
+      resolved.kind === "github" ? resolved.committer : null,
+      packageId,
+      {
+        changes: [
+          {
+            repo: "public",
+            path: targetPath,
+            content: serializeStudyGuide(doc.preamble, doc.blocks),
+          },
+          ...(provFile
+            ? [
+                {
+                  repo: "public" as const,
+                  path: ADAPTATIONS_PROVENANCE_PATH,
+                  content: provFile.content,
+                },
+              ]
+            : []),
+        ],
+        summary: `Adapt sections from "${sourceRec.title}" (Alembic)`,
+      },
     );
     await supabaseEventLogger(supabase).log({
       type: "adaptation.completed",
@@ -188,6 +223,8 @@ export async function adaptChapterAction(
     return { ok: true, adapted: res.newBlockIds.length };
   } catch (e) {
     if (e instanceof AdaptationNotAllowedError) return { ok: false, error: e.reason };
+    const commit = commitError(e);
+    if (commit) return { ok: false, error: commit };
     return { ok: false, error: "Couldn't adapt that content. Please try again." };
   }
 }
@@ -275,6 +312,11 @@ export async function adaptFromPortalAction(
       .map((b) => ({ sourceBlockId: b.id!, title: b.title, body: b.body }));
     if (blocks.length === 0) return { ok: false, error: "The source has no sections to adapt." };
 
+    const resolved = await committerFor(supabase, store, user.id, packageId);
+    if (resolved.kind === "unavailable") {
+      return { ok: false, error: resolved.reason };
+    }
+
     const res = await adaptGivenBlocksInto(store, {
       target: { packageId, path: targetPath, license: target.manifest.license },
       source: {
@@ -293,13 +335,29 @@ export async function adaptFromPortalAction(
     const provFile = (await store.listFiles(packageId)).find(
       (f) => f.repo === "public" && f.path === ADAPTATIONS_PROVENANCE_PATH,
     );
-    await syncFilesToGitHub(
-      supabase, store, user.id, packageId,
-      [
-        { path: targetPath, content: serializeStudyGuide(doc.preamble, doc.blocks) },
-        ...(provFile ? [{ path: ADAPTATIONS_PROVENANCE_PATH, content: provFile.content }] : []),
-      ],
-      `Adapt sections from "${r.title}" (Alembic)`,
+    await writeThrough(
+      store,
+      resolved.kind === "github" ? resolved.committer : null,
+      packageId,
+      {
+        changes: [
+          {
+            repo: "public",
+            path: targetPath,
+            content: serializeStudyGuide(doc.preamble, doc.blocks),
+          },
+          ...(provFile
+            ? [
+                {
+                  repo: "public" as const,
+                  path: ADAPTATIONS_PROVENANCE_PATH,
+                  content: provFile.content,
+                },
+              ]
+            : []),
+        ],
+        summary: `Adapt sections from "${r.title}" (Alembic)`,
+      },
     );
     await supabaseEventLogger(supabase).log({
       type: "adaptation.completed",
@@ -312,6 +370,8 @@ export async function adaptFromPortalAction(
     return { ok: true, adapted: res.newBlockIds.length };
   } catch (e) {
     if (e instanceof AdaptationNotAllowedError) return { ok: false, error: e.reason };
+    const commit = commitError(e);
+    if (commit) return { ok: false, error: commit };
     return { ok: false, error: "Couldn't adapt from the portal. Please try again." };
   }
 }
@@ -416,17 +476,29 @@ export async function adaptElementAction(
       .filter((f) => f.repo === "public")
       .map((f) => f.path);
 
+    const resolved = await committerFor(supabase, store, user.id, packageId);
+    if (resolved.kind === "unavailable") {
+      return { ok: false, error: resolved.reason };
+    }
+
     const res = await adaptAssetInto(store, {
       target: { packageId, license: target.manifest.license },
       source: { license: sourceLicense, carrier, path: doc.path },
       existingPaths,
     });
 
-    await syncFilesToGitHub(
-      supabase, store, user.id, packageId,
-      [{ path: res.path, content: carrier }],
-      `Adapt shared ${res.kind} (Alembic)`,
+    await writeThrough(
+      store,
+      resolved.kind === "github" ? resolved.committer : null,
+      packageId,
+      {
+        changes: [{ repo: "public", path: res.path, content: carrier }],
+        summary: `Adapt shared ${res.kind} (Alembic)`,
+      },
     );
+    // Registration (which mints the copy's own permalink and records the
+    // `adaptedFrom` lineage) happens only once the copy is permanent: no
+    // permalink is ever handed out for a file that isn't really there.
     const newDocId = await registerAdaptedFile(supabase, packageId, {
       repo: "public",
       path: res.path,
@@ -446,6 +518,8 @@ export async function adaptElementAction(
     return { ok: true, path: res.path, permalink: newDocId ? `/d/${newDocId}` : undefined };
   } catch (e) {
     if (e instanceof AdaptationNotAllowedError) return { ok: false, error: e.reason };
+    const commit = commitError(e);
+    if (commit) return { ok: false, error: commit };
     return { ok: false, error: "Couldn't add that element. Please try again." };
   }
 }
@@ -603,18 +677,36 @@ export async function resolveSuggestionAction(
       await setSuggestionStatus(supabase, suggestionId, "rejected");
       return { ok: false, error: "The targeted section no longer exists; the suggestion was dismissed." };
     }
+    const resolved = await committerFor(supabase, store, user.id, packageId);
+    if (resolved.kind === "unavailable") {
+      return { ok: false, error: resolved.reason };
+    }
     if (s.suggested_title) block.title = s.suggested_title;
     block.body = s.suggested_body;
     const { blocks } = await saveStudyGuide(store, packageId, doc);
-    await syncFilesToGitHub(
-      supabase, store, user.id, packageId,
-      [{ path: s.chapter_path, content: serializeStudyGuide(doc.preamble, blocks) }],
-      "Accept suggested edit (Alembic)",
+    await writeThrough(
+      store,
+      resolved.kind === "github" ? resolved.committer : null,
+      packageId,
+      {
+        changes: [
+          {
+            repo: "public",
+            path: s.chapter_path,
+            content: serializeStudyGuide(doc.preamble, blocks),
+          },
+        ],
+        summary: "Accept suggested edit (Alembic)",
+      },
     );
+    // Marked accepted only after the edit is permanent — a failed commit leaves
+    // the suggestion pending in the inbox, ready to accept again.
     await setSuggestionStatus(supabase, suggestionId, "accepted");
     revalidatePath(`/workspace/${packageId}`);
     return { ok: true };
-  } catch {
+  } catch (e) {
+    const commit = commitError(e);
+    if (commit) return { ok: false, error: commit };
     return { ok: false, error: "Couldn't resolve the suggestion. Please try again." };
   }
 }
@@ -646,19 +738,41 @@ export async function applyUpstreamUpdateAction(
   const { supabase, user } = await requireUser();
   const store = new SupabaseSandboxStore(supabase);
   try {
+    const resolved = await committerFor(supabase, store, user.id, packageId);
+    if (resolved.kind === "unavailable") {
+      return { ok: false, error: resolved.reason };
+    }
     const res = await applyUpstreamUpdate(store, packageId, targetPath, targetBlockId, mode);
     if (!res.applied) return { ok: false, error: "That update is no longer available." };
 
     const provFile = (await store.listFiles(packageId)).find(
       (f) => f.repo === "public" && f.path === ADAPTATIONS_PROVENANCE_PATH,
     );
-    const changes = [
-      ...(res.content ? [{ path: targetPath, content: res.content }] : []),
-      ...(provFile ? [{ path: ADAPTATIONS_PROVENANCE_PATH, content: provFile.content }] : []),
+    // The chapter and the provenance record (which is what marks this update as
+    // taken or diverged) travel in ONE change set: either both land or neither.
+    const changes: WriteThroughChange[] = [
+      ...(res.content
+        ? [{ repo: "public" as const, path: targetPath, content: res.content }]
+        : []),
+      ...(provFile
+        ? [
+            {
+              repo: "public" as const,
+              path: ADAPTATIONS_PROVENANCE_PATH,
+              content: provFile.content,
+            },
+          ]
+        : []),
     ];
-    await syncFilesToGitHub(
-      supabase, store, user.id, packageId, changes,
-      mode === "take" ? "Take upstream update (Alembic)" : "Keep local version (Alembic)",
+    await writeThrough(
+      store,
+      resolved.kind === "github" ? resolved.committer : null,
+      packageId,
+      {
+        changes,
+        summary:
+          mode === "take" ? "Take upstream update (Alembic)" : "Keep local version (Alembic)",
+      },
     );
     await supabaseEventLogger(supabase).log({
       type: "upstream.update.applied",
@@ -669,7 +783,9 @@ export async function applyUpstreamUpdateAction(
     });
     revalidatePath(`/workspace/${packageId}`);
     return { ok: true };
-  } catch {
+  } catch (e) {
+    const commit = commitError(e);
+    if (commit) return { ok: false, error: commit };
     return { ok: false, error: "Couldn't apply that update. Please try again." };
   }
 }
