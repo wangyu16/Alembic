@@ -11,6 +11,7 @@ import {
 import {
   buildCourseSite,
   renderMarkdown,
+  slotHasContent,
   themeScheme,
   type CourseChapter,
   type CourseTermData,

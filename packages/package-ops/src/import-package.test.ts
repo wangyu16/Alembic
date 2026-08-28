@@ -85,16 +85,18 @@ describe("importPackageFromFiles", () => {
     expect(result.issues.some((i) => i.path === "alembic.json")).toBe(true);
   });
 
-  it("rejects a package whose declared chapter is missing its study guide", async () => {
+  // Slots, not placeholders (docs/specs/storage-and-write-paths.md §4): an
+  // uploaded package may legitimately declare a chapter it has not written
+  // yet, so this imports successfully — the absence is surfaced as an
+  // advisory warning, never a rejection.
+  it("imports a package whose declared chapter has no study guide yet", async () => {
     const store = new MemoryPackageStore();
     const files: ImportFile[] = [
       { path: "alembic.json", content: JSON.stringify(manifest), isBinary: false },
-      // no study-guide/01-energy.md
+      // no study-guide/01-energy.md — the chapter is declared but not started
     ];
     const result = await importPackageFromFiles(store, { ownerId: "u1", files });
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.issues.some((i) => i.path === "study-guide/01-energy.md")).toBe(true);
+    expect(result.ok).toBe(true);
   });
 
   it("rejects a file in an unrecognized top-level folder (fail-closed)", async () => {

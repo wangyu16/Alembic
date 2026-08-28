@@ -54,15 +54,21 @@ describe("validateProject — manifest", () => {
 });
 
 describe("validateProject — chapters", () => {
-  it("flags a chapter whose study-guide page is missing", () => {
+  // Slots, not placeholders (docs/specs/storage-and-write-paths.md §4): a
+  // chapter with no study-guide content yet is "not started", a legitimate
+  // state — surfaced as a WARNING so the author notices, but never blocking
+  // an import or a save. Erroring here would make empty chapters impossible.
+  it("warns (does not fail) when a chapter has no study-guide content yet", () => {
     const files = goodFiles.filter(
       (f) => f.path !== "study-guide/02-enthalpy.md",
     );
     const result = validateProject({ manifest: goodManifest, files }, KNOWN);
-    expect(result.ok).toBe(false);
-    expect(
-      result.issues.some((i) => i.path === "study-guide/02-enthalpy.md"),
-    ).toBe(true);
+    expect(result.ok).toBe(true);
+    const issue = result.issues.find(
+      (i) => i.path === "study-guide/02-enthalpy.md",
+    );
+    expect(issue).toBeDefined();
+    expect(issue?.severity).toBe("warning");
   });
 });
 

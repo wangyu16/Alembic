@@ -98,6 +98,17 @@ real content exists. Consequences: Replace is an **upsert into the slot**
 are source-extracted at the door); empty slots never publish; "pristine" =
 no content files — no magic filenames.
 
+**Validation consequence (2026-08-28).** `validateProject` previously
+**errored** when a declared chapter had no `study-guide/<slug>.md`. Under the
+slot model that rule made empty chapters impossible — and chapters are now
+created without a file — so it is a **warning**: the project still validates
+(`ok: true`), and the absence is reported as "has no study-guide content
+yet". `ValidationIssue` gained an optional `severity: "error" | "warning"`
+(absent = error, for backward compatibility) so importers and UIs can tell a
+blocker from an advisory. Imports of packages with not-yet-written chapters
+now succeed — which is what an author assembling a course incrementally
+(including coursewerk) actually produces.
+
 ## 5. Raw materials & job artifacts (agent lane)
 
 Uploaded raw sources (Word/PDF/PPT) are **job-scoped**: staged in the

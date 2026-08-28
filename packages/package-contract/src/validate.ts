@@ -116,6 +116,12 @@ export interface ValidationIssue {
   /** Repo-relative path the issue is about, when applicable. */
   path?: string;
   message: string;
+  /**
+   * `"error"` blocks the project (`ok: false`); `"warning"` is advisory and
+   * leaves `ok` true. Optional for backward compatibility — an issue without
+   * a severity predates this field and should be read as an error.
+   */
+  severity?: "error" | "warning";
 }
 
 export interface ValidationResult {
@@ -177,10 +183,14 @@ export function validateProject(
   let errorCount = 0;
   const addError = (issue: ValidationIssue) => {
     errorCount++;
-    issues.push(issue);
+    issues.push({ ...issue, severity: "error" });
   };
   const addWarning = (issue: ValidationIssue) => {
-    issues.push({ ...issue, message: `Heads up: ${issue.message}` });
+    issues.push({
+      ...issue,
+      message: `Heads up: ${issue.message}`,
+      severity: "warning",
+    });
   };
 
   // Normalized set of every file present in the tree (reused below).
@@ -240,14 +250,23 @@ export function validateProject(
     }
   }
 
-  // 3. Declared chapters have their study-guide page present.
+  // 3. Declared chapters whose study-guide page has no content yet.
+  //
+  // WARNING, not an error (slots, not placeholders — see
+  // docs/specs/storage-and-write-paths.md §4). A chapter's five documents are
+  // declared SLOTS; a file exists only once the educator has written
+  // something, so a listed chapter with no study-guide page means "not started
+  // yet", which is a legitimate state for both a workspace-created course and
+  // an uploaded package. It is still worth surfacing — an author who meant to
+  // include a chapter's content wants to know it is absent — but it must never
+  // block an import or a save, or empty chapters could not exist at all.
   if (manifest?.chapters && manifest.chapters.length > 0) {
     for (const chapter of manifest.chapters) {
       const expected = chapterStudyGuidePath(chapter.slug);
       if (!presentPaths.has(expected)) {
-        addError({
+        addWarning({
           path: expected,
-          message: `Chapter "${chapter.title}" is listed but its study-guide page (${expected}) is missing.`,
+          message: `Chapter "${chapter.title}" has no study-guide content yet.`,
         });
       }
     }

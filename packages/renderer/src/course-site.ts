@@ -93,6 +93,24 @@ export interface CourseChapter {
   pagedHref?: string;
 }
 
+/**
+ * Does an authored document slot hold real content?
+ *
+ * Per-chapter documents (study guide, slides, practice, …) are **declared
+ * slots, not seeded placeholders** (docs/specs/storage-and-write-paths.md §4):
+ * a file exists only once the educator wrote something, and an absent or blank
+ * slot means "not started yet" — never an error. The student site must show no
+ * page and no link for such a slot (acceptance D3), so every caller that
+ * decides whether to publish a slot asks this one question, and the published
+ * site and its preview stay in agreement.
+ *
+ * The input is the slot's *source text* (markdown for a study guide / practice
+ * document, deck source for slides) — whitespace-only counts as empty.
+ */
+export function slotHasContent(source: string | null | undefined): boolean {
+  return typeof source === "string" && source.trim().length > 0;
+}
+
 /** One dated note in the current term's "This term" area. Newest first. */
 export interface CourseTermAnnouncement {
   title: string;

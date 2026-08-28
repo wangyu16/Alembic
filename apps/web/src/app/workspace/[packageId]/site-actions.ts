@@ -16,6 +16,7 @@ import {
 import {
   buildCourseSite,
   renderMarkdown,
+  slotHasContent,
   themeScheme,
   withDeckTheme,
   type CourseChapter,
@@ -262,9 +263,27 @@ export async function publishSiteAction(
     // that file rather than blocking publish.
     const pageFiles: SiteFile[] = [];
     const chapters: CourseChapter[] = [];
+    // Chapters skipped because their study guide is still empty — reported back
+    // so the educator learns why they aren't on the site (rather than silently
+    // missing).
+    const skipped: string[] = [];
     for (const ch of await listChapters(store, packageId)) {
       const guide = await loadStudyGuide(store, packageId, ch.path);
       const markdown = serializeStudyGuide(guide.preamble, guide.blocks);
+      // The study guide is a SLOT like every other per-chapter document: a
+      // chapter created but never written has no file at all (loadStudyGuide
+      // returns an empty doc). Publishing it would put an empty page on the
+      // student site — exactly what acceptance D3 forbids — and the chapter's
+      // home-page row links that page, so the whole chapter is omitted: no page
+      // file, no nav row, and therefore no dangling link. (Slides/practice for
+      // such a chapter go with it; the row that would carry them has no reading
+      // page to hang off.) The release gate "Study guide" already refuses to
+      // publish a course where NO chapter has study-guide content, so a course
+      // that gets this far always keeps at least one chapter.
+      if (!slotHasContent(markdown)) {
+        skipped.push(ch.title);
+        continue;
+      }
       const viewHref = `chapters/${ch.slug}.md.html`;
       // Injected into each generated file's <head> (license, author, home link),
       // so a downloaded chapter is self-describing. `source` is the public repo,
@@ -282,7 +301,7 @@ export async function publishSiteAction(
           // actually created (`slides/NN.md`); a chapter with no deck simply omits
           // its slides link (no auto-derived deck).
           const authored = await loadSlidesDeck(store, packageId, chapterSlidesPath(ch.slug));
-          if (authored.source.trim()) {
+          if (slotHasContent(authored.source)) {
             // The course-wide slides theme wins over this specific deck's own
             // saved theme — otherwise a chapter whose deck predates the current
             // pick (or was never reopened after) silently publishes under its
@@ -304,7 +323,7 @@ export async function publishSiteAction(
           // actually have one (practice/NN.md); no auto-derived fallback.
           const practiceDoc = await loadStudyGuide(store, packageId, chapterPracticePath(ch.slug));
           const practiceMarkdown = serializeStudyGuide(practiceDoc.preamble, practiceDoc.blocks);
-          if (practiceMarkdown.trim()) {
+          if (slotHasContent(practiceMarkdown)) {
             const practiceTheme = record!.manifest.themes?.["practice"] ?? mdTheme;
             const practiceHtml = await generateSelfContainedFile({ kind: "md", markdown: practiceMarkdown, title: `${ch.title} — Practice questions`, theme: practiceTheme, delivery: "cdn", metadata: docMetaForPackage(record!.manifest, { title: `${ch.title} — Practice questions`, source: repoUrl }) });
             const practiceHref = `practice/${ch.slug}.md.html`;
@@ -324,6 +343,18 @@ export async function publishSiteAction(
       } catch {
         /* skip this chapter's page; the rest of the course still publishes */
       }
+    }
+
+    // Nothing to publish. The "Study guide" release gate above normally catches
+    // this first (and says the same thing in the same words); this is the
+    // belt-and-suspenders case where every chapter's page generation failed —
+    // an empty course website is never the right answer, so refuse instead.
+    if (chapters.length === 0) {
+      return {
+        ok: false,
+        error:
+          'Your course has no chapter content to publish yet. Add at least one study-guide section — start it with a "## Heading" line — then publish the website.',
+      };
     }
 
     // The CURRENT term's "This term" area (announcements + assignments + other
@@ -371,14 +402,19 @@ export async function publishSiteAction(
 
     let siteUrl = `https://${repo.owner}.github.io/${repo.name}/`;
     let pagesPending = false;
-    let warning: string | undefined;
+    // Chapters left off the site because they have no study-guide content yet —
+    // said plainly, so their absence is never a mystery.
+    let warning: string | undefined = skipped.length
+      ? `${skipped.length === 1 ? "One chapter isn't" : `${skipped.length} chapters aren't`} on the site yet, because ${skipped.length === 1 ? "it has" : "they have"} no study-guide content: ${skipped.join(", ")}. Write ${skipped.length === 1 ? "it" : "them"} and publish again to add ${skipped.length === 1 ? "it" : "them"}.`
+      : undefined;
     try {
       const pages = await gh.client.enablePages(coords, PAGES_BRANCH);
       siteUrl = pages.url;
     } catch {
       pagesPending = true;
-      warning =
+      const pagesWarning =
         "Your site files were published, but GitHub Pages isn't switched on yet. This usually means the GitHub App's new “Pages” permission is still pending — accept it under Settings → Applications → your Alembic app — or turn Pages on once in the repo's Settings → Pages (branch: gh-pages). Then it will be live at the address below.";
+      warning = warning ? `${pagesWarning} ${warning}` : pagesWarning;
     }
 
     await events.log({
