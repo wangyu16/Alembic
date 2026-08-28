@@ -161,6 +161,29 @@ gate.
   `syncFilesToGitHub` calls.
 - **Accept:** C1, C3 (write side), E4 unchanged.
 
+### T14 — Remaining writers (added 2026-08-28 by integrator after a full
+call-site inventory; the original three tasks covered only 13 of 26 sites)
+- **Owns:** `planning-actions.ts`, `asset-actions.ts`,
+  `assessment-actions.ts`, `change-actions.ts`, `adapt-actions.ts`,
+  `apps/web/src/app/workspace/lifecycle-actions.ts`.
+- **Do:** same migration as T11–T13 — every `syncFilesToGitHub` /
+  `syncPrivateFilesToGitHub` + preceding `putFiles` pair becomes one
+  `writeThrough` call; manifest mutations (lifecycle rename) go through
+  `updateManifest`. `change-actions` (Tier-1/2 apply + undo) and
+  `adapt-actions` (fork, adapt, suggest-back, upstream updates) are the
+  trust-critical ones: their accept/undo paths must be atomic — a failed
+  commit must leave the change queue row unresolved, not half-applied.
+- **Accept:** E2 (restore/undo), F3 (adapt), G2 (review apply).
+- **Watchpoint:** `adaptFromPortalAction` / `forkOwnPackageAction` create a
+  NEW package — that is a graduation-class bulk write; keep its existing
+  creation path and migrate only its post-creation writes.
+
+**Call-site inventory (2026-08-28):** collection-actions 8 · change-actions
+8 · adapt-actions 6 · populate route 6 (Wave 3) · term-actions 5 ·
+metadata-actions 4 · import-actions 3 · edit-actions 3 · lifecycle 2 ·
+planning 2 · hosted 2 · asset 2 · assessment 2. Publish/graduation in
+`github-actions.ts` is exempt (the deliberate truth-flip).
+
 **Wave-1 integrator greps:** zero remaining direct `syncFilesToGitHub` /
 `syncPrivateFilesToGitHub` callers outside `committer.ts`, github-actions
 (publish/graduation — explicitly exempt, it IS the truth-flip), and
@@ -183,9 +206,18 @@ SHA (W4 audit).
   Optional tidy op: delete a file whose content hash equals a known seed
   and was never edited — offered, never automatic.
 - **Accept:** B3 (no boilerplate-as-content), A3.
-- **Watchpoint:** grep every consumer of seeded paths first
-  (`DEFAULT_STUDY_GUIDE_PATH` readers, site build, tests) and fix
-  expectations of file-existence → slot-existence.
+- **Watchpoint (audit done 2026-08-28 by integrator — act on it):**
+  `chapters.ts` derives `IMPLICIT_CHAPTER_SLUG` from
+  `DEFAULT_STUDY_GUIDE_PATH`, and `effectiveChapters()` materializes that
+  implicit chapter whenever `manifest.chapters` is empty. **If package
+  seeding is removed without also writing an explicit `chapters: [...]`
+  entry at creation, a fresh package shows a phantom chapter pointing at a
+  file that does not exist.** So `createSandboxPackage` MUST write one
+  explicit first chapter into the manifest (no file), and the
+  implicit-chapter fallback stays only for legacy packages.
+  Other consumers to check: `study-guide.ts` default arg,
+  `github-actions.ts:291`, `adapt-actions.ts:263`, and
+  `study-guide.test.ts` / `chapters.test.ts` expectations.
 
 ### T22 — Upsert Replace + name normalization
 - **Owns:** `collection-actions.ts` (replace/create only — T13 finished
@@ -248,6 +280,11 @@ open each doc → save one → publish flow dry-run in tests).
   listed) + explicit confirm; refusals name blockers and offer "empty
   this course and upload" (Tier-3 confirm, wipes content files via
   writeThrough deletes).
+- **Also owns (integrator note 2026-08-28):**
+  `apps/web/src/app/workspace/[packageId]/edit/page.tsx` line ~74 — the
+  second `isPristinePackage` consumer (it gates the "this course is empty"
+  populate CTA). It must move to the same replacement predicate, or the
+  CTA logic and the upload gate will disagree.
 - **Accept:** C7, C8. **Watchpoint:** stay within `maxDuration` by
   chunked commits; rely on resume for overruns (worker-lane P4 later).
 
