@@ -52,6 +52,15 @@ same commit as the work it tracks. Statuses: ✅ done · 🔄 partially shipped 
 
 > **Current direction — self-contained editing (owner-locked, 2026-07).** Editing and viewing both live *in the files*: the workspace **hosts** the in-file editors of `.md.html` / `.slides.html` / `.paged.html` (orz-family) and **builds no editor of its own**; published pages **are** those self-contained files (thin CDN delivery — study guide ~74 KB, framework from jsDelivr, verified live 2026-07-06); every file gets a permalink. **Committed source of record (revised, 2026-07-08 — "lean-source model"):** a chapter's study guide, slides, and practice questions are each committed as lean markdown (`study-guide/`, `slides/`, `practice/` — `.md`, not `.md.html`); the self-contained `.md.html`/`.slides.html` is generated on demand, purely as the editing/viewing surface, and never itself committed. This supersedes the original plan (below, and in the specs) of `.md.html` as the committed source — the specs haven't all been updated to match yet; this line is authoritative until they are. Authoritative docs: [SteeringNote.md](SteeringNote.md), [self-contained-editing.md](specs/self-contained-editing.md), [workspace-framework.md](specs/workspace-framework.md), and the module-based [Roadmap.md](Roadmap.md) (Modules R/E/P/T/I/S/W — supersedes the phase-based plan). **Code state today:** the classic editor is **retired** (~2.2k lines removed; `/workspace/[id]` redirects to `/edit`); the local **Studio (`/studio`) is removed**, replaced by `/guide`; the workspace three-pane shell now *hosts* the in-file editors (`HostedStudyGuideEditor` for study guide + practice; `HostedSlidesEditor` for authored slide decks). The durable guardrails **G1–G8** (two-repo reference enforcement, block-ID reconcile on import, whole-package fork, single-source course metadata, AI-entitlement seam) that the earlier editor-overhaul design drove all **landed + tested**.
 
+**Worker tier decided (2026-08-28):** [specs/worker-tier.md](specs/worker-tier.md) — **platform-provided
+AI key (BYO-key promise removed**; goal.md §11 amended; metering + hard per-run budget caps become
+required-before-launch); Tier split firm (single-file = direct calls with designed prompts, package-level =
+coursewerk as agent); **agent lane on Fly** (Sprites/Machines spike pending) running the identical harness
+local coursewerk uses; queue in Postgres; per-job gateway virtual keys (sandbox never holds the master key);
+coursewerk ⏸ gates surface as Inbox review items; outputs are changesets, never commits. Watch list:
+Anthropic Managed Agents (re-eval at GA / ~2 quarters). Open: harness selection, cost-efficient model mix,
+gateway vendor re-evaluation. Rationale in [DecisionLog.md](DecisionLog.md).
+
 **Educator version contract adopted (2026-08-28):** "just enough git" is now an explicit, closed
 contract — [specs/educator-version-contract.md](specs/educator-version-contract.md): twelve educator verbs
 (Save/Preview/Publish/Snapshot/History/Restore/Pin/Share/Adapt/**Propose a correction**/**Update from
@@ -77,8 +86,8 @@ responsibility). ARR gets a plain "all rights reserved" `LICENSE` body + rights 
 and CITATION.cff omit the license for it; adaptation is disallowed for/into ARR. Coursewerk (the offline
 authoring harness) mirrors this: license optional (ARR default when private), a near-verbatim detector, and
 a `--for-discovery` gate. Verified: typecheck + 449 tests + web build. **No migration** — attestation lives
-in the event log for now. Future: the AI assistant is the *metered* part (BYO-key / sponsored / paid
-credits) while the platform stays free — messaging pass next, metering machinery later.
+in the event log for now. Future: the AI assistant is the *metered* part (sponsored / paid
+credits — *BYO-key removed 2026-08-28, see worker-tier.md*) while the platform stays free — messaging pass next, metering machinery later.
 
 **Platform is free/open; AI is metered (messaging, 2026-07-12):** a homepage line + a Core-ideas note
 declare that Alembic the platform is always free and open, while the optional **AI assistant runs on

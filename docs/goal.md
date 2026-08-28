@@ -316,10 +316,11 @@ During the funded study, normal participants should not need to buy AI subscript
 After the grant-supported study, the software can remain open source while AI inference remains an operating cost. The product should therefore support multiple future credit models without changing its core architecture:
 
 - institution-managed API billing for departments, libraries, teaching centers, or consortia;
-- individual bring-your-own API keys for advanced users;
 - hosted service tiers that pass through AI usage costs transparently;
 - limited community/free credits supported by grants, sponsors, or institutions;
 - local or open-weight model options where quality, privacy, and cost tradeoffs are acceptable.
+
+*(Revised 2026-08-28: individual bring-your-own API keys were removed from this list — the platform provides AI through its own key(s), metered by credits/quotas; see [DecisionLog.md](DecisionLog.md) and [specs/worker-tier.md](specs/worker-tier.md).)*
 
 Design implication: the AI provider and billing layer should be modular. Educators should experience one authoring workflow, while administrators can choose who pays for model calls, what models are allowed, what quotas apply, and what data-governance rules control prompts, outputs, and logs. The open-source platform should not promise free AI usage forever; it should make the cost visible, configurable, and sustainable.
 

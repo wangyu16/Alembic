@@ -6,6 +6,32 @@ design, and what is deferred to the future. Complements [Status.md](Status.md)
 
 ---
 
+## 2026-08-28 — Worker tier: agent lane on Fly, platform-key model, no BYO
+
+**Decision.** Recorded in full in [specs/worker-tier.md](specs/worker-tier.md). Summary:
+
+| # | Decision | Why |
+|---|---|---|
+| 1 | **Platform provides the AI key; the BYO-key promise is removed** (goal.md §11 amended; 2026-07-12 "BYO-key / sponsored / paid credits" messaging superseded to sponsored/paid credits only). | Kills key-vault UX and "subscription ≠ API key" confusion; the platform controls model choice, routing, logging, and cost attribution uniformly. Consequence accepted: metering + **hard per-run budget caps become required-before-launch** — every runaway loop is now the operator's bill. |
+| 2 | **Tier split confirmed:** local single-file editing = direct LLM calls with designed system prompts (no agent SDK); package-level work = coursewerk as an agent in the worker tier. Registry gains `execution: "call" \| "agent"`. | The 90% case stays cheap and serverless; the harness is reserved for genuinely multi-file, repo-aware work (ai-architecture.md's Tier A/B, now firm). |
+| 3 | **Agent lane = Fly (Sprites or Machines — spike pending) running the identical harness local coursewerk uses**; non-AI jobs stay on the existing Fly worker; queue in Postgres. | Parity (local run ≡ hosted run, one coursewerk codebase), one already-operated vendor, persistent-sleeps-idle sandboxes match coursewerk's ⏸-gated staged pipeline, compute cost is noise vs tokens. |
+| 4 | **Sandbox never holds the master key:** per-job short-lived gateway virtual key with a hard budget; egress allow-listed. | Exfiltration impossible by construction; the per-run cap is enforced outside the agent. |
+| 5 | **Job outputs are files/changesets, never commits** — validation (import gate, leakage, near-verbatim) → tiered review → `packageOps` → `github-bridge`. | goal.md §3 verbatim; the agent produces, the platform commits. |
+| 6 | **Watch list, not churn:** Anthropic Managed Agents re-evaluated at GA or ~2 quarters. Owner posture: no switching within ~a month of adoption; the area changes fast, so no choice here is forever — switch when the benefit is significant. The harness seam keeps any switch a swap, not a rework. | Managed Agents is the only option deleting harness ops entirely (hard per-session dollar caps fit the platform-pays model) but is beta and would fork coursewerk off the local CLI harness. |
+
+**Open (under evaluation, tracked in the spec §3):** harness selection (Claude
+Code / Agent SDK vs minimal pi-class harnesses vs others), the cost-efficient
+model mix (flash-class drafting + different-family mid-tier critique), gateway
+vendor re-evaluation (Portkey vs OpenRouter / Cloudflare / Vercel AI Gateway /
+newer), Sprites-vs-Machines spike.
+
+**Ruled out (dated):** GitHub Actions as job runner (key exfiltration —
+permanent); Cloudflare Sandbox (disk resets on sleep); Modal (premium,
+GPU-oriented); E2B/Daytona/Vercel Sandbox (capable, but no advantage over the
+operated Fly footprint — revisit with the market).
+
+---
+
 ## 2026-08-28 — Educator version contract ("just enough git") adopted
 
 **Decision.** Version control for educators is now an explicit, closed contract:
