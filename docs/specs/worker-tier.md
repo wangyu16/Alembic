@@ -39,9 +39,19 @@ harnesses, and models swap beneath them.
      coursewerk's staged, human-gated pipeline.
 4. **Queue lives in Postgres (Supabase).** No new queue infrastructure.
 5. **Key isolation — the sandbox never holds the master key.** Each job gets
-   a short-lived **gateway virtual key with a hard budget cap** (the gateway
-   *function* is decided; the vendor is under evaluation — §3; Portkey has
-   been the default choice since 2026-06);
+   a short-lived **gateway virtual key with a hard budget cap**. Gateway
+   (decided 2026-08-28): **self-hosted LiteLLM**, deployed on the owner's
+   Oracle Cloud Always-Free A1 VPS (may migrate to an always-on Fly machine
+   later — a config-only `AI_GATEWAY_URL` swap). Operating rules: upgrade the
+   Oracle tenancy to PAYG (removes idle-reclamation of Always-Free compute),
+   Cloudflare proxy/tunnel in front, LiteLLM state in Supabase Postgres,
+   the whole deployment kept as code (redeployable in minutes anywhere), and
+   a **direct-provider fallback** path in the web app as the degraded mode.
+   Provider keys live only on the gateway host; Vercel and worker sandboxes
+   hold only budgeted virtual keys. Supersedes the 2026-06-16 Portkey choice
+   (Portkey was acquired by Palo Alto Networks, 2026-05, and folded into an
+   enterprise security platform — no longer a fit for a free, solo-operated
+   platform);
    egress is allow-listed (gateway + GitHub). Exfiltration is impossible by
    construction and the per-run cap is enforced *outside* the agent.
 6. **Human gates → Inbox.** coursewerk's ⏸ pause gates surface as workspace
@@ -82,11 +92,6 @@ harnesses, and models swap beneath them.
   existing per-task routing map; teaching documents don't need
   max-reasoning models, but package-wide consistency checking rules out
   older lightweight ones.
-- **Gateway vendor** re-evaluation: Portkey (2026-06 default) vs
-  OpenRouter, Cloudflare AI Gateway, Vercel AI Gateway, and newer entrants —
-  criteria: per-job virtual keys with hard budgets, model breadth for the
-  cost-efficient mix, data-handling/retention controls (FERPA/IRB review),
-  observability, self-host option, fees.
 - **Sprites vs plain Machines** spike.
 
 ## 4. Cost model

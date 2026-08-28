@@ -58,8 +58,10 @@ required-before-launch); Tier split firm (single-file = direct calls with design
 coursewerk as agent); **agent lane on Fly** (Sprites/Machines spike pending) running the identical harness
 local coursewerk uses; queue in Postgres; per-job gateway virtual keys (sandbox never holds the master key);
 coursewerk ⏸ gates surface as Inbox review items; outputs are changesets, never commits. Watch list:
-Anthropic Managed Agents (re-eval at GA / ~2 quarters). Open: harness selection, cost-efficient model mix,
-gateway vendor re-evaluation. Rationale in [DecisionLog.md](DecisionLog.md).
+Anthropic Managed Agents (re-eval at GA / ~2 quarters). **Gateway decided same day: self-hosted LiteLLM on
+the owner's Oracle VPS** (Portkey superseded — PANW acquisition; operating rules in worker-tier.md §1.5;
+may move to Fly later, config-only swap). Still open: harness selection (pi recommended, unconfirmed),
+cost-efficient model mix (chemistry eval prerequisite). Rationale in [DecisionLog.md](DecisionLog.md).
 
 **Educator version contract adopted (2026-08-28):** "just enough git" is now an explicit, closed
 contract — [specs/educator-version-contract.md](specs/educator-version-contract.md): twelve educator verbs

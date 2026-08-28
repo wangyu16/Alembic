@@ -6,6 +6,28 @@ design, and what is deferred to the future. Complements [Status.md](Status.md)
 
 ---
 
+## 2026-08-28 — AI gateway: self-hosted LiteLLM on the owner's Oracle VPS (Portkey superseded)
+
+**Decision.** The gateway control plane is **self-hosted LiteLLM**, deployed on the owner's Oracle Cloud
+Always-Free A1 VPS first (may move to an always-on Fly machine later — a config-only `AI_GATEWAY_URL`
+swap; `GatewayProvider` is OpenAI-compatible, so no code changes either way). Talking **directly to
+providers** (no middleman fees); optionally OpenRouter behind it for long-tail models.
+
+**Why.** The requirement is a *control plane*, not a marketplace: per-job **virtual keys with hard
+budgets** (load-bearing under the platform-key model), per-user attribution, and full data-flow custody
+(the FERPA/IRB argument that originally motivated Portkey). LiteLLM meets all of it at $0 license cost.
+**Portkey (chosen 2026-06-16) is superseded:** acquired by Palo Alto Networks (2026-05) and folded into
+the Prisma AIRS enterprise security platform — no longer a fit for a free, solo-operated platform.
+
+**Operating rules (recorded in [specs/worker-tier.md](specs/worker-tier.md) §1.5):** Oracle tenancy
+upgraded to PAYG (removes Always-Free idle reclamation); Cloudflare proxy/tunnel in front; LiteLLM state
+in Supabase Postgres; deployment-as-code so a dead instance is a ~10-minute redeploy anywhere;
+direct-provider fallback in the web app as the degraded mode; provider keys live only on the gateway
+host. Capacity note: a LiteLLM proxy is I/O-bound — the A1 shape (4 OCPU/24 GB) is far beyond any
+plausible load; the risks are account/instance lifecycle, hence the rules above.
+
+---
+
 ## 2026-08-28 — Worker tier: agent lane on Fly, platform-key model, no BYO
 
 **Decision.** Recorded in full in [specs/worker-tier.md](specs/worker-tier.md). Summary:
@@ -21,9 +43,9 @@ design, and what is deferred to the future. Complements [Status.md](Status.md)
 
 **Open (under evaluation, tracked in the spec §3):** harness selection (Claude
 Code / Agent SDK vs minimal pi-class harnesses vs others), the cost-efficient
-model mix (flash-class drafting + different-family mid-tier critique), gateway
-vendor re-evaluation (Portkey vs OpenRouter / Cloudflare / Vercel AI Gateway /
-newer), Sprites-vs-Machines spike.
+model mix (flash-class drafting + different-family mid-tier critique),
+Sprites-vs-Machines spike. *(The gateway question was resolved the same day —
+see the entry above.)*
 
 **Ruled out (dated):** GitHub Actions as job runner (key exfiltration —
 permanent); Cloudflare Sandbox (disk resets on sleep); Modal (premium,

@@ -97,8 +97,10 @@ What a gateway buys: **task→model routing** (cheap/fast model for drafts &
 checks; strong model for restructuring & Tier-B reasoning — one model for
 everything is the expensive mistake), **budgets & per-user/per-institution
 quotas** (serves goal.md §11), **fallback**, and **usage observability**.
-They compose — OpenRouter can run *through* Portkey. **Decided (2026-06-16):
-Portkey** as the control plane (governance, per-user/per-institution budgets,
+They compose — OpenRouter can run *through* Portkey. **Decided (2026-06-16, superseded 2026-08-28 → self-hosted LiteLLM on the
+owner's Oracle VPS; see [worker-tier.md](worker-tier.md) §1.5 and the
+DecisionLog — Portkey was acquired by Palo Alto Networks and refocused
+enterprise): Portkey** as the control plane (governance, per-user/per-institution budgets,
 self-host/data controls for FERPA/IRB, virtual keys → institution billing) — the
 research-platform fit. OpenRouter may sit *behind* Portkey when model breadth is
 wanted. Gemini-direct remains the testing default until the gateway is switched
