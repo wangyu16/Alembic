@@ -191,6 +191,30 @@ call-site inventory; the original three tasks covered only 13 of 26 sites)
   NEW package — that is a graduation-class bulk write; keep its existing
   creation path and migrate only its post-creation writes.
 
+### T15 — Consolidate the prepare/validate half (integrator-added
+2026-08-28, after T12/T13 reports; runs as a Wave-1.5 cleanup)
+- **Owns:** `packages/package-ops/src/editor-edit.ts`, `study-guide.ts`,
+  `slides.ts` (+ their tests); `apps/web/src/lib/editor-save.ts`,
+  `apps/web/src/app/workspace/[packageId]/import-prepare.ts`,
+  `apps/web/src/app/workspace/[packageId]/actions.ts`.
+- **Why:** Wave 1 had to separate *validate* from *persist* (writeThrough
+  commits before projecting, so the old `applyEditorEdit`-then-sync order
+  is illegal). Lacking a package-ops export, T12 and T13 each recreated the
+  validation locally — so the block-ID + `TEXT_EXT` rules now live in FOUR
+  places (`editor-edit.ts`, `write-through.ts`, `lib/editor-save.ts`,
+  `import-prepare.ts`). Rule 3 says there is one validated write path;
+  four copies of its validator is that rule decaying.
+- **Do:** export validate-only `prepareEditorEdit` / `prepareStudyGuideSave`
+  / `prepareSlidesSave` from package-ops; re-express `applyEditorEdit` /
+  `saveStudyGuide` / `saveSlidesDeck` as `prepare + putFiles` (behavior
+  identical, tests unchanged); collapse the two web copies to thin
+  re-exports. **Also migrate the orphan** `saveStudyGuideAction` in
+  `apps/web/src/app/workspace/[packageId]/actions.ts:28` — still
+  store-first + best-effort commit, owned by no Wave-1 task (found by T12),
+  and **still live**: `studio-shell.tsx:1646` calls it, so it is a real
+  remaining silent-divergence path, not dead code.
+- **Accept:** B4, B5, E1 (closes the last silent local-only save path).
+
 **Call-site inventory (2026-08-28):** collection-actions 8 · change-actions
 8 · adapt-actions 6 · populate route 6 (Wave 3) · term-actions 5 ·
 metadata-actions 4 · import-actions 3 · edit-actions 3 · lifecycle 2 ·
