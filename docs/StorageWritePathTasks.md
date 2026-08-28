@@ -144,6 +144,19 @@ gate.
   refresh from its return); chapter file writes through `writeThrough`
   with the web committer; TH1/TH4 interim shims removed. Failures surface
   as retryable plain-language errors; no more best-effort mirrors.
+- **ALSO FIX (confirmed bug, found by T03 2026-08-28):**
+  `renameChapterPageName` (`chapters.ts` ~line 296) moves only three file
+  families — the study guide, `concepts/<slug>.json`, and
+  `objectives/<slug>.json`. It does **not** move the four other slot
+  documents (`concepts/<slug>.md`, `assessment-support/<slug>.md`,
+  `slides/<slug>.md`, `practice/<slug>.md`), so renaming a chapter's page
+  name **orphans four of its five documents** at the old slug — they
+  vanish from the chapter and linger as stray files. Use
+  `chapterSlotPaths()` (new, from `@alembic/package-contract` — T03) to
+  build the move list from the slot table so the set can never drift
+  again; keep the `.json` planning families as extra moves. Add a
+  regression test: create chapter, write all five documents, rename the
+  page name, assert all five moved and none remain at the old slug.
 - **Accept:** B1, B2, B6, B7, B9.
 
 ### T12 — Editor saves
@@ -218,6 +231,17 @@ SHA (W4 audit).
   Other consumers to check: `study-guide.ts` default arg,
   `github-actions.ts:291`, `adapt-actions.ts:263`, and
   `study-guide.test.ts` / `chapters.test.ts` expectations.
+
+### T21b — Slot vocabulary bridge (web)
+- **Owns:** `apps/web/src/app/workspace/[packageId]/edit/nav.ts`.
+- **Do:** map the UI's `ChapterDoc` union (which calls the study guide
+  `"content"`) onto the contract's `ChapterSlot` (`"study-guide"`) with an
+  explicit `Record`, so a missing/renamed slot is a compile error; replace
+  `edit/page.tsx`'s ad-hoc `assessment-support/${slug}.md` /
+  `concepts/${slug}.md` path building with `slotPath()`. (Found by T03:
+  two vocabularies + hand-built paths in the page component.)
+- **Note:** `edit/page.tsx` is shared with T23/T32 — T21b touches ONLY the
+  path-building lines; integrator merges.
 
 ### T22 — Upsert Replace + name normalization
 - **Owns:** `collection-actions.ts` (replace/create only — T13 finished

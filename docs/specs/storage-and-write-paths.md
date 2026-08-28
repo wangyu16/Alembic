@@ -51,6 +51,15 @@ chapter/manifest op, populate — goes through one shared path:
   ("1 change not yet saved") is a possible future refinement — fail-loudly
   ships first because it never lies.
 
+**Known boundary — cross-repo change sets.** A single change set touching
+BOTH repos cannot be atomic: they are two independent Git repositories, so
+no distributed transaction exists. `writeThrough` commits public first, then
+private; if the private commit fails, the public commit has landed while the
+projection is untouched. That state is **recoverable, not corrupt** — repos
+are the truth, and reconcile absorbs the committed-but-unprojected change on
+the next check. Writers should therefore prefer single-repo change sets;
+populate (which legitimately spans both) owns its own resume logic.
+
 Corollaries:
 
 - **One manifest owner.** The manifest is written only through

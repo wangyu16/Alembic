@@ -39,4 +39,24 @@ export interface PackageStore {
     packageId: string,
     files: { repo: RepoKind; path: string }[],
   ): Promise<void>;
+  /**
+   * Compare-and-swap write of ONE file — the optimistic-concurrency primitive
+   * behind `updateManifest` (storage-and-write-paths.md §3, "one manifest
+   * owner"). Two writers racing on the same file can no longer silently lose
+   * one another's change: the loser gets `"conflict"` and re-reads.
+   *
+   * - `expected === null` → **create-only**: the write applies only if no row
+   *   exists yet for `(packageId, repo, path)`; an existing row → `"conflict"`.
+   * - otherwise → the write applies only if the stored content is still
+   *   byte-identical to `expected.content`; anything else → `"conflict"`.
+   *
+   * Deliberately compares on **content equality** (no hash/version column, no
+   * migration): the manifest is small and the comparison is exact.
+   * Callers validate paths first, exactly as for `putFiles`.
+   */
+  replaceFileIf(
+    packageId: string,
+    file: PackageFile,
+    expected: { content: string } | null,
+  ): Promise<"ok" | "conflict">;
 }

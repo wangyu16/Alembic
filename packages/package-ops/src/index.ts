@@ -13,6 +13,8 @@ export * from "./terms";
 export * from "./slides";
 export * from "./import";
 export * from "./incoming-text";
+export * from "./write-through";
+export * from "./manifest-ops";
 export * from "./citation";
 export * from "./planning";
 export * from "./assessments";

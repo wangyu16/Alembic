@@ -171,3 +171,153 @@ describe("SupabaseSandboxStore.listFiles — pagination", () => {
     expect(stub.rangeCalls).toHaveLength(2);
   });
 });
+
+/**
+ * replaceFileIf is the compare-and-swap the manifest owner rides on: the
+ * comparison must happen IN Postgres (a WHERE clause), never as a read-then-
+ * write in app code, or two tabs can still lose one another's change.
+ */
+type CasOpts = {
+  insertError?: { code?: string; message: string };
+  updateRows?: { path: string }[];
+  updateError?: { message: string };
+};
+
+function makeCasClient(opts: CasOpts = {}) {
+  const eqCalls: { column: string; value: unknown }[] = [];
+  const inserted: Record<string, unknown>[] = [];
+  const updates: Record<string, unknown>[] = [];
+  let selected: string | null = null;
+  let table = "";
+
+  const builder = {
+    insert(row: Record<string, unknown>) {
+      inserted.push(row);
+      return Promise.resolve({ data: null, error: opts.insertError ?? null });
+    },
+    update(patch: Record<string, unknown>) {
+      updates.push(patch);
+      return builder;
+    },
+    eq(column: string, value: unknown) {
+      eqCalls.push({ column, value });
+      return builder;
+    },
+    select(columns: string) {
+      selected = columns;
+      return Promise.resolve({
+        data: opts.updateError ? null : (opts.updateRows ?? []),
+        error: opts.updateError ?? null,
+      });
+    },
+  };
+
+  const client = {
+    from(name: string) {
+      table = name;
+      return builder;
+    },
+  } as unknown as SupabaseClient;
+
+  return {
+    client,
+    eqCalls,
+    inserted,
+    updates,
+    get selected() {
+      return selected;
+    },
+    get table() {
+      return table;
+    },
+  };
+}
+
+const FILE = {
+  repo: "public" as const,
+  path: "alembic.json",
+  content: "new content",
+};
+
+describe("SupabaseSandboxStore.replaceFileIf — compare-and-swap", () => {
+  it("UPDATEs keyed on package, repo, path AND the expected old content", async () => {
+    const stub = makeCasClient({ updateRows: [{ path: "alembic.json" }] });
+    const store = new SupabaseSandboxStore(stub.client);
+
+    const outcome = await store.replaceFileIf("pkg-1", FILE, {
+      content: "old content",
+    });
+
+    expect(outcome).toBe("ok");
+    expect(stub.table).toBe("sandbox_files");
+    expect(stub.updates).toEqual([{ content: "new content" }]);
+    expect(stub.eqCalls).toEqual([
+      { column: "package_id", value: "pkg-1" },
+      { column: "repo", value: "public" },
+      { column: "path", value: "alembic.json" },
+      { column: "content", value: "old content" },
+    ]);
+    // .select() is what reveals how many rows the conditional UPDATE hit.
+    expect(stub.selected).not.toBeNull();
+  });
+
+  it("reports 'conflict' when the conditional UPDATE affects no rows", async () => {
+    const stub = makeCasClient({ updateRows: [] });
+    const store = new SupabaseSandboxStore(stub.client);
+
+    const outcome = await store.replaceFileIf("pkg-1", FILE, {
+      content: "stale content",
+    });
+
+    expect(outcome).toBe("conflict");
+  });
+
+  it("throws (not 'conflict') on a real UPDATE error", async () => {
+    const stub = makeCasClient({ updateError: { message: "connection reset" } });
+    const store = new SupabaseSandboxStore(stub.client);
+
+    await expect(
+      store.replaceFileIf("pkg-1", FILE, { content: "old content" }),
+    ).rejects.toThrow("Could not save files: connection reset");
+  });
+
+  it("create-only (expected null) INSERTs the row", async () => {
+    const stub = makeCasClient();
+    const store = new SupabaseSandboxStore(stub.client);
+
+    const outcome = await store.replaceFileIf("pkg-1", FILE, null);
+
+    expect(outcome).toBe("ok");
+    expect(stub.inserted).toEqual([
+      {
+        package_id: "pkg-1",
+        repo: "public",
+        path: "alembic.json",
+        content: "new content",
+      },
+    ]);
+    expect(stub.updates).toEqual([]);
+  });
+
+  it("maps a unique violation on create-only to 'conflict'", async () => {
+    const stub = makeCasClient({
+      insertError: { code: "23505", message: "duplicate key value" },
+    });
+    const store = new SupabaseSandboxStore(stub.client);
+
+    const outcome = await store.replaceFileIf("pkg-1", FILE, null);
+
+    expect(outcome).toBe("conflict");
+  });
+
+  it("throws on any other INSERT error", async () => {
+    const stub = makeCasClient({
+      insertError: { code: "42501", message: "permission denied" },
+    });
+    const store = new SupabaseSandboxStore(stub.client);
+
+    await expect(store.replaceFileIf("pkg-1", FILE, null)).rejects.toThrow(
+      "Could not save files: permission denied",
+    );
+  });
+});

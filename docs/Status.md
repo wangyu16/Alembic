@@ -52,6 +52,26 @@ same commit as the work it tracks. Statuses: ✅ done · 🔄 partially shipped 
 
 > **Current direction — self-contained editing (owner-locked, 2026-07).** Editing and viewing both live *in the files*: the workspace **hosts** the in-file editors of `.md.html` / `.slides.html` / `.paged.html` (orz-family) and **builds no editor of its own**; published pages **are** those self-contained files (thin CDN delivery — study guide ~74 KB, framework from jsDelivr, verified live 2026-07-06); every file gets a permalink. **Committed source of record (revised, 2026-07-08 — "lean-source model"):** a chapter's study guide, slides, and practice questions are each committed as lean markdown (`study-guide/`, `slides/`, `practice/` — `.md`, not `.md.html`); the self-contained `.md.html`/`.slides.html` is generated on demand, purely as the editing/viewing surface, and never itself committed. This supersedes the original plan (below, and in the specs) of `.md.html` as the committed source — the specs haven't all been updated to match yet; this line is authoritative until they are. Authoritative docs: [SteeringNote.md](SteeringNote.md), [self-contained-editing.md](specs/self-contained-editing.md), [workspace-framework.md](specs/workspace-framework.md), and the module-based [Roadmap.md](Roadmap.md) (Modules R/E/P/T/I/S/W — supersedes the phase-based plan). **Code state today:** the classic editor is **retired** (~2.2k lines removed; `/workspace/[id]` redirects to `/edit`); the local **Studio (`/studio`) is removed**, replaced by `/guide`; the workspace three-pane shell now *hosts* the in-file editors (`HostedStudyGuideEditor` for study guide + practice; `HostedSlidesEditor` for authored slide decks). The durable guardrails **G1–G8** (two-repo reference enforcement, block-ID reconcile on import, whole-package fork, single-source course metadata, AI-entitlement seam) that the earlier editor-overhaul design drove all **landed + tested**.
 
+**Wave 0 landed — write-through seam, committer, staging bucket, slot contract (2026-08-28).**
+`writeThrough()` + `updateManifest()` (`package-ops`) are the one validated write path: validate
+(dual-mode two-repo check + public-reference guard, fail-closed, before any IO) → published: commit via a
+`Committer` seam FIRST, then project into the store; trial: DB only. A failed commit leaves the projection
+untouched. `PackageStore.replaceFileIf` adds compare-and-swap (content equality — **no migration needed**)
+so `updateManifest` retries instead of losing an update. Web side: `lib/committer.ts` (`committerFor` →
+trial | github | **unavailable** — a GitHub-backed package with no client never silently degrades to
+DB-only; an unknown package resolves `unavailable`, not `trial`) and `lib/staging.ts` (signed-URL helpers +
+a segment-aware owner-prefix guard) over new migration **`0020_staging_bucket.sql`** (private bucket,
+owner-prefix RLS incl. the `is_active_user` ban backstop, documented 24h TTL). `package-contract/slots.ts`
+declares the five per-chapter slots (path builders, exact inverse classifier, publish/spine flags), every
+slot path asserted against both two-repo contracts. **Two live bugs surfaced by this wave, queued as
+required fixes:** (a) `renameChapterPageName` moves only 3 file families, so renaming a chapter's page name
+**orphans four of its five documents** (T11 must rebuild the move list from `chapterSlotPaths()`);
+(b) de-seeding must write an explicit first chapter or the implicit-chapter fallback yields a phantom
+chapter (T21). Task plan also gained **T14** (13 further writer call sites the original wave missed) and
+**T21b** (slot-vocabulary bridge). Verified: typecheck + **921 tests** + web build green.
+**Operator action: apply `0020_staging_bucket.sql` (needs owner/service-role privileges) before the Wave-3
+deploy.**
+
 **Wave H hotfixes landed (2026-08-28)** — first execution wave of
 [StorageWritePathTasks.md](StorageWritePathTasks.md), four concurrent subtasks + integrator gate:
 **TH1** every manifest writer now bases its patch on the FILE manifest (new `lib/manifest-read.ts`
