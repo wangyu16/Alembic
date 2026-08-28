@@ -78,9 +78,11 @@ workspace, or upload to GitHub source, all registered correctly."*
   `concepts` / `assessment-support` / `assets` (renames `materials`) /
   `current` / `metadata` / `provenance` public, `private` (renames
   `private-instructor`, becomes the private-repo root); **chapter study
-  guide = one `.md.html` file** (source embedded) — *this is the E3 target;
-  the shipped code still stores a lean `study-guide/<slug>.md` and generates
-  `.md.html` for viewing, so the switchover is pending (see E3)*. Block IDs: *malformed or
+  guide = one `.md.html` file** (source embedded) — *superseded 2026-08-28:
+  lean `.md` stays the committed source permanently
+  ([specs/educator-version-contract.md](specs/educator-version-contract.md) §7);
+  the `.md.html` is a generated editing/viewing surface, and dual-extension
+  uploads are absorbed by extracting embedded source (see E3)*. Block IDs: *malformed or
   duplicate* IDs still reject a save; *missing* IDs are now legal (anchors
   are optional). Adaptation lineage: whole-package fork sets package-level
   `adaptedFrom` (files inherit); copying an individual file sets file-level
@@ -95,7 +97,8 @@ workspace, or upload to GitHub source, all registered correctly."*
   adaptation/assessments. Explicit v1→v2 migration; v1 packages stay
   readable.
 - **R2. Registry projection**: `documents` table (RLS), rebuildable from
-  repos; registration hooks in all three doors — packageOps create/save
+  repos; **also the version index** — docId-keyed per-file history that
+  survives rename/move ([educator-version-contract.md](specs/educator-version-contract.md) §6); registration hooks in all three doors — packageOps create/save
   (in place), the upload path, and `reconcilePublicRepo` (direct GitHub
   commits). Tombstones for deletions.
 - **R3. Version listing**: per-file dated history (from Git / sandbox
@@ -115,10 +118,12 @@ workspace, or upload to GitHub source, all registered correctly."*
 - **E2. The minimal text editor**: plain `.md` files (concept maps,
   assessment guide) get a simple source editor with a rendered-view toggle
   — the one editing surface Alembic itself provides.
-- **E3. Study-guide switchover**: chapter study guide becomes one
-  `.md.html` file edited in-file (needs R1's source-of-record change);
-  the interim block editor retires at parity. Practice questions follow
-  (same format).
+- **E3. Study-guide switchover** *(amended 2026-08-28 per the
+  [educator version contract](specs/educator-version-contract.md) §7)*: the
+  chapter study guide is edited in-file as one **generated** `.md.html`
+  surface; the committed source of record stays lean `.md` (no R1
+  source-of-record change). The interim block editor retires at parity.
+  Practice questions follow (same format).
 - **E4. Spaces UI**: Assets / Current / Private become real file managers
   (list, upload, organize, per-file actions); Current gains semester
   archiving when R1 lands.

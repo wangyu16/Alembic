@@ -6,6 +6,40 @@ design, and what is deferred to the future. Complements [Status.md](Status.md)
 
 ---
 
+## 2026-08-28 — Educator version contract ("just enough git") adopted
+
+**Decision.** Version control for educators is now an explicit, closed contract:
+[specs/educator-version-contract.md](specs/educator-version-contract.md). Twelve
+educator verbs (Save, Preview, Publish/Update page, Snapshot, History, Restore,
+Pin/Cite, Share a file, Adapt, **Propose a correction**, **Update from source**,
+Reconcile) with their Git translations — and a permanent exclusion list
+(branch, merge, PR, commit message, rebase/rewrite, staging), each with an
+educator-facing replacement.
+
+**Key rulings (with rationale):**
+
+| # | Ruling | Why |
+|---|---|---|
+| 1 | **Closed list, both directions.** Capabilities need an educator-workflow justification; exclusions are design, not deferral. | "Just enough" is only real if the boundary is written down; otherwise Git concepts leak back in one feature at a time. |
+| 2 | **Two-pointer model instead of branches.** One linear history; working head (Save) + publish pointer (Publish/Update page). | The only real branch pressure is draft-vs-live during a running term; a movable publish pointer answers it completely. Terms are covered by Current-term + snapshots. |
+| 3 | **No merge commits, ever.** Divergence (three doors) resolves by keep-mine / take-theirs / AI-assisted merge → one forward commit. | Merge UX is developer UX; AI-assisted merge (block anchors assisting) is the educator's merge tool. |
+| 4 | **History is docId-keyed; the registry (R2) is the version index.** Git is storage; SHAs are never educator-facing. | Path-filtered history severs on rename/move. This elevates R2 from discovery plumbing to a version-control requirement. |
+| 5 | **Lean `.md` committed source is permanent** — amends Roadmap R1/E3: the ".md.html as committed chapter source" target is dropped; the in-file editing UX proceeds on generated surfaces, and dual-extension uploads are absorbed by extracting embedded source. | Meaningful diffs/history and the no-lock-in legibility promise both require lean sources; committing carriers would bury content changes under framework bytes. |
+| 6 | **PR → "Propose a correction"; upstream flow → "Update from source".** Suggest-back acceptance is itemized (never batched), applied as a forward commit with attribution. | These two verbs are what the vision's decentralized-improvement story (CA/NY adaptation, correction upstream, benefit to later users) actually needs; they were implicit before. |
+| 7 | **History rewrite stays forbidden as an educator verb**, with one named exception: leakage remediation as an operator-run emergency procedure ([specs/leakage-remediation.md](specs/leakage-remediation.md)). | "Every change is kept" is the core promise; the exception is recorded so it can't quietly widen. |
+
+**Verified against the vision** (the bridge: familiar verbs ↔ automated Git
+operations; educator-controlled repos; decentralized improvement; share modules
+as ready) — coverage table in the contract §8. Gaps the check surfaced and
+fixed: Publish-as-pointer, Propose-a-correction, and Update-from-source were
+missing from the earlier draft primitive list.
+
+**Open (recorded in the contract §9):** trial→published history carry-over;
+suggest-back UX lands with Module T; multi-author live collaboration out of
+scope.
+
+---
+
 ## 2026-07-12 — Licensing tiers, copyright-by-provenance, free platform / metered AI
 
 **Decision.** License and copyright-cleanliness are **separate axes**, gated independently:

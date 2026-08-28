@@ -17,6 +17,12 @@ adapt, cite, share).
   decisions (the "why"), permanent by-design constraints, and the deferred
   future plan. Add an entry when a non-obvious decision or deferral is made.
 - docs/specs/ — written specs (package contract, etc.)
+- [docs/specs/educator-version-contract.md](docs/specs/educator-version-contract.md) —
+  **the "just enough git" contract**: the closed list of educator version-control
+  verbs and their Git translations, the permanent exclusions (branch/merge/PR/
+  rebase — never surfaced), the two-pointer publish model, the no-merge
+  divergence policy, and the lean-`.md`-source ruling. Version-control features
+  and UI must trace to a verb here; never add Git concepts outside it.
 - [docs/specs/upload-contract.md](docs/specs/upload-contract.md) — **the
   Alembic⇄Coursewerk package upload contract**: the hard rules a package MUST
   satisfy to upload/save/publish cleanly (block-id format, asset refs, concept-map
