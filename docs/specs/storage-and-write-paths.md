@@ -51,6 +51,17 @@ chapter/manifest op, populate — goes through one shared path:
   ("1 change not yet saved") is a possible future refinement — fail-loudly
   ships first because it never lies.
 
+**Behavior change this rule causes (intended, user-visible).** A *published*
+package whose GitHub connection is missing or broken now **refuses** writes
+with an educator-facing reason, where it previously wrote to the projection
+and silently skipped the commit. That is the point — a save that cannot reach
+permanence is not a save — but it means a disconnected educator is blocked
+rather than accumulating invisible local-only work. Reconnecting restores
+writing; nothing is lost, because nothing was accepted. (A pending-outbox
+would soften this and is the recorded future refinement.) Trial packages are
+unaffected. Side effect: trial writes are now contract-path-validated too,
+which they were not before.
+
 **Known boundary — cross-repo change sets.** A single change set touching
 BOTH repos cannot be atomic: they are two independent Git repositories, so
 no distributed transaction exists. `writeThrough` commits public first, then
