@@ -12,6 +12,7 @@ export * from "./collections-tree";
 export * from "./terms";
 export * from "./slides";
 export * from "./import";
+export * from "./incoming-text";
 export * from "./citation";
 export * from "./planning";
 export * from "./assessments";

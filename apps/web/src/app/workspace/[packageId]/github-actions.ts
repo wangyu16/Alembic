@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { parseStudyGuide } from "@alembic/package-contract";
+import { parseStudyGuide, type PackageManifest } from "@alembic/package-contract";
 import {
   DEFAULT_STUDY_GUIDE_PATH,
   ensureLicenseFile,
@@ -20,6 +20,7 @@ import {
   recordSyncedSha,
 } from "@/lib/github";
 import { slugForFile } from "@/lib/export";
+import { manifestFromFiles } from "@/lib/manifest-read";
 
 /**
  * Create a repo from a template, but tolerate a re-run after a partial publish:
@@ -186,8 +187,22 @@ export async function publishToGitHubAction(
     });
 
     // Update the manifest with the repo pair and write it into the public commit.
+    // BASE IT ON THE FILE COPY, never `record.manifest`: chapter operations (and
+    // every other file-based manifest writer) update `alembic.json` in the store
+    // but not the `packages.manifest` column, so the column is routinely stale.
+    // Publishing from the stale column erased every chapter added since creation
+    // — in the first commit AND in the sandbox mirror below (see
+    // docs/specs/storage-and-write-paths.md §3, "one manifest owner"). Falls back
+    // to the column only for a malformed package with no manifest file at all.
+    const sandboxFiles = await store.listFiles(packageId);
+    let baseManifest: PackageManifest;
+    try {
+      baseManifest = manifestFromFiles(sandboxFiles);
+    } catch {
+      baseManifest = record.manifest;
+    }
     const manifest = {
-      ...record.manifest,
+      ...baseManifest,
       publicRepo: { owner, name: publicName },
       privateRepo: { owner, name: privateName },
     };

@@ -9,6 +9,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
 import { supabaseEventLogger } from "@/lib/events";
 import { mirrorManifestToSandbox } from "@/lib/github";
+import { manifestFromFiles } from "@/lib/manifest-read";
 import { governedProvider, RateLimitError, BudgetExceededError } from "@/lib/ai";
 import { recordChange } from "@/lib/changes";
 import { auditDoc, type FixableRule } from "@/lib/a11y";
@@ -57,7 +58,10 @@ export async function recheckA11yAction(packageId: string): Promise<RecheckResul
 
     const record = await store.getPackage(packageId);
     if (record) {
-      const manifest = { ...record.manifest, accessibility: status };
+      // Base the manifest write on the FILE manifest (the source of truth) —
+      // record.manifest is a stale read cache and would erase newer chapters.
+      const base = manifestFromFiles(await store.listFiles(packageId));
+      const manifest = { ...base, accessibility: status };
       await supabase.from("packages").update({ manifest }).eq("id", packageId);
       await mirrorManifestToSandbox(store, packageId, manifest);
     }

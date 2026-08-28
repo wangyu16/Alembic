@@ -53,16 +53,28 @@ export class SupabaseSandboxStore implements PackageStore {
   }
 
   async listFiles(packageId: string): Promise<PackageFile[]> {
-    const { data, error } = await this.supabase
-      .from("sandbox_files")
-      .select("repo, path, content")
-      .eq("package_id", packageId);
-    if (error) throw new Error(`Could not load files: ${error.message}`);
-    return (data ?? []).map((row) => ({
-      repo: row.repo,
-      path: row.path,
-      content: row.content,
-    }));
+    // PostgREST caps a single response (default max-rows, typically 1000
+    // rows), so one unpaged select silently truncates large packages. Page
+    // deterministically (ordered by repo, then path — together the unique
+    // key within a package) until a short page signals the end.
+    const PAGE = 1000;
+    const files: PackageFile[] = [];
+    for (let offset = 0; ; offset += PAGE) {
+      const { data, error } = await this.supabase
+        .from("sandbox_files")
+        .select("repo, path, content")
+        .eq("package_id", packageId)
+        .order("repo")
+        .order("path")
+        .range(offset, offset + PAGE - 1);
+      if (error) throw new Error(`Could not load files: ${error.message}`);
+      const rows = data ?? [];
+      for (const row of rows) {
+        files.push({ repo: row.repo, path: row.path, content: row.content });
+      }
+      if (rows.length < PAGE) break;
+    }
+    return files;
   }
 
   async putFiles(packageId: string, files: PackageFile[]): Promise<void> {

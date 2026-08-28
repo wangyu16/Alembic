@@ -11,7 +11,7 @@ import {
   validateBlockIds,
   type CollectionScope,
 } from "@alembic/package-contract";
-import { collectionItemPath } from "@alembic/package-ops";
+import { collectionItemPath, normalizeIncomingText, IncomingTextError } from "@alembic/package-ops";
 import { hasCarrier, extractSource } from "@alembic/carriers";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
@@ -419,16 +419,30 @@ export async function replaceCollectionFileAction(
   });
   if (!verdict.ok) return { ok: false, error: verdict.error };
 
-  // Block-ID integrity (rule 7) — only meaningful for text content.
+  // Carrier extraction at the door (storage spec §4): if the educator picked a
+  // downloaded self-contained document (`.md.html` / `.slides.html`) to replace
+  // a PLAIN markdown/text file, store its embedded SOURCE — never the raw HTML
+  // envelope (which would silently corrupt the document). No-op when the target
+  // itself is a carrier path or the content has no source island.
+  let text = input.content;
   if (!input.isBinary) {
-    const issue = blockIdIssue(input.content);
+    try {
+      text = normalizeIncomingText(clean, input.content);
+    } catch (e) {
+      if (e instanceof IncomingTextError) return { ok: false, error: e.message };
+      throw e;
+    }
+
+    // Block-ID integrity (rule 7) — validated on the NORMALIZED text, i.e. the
+    // exact bytes that will be stored.
+    const issue = blockIdIssue(text);
     if (issue) return { ok: false, error: issue };
   }
 
   // U3: rewrite relative markdown refs to permalinks (no-op for binaries/carriers).
   const content = input.isBinary
     ? input.content
-    : await rewriteMarkdownRefs(supabase, packageId, repo, clean, input.content);
+    : await rewriteMarkdownRefs(supabase, packageId, repo, clean, text);
 
   await store.putFiles(packageId, [{ repo, path: clean, content }]);
   const commit = repo === "private" ? syncPrivateFilesToGitHub : syncFilesToGitHub;

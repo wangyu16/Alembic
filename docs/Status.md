@@ -52,6 +52,22 @@ same commit as the work it tracks. Statuses: ✅ done · 🔄 partially shipped 
 
 > **Current direction — self-contained editing (owner-locked, 2026-07).** Editing and viewing both live *in the files*: the workspace **hosts** the in-file editors of `.md.html` / `.slides.html` / `.paged.html` (orz-family) and **builds no editor of its own**; published pages **are** those self-contained files (thin CDN delivery — study guide ~74 KB, framework from jsDelivr, verified live 2026-07-06); every file gets a permalink. **Committed source of record (revised, 2026-07-08 — "lean-source model"):** a chapter's study guide, slides, and practice questions are each committed as lean markdown (`study-guide/`, `slides/`, `practice/` — `.md`, not `.md.html`); the self-contained `.md.html`/`.slides.html` is generated on demand, purely as the editing/viewing surface, and never itself committed. This supersedes the original plan (below, and in the specs) of `.md.html` as the committed source — the specs haven't all been updated to match yet; this line is authoritative until they are. Authoritative docs: [SteeringNote.md](SteeringNote.md), [self-contained-editing.md](specs/self-contained-editing.md), [workspace-framework.md](specs/workspace-framework.md), and the module-based [Roadmap.md](Roadmap.md) (Modules R/E/P/T/I/S/W — supersedes the phase-based plan). **Code state today:** the classic editor is **retired** (~2.2k lines removed; `/workspace/[id]` redirects to `/edit`); the local **Studio (`/studio`) is removed**, replaced by `/guide`; the workspace three-pane shell now *hosts* the in-file editors (`HostedStudyGuideEditor` for study guide + practice; `HostedSlidesEditor` for authored slide decks). The durable guardrails **G1–G8** (two-repo reference enforcement, block-ID reconcile on import, whole-package fork, single-source course metadata, AI-entitlement seam) that the earlier editor-overhaul design drove all **landed + tested**.
 
+**Wave H hotfixes landed (2026-08-28)** — first execution wave of
+[StorageWritePathTasks.md](StorageWritePathTasks.md), four concurrent subtasks + integrator gate:
+**TH1** every manifest writer now bases its patch on the FILE manifest (new `lib/manifest-read.ts`
+`manifestFromFiles`), never the stale `packages.manifest` column — theme/course-info/a11y/term actions
+(+ regression test in `chapters.test.ts`); **TH2** new pure `normalizeIncomingText` (package-ops) extracts
+a dual-extension carrier's embedded source at the Replace door, so picking a downloaded `.md.html` to
+replace a `.md` can no longer store raw HTML as the document (10 tests; `saveCollectionFileAction` left
+alone — editor-sourced only); **TH3** `SupabaseSandboxStore.listFiles` pages with `.range()` (was
+silently truncating at PostgREST's 1000-row cap); **TH4** chapter ops refresh the manifest column and
+`syncToGitHub` returns `synced|no-github|failed` — the silent `if (!gh) return` is gone, actions surface
+"Saved in your workspace, but not to GitHub yet". **Integrator also fixed a fifth instance found by the
+wave grep: `publishToGitHubAction` built the published manifest from the stale column and mirrored it back
+over the file copy — publishing a trial course erased every chapter added since creation, in the first
+GitHub commit.** Now based on the file manifest (column fallback only for a manifest-less package).
+Verified: typecheck + 334 tests (283 package-ops / 51 web) + web build green.
+
 **Modularized task plan (2026-08-28):** [StorageWritePathTasks.md](StorageWritePathTasks.md) — the
 implementation plan decomposed into file-disjoint subtasks in sequential waves (H hotfixes ×4 → 0
 contracts ×3 → 1 write-through adoption ×3 → 2 slots ×4 → 3 populate ×2 → 4 verification), each with owned

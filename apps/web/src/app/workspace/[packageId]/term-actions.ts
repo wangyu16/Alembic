@@ -16,6 +16,7 @@ import {
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
 import { mirrorManifestToSandbox, syncFilesToGitHub } from "@/lib/github";
+import { manifestFromFiles } from "@/lib/manifest-read";
 import { syncPackageRegistry } from "@/lib/register";
 
 /**
@@ -56,8 +57,11 @@ async function writePointer(
   const record = await store.getPackage(packageId);
   if (!record) return { ok: false, error: "Package not found." };
 
+  // Base every manifest write on the FILE manifest (the source of truth) —
+  // record.manifest is a stale read cache and would erase newer chapters.
+  const base = manifestFromFiles(await store.listFiles(packageId));
   const manifest = parseManifest({
-    ...record.manifest,
+    ...base,
     currentTerm,
     currentTermLabel: currentTermLabel?.trim() || undefined,
   });
@@ -188,10 +192,13 @@ export async function setTermLinksAction(
     }
   }
 
+  // Base every manifest write on the FILE manifest (the source of truth) —
+  // record.manifest is a stale read cache and would erase newer chapters.
+  const base = manifestFromFiles(await store.listFiles(packageId));
   let manifest;
   try {
     manifest = parseManifest({
-      ...record.manifest,
+      ...base,
       currentTermLinks: cleaned.length ? cleaned : undefined,
     });
   } catch {

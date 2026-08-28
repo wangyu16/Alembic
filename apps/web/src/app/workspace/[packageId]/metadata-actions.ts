@@ -11,6 +11,7 @@ import { parseManifest } from "@alembic/package-contract";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
 import { mirrorManifestToSandbox, syncFilesToGitHub } from "@/lib/github";
+import { manifestFromFiles } from "@/lib/manifest-read";
 
 async function requireUser() {
   const supabase = await createSupabaseServerClient();
@@ -44,13 +45,16 @@ export async function setCourseThemeAction(
   try {
     const record = await store.getPackage(packageId);
     if (!record) return { ok: false, error: "Package not found." };
+    // Base every manifest write on the FILE manifest (the source of truth) —
+    // record.manifest is a stale read cache and would erase newer chapters.
+    const base = manifestFromFiles(await store.listFiles(packageId));
     const isDefault = space === "study-guide";
-    const current = isDefault ? record.manifest.theme : record.manifest.themes?.[space];
+    const current = isDefault ? base.theme : base.themes?.[space];
     if (current === theme) return { ok: true }; // unchanged — no commit
     const manifest = parseManifest(
       isDefault
-        ? { ...record.manifest, theme }
-        : { ...record.manifest, themes: { ...record.manifest.themes, [space]: theme } },
+        ? { ...base, theme }
+        : { ...base, themes: { ...base.themes, [space]: theme } },
     );
     await supabase.from("packages").update({ manifest }).eq("id", packageId);
     await mirrorManifestToSandbox(store, packageId, manifest);
@@ -103,6 +107,9 @@ export async function setCourseInfoAction(
   try {
     const record = await store.getPackage(packageId);
     if (!record) return { ok: false, error: "Package not found." };
+    // Base every manifest write on the FILE manifest (the source of truth) —
+    // record.manifest is a stale read cache and would erase newer chapters.
+    const base = manifestFromFiles(await store.listFiles(packageId));
     const clean = (s?: string) => {
       const t = s?.trim();
       return t ? t : undefined;
@@ -118,21 +125,21 @@ export async function setCourseInfoAction(
       .map((k) => k.trim())
       .filter((k) => k.length > 0);
     const nextContext = {
-      ...record.manifest.courseContext,
+      ...base.courseContext,
       instructor: clean(info.instructor),
       courseNumber: clean(info.courseNumber),
       department: clean(info.department),
     };
-    const currentContext = record.manifest.courseContext;
+    const currentContext = base.courseContext;
     const unchanged =
       currentContext.instructor === nextContext.instructor &&
       currentContext.courseNumber === nextContext.courseNumber &&
       currentContext.department === nextContext.department &&
-      record.manifest.description === description &&
-      JSON.stringify(record.manifest.keywords ?? []) === JSON.stringify(keywords);
+      base.description === description &&
+      JSON.stringify(base.keywords ?? []) === JSON.stringify(keywords);
     if (unchanged) return { ok: true };
     const manifest = parseManifest({
-      ...record.manifest,
+      ...base,
       courseContext: nextContext,
       description,
       keywords,

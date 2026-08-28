@@ -338,3 +338,29 @@ describe("setUnitTerm", () => {
     expect(m.chapters).toBeUndefined(); // single implicit chapter untouched
   });
 });
+
+describe("manifest patches based on the FILE manifest (TH1 regression)", () => {
+  it("keeps a newly created chapter when an unrelated field is patched", async () => {
+    const { store, packageId } = await seeded();
+    const created = await createChapter(store, packageId, { title: "Enthalpy" });
+
+    // Simulate the fixed server-action pattern (e.g. setCourseInfoAction):
+    // read the FILE manifest — never a stale packages.manifest column copy —
+    // patch an unrelated field, and write alembic.json back.
+    const base = await readManifest(store, packageId);
+    const patched = parseManifest({ ...base, description: "A term of thermo." });
+    await store.putFiles(packageId, [
+      {
+        repo: "public",
+        path: "alembic.json",
+        content: JSON.stringify(patched, null, 2) + "\n",
+      },
+    ]);
+
+    const chapters = await listChapters(store, packageId);
+    expect(chapters.map((c) => c.slug)).toEqual([IMPLICIT_SLUG, created.slug]);
+    const m = await readManifest(store, packageId);
+    expect(m.description).toBe("A term of thermo.");
+    expect(m.chapters).toHaveLength(2);
+  });
+});
