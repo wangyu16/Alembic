@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
   assertPathAllowedInRepo,
-  BLOCK_ID_PATTERN,
   parseManifest,
-  parseStudyGuide,
 } from "@alembic/package-contract";
-import { createSandboxPackage } from "./create";
+import {
+  createSandboxPackage,
+  FIRST_CHAPTER_SLUG,
+  ROOT_SCAFFOLD_PATHS,
+  isPristinePackage,
+} from "./create";
 import { MemoryPackageStore } from "./memory-store";
 
 const input = {
@@ -28,36 +31,54 @@ describe("createSandboxPackage", () => {
     expect(record?.storage).toBe("sandbox");
   });
 
-  it("seeds starter files in both partitions with valid layer placement", async () => {
+  it("writes root scaffold only — no seeded content files (slots, not placeholders)", async () => {
     const store = new MemoryPackageStore();
     const created = await createSandboxPackage(store, input);
     const files = await store.listFiles(created.packageId);
     const paths = files.map((f) => `${f.repo}:${f.path}`);
+
     expect(paths).toContain("public:alembic.json");
-    expect(paths).toContain("public:study-guide/01-getting-started.md");
-    expect(paths).toContain("private:private-instructor/notes/getting-started.md");
+    expect(paths).toContain("public:LICENSE");
+    // The two legacy welcome placeholders are gone for good.
+    expect(paths).not.toContain("public:study-guide/01-getting-started.md");
+    expect(paths).not.toContain(
+      "private:private-instructor/notes/getting-started.md",
+    );
+    // Nothing at all outside the root scaffold.
+    const scaffold = new Set<string>(ROOT_SCAFFOLD_PATHS);
+    expect(files.filter((f) => !scaffold.has(f.path))).toEqual([]);
   });
 
-  it("stamps block IDs into seeded study-guide content", async () => {
+  it("declares one explicit first chapter so no phantom chapter is derived", async () => {
+    const store = new MemoryPackageStore();
+    const created = await createSandboxPackage(store, input);
+
+    // Both the returned manifest and the persisted alembic.json carry it.
+    expect(created.manifest.chapters).toEqual([
+      { slug: FIRST_CHAPTER_SLUG, title: input.title },
+    ]);
+
+    const files = await store.listFiles(created.packageId);
+    const file = files.find(
+      (f) => f.repo === "public" && f.path === "alembic.json",
+    )!;
+    const persisted = parseManifest(JSON.parse(file.content));
+    expect(persisted.chapters).toEqual([
+      { slug: FIRST_CHAPTER_SLUG, title: input.title },
+    ]);
+
+    // …and that chapter has no file behind it: the slot is empty until the
+    // educator saves real content.
+    expect(
+      files.some((f) => f.path === `study-guide/${FIRST_CHAPTER_SLUG}.md`),
+    ).toBe(false);
+  });
+
+  it("is still pristine by the (unchanged) populate gate", async () => {
     const store = new MemoryPackageStore();
     const created = await createSandboxPackage(store, input);
     const files = await store.listFiles(created.packageId);
-    const guide = files.find((f) => f.path.startsWith("study-guide/"));
-    const match = guide?.content.match(/\{\{attrs\[#(blk-[a-z0-9]+)\]\}\}/);
-    expect(match?.[1]).toMatch(BLOCK_ID_PATTERN);
-  });
-
-  it("opens with a plain '# Title' line (preamble) followed by a real '##' section — not an empty course", async () => {
-    const store = new MemoryPackageStore();
-    const created = await createSandboxPackage(store, input);
-    const files = await store.listFiles(created.packageId);
-    const guide = files.find((f) => f.path.startsWith("study-guide/"))!;
-    expect(guide.content.startsWith(`# ${input.title}`)).toBe(true);
-    const parsed = parseStudyGuide(guide.content);
-    expect(parsed.preamble).toContain(`# ${input.title}`);
-    // At least one real section — a fresh course must clear the "study guide
-    // has content" release gate, not just have a title line.
-    expect(parsed.blocks.length).toBeGreaterThan(0);
+    expect(isPristinePackage(files)).toBe(true);
   });
 
   it("never places private-layer content in the public partition", async () => {

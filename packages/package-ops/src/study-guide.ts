@@ -7,7 +7,7 @@ import {
   validateBlockIds,
   type StudyGuideBlock,
 } from "@alembic/package-contract";
-import type { PackageStore } from "./store";
+import type { PackageFile, PackageStore } from "./store";
 
 /**
  * Repo path for a chapter's study guide. One chapter == one file == one
@@ -58,19 +58,37 @@ export class BlockIdIntegrityError extends Error {
   }
 }
 
+/* -------------------------------------------------------------------------- *
+ * prepare (validate-only) / persist split
+ *
+ * Under the repo-first write path (docs/specs/storage-and-write-paths.md §3) a
+ * published package must COMMIT before it projects, so every writer needs the
+ * validation half on its own: `prepare*` computes the exact bytes and performs
+ * every check, touching no store; the `save*`/`apply*` functions below are
+ * literally `prepare + putFiles`, so their behaviour is unchanged.
+ *
+ * `prepare*` takes the caller's in-memory document, never a re-read of the
+ * store, so several edits can be staged onto one file in order (the batch
+ * accept path relies on exactly that).
+ * -------------------------------------------------------------------------- */
+
+export interface PreparedStudyGuideBlocks {
+  /** The blocks with IDs assigned, so the caller can sync its state. */
+  blocks: StudyGuideBlock[];
+  /** Canonical serialized source — the bytes to commit and to project. */
+  content: string;
+}
+
 /**
- * Save a study-guide chapter:
- *  1. mint IDs for new blocks (editing preserves existing IDs);
- *  2. validate ID integrity (well-formed, no duplicates) — reject, never repair;
- *  3. validate the path against the layer contract;
- *  4. serialize to canonical source and persist.
- * Returns the blocks with assigned IDs so the caller can sync its state.
+ * Steps 1–2 (+ serialize) of a study-guide save, with no path knowledge: mint
+ * IDs for new blocks (editing preserves existing IDs), validate ID integrity
+ * (well-formed, no duplicates) — reject, never repair — then serialize to
+ * canonical source. Pure.
  */
-export async function saveStudyGuide(
-  store: PackageStore,
-  packageId: string,
-  doc: StudyGuideDoc,
-): Promise<{ blocks: StudyGuideBlock[] }> {
+export function prepareStudyGuideBlocks(doc: {
+  preamble: string;
+  blocks: StudyGuideBlock[];
+}): PreparedStudyGuideBlocks {
   const blocks: StudyGuideBlock[] = doc.blocks.map((b) => ({
     ...b,
     id: b.id ?? newBlockId(),
@@ -81,15 +99,48 @@ export async function saveStudyGuide(
     throw new BlockIdIntegrityError(integrity.errors);
   }
 
+  return { blocks, content: serializeStudyGuide(doc.preamble, blocks) };
+}
+
+export interface PreparedStudyGuideSave {
+  /** The one file to write — already validated, content FINAL. */
+  file: PackageFile;
+  blocks: StudyGuideBlock[];
+}
+
+/**
+ * The full validation half of `saveStudyGuide`, in the same order:
+ *  1. mint IDs for new blocks (editing preserves existing IDs);
+ *  2. validate ID integrity (well-formed, no duplicates) — reject, never repair;
+ *  3. validate the path against the layer contract;
+ *  4. serialize to canonical source and fail closed on any private reference.
+ * Writes nothing. Pure.
+ */
+export function prepareStudyGuideSave(
+  doc: StudyGuideDoc,
+): PreparedStudyGuideSave {
+  const { blocks, content } = prepareStudyGuideBlocks(doc);
+
   assertPathAllowedInRepo(doc.path, "public");
 
-  const content = serializeStudyGuide(doc.preamble, blocks);
   // Fail closed if the content references a private file (two-repo invariant).
   // This is the chokepoint for human edits, AI edits, and the coherence agent.
   assertPublicMarkdownReferences(content);
-  await store.putFiles(packageId, [
-    { repo: "public", path: doc.path, content },
-  ]);
 
+  return { file: { repo: "public", path: doc.path, content }, blocks };
+}
+
+/**
+ * Save a study-guide chapter: `prepareStudyGuideSave` (mint → integrity →
+ * path → serialize → reference guard) followed by the store write.
+ * Returns the blocks with assigned IDs so the caller can sync its state.
+ */
+export async function saveStudyGuide(
+  store: PackageStore,
+  packageId: string,
+  doc: StudyGuideDoc,
+): Promise<{ blocks: StudyGuideBlock[] }> {
+  const { file, blocks } = prepareStudyGuideSave(doc);
+  await store.putFiles(packageId, [file]);
   return { blocks };
 }

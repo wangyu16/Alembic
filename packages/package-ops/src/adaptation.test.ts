@@ -9,6 +9,9 @@ import {
   AdaptationNotAllowedError,
   ADAPTATIONS_PROVENANCE_PATH,
   ADAPTED_ASSET_DIR,
+  prepareAdaptAssetInto,
+  prepareAdaptBlocksInto,
+  prepareAdaptGivenBlocksInto,
   type AdaptBlocksInput,
 } from "./adaptation";
 import { writeAsset } from "./assets";
@@ -194,5 +197,104 @@ describe("adaptAssetInto", () => {
         source: { license: "CC-BY-4.0", carrier: "not a carrier", path: "materials/notes.txt" },
       }),
     ).rejects.toBeInstanceOf(AdaptationNotAllowedError);
+  });
+});
+
+/**
+ * The prepare half (T15): the license gate, the fresh ids and the merged
+ * provenance record are all computed WITHOUT writing, so the caller commits
+ * before it projects (docs/specs/storage-and-write-paths.md §3).
+ */
+describe("prepareAdaptGivenBlocksInto / prepareAdaptBlocksInto", () => {
+  it("returns the target chapter and the provenance record without writing", async () => {
+    const store = new MemoryPackageStore();
+    const src = await pkg(store, "CC-BY-4.0");
+    const tgt = await pkg(store, "CC-BY-SA-4.0");
+    const { path: srcPath } = await seedSource(store, src);
+    const tgtDoc = await loadStudyGuide(store, tgt);
+    const before = await store.listFiles(tgt);
+
+    const prepared = await prepareAdaptBlocksInto(store, {
+      source: { packageId: src, path: srcPath },
+      target: { packageId: tgt, path: tgtDoc.path, license: "CC-BY-SA-4.0" },
+      attribution: attribution(src, "CC-BY-4.0"),
+    });
+
+    expect(prepared.files.map((f) => f.path)).toEqual([
+      tgtDoc.path,
+      ADAPTATIONS_PROVENANCE_PATH,
+    ]);
+    expect(prepared.files.every((f) => f.repo === "public")).toBe(true);
+    expect(prepared.newBlockIds).toHaveLength(2);
+    // Nothing was written: the target is byte-for-byte what it was.
+    expect(await store.listFiles(tgt)).toEqual(before);
+    expect(await loadAdaptationProvenance(store, tgt)).toEqual([]);
+    // And the lineage bytes are the ones the write path would persist.
+    expect(JSON.parse(prepared.files[1]!.content)).toEqual(prepared.lineage);
+  });
+
+  it("refuses an incompatible license before computing anything", async () => {
+    const store = new MemoryPackageStore();
+    const src = await pkg(store, "CC-BY-SA-4.0");
+    const tgt = await pkg(store, "CC-BY-4.0");
+    await expect(
+      prepareAdaptGivenBlocksInto(store, {
+        target: { packageId: tgt, path: "study-guide/01-getting-started.md", license: "CC-BY-4.0" },
+        source: attribution(src, "CC-BY-SA-4.0"),
+        sourcePath: "study-guide/01-getting-started.md",
+        blocks: [{ sourceBlockId: "blk-aaaaaaaaaaaa", title: "A", body: "b" }],
+      }),
+    ).rejects.toBeInstanceOf(AdaptationNotAllowedError);
+  });
+
+  it("prepares nothing when there are no blocks to adapt", async () => {
+    const store = new MemoryPackageStore();
+    const src = await pkg(store, "CC-BY-4.0");
+    const tgt = await pkg(store, "CC-BY-4.0");
+    const prepared = await prepareAdaptGivenBlocksInto(store, {
+      target: { packageId: tgt, path: "study-guide/01-getting-started.md", license: "CC-BY-4.0" },
+      source: attribution(src, "CC-BY-4.0"),
+      sourcePath: "study-guide/01-getting-started.md",
+      blocks: [],
+    });
+    expect(prepared).toEqual({ newBlockIds: [], lineage: [], files: [] });
+  });
+});
+
+describe("prepareAdaptAssetInto", () => {
+  it("returns the verbatim carrier bytes at a public materials path", async () => {
+    const store = new MemoryPackageStore();
+    const src = await pkg(store, "CC-BY-4.0");
+    const written = await writeAsset(store, src, {
+      path: "materials/structures/benzene.ketcher.svg",
+      rendered: '<svg xmlns="http://www.w3.org/2000/svg"></svg>',
+      source: '{"molecule":"benzene"}',
+    });
+    const prepared = prepareAdaptAssetInto({
+      target: { packageId: "pkg-target", license: "CC-BY-SA-4.0" },
+      source: { license: "CC-BY-4.0", carrier: written.carrier, path: written.path },
+    });
+    expect(prepared.file.repo).toBe("public");
+    expect(prepared.file.path).toBe(`${ADAPTED_ASSET_DIR}/benzene.ketcher.svg`);
+    expect(prepared.file.content).toBe(written.carrier); // byte-for-byte
+    expect(prepared.result.contentHash).toBe(written.contentHash);
+  });
+
+  it("refuses an incompatible license", () => {
+    expect(() =>
+      prepareAdaptAssetInto({
+        target: { packageId: "pkg-target", license: "CC-BY-4.0" },
+        source: { license: "CC-BY-SA-4.0", carrier: "<svg></svg>", path: "materials/x.ketcher.svg" },
+      }),
+    ).toThrow(AdaptationNotAllowedError);
+  });
+
+  it("refuses a file that is not a reusable object", () => {
+    expect(() =>
+      prepareAdaptAssetInto({
+        target: { packageId: "pkg-target", license: "CC-BY-4.0" },
+        source: { license: "CC-BY-4.0", carrier: "text", path: "materials/notes.md" },
+      }),
+    ).toThrow(AdaptationNotAllowedError);
   });
 });

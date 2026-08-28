@@ -1,57 +1,39 @@
 /**
- * Editor-save preparation — the VALIDATION half of an editor save, separated
- * from persistence.
+ * Editor-save preparation — the web-facing skin over package-ops' validate-only
+ * `prepare*` exports.
  *
- * Why this module exists (docs/specs/storage-and-write-paths.md §3): the write
- * ordering for a published package is
+ * Why a separation exists at all (docs/specs/storage-and-write-paths.md §3):
+ * the write ordering for a published package is
  *
  *   validate → commit to GitHub → project into the store
  *
- * The pre-existing package-ops entry points (`applyEditorEdit`,
- * `saveStudyGuide`, `saveSlidesDeck`) fuse validation AND the store write into
- * one call, so calling them first would project *before* the commit — exactly
- * the ordering the spec forbids. These helpers perform the identical
- * validations and return the final bytes; the action then persists them through
- * `writeThrough`, which commits first and projects only from a successful
- * commit.
+ * so the validation half has to be callable on its own. That half now lives
+ * exactly ONCE, in `@alembic/package-ops` (`prepareStudyGuideSave`,
+ * `prepareSlidesSave`, `prepareEditorEdit`), which is also what the persisting
+ * `saveStudyGuide` / `saveSlidesDeck` / `applyEditorEdit` are built from — one
+ * validated write path, one copy of its validator (CLAUDE.md rule 3). This
+ * module no longer re-implements a single check; it only translates the typed
+ * failures into educator-facing sentences and carries the two UI-only helpers
+ * (`saveFailureMessage`, `studyGuideHeadingWarning`).
  *
  * Everything here is pure (no IO, no Supabase, no GitHub) so it is unit
  * testable — server actions themselves are not.
- *
- * **Parity contract:** the checks below mirror
- * `packages/package-ops/src/editor-edit.ts`, `study-guide.ts` (`saveStudyGuide`)
- * and `slides.ts` (`saveSlidesDeck`). If those gain a check, add it here too.
- * The clean end-state is a validate-only export in package-ops that both sides
- * share (reported as follow-up by T12).
  */
 
+import type { RepoKind, StudyGuideBlock } from "@alembic/package-contract";
 import {
-  assertPathAllowedInEitherContract,
-  assertPathAllowedInRepo,
-  assertPublicMarkdownReferences,
-  newBlockId,
-  parseStudyGuide,
-  serializeStudyGuide,
-  validateBlockIds,
-  type RepoKind,
-  type StudyGuideBlock,
-} from "@alembic/package-contract";
-import {
+  BlockIdIntegrityError,
   CommitFailedError,
   CommitUnavailableError,
+  prepareEditorEdit,
+  prepareSlidesSave as prepareSlidesFile,
+  prepareStudyGuideSave as prepareStudyGuideFile,
 } from "@alembic/package-ops";
-
-/** Study-guide markdown gets the block-ID treatment; mirrors `editor-edit.ts`. */
-const STUDY_GUIDE_PREFIX = "study-guide/";
-
-/** Public text carriers that can embed repo-relative references; mirrors
- *  `editor-edit.ts` and `write-through.ts` — keep the three in sync. */
-const TEXT_EXT = /\.(md|md\.html|html|svg)$/;
 
 /**
  * A validated, ready-to-persist change. The content is FINAL (study guides are
  * already re-serialized canonically), so the commit and the projection are
- * guaranteed to be byte-identical.
+ * guaranteed to be byte-identical. Structurally the package-ops `PackageFile`.
  */
 export interface PreparedWrite {
   repo: RepoKind;
@@ -81,10 +63,26 @@ const CONTRACT_MESSAGE =
 const GENERIC_MESSAGE = "Your changes could not be saved. Please try again.";
 
 /**
- * Validate and canonicalize a study-guide chapter — the same four steps
- * `saveStudyGuide` performs before its `putFiles`: mint IDs for new blocks,
- * reject (never repair) broken IDs, check the path against the layer contract,
- * serialize, and fail closed on any private reference.
+ * Run a package-ops `prepare*` and restate its refusal in educator language:
+ * a block-ID integrity failure gets the identifier sentence, every other
+ * contract refusal gets the private-reference sentence. Raw error text never
+ * escapes.
+ */
+function refuseInPlainLanguage<T>(prepare: () => T): T {
+  try {
+    return prepare();
+  } catch (e) {
+    throw new EditorSaveValidationError(
+      e instanceof BlockIdIntegrityError ? BLOCK_ID_MESSAGE : CONTRACT_MESSAGE,
+    );
+  }
+}
+
+/**
+ * Validate and canonicalize a study-guide chapter — `prepareStudyGuideSave`
+ * from package-ops: mint IDs for new blocks, reject (never repair) broken IDs,
+ * check the path against the layer contract, serialize, and fail closed on any
+ * private reference.
  *
  * Returns the blocks with their assigned IDs so a caller can sync client state.
  */
@@ -93,76 +91,33 @@ export function prepareStudyGuideSave(
   preamble: string,
   inputBlocks: StudyGuideBlock[],
 ): { write: PreparedWrite; blocks: StudyGuideBlock[] } {
-  const blocks: StudyGuideBlock[] = inputBlocks.map((b) => ({
-    ...b,
-    id: b.id ?? newBlockId(),
-  }));
-
-  const integrity = validateBlockIds(blocks.map((b) => ({ id: b.id! })));
-  if (!integrity.ok) throw new EditorSaveValidationError(BLOCK_ID_MESSAGE);
-
-  try {
-    assertPathAllowedInRepo(path, "public");
-  } catch {
-    throw new EditorSaveValidationError(CONTRACT_MESSAGE);
-  }
-
-  const content = serializeStudyGuide(preamble, blocks);
-  try {
-    assertPublicMarkdownReferences(content);
-  } catch {
-    throw new EditorSaveValidationError(CONTRACT_MESSAGE);
-  }
-
-  return { write: { repo: "public", path, content }, blocks };
+  const { file, blocks } = refuseInPlainLanguage(() =>
+    prepareStudyGuideFile({ path, preamble, blocks: inputBlocks }),
+  );
+  return { write: file, blocks };
 }
 
 /**
- * Validate an authored slide deck — the two gates `saveSlidesDeck` applies
- * (two-repo invariant + public reference guard). The deck source is stored
+ * Validate an authored slide deck — `prepareSlidesSave` from package-ops (the
+ * two-repo invariant + the public reference guard). The deck source is stored
  * verbatim; decks have no block-ID model.
  */
 export function prepareSlidesSave(path: string, source: string): PreparedWrite {
-  try {
-    assertPathAllowedInRepo(path, "public");
-    assertPublicMarkdownReferences(source);
-  } catch {
-    throw new EditorSaveValidationError(CONTRACT_MESSAGE);
-  }
-  return { repo: "public", path, content: source };
+  return refuseInPlainLanguage(() => prepareSlidesFile({ path, source }));
 }
 
 /**
- * Validate a generic editor save — the routing `applyEditorEdit` performs:
- * study-guide markdown gets block-ID integrity via `prepareStudyGuideSave`;
- * other public text carriers get the reference scan; private files are
- * validated by path only. Fail-closed on any path/repo mismatch.
+ * Validate a generic editor save — `prepareEditorEdit` from package-ops:
+ * study-guide markdown gets block-ID integrity, other public text carriers get
+ * the reference scan, private files are validated by path only. Fail-closed on
+ * any path/repo mismatch.
  */
 export function prepareEditorSave(edit: {
   path: string;
   repo: RepoKind;
   source: string;
 }): PreparedWrite {
-  try {
-    assertPathAllowedInEitherContract(edit.path, edit.repo);
-  } catch {
-    throw new EditorSaveValidationError(CONTRACT_MESSAGE);
-  }
-
-  if (edit.repo === "public" && edit.path.startsWith(STUDY_GUIDE_PREFIX)) {
-    const parsed = parseStudyGuide(edit.source);
-    return prepareStudyGuideSave(edit.path, parsed.preamble, parsed.blocks).write;
-  }
-
-  if (edit.repo === "public" && TEXT_EXT.test(edit.path)) {
-    try {
-      assertPublicMarkdownReferences(edit.source);
-    } catch {
-      throw new EditorSaveValidationError(CONTRACT_MESSAGE);
-    }
-  }
-
-  return { repo: edit.repo, path: edit.path, content: edit.source };
+  return refuseInPlainLanguage(() => prepareEditorEdit(edit));
 }
 
 /**

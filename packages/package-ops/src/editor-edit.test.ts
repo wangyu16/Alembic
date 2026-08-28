@@ -1,14 +1,21 @@
 import { describe, expect, it } from "vitest";
 import { createSandboxPackage } from "./create";
 import { MemoryPackageStore } from "./memory-store";
-import { applyEditorEdit } from "./editor-edit";
-import { loadStudyGuide } from "./study-guide";
+import { applyEditorEdit, prepareEditorEdit } from "./editor-edit";
+import { loadStudyGuide, saveStudyGuide } from "./study-guide";
 
 const input = { ownerId: "u1", title: "Thermo", license: "CC-BY-4.0" as const };
 
 async function seeded() {
   const store = new MemoryPackageStore();
   const { packageId } = await createSandboxPackage(store, input);
+  // Packages are created empty (slots, not placeholders — spec §4), so a test
+  // that needs a study guide authors one through the real save path.
+  await saveStudyGuide(store, packageId, {
+    path: "study-guide/01-getting-started.md",
+    preamble: "",
+    blocks: [{ id: null, title: "Getting started", body: "First section." }],
+  });
   return { store, packageId };
 }
 
@@ -64,5 +71,79 @@ describe("applyEditorEdit", () => {
         source: "x",
       }),
     ).rejects.toThrow();
+  });
+});
+
+/**
+ * The prepare half (T15): the same routing and the same gates, returning the
+ * bytes instead of writing them, so the caller can commit before it projects
+ * (docs/specs/storage-and-write-paths.md §3).
+ */
+describe("prepareEditorEdit", () => {
+  it("returns exactly what applyEditorEdit writes for a study-guide file", async () => {
+    const { store, packageId } = await seeded();
+    const path = "study-guide/01-prepare.md";
+    // An id is already present, so both calls canonicalize to the same bytes
+    // (minting is the only non-deterministic step, and rule 7 forbids re-minting).
+    const source = "# Ch\n\n## Energy{{attrs[#blk-aaaaaaaaaaaa]}}\n\nBody.";
+    const prepared = prepareEditorEdit({ path, repo: "public", source });
+    await applyEditorEdit(store, packageId, { path, repo: "public", source });
+    const written = (await files(store, packageId)).find((f) => f.path === path);
+    expect(prepared).toEqual(written);
+    // Study-guide markdown is canonicalized, so the committed bytes are the
+    // re-serialization, not the raw source.
+    expect(prepared.content).toContain("blk-aaaaaaaaaaaa");
+  });
+
+  it("passes a non-study-guide public carrier through byte-exact", () => {
+    const prepared = prepareEditorEdit({
+      path: "materials/figures/note.md",
+      repo: "public",
+      source: "edited",
+    });
+    expect(prepared).toEqual({
+      repo: "public",
+      path: "materials/figures/note.md",
+      content: "edited",
+    });
+  });
+
+  it("scans public text carriers for private references", () => {
+    expect(() =>
+      prepareEditorEdit({
+        path: "materials/figures/note.md",
+        repo: "public",
+        source: "![k](private-instructor/answer-keys/ch1.md)",
+      }),
+    ).toThrow();
+  });
+
+  it("leaves private files byte-exact (path-validated only)", () => {
+    const prepared = prepareEditorEdit({
+      path: "private-instructor/answer-keys/q1.md",
+      repo: "private",
+      source: "The answer is 42. See private-instructor/notes/x.md",
+    });
+    expect(prepared.repo).toBe("private");
+    expect(prepared.content).toBe("The answer is 42. See private-instructor/notes/x.md");
+  });
+
+  it("fails closed when a private path is routed at the public repo", () => {
+    expect(() =>
+      prepareEditorEdit({
+        path: "private-instructor/answer-keys/q1.md",
+        repo: "public",
+        source: "leak",
+      }),
+    ).toThrow();
+  });
+
+  it("writes nothing when it refuses", async () => {
+    const { store, packageId } = await seeded();
+    const before = await store.listFiles(packageId);
+    expect(() =>
+      prepareEditorEdit({ path: "study-guide/x.md", repo: "private", source: "x" }),
+    ).toThrow();
+    expect(await store.listFiles(packageId)).toEqual(before);
   });
 });

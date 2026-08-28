@@ -12,6 +12,7 @@ import {
   applyProposedChangeSet,
   blockIdsByChapter,
   gatherCoherenceContext,
+  prepareProposedChangeSet,
 } from "./coherence";
 
 const input = {
@@ -23,6 +24,14 @@ const input = {
 async function seeded() {
   const store = new MemoryPackageStore();
   const { packageId } = await createSandboxPackage(store, input);
+  // Packages are created empty (slots, not placeholders — spec §4). Author the
+  // first chapter through the real save path; `seededWithExtraBlocks` appends
+  // to it, so this keeps that helper's block indices stable.
+  await saveStudyGuide(store, packageId, {
+    path: "study-guide/01-getting-started.md",
+    preamble: "",
+    blocks: [{ id: null, title: "Getting started", body: "First section." }],
+  });
   return { store, packageId };
 }
 
@@ -236,5 +245,81 @@ describe("applyProposedChangeSet", () => {
     expect(reloaded.blocks.find((b) => b.id === ids[1])?.body).toBe(
       "second body",
     );
+  });
+});
+
+/**
+ * The prepare half (T15): the full set is validated against the live course and
+ * the per-chapter bytes computed, with NOTHING written — so an accepted
+ * proposal can be committed before it is projected
+ * (docs/specs/storage-and-write-paths.md §3), and a set that throws part-way
+ * leaves no half-applied chapters behind.
+ */
+describe("prepareProposedChangeSet", () => {
+  it("returns the chapter bytes applyProposedChangeSet would write, writing none", async () => {
+    const { store, packageId, slug, path, ids } = await seededWithExtraBlocks();
+    const before = await store.listFiles(packageId);
+
+    const prepared = await prepareProposedChangeSet(
+      store,
+      packageId,
+      makeSet([
+        { op: "update-block", chapterSlug: slug, blockId: ids[0]!, body: "prepared body", rationale: "test" },
+      ]),
+    );
+
+    expect(prepared.chaptersChanged).toEqual([slug]);
+    expect(prepared.files.map((f) => f.path)).toEqual([path]);
+    expect(prepared.files[0]!.repo).toBe("public");
+    expect(prepared.files[0]!.content).toContain("prepared body");
+    // Untouched store.
+    expect(await store.listFiles(packageId)).toEqual(before);
+
+    // …and persisting the set produces exactly those bytes.
+    await applyProposedChangeSet(
+      store,
+      packageId,
+      makeSet([
+        { op: "update-block", chapterSlug: slug, blockId: ids[0]!, body: "prepared body", rationale: "test" },
+      ]),
+    );
+    const written = (await store.listFiles(packageId)).find(
+      (f) => f.repo === "public" && f.path === path,
+    );
+    expect(written).toEqual(prepared.files[0]);
+  });
+
+  it("refuses an invalid set without preparing anything", async () => {
+    const { store, packageId, slug } = await seededWithExtraBlocks();
+    await expect(
+      prepareProposedChangeSet(
+        store,
+        packageId,
+        makeSet([
+          { op: "update-block", chapterSlug: slug, blockId: "blk-zzzzzzzzzzzz", body: "x", rationale: "test" },
+        ]),
+      ),
+    ).rejects.toThrow();
+  });
+
+  it("mints ids for created blocks in the prepared bytes", async () => {
+    const { store, packageId, slug, ids } = await seededWithExtraBlocks();
+    const prepared = await prepareProposedChangeSet(
+      store,
+      packageId,
+      makeSet([
+        {
+          op: "create-block",
+          chapterSlug: slug,
+          afterBlockId: ids[0]!,
+          title: "Fresh",
+          body: "new body",
+          rationale: "test",
+        },
+      ]),
+    );
+    const created = prepared.blocksByChapter[slug]!.find((b) => b.title === "Fresh");
+    expect(created!.id).toMatch(BLOCK_ID_PATTERN);
+    expect(prepared.files[0]!.content).toContain(created!.id!);
   });
 });

@@ -13,9 +13,8 @@
  * by the caller (single-call provider) — this module is pure store I/O.
  */
 
-import { serializeStudyGuide } from "@alembic/package-contract";
-import type { PackageStore } from "./store";
-import { loadStudyGuide, saveStudyGuide } from "./study-guide";
+import type { PackageFile, PackageStore } from "./store";
+import { loadStudyGuide, prepareStudyGuideSave } from "./study-guide";
 import {
   ADAPTATIONS_PROVENANCE_PATH,
   hashAdaptedBlock,
@@ -82,19 +81,23 @@ export async function detectUpstreamUpdates(
   return updates;
 }
 
-async function advanceHash(
+/** The provenance file with one entry's stored source hash advanced — computed,
+ *  not written (the caller decides when the bytes become permanent). */
+async function advancedHashFile(
   store: PackageStore,
   packageId: string,
   targetBlockId: string,
   newHash: string,
-): Promise<void> {
+): Promise<PackageFile> {
   const lineage = await loadAdaptationProvenance(store, packageId);
   const next: AdaptedBlockRef[] = lineage.map((r) =>
     r.targetBlockId === targetBlockId ? { ...r, sourceContentHash: newHash } : r,
   );
-  await store.putFiles(packageId, [
-    { repo: "public", path: ADAPTATIONS_PROVENANCE_PATH, content: JSON.stringify(next, null, 2) },
-  ]);
+  return {
+    repo: "public",
+    path: ADAPTATIONS_PROVENANCE_PATH,
+    content: JSON.stringify(next, null, 2),
+  };
 }
 
 export type PullUpdateMode = "take" | "keep";
@@ -119,27 +122,61 @@ export async function applyUpstreamUpdate(
   targetBlockId: string,
   mode: PullUpdateMode,
 ): Promise<PullUpdateResult> {
+  const { files, ...result } = await prepareUpstreamUpdate(
+    store,
+    packageId,
+    targetPath,
+    targetBlockId,
+    mode,
+  );
+  if (files.length > 0) await store.putFiles(packageId, files);
+  return result;
+}
+
+export interface PreparedUpstreamUpdate extends PullUpdateResult {
+  /** The exact files to write — the updated chapter (take only) and the
+   *  provenance record with the advanced hash. Empty when nothing applies. */
+  files: PackageFile[];
+}
+
+/**
+ * Validation half of `applyUpstreamUpdate`: works out what "take"/"keep" means
+ * for one adapted block and returns the exact bytes, reading only. The chapter
+ * bytes come from `prepareStudyGuideSave`, so the block-ID, path and
+ * public-reference guards all still run before anything is made permanent.
+ */
+export async function prepareUpstreamUpdate(
+  store: PackageStore,
+  packageId: string,
+  targetPath: string,
+  targetBlockId: string,
+  mode: PullUpdateMode,
+): Promise<PreparedUpstreamUpdate> {
   const lineage = await loadAdaptationProvenance(store, packageId);
   const ref = lineage.find((r) => r.targetBlockId === targetBlockId);
-  if (!ref || !ref.sourcePath) return { applied: false };
+  if (!ref || !ref.sourcePath) return { applied: false, files: [] };
 
   const sourceDoc = await loadStudyGuide(store, ref.sourcePackageId, ref.sourcePath);
   const sourceBlock = sourceDoc.blocks.find((b) => b.id === ref.sourceBlockId);
-  if (!sourceBlock) return { applied: false }; // upstream removed it; nothing to pull
+  if (!sourceBlock) return { applied: false, files: [] }; // upstream removed it
   const newHash = hashAdaptedBlock(sourceBlock);
 
   if (mode === "keep") {
-    await advanceHash(store, packageId, targetBlockId, newHash);
-    return { applied: true };
+    const provenance = await advancedHashFile(store, packageId, targetBlockId, newHash);
+    return { applied: true, files: [provenance] };
   }
 
   // take: replace the adapter's block content with upstream, preserving the id.
   const doc = await loadStudyGuide(store, packageId, targetPath);
   const block = doc.blocks.find((b) => b.id === targetBlockId);
-  if (!block) return { applied: false };
+  if (!block) return { applied: false, files: [] };
   block.title = sourceBlock.title;
   block.body = sourceBlock.body;
-  const { blocks } = await saveStudyGuide(store, packageId, doc);
-  await advanceHash(store, packageId, targetBlockId, newHash);
-  return { applied: true, content: serializeStudyGuide(doc.preamble, blocks) };
+  const { file: chapterFile } = prepareStudyGuideSave(doc);
+  const provenance = await advancedHashFile(store, packageId, targetBlockId, newHash);
+  return {
+    applied: true,
+    content: chapterFile.content,
+    files: [chapterFile, provenance],
+  };
 }

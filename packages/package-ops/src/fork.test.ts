@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { BLOCK_ID_PATTERN } from "@alembic/package-contract";
 import { createSandboxPackage } from "./create";
 import { MemoryPackageStore } from "./memory-store";
-import { loadStudyGuide } from "./study-guide";
+import { loadStudyGuide, saveStudyGuide } from "./study-guide";
 import {
   ADAPTATIONS_PROVENANCE_PATH,
   AdaptationNotAllowedError,
@@ -15,6 +15,13 @@ async function source(license: "CC-BY-4.0" | "CC-BY-SA-4.0" = "CC-BY-4.0") {
     ownerId: "author",
     title: "Source Chem",
     license,
+  });
+  // Packages are created empty (slots, not placeholders — spec §4): author the
+  // first chapter through the real save path so it has a minted block id.
+  await saveStudyGuide(store, packageId, {
+    path: "study-guide/01-getting-started.md",
+    preamble: "",
+    blocks: [{ id: null, title: "Getting started", body: "First section." }],
   });
   const doc = await loadStudyGuide(store, packageId);
   const blockId = doc.blocks[0]!.id!;

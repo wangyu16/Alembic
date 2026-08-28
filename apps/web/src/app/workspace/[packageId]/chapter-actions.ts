@@ -143,11 +143,11 @@ export async function renameChapterAction(
   try {
     const writePath = await writePathFor(supabase, store, user.id, packageId);
     if ("error" in writePath) return { ok: false, error: writePath.error };
-    await renameChapter(store, packageId, slug, title.trim(), writePath.committer);
+    const manifest = await renameChapter(store, packageId, slug, title.trim(), writePath.committer);
     await refreshManifestColumn(
       supabase,
       packageId,
-      await currentManifest(store, packageId),
+      manifest,
     );
     revalidatePath(`/workspace/${packageId}`);
     return { ok: true };
@@ -165,11 +165,11 @@ export async function reorderChaptersAction(
   try {
     const writePath = await writePathFor(supabase, store, user.id, packageId);
     if ("error" in writePath) return { ok: false, error: writePath.error };
-    await reorderChapters(store, packageId, orderedSlugs, writePath.committer);
+    const manifest = await reorderChapters(store, packageId, orderedSlugs, writePath.committer);
     await refreshManifestColumn(
       supabase,
       packageId,
-      await currentManifest(store, packageId),
+      manifest,
     );
     revalidatePath(`/workspace/${packageId}`);
     return { ok: true };
@@ -190,11 +190,11 @@ export async function deleteChapterAction(
   try {
     const writePath = await writePathFor(supabase, store, user.id, packageId);
     if ("error" in writePath) return { ok: false, error: writePath.error };
-    await deleteChapter(store, packageId, slug, writePath.committer);
+    const manifest = await deleteChapter(store, packageId, slug, writePath.committer);
     await refreshManifestColumn(
       supabase,
       packageId,
-      await currentManifest(store, packageId),
+      manifest,
     );
     revalidatePath(`/workspace/${packageId}`);
     return { ok: true };

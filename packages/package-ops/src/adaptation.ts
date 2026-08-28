@@ -28,7 +28,7 @@ import {
 } from "@alembic/package-contract";
 import { extractSource, getKindByExtension } from "@alembic/carriers";
 import type { PackageFile, PackageStore } from "./store";
-import { loadStudyGuide, saveStudyGuide } from "./study-guide";
+import { loadStudyGuide, prepareStudyGuideSave } from "./study-guide";
 
 /** Stable content hash of a source block (title + body) — drives M27 drift detection. */
 export function hashAdaptedBlock(block: { title: string; body: string }): string {
@@ -81,6 +81,15 @@ export interface AdaptBlocksResult {
   lineage: AdaptedBlockRef[];
 }
 
+/**
+ * The validate-only result of an adaptation: the exact files to write (the
+ * target chapter, then the public provenance record) plus what the persisting
+ * call reports. `files` is empty when there was nothing to adapt.
+ */
+export interface PreparedAdaptation extends AdaptBlocksResult {
+  files: PackageFile[];
+}
+
 /** Load the public `provenance/adaptations.json` record, or [] if absent. */
 export async function loadAdaptationProvenance(
   store: PackageStore,
@@ -112,6 +121,20 @@ export async function adaptBlocksInto(
   store: PackageStore,
   input: AdaptBlocksInput,
 ): Promise<AdaptBlocksResult> {
+  const { files, ...result } = await prepareAdaptBlocksInto(store, input);
+  if (files.length > 0) await store.putFiles(input.target.packageId, files);
+  return result;
+}
+
+/**
+ * Validation half of `adaptBlocksInto`: reads the source chapter and the target
+ * (reads only — nothing is written) and returns the exact bytes the adaptation
+ * would produce. See `prepareAdaptGivenBlocksInto`.
+ */
+export async function prepareAdaptBlocksInto(
+  store: PackageStore,
+  input: AdaptBlocksInput,
+): Promise<PreparedAdaptation> {
   const sourceDoc = await loadStudyGuide(store, input.source.packageId, input.source.path);
   const wanted = input.source.blockIds;
   const selected =
@@ -119,7 +142,7 @@ export async function adaptBlocksInto(
       ? sourceDoc.blocks.filter((b) => b.id && wanted.includes(b.id))
       : sourceDoc.blocks.filter((b) => b.id);
 
-  return adaptGivenBlocksInto(store, {
+  return prepareAdaptGivenBlocksInto(store, {
     target: input.target,
     source: input.attribution,
     sourcePath: sourceDoc.path,
@@ -156,17 +179,33 @@ export async function adaptGivenBlocksInto(
   store: PackageStore,
   input: AdaptGivenBlocksInput,
 ): Promise<AdaptBlocksResult> {
+  const { files, ...result } = await prepareAdaptGivenBlocksInto(store, input);
+  if (files.length > 0) await store.putFiles(input.target.packageId, files);
+  return result;
+}
+
+/**
+ * Validation half of `adaptGivenBlocksInto`: license gate, block append through
+ * `prepareStudyGuideSave` (fresh ids, integrity, path + reference guards) and
+ * the merged provenance record — returning the exact files to write. Reads the
+ * target chapter and the existing lineage; writes nothing, so the caller can
+ * commit before it projects (docs/specs/storage-and-write-paths.md §3).
+ */
+export async function prepareAdaptGivenBlocksInto(
+  store: PackageStore,
+  input: AdaptGivenBlocksInput,
+): Promise<PreparedAdaptation> {
   const compat = canAdapt(input.source.license, input.target.license);
   if (!compat.ok) {
     throw new AdaptationNotAllowedError(compat.reason ?? "Licenses are not compatible.");
   }
   if (input.blocks.length === 0) {
-    return { newBlockIds: [], lineage: [] };
+    return { newBlockIds: [], lineage: [], files: [] };
   }
 
   const targetDoc = await loadStudyGuide(store, input.target.packageId, input.target.path);
   const before = targetDoc.blocks.length;
-  const { blocks } = await saveStudyGuide(store, input.target.packageId, {
+  const { file: chapterFile, blocks } = prepareStudyGuideSave({
     path: input.target.path,
     preamble: targetDoc.preamble,
     blocks: [
@@ -189,11 +228,19 @@ export async function adaptGivenBlocksInto(
   const existing = await loadAdaptationProvenance(store, input.target.packageId);
   const next = [...existing, ...lineage];
   assertPathAllowedInRepo(ADAPTATIONS_PROVENANCE_PATH, "public");
-  await store.putFiles(input.target.packageId, [
-    { repo: "public", path: ADAPTATIONS_PROVENANCE_PATH, content: JSON.stringify(next, null, 2) },
-  ]);
 
-  return { newBlockIds: appended.map((b) => b.id!), lineage };
+  return {
+    newBlockIds: appended.map((b) => b.id!),
+    lineage,
+    files: [
+      chapterFile,
+      {
+        repo: "public",
+        path: ADAPTATIONS_PROVENANCE_PATH,
+        content: JSON.stringify(next, null, 2),
+      },
+    ],
+  };
 }
 
 export interface ForkPackageInput {
@@ -359,6 +406,25 @@ export async function adaptAssetInto(
   store: PackageStore,
   input: AdaptAssetInput,
 ): Promise<AdaptAssetResult> {
+  const { file, result } = prepareAdaptAssetInto(input);
+  await store.putFiles(input.target.packageId, [file]);
+  return result;
+}
+
+export interface PreparedAssetAdaptation {
+  /** The one file to write — validated, content byte-identical to the source. */
+  file: PackageFile;
+  result: AdaptAssetResult;
+}
+
+/**
+ * Validation half of `adaptAssetInto`: license gate, kind/island check,
+ * collision-free placement under `materials/adapted/`, and the verbatim bytes
+ * to write. Pure — no store touched.
+ */
+export function prepareAdaptAssetInto(
+  input: AdaptAssetInput,
+): PreparedAssetAdaptation {
   const compat = canAdapt(input.source.license, input.target.license);
   if (!compat.ok) {
     throw new AdaptationNotAllowedError(compat.reason ?? "Licenses are not compatible.");
@@ -404,8 +470,12 @@ export async function adaptAssetInto(
   }
   assertPathAllowedInRepo(path, "public");
 
-  await store.putFiles(input.target.packageId, [
-    { repo: "public", path, content: input.source.carrier },
-  ]);
-  return { path, kind: kind.id, contentHash: hashContent(input.source.carrier) };
+  return {
+    file: { repo: "public", path, content: input.source.carrier },
+    result: {
+      path,
+      kind: kind.id,
+      contentHash: hashContent(input.source.carrier),
+    },
+  };
 }

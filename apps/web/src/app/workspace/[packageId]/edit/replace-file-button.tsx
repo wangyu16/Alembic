@@ -15,6 +15,11 @@ import { replaceCollectionFileAction } from "../collection-actions";
  * binary slot reads base64, a text slot reads UTF-8 — so the bytes are encoded
  * the way that document is stored, and `replaceCollectionFileAction` commits a
  * binary as a real blob.
+ *
+ * On a per-chapter document this is a create-or-replace: the document may have
+ * no file yet (nothing is seeded), and the picked file may be named anything —
+ * the content is placed in the document either way, and `onDone` carries the
+ * confirmation of where it went.
  */
 export function ReplaceFileButton({
   packageId,
@@ -69,9 +74,15 @@ export function ReplaceFileButton({
         content,
         isBinary,
         sizeBytes: file.size,
+        // Informational only — the destination is the document's own path.
+        // It lets the action tell the educator where the content landed when
+        // the picked file was named something else.
+        filename: file.name,
       });
       if (!r.ok) onError?.(r.error ?? "Couldn't replace that document.");
-      else onDone?.(r.warning);
+      // One channel for both notes: the placement confirmation ("Saved as the
+      // slides for …") first, then any non-blocking nudge (e.g. a large file).
+      else onDone?.([r.placement, r.warning].filter(Boolean).join(" ") || undefined);
     } catch {
       onError?.("Couldn't read that file. Please try again.");
     } finally {

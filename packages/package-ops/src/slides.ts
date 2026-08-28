@@ -2,7 +2,7 @@ import {
   assertPathAllowedInRepo,
   assertPublicMarkdownReferences,
 } from "@alembic/package-contract";
-import type { PackageStore } from "./store";
+import type { PackageFile, PackageStore } from "./store";
 
 /* -------------------------------------------------------------------------- *
  * Authored slide decks (the `slides` space).
@@ -39,19 +39,26 @@ export async function loadSlidesDeck(
 }
 
 /**
- * Save a chapter's authored deck source through the validated write path. The
- * deck is stored verbatim (no block-ID reconcile — decks aren't block docs), but
- * the two-repo invariant (`assertPathAllowedInRepo`, fail-closed) and the public
- * reference guard (`assertPublicMarkdownReferences`) still gate every write.
+ * Validation half of `saveSlidesDeck` — the two gates every deck write passes:
+ * the two-repo invariant (`assertPathAllowedInRepo`, fail-closed) and the
+ * public reference guard (`assertPublicMarkdownReferences`). The deck is stored
+ * verbatim (no block-ID reconcile — decks aren't block docs). Pure: returns the
+ * exact bytes to write and touches no store.
+ */
+export function prepareSlidesSave(doc: SlidesDeckDoc): PackageFile {
+  assertPathAllowedInRepo(doc.path, "public");
+  assertPublicMarkdownReferences(doc.source);
+  return { repo: "public", path: doc.path, content: doc.source };
+}
+
+/**
+ * Save a chapter's authored deck source through the validated write path:
+ * `prepareSlidesSave` followed by the store write.
  */
 export async function saveSlidesDeck(
   store: PackageStore,
   packageId: string,
   doc: SlidesDeckDoc,
 ): Promise<void> {
-  assertPathAllowedInRepo(doc.path, "public");
-  assertPublicMarkdownReferences(doc.source);
-  await store.putFiles(packageId, [
-    { repo: "public", path: doc.path, content: doc.source },
-  ]);
+  await store.putFiles(packageId, [prepareSlidesSave(doc)]);
 }

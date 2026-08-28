@@ -32,7 +32,7 @@ import {
   type QuestionItem,
   type AnswerKey,
 } from "@alembic/package-contract";
-import type { PackageStore } from "./store";
+import type { PackageFile, PackageStore } from "./store";
 
 // --- question templates (PUBLIC: assessment-support) ------------------------
 
@@ -124,18 +124,25 @@ export async function listBlueprints(
 
 // --- question items (PUBLIC stem: assessment-support) -----------------------
 
+/**
+ * Validation half of `saveQuestionItem`: schema-validate the item, assert its
+ * public placement, and return the exact bytes to write. Pure — no store
+ * touched (docs/specs/storage-and-write-paths.md §3: commit before project).
+ */
+export function prepareQuestionItemSave(item: QuestionItem): PackageFile {
+  const parsed = QuestionItemSchema.parse(item);
+  const path = questionItemPath(parsed.id);
+  assertPathAllowedInRepo(path, "public");
+  return { repo: "public", path, content: JSON.stringify(parsed, null, 2) };
+}
+
 /** Save a question item (public stem, NO answer): validate, assert, persist. */
 export async function saveQuestionItem(
   store: PackageStore,
   packageId: string,
   item: QuestionItem,
 ): Promise<void> {
-  const parsed = QuestionItemSchema.parse(item);
-  const path = questionItemPath(parsed.id);
-  assertPathAllowedInRepo(path, "public");
-  await store.putFiles(packageId, [
-    { repo: "public", path, content: JSON.stringify(parsed, null, 2) },
-  ]);
+  await store.putFiles(packageId, [prepareQuestionItemSave(item)]);
 }
 
 /** Load a question item by id from the PUBLIC repo, or null if absent. */
@@ -177,12 +184,21 @@ export async function saveAnswerKey(
   packageId: string,
   key: AnswerKey,
 ): Promise<void> {
+  await store.putFiles(packageId, [prepareAnswerKeySave(key)]);
+}
+
+/**
+ * Validation half of `saveAnswerKey`: schema-validate the key, then
+ * `assertAnswerKeyPrivate` (fails closed — the path must be rejected for the
+ * public repo), and return the exact PRIVATE bytes to write. The returned file
+ * is ALWAYS `repo: "private"`; an answer key is never prepared for the public
+ * repo. Pure — no store touched.
+ */
+export function prepareAnswerKeySave(key: AnswerKey): PackageFile {
   const parsed = AnswerKeySchema.parse(key);
   const path = answerKeyPath(parsed.itemId);
   assertAnswerKeyPrivate(path);
-  await store.putFiles(packageId, [
-    { repo: "private", path, content: JSON.stringify(parsed, null, 2) },
-  ]);
+  return { repo: "private", path, content: JSON.stringify(parsed, null, 2) };
 }
 
 /** Load an answer key for an item from the PRIVATE repo, or null if absent. */

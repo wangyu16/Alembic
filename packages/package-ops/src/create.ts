@@ -1,6 +1,5 @@
 import {
   assertPathAllowedInRepo,
-  newBlockId,
   newPackageId,
   PACKAGE_SCHEMA_VERSION,
   parseManifest,
@@ -12,13 +11,15 @@ import type { PackageFile, PackageRecord, PackageStore } from "./store";
 import { LICENSE_PATH, licenseFileContent } from "./license-file";
 
 /**
- * The two content placeholders a fresh package is seeded with (paths only — the
- * welcome study-guide chapter and the private starter note). Root scaffold
+ * **LEGACY ONLY.** The two content placeholders packages created BEFORE the
+ * "slots, not placeholders" rule were seeded with (paths only — the welcome
+ * study-guide chapter and the private starter note).
+ * {@link createSandboxPackage} no longer produces either file, so a *fresh*
+ * package never contains these paths; they survive only in packages created
+ * earlier. Retained because the populate and pristine-gate paths still have to
+ * recognize (and clear) them on those older packages. Root scaffold
  * (`alembic.json`, `LICENSE`) is not listed here; it is always present and is
- * overwritten rather than treated as content. Exported so the "populate a
- * pristine package" path can recognize an as-created package and clear any of
- * these placeholders the upload doesn't itself provide. Keep in sync with the
- * `files` seeded in {@link createSandboxPackage}.
+ * overwritten rather than treated as content.
  */
 export const SEED_CONTENT_PATHS = [
   "study-guide/01-getting-started.md",
@@ -43,7 +44,9 @@ export const ROOT_SCAFFOLD_PATHS = [
  * package from a zip": populate replaces the placeholders, and refuses a package
  * that already has real content (replacing that is a separate, future feature).
  * Path-based (rebuildable from repo content, no flag/migration): a package is
- * pristine iff every file is root scaffold or one of the two seed placeholders.
+ * pristine iff every file is root scaffold or one of the two legacy seed
+ * placeholders. (Unchanged by design — a fresh package now has no content files
+ * at all, which this already accepts; replacing the gate is Wave 3's work.)
  */
 export function isPristinePackage(files: { path: string }[]): boolean {
   const allowed = new Set<string>([...ROOT_SCAFFOLD_PATHS, ...SEED_CONTENT_PATHS]);
@@ -72,34 +75,28 @@ export interface CreatedPackage {
   files: PackageFile[];
 }
 
-function welcomeChapter(title: string): string {
-  const id = newBlockId();
-  return `# ${title}
-
-## Getting started{{attrs[#${id}]}}
-
-Welcome to **${title}**. This is your first study-guide section — replace it
-with your own material. Each section keeps a permanent invisible label (the
-\`{{attrs[#…]}}\` marker) so worksheets and slides generated from it stay
-connected even as you edit.
-
-Chemistry notation works out of the box: H~2~O, CO~3~^2-^, and equations like
-$K_a = \\frac{[\\mathrm{H^+}][\\mathrm{A^-}]}{[\\mathrm{HA}]}$.
-`;
-}
-
-function instructorNotes(): string {
-  const id = newBlockId();
-  return `## Private notes{{attrs[#${id}]}}
-
-Notes here are **never published**. They live in your private materials,
-physically separate from anything students or the public can see.
-`;
-}
+/**
+ * Slug of the first chapter every new package declares. Chosen to match the
+ * slug the legacy *implicit* chapter had (derived from
+ * `DEFAULT_STUDY_GUIDE_PATH`) so nothing downstream shifts: a package created
+ * before and after this change lists the same first chapter.
+ */
+export const FIRST_CHAPTER_SLUG = "01-getting-started";
 
 /**
- * Create a trial-sandbox package: build and validate the manifest, seed
- * starter files, validate every path against the layer contract, persist.
+ * Create a trial-sandbox package: build and validate the manifest, write the
+ * root scaffold, validate every path against the layer contract, persist.
+ *
+ * **No content files are seeded** ("slots, not placeholders",
+ * docs/specs/storage-and-write-paths.md §4): the package's chapter documents
+ * are declared slots, and a file exists iff real content exists. Empty-state
+ * guidance belongs in the UI, never in a committed file.
+ *
+ * Because of that, the manifest declares its first chapter EXPLICITLY. The
+ * `chapters`-absent case in `chapters.ts` materializes an implicit chapter
+ * pointing at the old seeded study-guide file; leaving `chapters` unset here
+ * would therefore show a phantom chapter whose file does not exist. That
+ * fallback now serves legacy packages only.
  */
 export async function createSandboxPackage(
   store: PackageStore,
@@ -116,6 +113,8 @@ export async function createSandboxPackage(
     license: input.license,
     courseContext: input.courseContext ?? {},
     ...(input.unitTerm ? { unitTerm: input.unitTerm } : {}),
+    // One first chapter, declared but empty — no file behind it yet.
+    chapters: [{ slug: FIRST_CHAPTER_SLUG, title: input.title }],
     createdAt,
   });
 
@@ -132,16 +131,6 @@ export async function createSandboxPackage(
       repo: "public",
       path: LICENSE_PATH,
       content: licenseFileContent(input.license),
-    },
-    {
-      repo: "public",
-      path: "study-guide/01-getting-started.md",
-      content: welcomeChapter(input.title),
-    },
-    {
-      repo: "private",
-      path: "private-instructor/notes/getting-started.md",
-      content: instructorNotes(),
     },
   ];
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ReplaceFileButton } from "./replace-file-button";
 
 /**
@@ -12,10 +12,24 @@ import { ReplaceFileButton } from "./replace-file-button";
  * The document's space is its top-level folder (`study-guide/…` → `study-guide`,
  * `slides/…` → `slides`, `concepts/…` → `concepts`), which is all
  * `replaceCollectionFileAction` needs. Download serves the stored file; Replace
- * overwrites it at the same path (so the permalink is preserved) and then reloads
- * so the editor shows the new content — including the hosted editors, whose
+ * writes it into the document at its canonical path (so the permalink is
+ * preserved) — creating it when the document had no file yet — and then reloads
+ * so the editor shows the new content, including the hosted editors, whose
  * session-cached render is cleared by a full reload.
+ *
+ * The reload would wipe any confirmation the action returned ("Saved as the
+ * slides for …"), which is exactly the message an educator needs when the file
+ * they picked was named something else. So the note is parked in
+ * `sessionStorage` for the moment the reload takes and shown on the way back —
+ * where the content landed is never left unsaid.
  */
+
+/** Survives exactly one reload. Keyed by document, so a list of documents
+ *  shows the note on the one that was actually written. */
+function noticeKey(packageId: string, path: string): string {
+  return `alembic:doc-placement:${packageId}:${path}`;
+}
+
 export function DocumentActionsBar({
   packageId,
   path,
@@ -25,9 +39,24 @@ export function DocumentActionsBar({
   path: string;
 }) {
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const clean = path.replace(/^\/+/, "");
   const space = clean.split("/")[0] ?? "";
   const name = clean.split("/").pop() ?? clean;
+
+  // Pick up (and consume) a note left by the replace that caused this reload.
+  useEffect(() => {
+    try {
+      const key = noticeKey(packageId, clean);
+      const parked = window.sessionStorage.getItem(key);
+      if (parked) {
+        window.sessionStorage.removeItem(key);
+        setNotice(parked);
+      }
+    } catch {
+      // Private-mode / storage-disabled: the reload simply shows no note.
+    }
+  }, [packageId, clean]);
 
   return (
     <div className="flex shrink-0 items-center gap-0.5">
@@ -60,10 +89,21 @@ export function DocumentActionsBar({
         space={space}
         path={clean}
         name={name}
-        onDone={() => window.location.reload()}
+        onDone={(note) => {
+          if (note) {
+            try {
+              window.sessionStorage.setItem(noticeKey(packageId, clean), note);
+            } catch {
+              // Storage unavailable — show it now instead; the reload follows.
+              setNotice(note);
+            }
+          }
+          window.location.reload();
+        }}
         onError={setError}
       />
       {error && <span className="ml-1 text-[11px] text-danger">{error}</span>}
+      {!error && notice && <span className="ml-1 text-[11px] text-faint">{notice}</span>}
     </div>
   );
 }

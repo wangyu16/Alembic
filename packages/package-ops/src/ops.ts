@@ -1,4 +1,4 @@
-import type { StudyGuideBlock } from "@alembic/package-contract";
+import type { PackageManifest, StudyGuideBlock } from "@alembic/package-contract";
 import type { PackageStore } from "./store";
 import { loadStudyGuide, saveStudyGuide, type StudyGuideDoc } from "./study-guide";
 import {
@@ -76,9 +76,9 @@ export interface PackageOps {
 
   listChapters(): Promise<ChapterInfo[]>;
   createChapter(input: { title: string; slug?: string }): Promise<ChapterInfo>;
-  renameChapter(slug: string, newTitle: string): Promise<void>;
-  reorderChapters(orderedSlugs: string[]): Promise<void>;
-  deleteChapter(slug: string): Promise<void>;
+  renameChapter(slug: string, newTitle: string): Promise<PackageManifest>;
+  reorderChapters(orderedSlugs: string[]): Promise<PackageManifest>;
+  deleteChapter(slug: string): Promise<PackageManifest>;
 
   listAssets(): Promise<AssetInfo[]>;
   readAsset(path: string): Promise<ReadAssetResult>;

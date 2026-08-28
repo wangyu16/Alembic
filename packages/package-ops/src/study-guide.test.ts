@@ -1,11 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { BLOCK_ID_PATTERN } from "@alembic/package-contract";
+import {
+  BLOCK_ID_PATTERN,
+  serializeStudyGuide,
+} from "@alembic/package-contract";
 import { createSandboxPackage } from "./create";
 import { MemoryPackageStore } from "./memory-store";
 import {
   BlockIdIntegrityError,
   DEFAULT_STUDY_GUIDE_PATH,
   loadStudyGuide,
+  prepareStudyGuideBlocks,
+  prepareStudyGuideSave,
   saveStudyGuide,
 } from "./study-guide";
 
@@ -18,6 +23,14 @@ const input = {
 async function seeded() {
   const store = new MemoryPackageStore();
   const { packageId } = await createSandboxPackage(store, input);
+  // Packages are created empty (slots, not placeholders). Author the first
+  // chapter's study guide the way an educator would, so the fixture exercises
+  // the real save path and gets a minted block id.
+  await saveStudyGuide(store, packageId, {
+    path: DEFAULT_STUDY_GUIDE_PATH,
+    preamble: "",
+    blocks: [{ id: null, title: "Getting started", body: "First section." }],
+  });
   return { store, packageId };
 }
 
@@ -97,5 +110,106 @@ describe("saveStudyGuide", () => {
     const files = await store.listFiles(packageId);
     const guide = files.find((f) => f.path === DEFAULT_STUDY_GUIDE_PATH);
     expect(guide?.repo).toBe("public");
+  });
+});
+
+/**
+ * The prepare half (T15). `prepareStudyGuideSave` performs every check
+ * `saveStudyGuide` performs and writes NOTHING, so a published package can
+ * commit the returned bytes before it projects them
+ * (docs/specs/storage-and-write-paths.md §3). It takes the caller's in-memory
+ * doc rather than re-reading the store, which is what lets several edits stage
+ * onto one file in order.
+ */
+describe("prepareStudyGuideBlocks", () => {
+  it("mints only the missing IDs and returns canonical bytes", () => {
+    const { blocks, content } = prepareStudyGuideBlocks({
+      preamble: "# Thermochemistry",
+      blocks: [
+        { id: "blk-aaaaaaaaaaaa", title: "Enthalpy", body: "Kept." },
+        { id: null, title: "Hess's law", body: "New." },
+      ],
+    });
+    expect(blocks[0]!.id).toBe("blk-aaaaaaaaaaaa"); // rule 7: never re-minted
+    expect(blocks[1]!.id).toMatch(BLOCK_ID_PATTERN);
+    expect(content).toBe(serializeStudyGuide("# Thermochemistry", blocks));
+  });
+
+  it("rejects duplicate IDs instead of repairing them", () => {
+    expect(() =>
+      prepareStudyGuideBlocks({
+        preamble: "",
+        blocks: [
+          { id: "blk-aaaaaaaaaaaa", title: "One", body: "" },
+          { id: "blk-aaaaaaaaaaaa", title: "Two", body: "" },
+        ],
+      }),
+    ).toThrow(BlockIdIntegrityError);
+  });
+
+  it("rejects a malformed ID", () => {
+    expect(() =>
+      prepareStudyGuideBlocks({
+        preamble: "",
+        blocks: [{ id: "not-a-block-id", title: "One", body: "" }],
+      }),
+    ).toThrow(BlockIdIntegrityError);
+  });
+});
+
+describe("prepareStudyGuideSave", () => {
+  it("returns the exact file saveStudyGuide would write, byte-for-byte", async () => {
+    const store = new MemoryPackageStore();
+    const doc = {
+      path: DEFAULT_STUDY_GUIDE_PATH,
+      preamble: "# T",
+      blocks: [{ id: "blk-bbbbbbbbbbbb", title: "A", body: "x" }],
+    };
+    const prepared = prepareStudyGuideSave(doc);
+    await saveStudyGuide(store, "pkg-1", doc);
+    const written = (await store.listFiles("pkg-1")).find(
+      (f) => f.repo === "public" && f.path === DEFAULT_STUDY_GUIDE_PATH,
+    );
+    expect(prepared.file).toEqual(written);
+  });
+
+  it("writes nothing — a rejected save leaves the store untouched", async () => {
+    const store = new MemoryPackageStore();
+    expect(() =>
+      prepareStudyGuideSave({
+        path: DEFAULT_STUDY_GUIDE_PATH,
+        preamble: "",
+        blocks: [{ id: null, title: "X", body: "![k](private-instructor/key.md)" }],
+      }),
+    ).toThrow();
+    expect(await store.listFiles("pkg-1")).toEqual([]);
+  });
+
+  it("fails closed on a path the public repo refuses", () => {
+    expect(() =>
+      prepareStudyGuideSave({
+        path: "private-instructor/notes/x.md",
+        preamble: "",
+        blocks: [],
+      }),
+    ).toThrow();
+  });
+
+  it("stages in order: each call takes the caller's blocks, not the store", () => {
+    const first = prepareStudyGuideSave({
+      path: DEFAULT_STUDY_GUIDE_PATH,
+      preamble: "# T",
+      blocks: [{ id: null, title: "One", body: "1" }],
+    });
+    // The second call builds on the FIRST call's returned blocks — the
+    // accumulation the batch-accept path depends on, with no store in between.
+    const second = prepareStudyGuideSave({
+      path: DEFAULT_STUDY_GUIDE_PATH,
+      preamble: "# T",
+      blocks: [...first.blocks, { id: null, title: "Two", body: "2" }],
+    });
+    expect(second.blocks.map((b) => b.id)[0]).toBe(first.blocks[0]!.id);
+    expect(second.file.content).toContain("One");
+    expect(second.file.content).toContain("Two");
   });
 });

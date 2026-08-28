@@ -2,8 +2,12 @@ import { describe, expect, it } from "vitest";
 import { MemoryPackageStore } from "./memory-store";
 import { createSandboxPackage } from "./create";
 import { loadStudyGuide, saveStudyGuide } from "./study-guide";
-import { adaptBlocksInto } from "./adaptation";
-import { applyUpstreamUpdate, detectUpstreamUpdates } from "./pull-updates";
+import { ADAPTATIONS_PROVENANCE_PATH, adaptBlocksInto } from "./adaptation";
+import {
+  applyUpstreamUpdate,
+  detectUpstreamUpdates,
+  prepareUpstreamUpdate,
+} from "./pull-updates";
 import type { AdaptationSource } from "@alembic/package-contract";
 
 async function setup() {
@@ -76,5 +80,62 @@ describe("pull updates", () => {
     expect(tgtDoc.blocks.find((b) => b.id === targetBlockId)!.body).toContain("Original acids body.");
     // but the change is acknowledged → no longer flagged
     expect(await detectUpstreamUpdates(store, tgt, tgtPath)).toHaveLength(0);
+  });
+});
+
+/**
+ * The prepare half (T15): "take"/"keep" is worked out and the resulting bytes
+ * returned, with nothing written, so the caller commits before it projects
+ * (docs/specs/storage-and-write-paths.md §3).
+ */
+describe("prepareUpstreamUpdate", () => {
+  async function drifted() {
+    const ctx = await setup();
+    const srcDoc = await loadStudyGuide(ctx.store, ctx.src, ctx.srcPath);
+    srcDoc.blocks[0]!.body = "Revised acids body.";
+    await saveStudyGuide(ctx.store, ctx.src, srcDoc);
+    return ctx;
+  }
+
+  it('"take" returns the updated chapter AND the advanced provenance, writing neither', async () => {
+    const { store, tgt, tgtPath, targetBlockId } = await drifted();
+    const before = await store.listFiles(tgt);
+
+    const prepared = await prepareUpstreamUpdate(store, tgt, tgtPath, targetBlockId, "take");
+    expect(prepared.applied).toBe(true);
+    expect(prepared.files.map((f) => f.path)).toEqual([
+      tgtPath,
+      ADAPTATIONS_PROVENANCE_PATH,
+    ]);
+    expect(prepared.content).toBe(prepared.files[0]!.content);
+    expect(prepared.files[0]!.content).toContain("Revised acids body.");
+    // Nothing persisted yet.
+    expect(await store.listFiles(tgt)).toEqual(before);
+  });
+
+  it('"keep" advances only the provenance record', async () => {
+    const { store, tgt, tgtPath, targetBlockId } = await drifted();
+    const prepared = await prepareUpstreamUpdate(store, tgt, tgtPath, targetBlockId, "keep");
+    expect(prepared.applied).toBe(true);
+    expect(prepared.files.map((f) => f.path)).toEqual([ADAPTATIONS_PROVENANCE_PATH]);
+    expect(prepared.content).toBeUndefined();
+  });
+
+  it("prepares nothing for an unknown block", async () => {
+    const { store, tgt, tgtPath } = await drifted();
+    expect(
+      await prepareUpstreamUpdate(store, tgt, tgtPath, "blk-zzzzzzzzzzzz", "take"),
+    ).toEqual({ applied: false, files: [] });
+  });
+
+  it("applyUpstreamUpdate persists exactly the prepared bytes", async () => {
+    const { store, tgt, tgtPath, targetBlockId } = await drifted();
+    const prepared = await prepareUpstreamUpdate(store, tgt, tgtPath, targetBlockId, "take");
+    const result = await applyUpstreamUpdate(store, tgt, tgtPath, targetBlockId, "take");
+    expect(result).toEqual({ applied: true, content: prepared.content });
+    const after = await store.listFiles(tgt);
+    for (const file of prepared.files) {
+      expect(after).toContainEqual(file);
+    }
   });
 });

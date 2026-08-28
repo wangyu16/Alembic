@@ -22,9 +22,9 @@ import {
   type ProposedChangeSet,
   type StudyGuideBlock,
 } from "@alembic/package-contract";
-import type { PackageStore } from "./store";
+import type { PackageFile, PackageStore } from "./store";
 import { listChapters } from "./chapters";
-import { loadStudyGuide, saveStudyGuide } from "./study-guide";
+import { loadStudyGuide, prepareStudyGuideSave } from "./study-guide";
 import { loadConceptMap, loadObjectives } from "./planning";
 
 /** A single persisted block as the agent sees it (id is always present). */
@@ -118,6 +118,35 @@ export async function applyProposedChangeSet(
   set: ProposedChangeSet,
   opts: ApplyProposedChangeSetOptions = {},
 ): Promise<ApplyProposedChangeSetResult> {
+  const { files, ...result } = await prepareProposedChangeSet(
+    store,
+    packageId,
+    set,
+    opts,
+  );
+  if (files.length > 0) await store.putFiles(packageId, files);
+  return result;
+}
+
+export interface PreparedProposedChangeSet extends ApplyProposedChangeSetResult {
+  /** One file per touched chapter, in the order the chapters were processed. */
+  files: PackageFile[];
+}
+
+/**
+ * Validation half of `applyProposedChangeSet`: validate the FULL set against
+ * the live course, apply the selected operations in memory, and return the
+ * exact chapter bytes through `prepareStudyGuideSave` (ID minting, ID
+ * integrity, path + reference guards). Reads only — nothing is written, so a
+ * caller can commit before it projects, and a failure part-way through leaves
+ * no half-applied chapters behind.
+ */
+export async function prepareProposedChangeSet(
+  store: PackageStore,
+  packageId: string,
+  set: ProposedChangeSet,
+  opts: ApplyProposedChangeSetOptions = {},
+): Promise<PreparedProposedChangeSet> {
   const ctx = await gatherCoherenceContext(store, packageId);
   const validation = validateProposedChangeSet(set, {
     blockIdsByChapter: blockIdsByChapter(ctx),
@@ -153,6 +182,7 @@ export async function applyProposedChangeSet(
 
   const chaptersChanged: string[] = [];
   const blocksByChapter: Record<string, StudyGuideBlock[]> = {};
+  const files: PackageFile[] = [];
 
   for (const [slug, ops] of byChapter) {
     const path = slugToPath.get(slug);
@@ -207,10 +237,11 @@ export async function applyProposedChangeSet(
       }
     }
 
-    const { blocks } = await saveStudyGuide(store, packageId, doc);
+    const { file, blocks } = prepareStudyGuideSave(doc);
+    files.push(file);
     chaptersChanged.push(slug);
     blocksByChapter[slug] = blocks;
   }
 
-  return { chaptersChanged, blocksByChapter };
+  return { chaptersChanged, blocksByChapter, files };
 }

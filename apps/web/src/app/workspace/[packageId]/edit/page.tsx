@@ -15,7 +15,7 @@ import { SupabaseSandboxStore } from "@/lib/sandbox-store";
 import { clientForUser, githubConfig, installUrl } from "@/lib/github";
 import { StudioShell, type StudioCategory, type AiAccess } from "./studio-shell";
 import { PopulatePackageBanner } from "../_components/populate-package";
-import { parseWorkspaceView } from "./nav";
+import { chapterDocPath, parseWorkspaceView } from "./nav";
 import { syncPackageRegistry } from "@/lib/register";
 import { SupabaseDocumentRegistryStore } from "@/lib/document-registry-store";
 
@@ -103,9 +103,9 @@ export default async function EditShellPage({
   let categoryFile: { path: string; repo: "public" | "private"; content: string } | null = null;
   const single =
     category === "assessment-guide" && activeChapter
-      ? { path: `assessment-support/${activeChapter.slug}.md`, repo: "public" as const }
+      ? { path: chapterDocPath("assessment-guide", activeChapter.slug), repo: "public" as const }
       : category === "concept-map" && activeChapter
-        ? { path: `concepts/${activeChapter.slug}.md`, repo: "public" as const }
+        ? { path: chapterDocPath("concept-map", activeChapter.slug), repo: "public" as const }
         : null;
   if (single) {
     const files = await store.listFiles(packageId);

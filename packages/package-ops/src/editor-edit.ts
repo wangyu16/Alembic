@@ -13,11 +13,19 @@ import {
   parseStudyGuide,
   type RepoKind,
 } from "@alembic/package-contract";
-import type { PackageStore } from "./store";
-import { saveStudyGuide } from "./study-guide";
+import type { PackageFile, PackageStore } from "./store";
+import { prepareStudyGuideSave } from "./study-guide";
 
 const STUDY_GUIDE_PREFIX = "study-guide/";
-const TEXT_EXT = /\.(md|md\.html|html|svg)$/;
+
+/**
+ * Public text carriers whose content can embed repo-relative references and so
+ * must be reference-scanned before it is made permanent. The ONE definition —
+ * `write-through.ts` keeps a byte-identical local copy for its boundary
+ * re-check and should import this instead.
+ */
+export const PUBLIC_TEXT_CARRIER_EXT = /\.(md|md\.html|html|svg)$/;
+const TEXT_EXT = PUBLIC_TEXT_CARRIER_EXT;
 
 export interface EditorEdit {
   /** Repo-relative path of the file being edited. */
@@ -29,16 +37,14 @@ export interface EditorEdit {
 }
 
 /**
- * Apply an editor edit. Study-guide markdown routes through `saveStudyGuide`
- * (block-ID integrity + private-reference enforcement). Other **public**
+ * Validation half of `applyEditorEdit` — every check it performs, none of the
+ * writing. Study-guide markdown routes through `prepareStudyGuideSave`
+ * (block-ID integrity + private-reference enforcement), so the returned content
+ * is the canonical re-serialization, not the raw source. Other **public**
  * text/carriers get a private-reference scan. **Private** files are validated by
- * path only. Fail-closed on any path/repo mismatch.
+ * path only. Fail-closed on any path/repo mismatch. Pure — no store touched.
  */
-export async function applyEditorEdit(
-  store: PackageStore,
-  packageId: string,
-  edit: EditorEdit,
-): Promise<void> {
+export function prepareEditorEdit(edit: EditorEdit): PackageFile {
   // Re-assert the two-repo invariant before writing — the destination is never
   // trusted from the caller without this check. Dual-mode (v1 layers or v2
   // spaces): a v2 package's `assets/`, `slides/`, `private/`, … validate
@@ -48,12 +54,11 @@ export async function applyEditorEdit(
 
   if (edit.repo === "public" && edit.path.startsWith(STUDY_GUIDE_PREFIX)) {
     const parsed = parseStudyGuide(edit.source);
-    await saveStudyGuide(store, packageId, {
+    return prepareStudyGuideSave({
       path: edit.path,
       preamble: parsed.preamble,
       blocks: parsed.blocks,
-    });
-    return;
+    }).file;
   }
 
   // Public non-study-guide content can still embed references — scan them.
@@ -61,7 +66,16 @@ export async function applyEditorEdit(
     assertPublicMarkdownReferences(edit.source);
   }
 
-  await store.putFiles(packageId, [
-    { repo: edit.repo, path: edit.path, content: edit.source },
-  ]);
+  return { repo: edit.repo, path: edit.path, content: edit.source };
+}
+
+/**
+ * Apply an editor edit: `prepareEditorEdit` followed by the store write.
+ */
+export async function applyEditorEdit(
+  store: PackageStore,
+  packageId: string,
+  edit: EditorEdit,
+): Promise<void> {
+  await store.putFiles(packageId, [prepareEditorEdit(edit)]);
 }

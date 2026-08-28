@@ -23,6 +23,8 @@ import {
   listQuestionItems,
   saveAnswerKey,
   loadAnswerKey,
+  prepareAnswerKeySave,
+  prepareQuestionItemSave,
   isReleased,
 } from "./assessments";
 import { packageOps } from "./ops";
@@ -252,3 +254,54 @@ describe("facade — assessment ops", () => {
 function makeBlueprint(): AssessmentBlueprint {
   return { id: newBlueprintId(), title: "BP", entries: [], objectiveIds: [] };
 }
+
+/**
+ * The prepare half (T15). The public/private boundary is the point: an answer
+ * key is only ever prepared for the PRIVATE repo, and the check runs before
+ * anything is written or committed (CLAUDE.md rule 1).
+ */
+describe("prepare* (validate-only)", () => {
+  const item: QuestionItem = {
+    id: newQuestionItemId(),
+    templateId: newQuestionTemplateId(),
+    objectiveIds: [],
+    stem: "What is the enthalpy change?",
+    choices: ["a", "b"],
+  };
+
+  it("prepareQuestionItemSave returns the public bytes saveQuestionItem writes", async () => {
+    const { store, packageId } = await seeded();
+    const prepared = prepareQuestionItemSave(item);
+    await saveQuestionItem(store, packageId, item);
+    const written = (await store.listFiles(packageId)).find(
+      (f) => f.path === prepared.path,
+    );
+    expect(prepared.repo).toBe("public");
+    expect(prepared).toEqual(written);
+  });
+
+  it("prepareAnswerKeySave targets the PRIVATE repo, never the public one", async () => {
+    const { store, packageId } = await seeded();
+    const key: AnswerKey = { itemId: item.id, answer: "a", rationale: "because" };
+    const prepared = prepareAnswerKeySave(key);
+    expect(prepared.repo).toBe("private");
+    expect(prepared.path).toBe(answerKeyPath(item.id));
+    await saveAnswerKey(store, packageId, key);
+    const written = (await store.listFiles(packageId)).find(
+      (f) => f.repo === "private" && f.path === prepared.path,
+    );
+    expect(prepared).toEqual(written);
+  });
+
+  it("rejects a malformed record before any write", async () => {
+    const { store, packageId } = await seeded();
+    expect(() =>
+      prepareQuestionItemSave({ ...item, id: "not-an-item-id" } as QuestionItem),
+    ).toThrow();
+    expect(() =>
+      prepareAnswerKeySave({ itemId: "nope", answer: "a", rationale: "" } as AnswerKey),
+    ).toThrow();
+    const paths = (await store.listFiles(packageId)).map((f) => f.path);
+    expect(paths).not.toContain(answerKeyPath(item.id));
+  });
+});

@@ -8,6 +8,7 @@ import {
   isSeededOnCreate,
   newDocId,
   parseStudyGuide,
+  slotRepo,
   validateBlockIds,
   type CollectionScope,
 } from "@alembic/package-contract";
@@ -19,6 +20,7 @@ import { rewriteMarkdownRefs } from "@/lib/rewrite-md-refs";
 import { committerFor } from "@/lib/committer";
 import { syncPackageRegistry } from "@/lib/register";
 import { uploadVerdict } from "@/lib/collection-upload";
+import { placementNote, resolveReplaceTarget } from "@/lib/slot-upsert";
 import { generateEditableFile } from "@/lib/worker-client";
 import { docMetaForPackage } from "@/lib/doc-metadata";
 import { seedSourceFor } from "@/lib/collection-seeds";
@@ -356,7 +358,9 @@ function blockIdIssue(content: string): string | null {
 export interface ReplaceCollectionFileInput {
   /** The document's contract space dir (fixes the repo via the invariant). */
   space: string;
-  /** The EXISTING repo-relative path to replace (must already exist). */
+  /** The repo-relative path to replace. For a chapter document SLOT this is
+   *  the canonical path and the file need not exist yet (upsert); for any
+   *  other collection file it must already exist. */
   path: string;
   /** New content — UTF-8 text, or base64 for a binary (caller encodes). */
   content: string;
@@ -364,23 +368,44 @@ export interface ReplaceCollectionFileInput {
   isBinary: boolean;
   /** Decoded byte length, for the size policy. */
   sizeBytes: number;
+  /** Name of the file the educator picked. Optional and purely
+   *  informational: it never decides the destination (a slot always
+   *  normalizes to its canonical path), only whether the result needs to say
+   *  where the content went (acceptance C5). */
+  filename?: string;
 }
 
 export interface ReplaceCollectionFileResult {
   ok: boolean;
-  /** The path that was replaced (unchanged — same location). */
+  /** The path the content landed at (canonical for a chapter document). */
   path?: string;
+  /** Educator-facing confirmation of WHERE it landed, when the picked file
+   *  name didn't match the document or the document had no file yet. */
+  placement?: string;
   warning?: string;
   error?: string;
 }
 
 /**
- * Replace an existing course document with an edited-offline version (U1). The
- * new bytes land at the document's CURRENT path, so `syncPackageRegistry`'s
- * location match keeps the same docId — the permalink is durable across the
- * round-trip. Enforces: the file must already exist (this replaces, never
- * creates); the two-repo invariant (repo derived from `space`, never trusted);
- * block-ID integrity for block-bearing docs; and the storage/size verdict.
+ * Replace a course document with an edited-offline version (U1). The new bytes
+ * land at the document's canonical path, so `syncPackageRegistry`'s location
+ * match keeps the same docId — the permalink is durable across the round-trip.
+ *
+ * Two semantics, decided by `resolveReplaceTarget` (storage spec §4):
+ *
+ *  - **A chapter document slot** (concept map, study guide, slides, assessment
+ *    guide, practice) is an **upsert**: create-or-replace. The five documents
+ *    are declared slots with no seeded files, so a document the educator never
+ *    opened has no file — and Replace must still work on it (C4). Whatever the
+ *    picked file was named, the content is written to the slot's canonical
+ *    path and the result says where it went (C5).
+ *  - **Any other collection file** (assets, private, term files) stays
+ *    replace-only: it must already exist. Creating an arbitrary new path
+ *    through the Replace door is not what this is for — Upload does that.
+ *
+ * Also enforces: the two-repo invariant (repo derived from `space`, never
+ * trusted); block-ID integrity for block-bearing docs; and the storage/size
+ * verdict.
  *
  * Identity here is by PATH. U2 adds embedded-uid identity so a re-upload keeps
  * the docId even if the file is renamed/moved offline — this path-based door is
@@ -392,11 +417,23 @@ export async function replaceCollectionFileAction(
 ): Promise<ReplaceCollectionFileResult> {
   const { supabase, user } = await requireUser();
   const repo = repoOf(input.space);
-  const clean = input.path.replace(/^\/+/, "");
+
+  // Where the bytes go, and under which semantics (upsert for a chapter
+  // document slot, replace-only otherwise). The destination is derived from
+  // the contract, never from the picked file's name.
+  const target = resolveReplaceTarget(input.path, input.filename);
+  const clean = target.path;
 
   // Path must live under the declared space (boundary-safe for multi-segment
   // spaces like `current/<term-id>`), and never traverse.
   if (!underPrefix(clean, input.space) || clean.includes("..")) {
+    return { ok: false, error: "That document isn't in this collection." };
+  }
+  // Fail closed on the two-repo invariant: a chapter document belongs to the
+  // repo its slot declares. The space-derived repo already agrees for every
+  // real caller (all five slot dirs are public); a mismatch means a caller
+  // drifted, and an upsert must never be the thing that discovers it.
+  if (target.slot && repo !== slotRepo(target.slot)) {
     return { ok: false, error: "That document isn't in this collection." };
   }
 
@@ -404,10 +441,11 @@ export async function replaceCollectionFileAction(
   const record = await store.getPackage(packageId);
   if (!record) return { ok: false, error: "We couldn't find that course." };
 
-  // Replace — not create: the file must already exist at this path + repo.
   const files = await store.listFiles(packageId);
   const existing = files.find((f) => f.repo === repo && f.path === clean);
-  if (!existing) {
+  // A slot is an upsert (a never-opened chapter document has no file — C4);
+  // everything else replaces, never creates.
+  if (!existing && target.mode === "replace-only") {
     return { ok: false, error: "There's no document at that location to replace." };
   }
 
@@ -461,7 +499,22 @@ export async function replaceCollectionFileAction(
   await syncPackageRegistry(supabase, packageId);
 
   revalidatePath(`/workspace/${packageId}`);
-  return { ok: true, path: clean, warning: verdict.warning };
+  // Tell the educator where it landed when the picked name didn't match the
+  // document, or when the document had no file until now (C5) — named by the
+  // chapter's own title when the manifest has one.
+  const placement = placementNote({
+    target,
+    created: !existing,
+    chapterTitle: target.chapterSlug
+      ? (record.manifest.chapters?.find((c) => c.slug === target.chapterSlug)?.title ?? null)
+      : null,
+  });
+  return {
+    ok: true,
+    path: clean,
+    ...(placement ? { placement } : {}),
+    warning: verdict.warning,
+  };
 }
 
 export interface CreateCollectionFileInput {

@@ -4,7 +4,6 @@ import {
   CHAPTER_SLUG_PATTERN,
   chapterSlotPaths,
   conceptMapPath,
-  newBlockId,
   objectivesPath,
   parseManifest,
   type ChapterRef,
@@ -44,7 +43,15 @@ import {
 /** Repo-relative path of the manifest (source of truth for chapters). */
 const MANIFEST_PATH = "alembic.json";
 
-/** Slug of the implicit chapter, derived from the default study-guide file. */
+/**
+ * Slug of the implicit chapter, derived from the default study-guide file.
+ *
+ * **Legacy packages only.** Packages created since "slots, not placeholders"
+ * declare their first chapter explicitly in the manifest (see
+ * `FIRST_CHAPTER_SLUG` in create.ts, which deliberately uses this same slug);
+ * this fallback exists so packages authored before that — which have no
+ * `chapters` array — still list their single chapter.
+ */
 const IMPLICIT_CHAPTER_SLUG = DEFAULT_STUDY_GUIDE_PATH.replace(
   /^.*\//,
   "",
@@ -88,9 +95,10 @@ async function readManifest(
 }
 
 /**
- * Return `manifest.chapters` if present, otherwise the single implicit
- * chapter materialized in memory (slug derived from the default file, title
- * from the manifest). Does NOT persist.
+ * Return `manifest.chapters` if present, otherwise — for LEGACY packages that
+ * predate explicit chapter declaration — the single implicit chapter
+ * materialized in memory (slug derived from the default file, title from the
+ * manifest). Does NOT persist.
  */
 function effectiveChapters(manifest: PackageManifest): ChapterRef[] {
   if (manifest.chapters && manifest.chapters.length > 0) {
@@ -131,17 +139,6 @@ function uniqueSlug(base: string, existing: Set<string>): string {
   return `${base}-${n}`;
 }
 
-/** Minimal seed content for a new chapter, carrying a native block id. */
-function seedChapter(title: string): string {
-  const id = newBlockId();
-  return `# ${title}
-
-## Section 1{{attrs[#${id}]}}
-
-Welcome to **${title}**. Replace this with your own material.
-`;
-}
-
 /**
  * List a package's chapters in display order, with the repo path of each
  * chapter's study-guide file. Reads the manifest as source of truth; a package
@@ -166,10 +163,14 @@ export interface CreateChapterResult extends ChapterInfo {
 }
 
 /**
- * Append a new chapter. If the package is still single (implicit) chapter, the
- * implicit chapter is first materialized as `chapters[0]` so it is not lost.
- * Mints a unique, contract-valid slug, records it in the manifest, then seeds
- * the chapter's study-guide file.
+ * Append a new chapter. If the package is a legacy single (implicit) chapter,
+ * that chapter is first materialized as `chapters[0]` so it is not lost.
+ * Mints a unique, contract-valid slug and records it in the manifest.
+ *
+ * **Writes no files** ("slots, not placeholders", §4): the new chapter's five
+ * documents are declared slots, each of which starts empty; a file appears the
+ * moment real content is saved into it. `path` in the result is the canonical
+ * study-guide slot path, which may not exist yet.
  */
 export async function createChapter(
   store: PackageStore,
@@ -207,11 +208,6 @@ export async function createChapter(
     { summary: `Add chapter "${input.title}"` },
   );
 
-  await writeThrough(store, committer, packageId, {
-    changes: [{ repo: "public", path, content: seedChapter(input.title) }],
-    summary: `Add chapter "${input.title}"`,
-  });
-
   return { slug, title: input.title, path, manifest: next };
 }
 
@@ -226,8 +222,8 @@ export async function renameChapter(
   slug: string,
   newTitle: string,
   committer: Committer | null = null,
-): Promise<void> {
-  await updateManifest(
+): Promise<PackageManifest> {
+  const { manifest } = await updateManifest(
     store,
     committer,
     packageId,
@@ -240,6 +236,7 @@ export async function renameChapter(
     },
     { summary: `Rename chapter to "${newTitle}"` },
   );
+  return manifest;
 }
 
 /**
@@ -251,8 +248,8 @@ export async function reorderChapters(
   packageId: string,
   orderedSlugs: string[],
   committer: Committer | null = null,
-): Promise<void> {
-  await updateManifest(
+): Promise<PackageManifest> {
+  const { manifest } = await updateManifest(
     store,
     committer,
     packageId,
@@ -273,19 +270,27 @@ export async function reorderChapters(
     },
     { summary: "Reorder chapters" },
   );
+  return manifest;
 }
 
 /**
- * Delete a chapter: delete its study-guide file, then remove it from the
- * manifest. Refuses to delete the only chapter. The implicit chapter is
- * materialized first if needed (which then also guards last-chapter deletes).
+ * Delete a chapter: delete EVERY file keyed to its slug — all five chapter
+ * document slots (concept map, study guide, slides, assessment guide,
+ * practice) plus the two chapter-scoped planning records — then remove it from
+ * the manifest. Refuses to delete the only chapter. A legacy implicit chapter
+ * is materialized first if needed (which then also guards last-chapter
+ * deletes).
+ *
+ * The delete set comes from `slugKeyedPaths` — the same slot-derived list the
+ * page-name rename moves — so deleting can never leave four of five documents
+ * stranded in the repo as it once did.
  */
 export async function deleteChapter(
   store: PackageStore,
   packageId: string,
   slug: string,
   committer: Committer | null = null,
-): Promise<void> {
+): Promise<PackageManifest> {
   const manifest = await readManifest(store, packageId);
   const chapters = effectiveChapters(manifest);
 
@@ -297,19 +302,27 @@ export async function deleteChapter(
 
   // Only delete what is actually there: a slot with no file has nothing to
   // remove, and asking the permanent store to delete a path it never had is a
-  // failure, not a no-op.
-  const path = pathForChapter(slug);
+  // failure, not a no-op. The old side honors a legacy implicit chapter's
+  // default study-guide file name.
+  const targets = slugKeyedPaths(slug, {
+    studyGuidePath: pathForChapter(slug),
+  });
   const files = await store.listFiles(packageId);
-  const exists = files.some((f) => f.repo === "public" && f.path === path);
+  const present = new Set(
+    files.filter((f) => f.repo === "public").map((f) => f.path),
+  );
+  const changes = targets
+    .filter((p) => present.has(p))
+    .map((p) => ({ repo: "public" as const, path: p, content: null }));
 
-  if (exists) {
+  if (changes.length > 0) {
     await writeThrough(store, committer, packageId, {
-      changes: [{ repo: "public", path, content: null }],
+      changes,
       summary: `Delete chapter "${chapters[idx]!.title}"`,
     });
   }
 
-  await updateManifest(
+  const { manifest: updated } = await updateManifest(
     store,
     committer,
     packageId,
@@ -325,6 +338,7 @@ export async function deleteChapter(
     },
     { summary: `Delete chapter "${chapters[idx]!.title}"` },
   );
+  return updated;
 }
 
 /**

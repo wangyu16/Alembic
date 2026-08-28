@@ -1,10 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
-  BLOCK_ID_PATTERN,
   CHAPTER_SLOTS,
   chapterSlotPaths,
   parseManifest,
-  parseStudyGuide,
 } from "@alembic/package-contract";
 import { createSandboxPackage } from "./create";
 import { MemoryPackageStore } from "./memory-store";
@@ -61,8 +59,33 @@ async function readManifest(store: MemoryPackageStore, packageId: string) {
   return parseManifest(JSON.parse(file!.content));
 }
 
+/**
+ * A LEGACY package: created before chapters were declared explicitly, so its
+ * manifest has no `chapters` array and it still carries the old seeded
+ * welcome study-guide file. Exercises the implicit-chapter fallback.
+ */
+async function legacy() {
+  const store = new MemoryPackageStore();
+  const { packageId } = await createSandboxPackage(store, input);
+  const m = await readManifest(store, packageId);
+  const { chapters: _drop, ...withoutChapters } = m;
+  await store.putFiles(packageId, [
+    {
+      repo: "public",
+      path: "alembic.json",
+      content: JSON.stringify(withoutChapters, null, 2) + "\n",
+    },
+    {
+      repo: "public",
+      path: DEFAULT_STUDY_GUIDE_PATH,
+      content: "# Legacy\n\n## Welcome\n\nold seeded prose\n",
+    },
+  ]);
+  return { store, packageId };
+}
+
 describe("listChapters", () => {
-  it("returns exactly one implicit chapter for a freshly seeded package", async () => {
+  it("returns the one explicitly declared first chapter of a fresh package", async () => {
     const { store, packageId } = await seeded();
     const chapters = await listChapters(store, packageId);
     expect(chapters).toEqual([
@@ -74,16 +97,31 @@ describe("listChapters", () => {
     ]);
   });
 
-  it("does not write chapters to the manifest just by listing", async () => {
+  it("lists that chapter even though no study-guide file exists yet (empty slot)", async () => {
     const { store, packageId } = await seeded();
-    await listChapters(store, packageId);
+    const [ch] = await listChapters(store, packageId);
+    const all = await paths(store, packageId);
+    expect(all).not.toContain(ch!.path);
+  });
+
+  it("still materializes one implicit chapter for a LEGACY package with no chapters array", async () => {
+    const { store, packageId } = await legacy();
+    const chapters = await listChapters(store, packageId);
+    expect(chapters).toEqual([
+      {
+        slug: IMPLICIT_SLUG,
+        title: input.title,
+        path: DEFAULT_STUDY_GUIDE_PATH,
+      },
+    ]);
+    // …and listing does not persist it.
     const manifest = await readManifest(store, packageId);
     expect(manifest.chapters).toBeUndefined();
   });
 });
 
 describe("createChapter", () => {
-  it("materializes the implicit chapter on first create", async () => {
+  it("appends to the explicitly declared first chapter", async () => {
     const { store, packageId } = await seeded();
     await createChapter(store, packageId, { title: "Enthalpy" });
 
@@ -96,27 +134,30 @@ describe("createChapter", () => {
     expect(manifest.chapters?.[1]?.slug).toBe("enthalpy");
   });
 
-  it("seeds a study-guide file carrying a valid block id", async () => {
+  it("materializes the implicit chapter of a LEGACY package on first create", async () => {
+    const { store, packageId } = await legacy();
+    await createChapter(store, packageId, { title: "Enthalpy" });
+
+    const manifest = await readManifest(store, packageId);
+    expect(manifest.chapters).toHaveLength(2);
+    expect(manifest.chapters?.[0]).toEqual({
+      slug: IMPLICIT_SLUG,
+      title: input.title,
+    });
+  });
+
+  it("writes NO file — the chapter's documents are empty slots", async () => {
     const { store, packageId } = await seeded();
+    const before = await paths(store, packageId);
     const created = await createChapter(store, packageId, { title: "Enthalpy" });
 
     expect(created.path).toBe(chapterStudyGuidePath("enthalpy"));
-    const files = await store.listFiles(packageId);
-    const file = files.find((f) => f.repo === "public" && f.path === created.path);
-    expect(file).toBeDefined();
-    const match = file!.content.match(/\{\{attrs\[#([^\]]+)\]\}\}/);
-    expect(match).not.toBeNull();
-    expect(match![1]).toMatch(BLOCK_ID_PATTERN);
-  });
-
-  it("seeds a '# Title' preamble line plus a real '##' section — not preamble-only", async () => {
-    const { store, packageId } = await seeded();
-    const created = await createChapter(store, packageId, { title: "Enthalpy" });
-    const files = await store.listFiles(packageId);
-    const file = files.find((f) => f.repo === "public" && f.path === created.path)!;
-    expect(file.content.startsWith("# Enthalpy")).toBe(true);
-    const parsed = parseStudyGuide(file.content);
-    expect(parsed.blocks.length).toBeGreaterThan(0);
+    const after = await paths(store, packageId);
+    // alembic.json is rewritten in place, so the file SET is unchanged.
+    expect(after.sort()).toEqual(before.sort());
+    for (const slot of CHAPTER_SLOTS) {
+      expect(after).not.toContain(chapterSlotPaths("enthalpy")[slot]);
+    }
   });
 
   it("derives a slug from the title", async () => {
@@ -229,6 +270,9 @@ describe("deleteChapter", () => {
   it("removes the manifest entry and the study-guide file", async () => {
     const { store, packageId } = await seeded();
     const created = await createChapter(store, packageId, { title: "Enthalpy" });
+    await store.putFiles(packageId, [
+      { repo: "public", path: created.path, content: "# Enthalpy\n\n## S\n\nx" },
+    ]);
 
     await deleteChapter(store, packageId, "enthalpy");
 
@@ -237,6 +281,17 @@ describe("deleteChapter", () => {
 
     const files = await store.listFiles(packageId);
     expect(files.find((f) => f.path === created.path)).toBeUndefined();
+  });
+
+  it("succeeds when the chapter has no files at all (every slot empty)", async () => {
+    const { store, packageId } = await seeded();
+    await createChapter(store, packageId, { title: "Enthalpy" });
+
+    // Returns the updated manifest (T14b), so the caller needs no re-read.
+    const returned = await deleteChapter(store, packageId, "enthalpy");
+    expect(returned.chapters?.map((c) => c.slug)).toEqual([IMPLICIT_SLUG]);
+    const manifest = await readManifest(store, packageId);
+    expect(manifest.chapters?.map((c) => c.slug)).toEqual([IMPLICIT_SLUG]);
   });
 
   it("throws when deleting the only chapter", async () => {
@@ -280,6 +335,13 @@ describe("renameChapterPageName", () => {
   it("moves the study-guide file and updates the slug, keeping the title", async () => {
     const { store, packageId } = await seeded();
     await createChapter(store, packageId, { title: "Acids and Bases" }); // slug "acids-and-bases"
+    await store.putFiles(packageId, [
+      {
+        repo: "public",
+        path: chapterStudyGuidePath("acids-and-bases"),
+        content: "# Acids and Bases\n\n## S\n\nx",
+      },
+    ]);
 
     const before = await listChapters(store, packageId);
     const ch = before.find((c) => c.slug === "acids-and-bases")!;
@@ -316,8 +378,8 @@ describe("renameChapterPageName", () => {
     expect(all).not.toContain("objectives/kin.json");
   });
 
-  it("renames the implicit chapter off the default file", async () => {
-    const { store, packageId } = await seeded();
+  it("renames a LEGACY implicit chapter off the default file", async () => {
+    const { store, packageId } = await legacy();
     const res = await renameChapterPageName(store, packageId, IMPLICIT_SLUG, "intro");
     expect(res.slug).toBe("intro");
     const all = await paths(store, packageId);
@@ -354,7 +416,97 @@ describe("setUnitTerm", () => {
     await setUnitTerm(store, packageId, "module");
     const m = await readManifest(store, packageId);
     expect(m.unitTerm).toBe("module");
-    expect(m.chapters).toBeUndefined(); // single implicit chapter untouched
+    // the single declared chapter is untouched
+    expect(m.chapters).toEqual([{ slug: IMPLICIT_SLUG, title: input.title }]);
+  });
+});
+
+describe("deleteChapter removes EVERY chapter document (T21 regression)", () => {
+  /**
+   * The bug (third in the slot-drift family, after the rename): delete removed
+   * only the study-guide file, orphaning the chapter's other four slot
+   * documents and its two planning records as stray repo files nothing
+   * referenced. The delete set is now derived from the slot table.
+   */
+  it("deletes all five slot documents plus both planning records", async () => {
+    const { store, packageId } = await seeded();
+    await createChapter(store, packageId, { title: "Kinetics", slug: "kin" });
+
+    const slots = chapterSlotPaths("kin");
+    await store.putFiles(packageId, [
+      ...CHAPTER_SLOTS.map((slot) => ({
+        repo: "public" as const,
+        path: slots[slot],
+        content: `${slot} body`,
+      })),
+      {
+        repo: "public" as const,
+        path: "concepts/kin.json",
+        content: '{"scope":"chapter","concepts":[]}',
+      },
+      {
+        repo: "public" as const,
+        path: "objectives/kin.json",
+        content: '{"scope":"chapter","objectives":[]}',
+      },
+    ]);
+
+    await deleteChapter(store, packageId, "kin");
+
+    const all = await paths(store, packageId);
+    for (const slot of CHAPTER_SLOTS) {
+      expect(all).not.toContain(slots[slot]);
+    }
+    expect(all).not.toContain("concepts/kin.json");
+    expect(all).not.toContain("objectives/kin.json");
+    // Nothing whatsoever is left behind under the deleted slug, in either repo.
+    const every = await store.listFiles(packageId);
+    expect(every.filter((f) => /(^|\/)kin\.[a-z.]+$/.test(f.path))).toEqual([]);
+
+    const manifest = await readManifest(store, packageId);
+    expect(manifest.chapters?.some((c) => c.slug === "kin")).toBe(false);
+  });
+
+  it("commits every deletion when a permanent store is supplied", async () => {
+    const { store, packageId } = await seeded();
+    await createChapter(store, packageId, { title: "Kinetics", slug: "kin" });
+    const slots = chapterSlotPaths("kin");
+    await store.putFiles(
+      packageId,
+      CHAPTER_SLOTS.map((slot) => ({
+        repo: "public" as const,
+        path: slots[slot],
+        content: `${slot} body`,
+      })),
+    );
+
+    const committer = recordingCommitter();
+    await deleteChapter(store, packageId, "kin", committer);
+
+    const committed = committer.plans.flatMap((p) =>
+      p.changes.map((c) => `${c.path}=${c.content === null ? "DELETE" : "KEEP"}`),
+    );
+    for (const slot of CHAPTER_SLOTS) {
+      expect(committed).toContain(`${slots[slot]}=DELETE`);
+    }
+    expect(committed).toContain("alembic.json=KEEP");
+  });
+
+  it("does not ask the store to delete slots that have no file", async () => {
+    const { store, packageId } = await seeded();
+    await createChapter(store, packageId, { title: "Optics", slug: "opt" });
+    await store.putFiles(packageId, [
+      { repo: "public", path: chapterSlotPaths("opt").slides, content: "deck" },
+    ]);
+
+    const committer = recordingCommitter();
+    await deleteChapter(store, packageId, "opt", committer);
+
+    const deleted = committer.plans
+      .flatMap((p) => p.changes)
+      .filter((c) => c.content === null)
+      .map((c) => c.path);
+    expect(deleted).toEqual([chapterSlotPaths("opt").slides]);
   });
 });
 
@@ -442,7 +594,7 @@ describe("renameChapterPageName moves EVERY chapter document (T11 regression)", 
   it("moves only the documents that exist (empty slots stay empty)", async () => {
     const { store, packageId } = await seeded();
     await createChapter(store, packageId, { title: "Optics", slug: "opt" });
-    // Only slides exist alongside the seeded study guide.
+    // Slides are the only slot with a real file; every other slot is empty.
     await store.putFiles(packageId, [
       {
         repo: "public",
@@ -452,16 +604,16 @@ describe("renameChapterPageName moves EVERY chapter document (T11 regression)", 
     ]);
 
     const res = await renameChapterPageName(store, packageId, "opt", "optics");
-    expect(res.moved.map((m) => m.to).sort()).toEqual(
-      [chapterSlotPaths("optics").slides, chapterStudyGuidePath("optics")].sort(),
-    );
+    expect(res.moved.map((m) => m.to)).toEqual([
+      chapterSlotPaths("optics").slides,
+    ]);
     const all = await paths(store, packageId);
     expect(all).not.toContain(chapterSlotPaths("optics")["concept-map"]);
   });
 });
 
 describe("chapter writes go through the permanent store when one is supplied", () => {
-  it("commits the manifest and the seeded file on create", async () => {
+  it("commits the manifest — and nothing else — on create", async () => {
     const { store, packageId } = await seeded();
     const committer = recordingCommitter();
     const created = await createChapter(
@@ -474,8 +626,8 @@ describe("chapter writes go through the permanent store when one is supplied", (
     const committed = committer.plans.flatMap((p) =>
       p.changes.map((c) => c.path),
     );
-    expect(committed).toContain("alembic.json");
-    expect(committed).toContain(created.path);
+    expect(committed).toEqual(["alembic.json"]);
+    expect(committed).not.toContain(created.path);
     expect(committer.plans.every((p) => p.repo === "public")).toBe(true);
   });
 

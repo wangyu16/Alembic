@@ -316,7 +316,11 @@ SHA (W4 audit).
   starter guidance (the former scaffold prose moves into the empty-state
   UI, insertable by a click, not silently written). A doc with no file =
   clearly "not started yet".
-- **Accept:** B3, B4 first-edit flow.
+- **REQUIRED (integration note from T22, 2026-08-28):** `DocumentActionsBar`
+  must render for a chapter document **even when it has no file yet** —
+  otherwise the C4 upsert (replace/upload into a never-opened document) has
+  no door in the UI and the fix is unreachable.
+- **Accept:** B3, B4 first-edit flow, C4 (reachability).
 
 ### T24 — Publish/site skip empty slots + spec sync
 - **Owns (renderer):** `course-site` types/build; **(web)**

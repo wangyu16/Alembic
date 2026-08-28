@@ -8,9 +8,27 @@ import { releaseGates } from "./release-gates";
 const input = { ownerId: "u1", title: "Thermo", license: "CC-BY-4.0" as const };
 
 describe("releaseGates", () => {
-  it("passes a freshly seeded package", async () => {
+  // Slots, not placeholders (docs/specs/storage-and-write-paths.md §4): a
+  // freshly created package has NO content files, so it must NOT pass the
+  // release gates — there is nothing to publish yet. (Before de-seeding, a
+  // fresh package carried welcome prose and passed, which is exactly the
+  // "boilerplate published as if it were your content" problem.)
+  it("does NOT pass a freshly created package — it has no content yet", async () => {
     const store = new MemoryPackageStore();
     const { packageId } = await createSandboxPackage(store, input);
+    const result = await releaseGates(store, packageId);
+    expect(result.ok).toBe(false);
+    expect(result.checks.find((c) => c.name === "Study guide")?.ok).toBe(false);
+  });
+
+  it("passes once the first chapter has real content", async () => {
+    const store = new MemoryPackageStore();
+    const { packageId } = await createSandboxPackage(store, input);
+    await saveStudyGuide(store, packageId, {
+      path: (await loadStudyGuide(store, packageId)).path,
+      preamble: "",
+      blocks: [{ id: null, title: "Energy", body: "Work and heat." }],
+    });
     const result = await releaseGates(store, packageId);
     expect(result.ok).toBe(true);
   });
@@ -31,12 +49,12 @@ describe("releaseGates", () => {
   it("passes when content lives in a non-default chapter (multi-chapter)", async () => {
     const store = new MemoryPackageStore();
     const { packageId } = await createSandboxPackage(store, input);
-    // Second chapter carries content; empty the first/default chapter.
-    await createChapter(store, packageId, { title: "Acids" });
+    // Second chapter carries content; the first/default chapter stays empty.
+    const ch2 = await createChapter(store, packageId, { title: "Acids" });
     await saveStudyGuide(store, packageId, {
-      path: (await loadStudyGuide(store, packageId)).path,
+      path: ch2.path,
       preamble: "",
-      blocks: [],
+      blocks: [{ id: null, title: "Acids", body: "Proton donors." }],
     });
     const result = await releaseGates(store, packageId);
     expect(result.checks.find((c) => c.name === "Study guide")?.ok).toBe(true);

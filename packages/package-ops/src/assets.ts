@@ -10,7 +10,7 @@ import {
   layerForPath,
   LAYER_DIR,
 } from "@alembic/package-contract";
-import type { PackageStore } from "./store";
+import type { PackageFile, PackageStore } from "./store";
 
 /**
  * Carrier-asset operations (M11.0 C). Reusable carrier assets are standalone
@@ -105,17 +105,19 @@ export interface WriteAssetResult {
   contentHash: string;
 }
 
+export interface PreparedAssetWrite {
+  /** The one file to write — validated, content FINAL. */
+  file: PackageFile;
+  result: WriteAssetResult;
+}
+
 /**
- * Embed `source` into `rendered` and write the carrier asset to the public
- * repo. Validates that the path is a public `materials/` carrier of a
- * registered kind before any write (fail-closed; the two-repo invariant means
- * assets are public and referenceable).
+ * Validation half of `writeAsset`: check the kind/placement, embed `source`
+ * into `rendered`, and return the exact carrier bytes to write. Fail-closed on
+ * an unrecognized kind, a non-`materials/` path, or a path the public repo
+ * refuses. Pure — no store touched.
  */
-export async function writeAsset(
-  store: PackageStore,
-  packageId: string,
-  input: WriteAssetInput,
-): Promise<WriteAssetResult> {
+export function prepareAssetWrite(input: WriteAssetInput): PreparedAssetWrite {
   const kind = getKindByExtension(input.path);
   if (!kind) {
     throw new AssetOperationError(
@@ -137,8 +139,27 @@ export async function writeAsset(
     rendered: input.rendered,
     source: input.source,
   });
-  await store.putFiles(packageId, [
-    { repo: "public", path: input.path, content: carrier },
-  ]);
-  return { path: input.path, kind: kind.id, carrier, contentHash: hashContent(carrier) };
+  return {
+    file: { repo: "public", path: input.path, content: carrier },
+    result: {
+      path: input.path,
+      kind: kind.id,
+      carrier,
+      contentHash: hashContent(carrier),
+    },
+  };
+}
+
+/**
+ * Embed `source` into `rendered` and write the carrier asset to the public
+ * repo: `prepareAssetWrite` followed by the store write.
+ */
+export async function writeAsset(
+  store: PackageStore,
+  packageId: string,
+  input: WriteAssetInput,
+): Promise<WriteAssetResult> {
+  const { file, result } = prepareAssetWrite(input);
+  await store.putFiles(packageId, [file]);
+  return result;
 }

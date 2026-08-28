@@ -4,6 +4,7 @@ import { MemoryPackageStore } from "./memory-store";
 import {
   AssetOperationError,
   listAssets,
+  prepareAssetWrite,
   readAsset,
   writeAsset,
 } from "./assets";
@@ -76,5 +77,49 @@ describe("carrier asset ops", () => {
     await expect(
       readAsset(store, PKG, "materials/structures/nope.ketcher.svg"),
     ).rejects.toBeInstanceOf(AssetOperationError);
+  });
+});
+
+/**
+ * The prepare half (T15): kind + placement checks and the embedded carrier
+ * bytes, with no store write, so the caller commits before it projects
+ * (docs/specs/storage-and-write-paths.md §3).
+ */
+describe("prepareAssetWrite", () => {
+  it("returns byte-identical output to what writeAsset persists", async () => {
+    const store = new MemoryPackageStore();
+    const input = {
+      path: "materials/structures/benzene.ketcher.svg",
+      rendered: SVG,
+      source: KET_SOURCE,
+    };
+    const prepared = prepareAssetWrite(input);
+    const persisted = await writeAsset(store, PKG, input);
+    const written = (await store.listFiles(PKG)).find((f) => f.path === input.path);
+    expect(prepared.file).toEqual(written);
+    expect(prepared.result).toEqual(persisted);
+    expect(extractSource(prepared.file.content).source).toBe(KET_SOURCE);
+  });
+
+  it("rejects assets outside the materials layer without writing", async () => {
+    const store = new MemoryPackageStore();
+    expect(() =>
+      prepareAssetWrite({
+        path: "study-guide/intro.ketcher.svg",
+        rendered: SVG,
+        source: KET_SOURCE,
+      }),
+    ).toThrow(AssetOperationError);
+    expect(await store.listFiles(PKG)).toEqual([]);
+  });
+
+  it("rejects an unrecognized carrier extension", () => {
+    expect(() =>
+      prepareAssetWrite({
+        path: "materials/figures/diagram.txt",
+        rendered: "x",
+        source: "x",
+      }),
+    ).toThrow(AssetOperationError);
   });
 });

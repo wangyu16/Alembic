@@ -1,4 +1,5 @@
 import type { OperationCategory } from "@alembic/ai-operations";
+import { slotPath, type ChapterSlot } from "@alembic/package-contract";
 
 /**
  * Workspace navigation model (subtask P2.3; docs/specs/workspace-collections.md).
@@ -62,6 +63,62 @@ export const DOC_OPERATION_CATEGORY: Record<ChapterDoc, OperationCategory> = {
   slides: "slides",
   practice: "practice",
 };
+
+/**
+ * Document → contract SLOT (`@alembic/package-contract` `slots.ts`).
+ *
+ * Two vocabularies exist for the same five per-chapter documents: this UI
+ * calls the study guide `"content"` (a user-visible id carried in URLs and in
+ * the AI operation categories, so it cannot be renamed away), while the
+ * package contract calls it `"study-guide"`. The bridge is an explicit
+ * `Record` in BOTH directions rather than a cast or a string match, so that:
+ *
+ *  - adding a `ChapterDoc` without a slot fails to compile (`DOC_SLOT`);
+ *  - adding, removing or renaming a `ChapterSlot` in the contract fails to
+ *    compile here (`SLOT_DOC`) instead of silently producing a document that
+ *    reads and writes a path nothing else in the platform knows about.
+ *
+ * Canonical paths are never hand-built in the UI: `chapterDocPath` derives
+ * them from the contract's `slotPath`, which is the single owner of the
+ * `dir/<slug>.ext` shape.
+ */
+export const DOC_SLOT: Record<ChapterDoc, ChapterSlot> = {
+  "concept-map": "concept-map",
+  "assessment-guide": "assessment-guide",
+  content: "study-guide",
+  slides: "slides",
+  practice: "practice",
+};
+
+/** Inverse of `DOC_SLOT` — every contract slot has a place in this UI. */
+export const SLOT_DOC: Record<ChapterSlot, ChapterDoc> = {
+  "concept-map": "concept-map",
+  "assessment-guide": "assessment-guide",
+  "study-guide": "content",
+  slides: "slides",
+  practice: "practice",
+};
+
+/** The contract slot a UI document occupies. */
+export function slotForDoc(doc: ChapterDoc): ChapterSlot {
+  return DOC_SLOT[doc];
+}
+
+/** The UI document a contract slot is shown as. */
+export function docForSlot(slot: ChapterSlot): ChapterDoc {
+  return SLOT_DOC[slot];
+}
+
+/**
+ * The canonical repository path of one chapter document. The file may not
+ * exist — a slot is declared either way ("slots, not placeholders"), and
+ * existence means real content exists. Throws (via `slotPath`) on a malformed
+ * chapter slug: chapter slugs come from the zod-validated manifest, so an
+ * unclassifiable path must fail closed rather than be built.
+ */
+export function chapterDocPath(doc: ChapterDoc, chapterSlug: string): string {
+  return slotPath(DOC_SLOT[doc], chapterSlug);
+}
 
 export const COLLECTION_OPERATION_CATEGORY: Record<Collection, OperationCategory> = {
   assets: "assets",
