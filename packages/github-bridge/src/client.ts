@@ -177,7 +177,38 @@ export class GitHubClient {
       branch,
     );
 
-    const tree = await this.buildTreeEntries(input.coords, input.files);
+    // Drop deletions of paths the repository does not actually have.
+    //
+    // A `sha: null` tree entry for a path that is absent from `base_tree` makes
+    // create-tree fail with 422 `GitRPC::BadObjectState` — and it takes the
+    // whole commit with it, including every unrelated write in the same chunk.
+    // Callers compute deletions from the app's projection of the package, which
+    // can legitimately name a file the repo doesn't have (a placeholder that was
+    // never committed, a file removed directly on GitHub, a projection built
+    // before a schema change). Deleting a path that isn't there is a no-op in
+    // intent, so filtering such entries is always safe — it cannot lose a real
+    // deletion, only skip an impossible one.
+    //
+    // Fail-safe when we cannot prove absence: GitHub truncates a very large
+    // recursive tree listing, and "not in the listing" then does not mean "not
+    // in the repo". In that case keep every deletion exactly as asked — a
+    // deletion is sometimes security-relevant (leak remediation), and silently
+    // skipping one would be far worse than a loud 422.
+    let files = input.files;
+    if (files.some((f) => f.content === null)) {
+      const listed = await this.listTree(input.coords, baseTree).catch(() => null);
+      if (listed && !listed.truncated) {
+        const present = new Set(listed.paths);
+        files = files.filter((f) => f.content !== null || present.has(f.path));
+      }
+    }
+
+    // Everything asked for is already true of the repository (e.g. a resumed
+    // upload whose remaining work was only no-op deletions). Committing an
+    // unchanged tree would add an empty commit for nothing.
+    if (files.length === 0) return { commitSha: parentSha };
+
+    const tree = await this.buildTreeEntries(input.coords, files);
 
     const newTree = await this.request<{ sha: string }>(
       "POST",

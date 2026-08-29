@@ -98,6 +98,22 @@ resolver they were waiting on has shipped; and `forkPackage` (`packages/package-
 still seeds `private-instructor/notes/getting-started.md`, so **fork seeds a starter file while create no
 longer does** — an unintended asymmetry under "slots, not placeholders", worth an owner call.
 
+**Fix — chunked upload died on a phantom deletion (2026-08-28, from owner test use).** A real package
+upload committed 206 files, then a chunk failed with GitHub `422 GitRPC::BadObjectState` on
+`POST /git/trees`. Cause: a `sha: null` tree entry deleting a path that is **absent from `base_tree`** —
+GitHub rejects the whole create-tree, taking every unrelated write in that chunk with it. The deletions
+came from `planPackagePopulation`, which computes them from the app's **projection** (`existingFiles`), so
+it can legitimately name a placeholder the repository never received (a package published before
+de-seeding, a file removed directly on GitHub, a projection built pre-schema-change). Fixed in
+**`github-bridge`** — the layer that actually knows the repo — not in the planner: `createCommitOnBranch`
+now lists the base tree and drops deletions for paths that aren't there (a no-op deletion by intent, so
+filtering can never lose a real one), and returns the parent sha without an empty commit when nothing is
+left to do. **Fail-safe:** if GitHub truncates the tree listing, absence is unprovable, so every deletion
+is kept exactly as asked — a deletion can be leak remediation, and silently skipping one is far worse than
+a loud 422. 4 regression tests (phantom dropped + rest still written; real deletion still applied;
+truncated listing keeps everything; all-no-op makes no commit). The interrupted upload resumes from where
+it stopped. Typecheck + **1239 tests** + web build green.
+
 **Fix — the upload confirmation was unreachable (2026-08-28, from owner test use).** The populate panel is
 `fixed`, so the page behind it cannot scroll to reveal it: anything past the viewport was simply
 unreachable. Once the plan-diff listed a real package's files, the **"Add to my course" button fell below
