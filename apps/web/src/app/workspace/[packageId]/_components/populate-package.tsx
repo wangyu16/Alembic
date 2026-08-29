@@ -219,8 +219,14 @@ export function PopulatePackageBanner({ packageId }: { packageId: string }) {
   /* ------------------------------------------------------------- render --- */
 
   return (
-    <div className="fixed left-1/2 top-16 z-40 w-[min(92vw,42rem)] -translate-x-1/2">
-      <div className="panel border-[var(--accent)]/50 bg-elevated p-5 shadow-xl">
+    // The panel is `fixed`, so the page behind it cannot scroll to reveal it:
+    // whatever doesn't fit the viewport is simply unreachable. The plan-diff can
+    // list many files, which used to push the confirm button off-screen with no
+    // way to get to it. Bound the panel to the viewport (dvh, so mobile browser
+    // chrome is accounted for) and scroll its own body instead; the action row
+    // inside PlanConfirm is sticky, so it stays reachable at any list length.
+    <div className="fixed left-1/2 top-16 z-40 flex max-h-[calc(100dvh-5rem)] w-[min(92vw,42rem)] -translate-x-1/2 flex-col">
+      <div className="panel flex min-h-0 flex-col overflow-y-auto overscroll-contain border-[var(--accent)]/50 bg-elevated p-5 shadow-xl">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <h2 className="font-medium text-ink">Fill this course from a package</h2>
@@ -429,7 +435,9 @@ function ConfirmPlan({
         </div>
       )}
 
-      <div className="mt-3 flex flex-wrap gap-2">
+      {/* Sticky: with a long file list this row would otherwise sit below the
+          fold of a panel that cannot be scrolled to. */}
+      <div className="sticky bottom-0 -mx-3 -mb-3 mt-3 flex flex-wrap gap-2 border-t border-edge bg-surface px-3 py-3">
         {blocked ? (
           <button
             type="button"

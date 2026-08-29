@@ -98,6 +98,16 @@ resolver they were waiting on has shipped; and `forkPackage` (`packages/package-
 still seeds `private-instructor/notes/getting-started.md`, so **fork seeds a starter file while create no
 longer does** — an unintended asymmetry under "slots, not placeholders", worth an owner call.
 
+**Fix — the upload confirmation was unreachable (2026-08-28, from owner test use).** The populate panel is
+`fixed`, so the page behind it cannot scroll to reveal it: anything past the viewport was simply
+unreachable. Once the plan-diff listed a real package's files, the **"Add to my course" button fell below
+the fold with no way to get to it** — upload worked, but could not be completed. The panel is now bounded
+to the viewport (`max-h-[calc(100dvh-5rem)]`, dvh so mobile browser chrome counts) and scrolls its own
+body, with the confirm/cancel row **sticky** so it stays reachable at any list length. Audited the other
+`fixed` overlays: the selection-AI popover already computes a `maxHeight`; this was the only instance.
+Typecheck + web build green. *(A blind-critique-class finding — reported by the owner exercising the real
+flow, invisible to every automated gate.)*
+
 **Wave 4 — verification (2026-08-28).** **T41 adversarial sweep:** 186 new tests across three files
 attacking the new seams. Confirmed holding: commit-failure atomicity (byte-identical store snapshots),
 manifest CAS under interleaving (both writers survive; bounded retries), the two-repo invariant across 30+
