@@ -38,10 +38,16 @@ export async function loadCourseConceptMap(
   store: PackageStore,
   packageId: string,
 ): Promise<string | null> {
-  const files = await store.listFiles(packageId);
-  const at = (path: string) =>
-    files.find((f) => f.repo === "public" && f.path === path)?.content ?? null;
-  return at(COURSE_CONCEPT_MAP_PATH) ?? at(LEGACY_COURSE_CONCEPT_MAP_PATH);
+  // Two single-row reads instead of pulling the whole package for one small
+  // file. `??` semantics are preserved EXACTLY, including the subtlety that an
+  // empty-string canonical falls through to the legacy path (`"" ?? x` is `""`,
+  // but `find(...)?.content ?? null` yielded `""` too — so both then and now,
+  // an empty canonical file wins over a legacy one only if it EXISTS).
+  const [canonical, legacy] = await Promise.all([
+    store.readFile(packageId, "public", COURSE_CONCEPT_MAP_PATH),
+    store.readFile(packageId, "public", LEGACY_COURSE_CONCEPT_MAP_PATH),
+  ]);
+  return canonical ?? legacy;
 }
 
 /**

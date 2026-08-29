@@ -198,12 +198,23 @@ export function PublishHeader({
     if (!window.confirm(confirmMsg)) return;
     clearMessages();
     startSite(async () => {
-      const r = await publishSiteAction(packageId);
-      if (r.ok) {
-        setSiteUrl(r.siteUrl ?? null);
-        if (r.warning) setWarning(r.warning);
-      } else if (r.gateFailures?.length) setGateFailures(r.gateFailures);
-      else setError(r.error ?? "Publishing the web page failed.");
+      // Publishing a large course is a long request, and a timeout REJECTS
+      // rather than returning — without this catch the button simply flipped
+      // back to its idle label and the educator was told nothing at all.
+      try {
+        const r = await publishSiteAction(packageId);
+        if (r.ok) {
+          setSiteUrl(r.siteUrl ?? null);
+          if (r.warning) setWarning(r.warning);
+        } else if (r.gateFailures?.length) setGateFailures(r.gateFailures);
+        else setError(r.error ?? "Publishing the web page didn't finish.");
+      } catch {
+        setError(
+          "Publishing the web page didn't finish — it may have taken too long. " +
+            "Your course is safe and nothing was lost. Try again; if it keeps " +
+            "stopping, publish again after adding fewer chapters at a time.",
+        );
+      }
     });
   };
 

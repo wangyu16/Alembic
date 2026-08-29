@@ -152,12 +152,32 @@ export class SupabaseDocumentRegistryStore implements DocumentRegistryStore {
     return data ? fromRow(data as DocumentRow) : null;
   }
 
+  /**
+   * PostgREST caps a result set (1000 rows by default), so this MUST page — and
+   * the consequence of not paging is worse than a short list. Tombstones are
+   * kept forever by design, so a package that has churned a few hundred files
+   * eventually exceeds the cap; the truncated result then makes
+   * `syncPackageRegistry`'s "have the paths changed?" comparison
+   * (`lib/register.ts`) never match, which silently reinstates a full 30 MB +
+   * ~1000-round-trip registry rebuild on every workspace page load — exactly
+   * the problem that fast path exists to prevent. Deterministic ordering keeps
+   * the paging stable.
+   */
   async listByPackage(packageId: string): Promise<RegistrationRecord[]> {
-    const { data, error } = await this.supabase
-      .from("documents")
-      .select("*")
-      .eq("package_id", packageId);
-    if (error) throw new Error(`Registry read failed: ${error.message}`);
-    return (data as DocumentRow[] | null ?? []).map(fromRow);
+    const PAGE = 1000;
+    const out: RegistrationRecord[] = [];
+    for (let offset = 0; ; offset += PAGE) {
+      const { data, error } = await this.supabase
+        .from("documents")
+        .select("*")
+        .eq("package_id", packageId)
+        .order("repo")
+        .order("path")
+        .range(offset, offset + PAGE - 1);
+      if (error) throw new Error(`Registry read failed: ${error.message}`);
+      const rows = (data as DocumentRow[] | null) ?? [];
+      out.push(...rows.map(fromRow));
+      if (rows.length < PAGE) return out;
+    }
   }
 }

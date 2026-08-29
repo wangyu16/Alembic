@@ -53,7 +53,8 @@ export async function listAssets(
   store: PackageStore,
   packageId: string,
 ): Promise<AssetInfo[]> {
-  const files = await store.listFiles(packageId);
+  // Paths only: kind comes from the extension, never the bytes.
+  const files = await store.listPaths(packageId);
   const out: AssetInfo[] = [];
   for (const f of files) {
     if (f.repo !== "public") continue;

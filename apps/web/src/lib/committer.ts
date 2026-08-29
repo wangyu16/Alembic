@@ -151,10 +151,18 @@ export function githubCommitter(args: {
       } catch (err) {
         // Only the message is passed on: `CommitFailedError`'s constructor is
         // the plain `Error(message)` one, so no `cause` option is assumed.
+        // The underlying text is a raw GitHub API string — method, path, HTTP
+        // status, and a JSON body like `{"message":"GitRPC::BadObjectState"}`.
+        // Twelve call sites re-surface this message to educators, so appending
+        // it put developer diagnostics in front of people who have never seen
+        // a repository. Log it for us; show plain language to them.
+        console.warn(
+          `[commit] ${coords.owner}/${coords.repo} (${plan.repo}) failed:`,
+          err instanceof Error ? err.message : err,
+        );
         throw new CommitFailedError(
           "We couldn't save this change to the package's online home. " +
-            "Nothing was changed — please try again in a moment." +
-            (err instanceof Error && err.message ? ` (${err.message})` : ""),
+            "Nothing was changed — please try again in a moment.",
         );
       }
 

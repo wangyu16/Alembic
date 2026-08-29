@@ -135,8 +135,13 @@ export function ManageDialog({
       className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 p-4 pt-20"
       onClick={onClose}
     >
+      {/* Bounded to the viewport and scrolled internally. The dialog lists one
+          row per chapter, so on a real course it grows past the screen — and
+          because the overlay is `fixed`, the page behind cannot scroll to
+          reveal what overflows. Unbounded, a 19-chapter course pushed "Add a
+          chapter" and "Done" off-screen with no way to reach them. */}
       <div
-        className="w-full max-w-lg rounded-xl border border-[var(--edge)] bg-[var(--bg)] p-5 shadow-xl"
+        className="flex max-h-[calc(100dvh-6rem)] w-full max-w-lg flex-col overflow-y-auto overscroll-contain rounded-xl border border-[var(--edge)] bg-[var(--bg)] p-5 shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between gap-3">
@@ -179,7 +184,8 @@ export function ManageDialog({
         <CreateRow packageId={packageId} forms={forms} run={run} router={router} pending={pending} />
 
         {error && <p className="mt-3 text-sm text-danger">{error}</p>}
-        <div className="mt-4 flex justify-end">
+        {/* Sticky: stays reachable however long the chapter list gets. */}
+        <div className="sticky bottom-0 -mx-5 -mb-5 mt-4 flex justify-end border-t border-[var(--edge)] bg-[var(--bg)] px-5 py-3">
           <button onClick={onClose} className="btn btn-ghost btn-sm">
             Done
           </button>

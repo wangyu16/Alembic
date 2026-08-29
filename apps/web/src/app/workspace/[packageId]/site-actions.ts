@@ -267,6 +267,11 @@ export async function publishSiteAction(
     // so the educator learns why they aren't on the site (rather than silently
     // missing).
     const skipped: string[] = [];
+    // Chapters whose page could not be BUILT (as opposed to being empty). These
+    // used to be swallowed silently, so a publish could report success with
+    // chapters missing from the live site — worse than failing, because the
+    // educator ships a broken course believing it worked.
+    const failed: string[] = [];
     for (const ch of await listChapters(store, packageId)) {
       const guide = await loadStudyGuide(store, packageId, ch.path);
       const markdown = serializeStudyGuide(guide.preamble, guide.blocks);
@@ -341,7 +346,8 @@ export async function publishSiteAction(
 
         chapters.push(chapter);
       } catch {
-        /* skip this chapter's page; the rest of the course still publishes */
+        // The rest of the course still publishes, but say so — never silently.
+        failed.push(ch.title);
       }
     }
 
@@ -404,9 +410,18 @@ export async function publishSiteAction(
     let pagesPending = false;
     // Chapters left off the site because they have no study-guide content yet —
     // said plainly, so their absence is never a mystery.
-    let warning: string | undefined = skipped.length
-      ? `${skipped.length === 1 ? "One chapter isn't" : `${skipped.length} chapters aren't`} on the site yet, because ${skipped.length === 1 ? "it has" : "they have"} no study-guide content: ${skipped.join(", ")}. Write ${skipped.length === 1 ? "it" : "them"} and publish again to add ${skipped.length === 1 ? "it" : "them"}.`
-      : undefined;
+    const notes: string[] = [];
+    if (skipped.length) {
+      notes.push(
+        `${skipped.length === 1 ? "One chapter isn't" : `${skipped.length} chapters aren't`} on the site yet, because ${skipped.length === 1 ? "it has" : "they have"} no study-guide content: ${skipped.join(", ")}. Write ${skipped.length === 1 ? "it" : "them"} and publish again to add ${skipped.length === 1 ? "it" : "them"}.`,
+      );
+    }
+    if (failed.length) {
+      notes.push(
+        `${failed.length === 1 ? "One chapter couldn't be built" : `${failed.length} chapters couldn't be built`} and ${failed.length === 1 ? "is" : "are"} missing from the site: ${failed.join(", ")}. Everything else published. Try publishing again — if the same ${failed.length === 1 ? "chapter" : "chapters"} keep failing, open ${failed.length === 1 ? "it" : "them"} and check the content saves cleanly.`,
+      );
+    }
+    let warning: string | undefined = notes.length ? notes.join(" ") : undefined;
     try {
       const pages = await gh.client.enablePages(coords, PAGES_BRANCH);
       siteUrl = pages.url;

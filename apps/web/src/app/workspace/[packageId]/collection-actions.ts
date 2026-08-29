@@ -179,10 +179,10 @@ export async function loadCollectionFileAction(
 ): Promise<{ ok: boolean; content?: string; error?: string }> {
   const { supabase } = await requireUser();
   const store = new SupabaseSandboxStore(supabase);
-  const files = await store.listFiles(packageId);
-  const f = files.find((x) => x.repo === repo && x.path === path);
-  if (!f) return { ok: false, error: "That file no longer exists." };
-  return { ok: true, content: f.content };
+  // ONE row: this runs on every click that opens a file.
+  const content = await store.readFile(packageId, repo, path);
+  if (content === null) return { ok: false, error: "That file no longer exists." };
+  return { ok: true, content };
 }
 
 /**
@@ -204,7 +204,8 @@ export async function deleteCollectionEntryAction(
     return { ok: false, error: "That path is outside the collection." };
   }
   const store = new SupabaseSandboxStore(supabase);
-  const files = await store.listFiles(packageId);
+  // Paths only: every target is written as a deletion (content null).
+  const files = await store.listPaths(packageId);
   const targets = files.filter(
     (f) => f.repo === repo && (isFolder ? underPrefix(f.path, path) : f.path === path),
   );
@@ -441,8 +442,8 @@ export async function replaceCollectionFileAction(
   const record = await store.getPackage(packageId);
   if (!record) return { ok: false, error: "We couldn't find that course." };
 
-  const files = await store.listFiles(packageId);
-  const existing = files.find((f) => f.repo === repo && f.path === clean);
+  // Only EXISTENCE is tested here, so read the one row rather than the package.
+  const existing = (await store.readFile(packageId, repo, clean)) !== null;
   // A slot is an upsert (a never-opened chapter document has no file — C4);
   // everything else replaces, never creates.
   if (!existing && target.mode === "replace-only") {
@@ -581,9 +582,8 @@ export async function createCollectionFileAction(
     return { ok: false, error: "Open the editor and save to create this file." };
   }
 
-  // Refuse to clobber an existing file.
-  const files = await store.listFiles(packageId);
-  if (files.some((f) => f.repo === repo && f.path === target)) {
+  // Refuse to clobber an existing file — an existence check, not a read.
+  if ((await store.readFile(packageId, repo, target)) !== null) {
     return { ok: false, error: "A file with that name already exists here." };
   }
 

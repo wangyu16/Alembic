@@ -40,7 +40,8 @@ export async function listTerms(
   const currentLabel = record?.manifest.currentTermLabel;
 
   const counts = new Map<string, number>();
-  for (const f of await store.listFiles(packageId)) {
+  // Paths only — this counts files per term, never reads one.
+  for (const f of await store.listPaths(packageId)) {
     if (f.repo !== "public") continue;
     const termId = termIdForPath(f.path);
     if (!termId) continue;

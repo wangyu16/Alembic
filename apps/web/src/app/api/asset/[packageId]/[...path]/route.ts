@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
 import { isBinaryPath } from "@/lib/collection-upload";
@@ -39,7 +40,7 @@ const CONTENT_TYPE: Record<string, string> = {
 };
 
 export async function GET(
-  _request: Request,
+  req: Request,
   { params }: { params: Promise<{ packageId: string; path: string[] }> },
 ) {
   const { packageId, path: segments } = await params;
@@ -57,11 +58,17 @@ export async function GET(
   if (!user) return new Response("Unauthorized", { status: 401 });
 
   const store = new SupabaseSandboxStore(supabase);
-  const files = await store.listFiles(packageId);
-  const file = files.find((f) => f.path === path);
-  if (!file) return new Response("Not found", { status: 404 });
-  // Two-repo invariant: only public-repo files are ever served here.
-  if (file.repo !== "public") return new Response("Forbidden", { status: 403 });
+  // ONE row, and only ever from the PUBLIC partition.
+  //
+  // This route serves every image in the editor preview, which re-renders on a
+  // debounce while the educator types — and it used to read the whole package
+  // per request. On a real course that is ~30 MB per image, tens of times a
+  // minute. Selecting the single public row also makes the two-repo invariant
+  // structural rather than a post-hoc check: a private file cannot be selected
+  // at all, so it can never be served here by mistake.
+  const content = await store.readFile(packageId, "public", path);
+  if (content === null) return new Response("Not found", { status: 404 });
+  const file = { content };
 
   // Content type keys off the FINAL extension (so `.md.html` → html,
   // `.ketcher.svg` → svg), not the compound carrier extension.
@@ -78,11 +85,25 @@ export async function GET(
   const body: ArrayBuffer | string = isBinaryPath(path)
     ? bytesToBody(Buffer.from(file.content, "base64"))
     : file.content;
+  // Weak validator over the stored bytes: changes whenever the file does, so a
+  // revalidation of an unchanged figure returns 304 with no body.
+  const etag = `W/"${createHash("sha256").update(file.content).digest("hex").slice(0, 32)}"`;
+  if (req.headers.get("if-none-match") === etag) {
+    return new Response(null, { status: 304, headers: { etag } });
+  }
+
   return new Response(body, {
     headers: {
+      etag,
       "content-type": contentType,
-      // Authoring preview only; never cache across edits.
-      "cache-control": "no-store",
+      // Authoring preview: the educator must see their own edits immediately,
+      // so this can never be a long public cache. But `no-store` also forces a
+      // fresh fetch of every unchanged figure on every preview re-render (which
+      // fires on a debounce while typing). `no-cache` keeps correctness — the
+      // browser always revalidates — while `must-revalidate` + a private scope
+      // keeps it per-user; combined with the ETag below an unchanged image
+      // costs a 304 instead of re-sending its bytes.
+      "cache-control": "private, no-cache, must-revalidate",
       "x-content-type-options": "nosniff",
       ...(active
         ? {

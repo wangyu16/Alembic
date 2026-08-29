@@ -307,7 +307,8 @@ export async function deleteChapter(
   const targets = slugKeyedPaths(slug, {
     studyGuidePath: pathForChapter(slug),
   });
-  const files = await store.listFiles(packageId);
+  // Paths only: this just asks which of the chapter's slots exist.
+  const files = await store.listPaths(packageId);
   const present = new Set(
     files.filter((f) => f.repo === "public").map((f) => f.path),
   );

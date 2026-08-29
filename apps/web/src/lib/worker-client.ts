@@ -49,6 +49,11 @@ async function callWorker(input: GenerateFileInput): Promise<string> {
   const token = process.env["WORKER_TOKEN"];
   const res = await fetch(`${base.replace(/\/$/, "")}/generate`, {
     method: "POST",
+    // Publishing a course makes dozens of these calls in one request. Without a
+    // deadline, a single hung worker consumes the entire request budget and the
+    // whole publish dies with nothing to show for it; with one, that document
+    // falls back (or is reported as a skipped chapter) and the rest go on.
+    signal: AbortSignal.timeout(45_000),
     headers: {
       "content-type": "application/json",
       ...(token ? { authorization: `Bearer ${token}` } : {}),

@@ -98,6 +98,23 @@ resolver they were waiting on has shipped; and `forkPackage` (`packages/package-
 still seeds `private-instructor/notes/getting-started.md`, so **fork seeds a starter file while create no
 longer does** — an unintended asymmetry under "slots, not placeholders", worth an owner call.
 
+**Scale & UX audit + first fix pass (2026-08-28).** Two read-only audits over the whole codebase for the
+bug class the 333-file course exposed — full report:
+[reports/scale-audit-2026-08-28.md](reports/scale-audit-2026-08-28.md). **Eleven fixed now**, including:
+`/api/asset/…` read the **whole package per image request** with `no-store`, while the editor preview
+re-renders on a debounce *while typing* (a chapter with 8 figures moved ~240 MB per refresh) — now one row
+plus an ETag; the registry's `listByPackage` had **no pagination**, so past 1000 tombstoned rows the
+path-comparison fast path could never match and the full rebuild would silently return on every page load
+(*a latent regression inside the fix that removed it*); file-open, course concept map, term counting and
+several existence checks all read whole packages. **Two correctness fixes matter more than the speed ones:**
+publishing could **silently drop chapters and report success** (a per-chapter `catch {}` that never reached
+the reported skip list — an educator could ship a course missing chapters believing it worked), and a
+publish failure could show **nothing at all** (no `try/catch` on the trigger, so a timeout rejected
+invisibly). Also: raw GitHub API text (`GitRPC::BadObjectState`, HTTP codes, repo paths) was appended to
+educator copy across 12 call sites; `ManageDialog` had the same unreachable-action bug as the upload panel;
+worker calls had no timeout. **Queued, ranked, in the report** — biggest is the registry rebuild after every
+*write* (~700–1000 serialized round-trips per save). Typecheck + **1239 tests** + web build green.
+
 **Fix — opening a document read the whole package (2026-08-28).** `loadStudyGuide` and `loadSlidesDeck`
 each called `listFiles` — every file's content — to fetch ONE document, so every file open on the 333-file
 course pulled ~30 MB. Both now read a single row. (This was the remaining "loading a file is slow" after
