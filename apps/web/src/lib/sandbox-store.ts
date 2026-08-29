@@ -77,6 +77,50 @@ export class SupabaseSandboxStore implements PackageStore {
     return files;
   }
 
+  /**
+   * Paths only — never content. A real package is hundreds of files and tens of
+   * megabytes (binaries live here base64-encoded), so selecting `content` to
+   * answer "what exists?" pulls the whole course through a serverless function
+   * on every page load. Same pagination as `listFiles`, since the row cap
+   * applies regardless of how few columns are projected.
+   */
+  async listPaths(
+    packageId: string,
+  ): Promise<Array<{ repo: "public" | "private"; path: string }>> {
+    const PAGE = 1000;
+    const out: Array<{ repo: "public" | "private"; path: string }> = [];
+    for (let offset = 0; ; offset += PAGE) {
+      const { data, error } = await this.supabase
+        .from("sandbox_files")
+        .select("repo, path")
+        .eq("package_id", packageId)
+        .order("repo")
+        .order("path")
+        .range(offset, offset + PAGE - 1);
+      if (error) throw new Error(`Could not load files: ${error.message}`);
+      const rows = data ?? [];
+      out.push(...rows.map((r) => ({ repo: r.repo, path: r.path })));
+      if (rows.length < PAGE) return out;
+    }
+  }
+
+  /** One file's content, or null when absent — no whole-package read. */
+  async readFile(
+    packageId: string,
+    repo: "public" | "private",
+    path: string,
+  ): Promise<string | null> {
+    const { data, error } = await this.supabase
+      .from("sandbox_files")
+      .select("content")
+      .eq("package_id", packageId)
+      .eq("repo", repo)
+      .eq("path", path)
+      .maybeSingle();
+    if (error) throw new Error(`Could not load file: ${error.message}`);
+    return data?.content ?? null;
+  }
+
   async putFiles(packageId: string, files: PackageFile[]): Promise<void> {
     if (files.length === 0) return;
     const { error } = await this.supabase.from("sandbox_files").upsert(

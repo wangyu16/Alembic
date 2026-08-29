@@ -22,7 +22,7 @@ import {
 } from "@alembic/package-contract";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
-import { manifestFromFiles } from "@/lib/manifest-read";
+import { readManifestFromStore } from "@/lib/manifest-read";
 import { committerFor } from "@/lib/committer";
 import { syncPackageRegistry } from "@/lib/register";
 
@@ -274,7 +274,7 @@ export async function setTermLinksAction(
   // Validate the links against the schema BEFORE any write, so a bad URL is a
   // plain rejection rather than a failed save. Base the check on the FILE
   // manifest (the source of truth) — the DB column is a stale read cache.
-  const base = manifestFromFiles(await store.listFiles(packageId));
+  const base = await readManifestFromStore(store, packageId);
   const next = {
     ...base,
     currentTermLinks: cleaned.length ? cleaned : undefined,

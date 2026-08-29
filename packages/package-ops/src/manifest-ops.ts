@@ -99,12 +99,10 @@ export async function updateManifest(
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     // 1. Read the FILE manifest; the raw string is the CAS expectation.
-    const files = await store.listFiles(packageId);
-    const file = files.find(
-      (f) => f.repo === "public" && f.path === MANIFEST_PATH,
-    );
-    if (!file) throw new ManifestNotFoundError(packageId);
-    const raw = file.content;
+    // ONE row: this retries under CAS, and pulling the whole package (hundreds
+    // of files, tens of megabytes) per attempt would be ruinous.
+    const raw = await store.readFile(packageId, "public", MANIFEST_PATH);
+    if (raw === null) throw new ManifestNotFoundError(packageId);
 
     // 2. Patch, then re-validate against the schema before anything is written.
     const next = parseManifest(patch(parseManifest(JSON.parse(raw))));

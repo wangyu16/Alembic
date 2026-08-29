@@ -74,7 +74,7 @@ export default async function EditShellPage({
   const showUploadEmptyState =
     record.storage === "github" &&
     Boolean(record.manifest.publicRepo) &&
-    packageAwaitsUpload(await store.listFiles(packageId));
+    packageAwaitsUpload(await store.listPaths(packageId));
 
   const chapters = await listChapters(store, packageId);
   const activeChapter = chapters.find((c) => c.slug === chapter) ?? chapters[0] ?? null;

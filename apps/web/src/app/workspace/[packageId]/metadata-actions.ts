@@ -16,7 +16,7 @@ import type { PackageManifest } from "@alembic/package-contract";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
 import { committerFor } from "@/lib/committer";
-import { manifestFromFiles } from "@/lib/manifest-read";
+import { readManifestFromStore } from "@/lib/manifest-read";
 
 /**
  * Course-level details on the one write path
@@ -101,7 +101,7 @@ export async function setCourseThemeAction(
     if (!record) return { ok: false, error: "Package not found." };
     // Base every manifest write on the FILE manifest (the source of truth) —
     // record.manifest is a stale read cache and would erase newer chapters.
-    const base = manifestFromFiles(await store.listFiles(packageId));
+    const base = await readManifestFromStore(store, packageId);
     const isDefault = space === "study-guide";
     const current = isDefault ? base.theme : base.themes?.[space];
     if (current === theme) return { ok: true }; // unchanged — no commit
@@ -169,7 +169,7 @@ export async function setCourseInfoAction(
     if (!record) return { ok: false, error: "Package not found." };
     // Base every manifest write on the FILE manifest (the source of truth) —
     // record.manifest is a stale read cache and would erase newer chapters.
-    const base = manifestFromFiles(await store.listFiles(packageId));
+    const base = await readManifestFromStore(store, packageId);
     const clean = (s?: string) => {
       const t = s?.trim();
       return t ? t : undefined;

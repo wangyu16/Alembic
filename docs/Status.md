@@ -98,6 +98,20 @@ resolver they were waiting on has shipped; and `forkPackage` (`packages/package-
 still seeds `private-instructor/notes/getting-started.md`, so **fork seeds a starter file while create no
 longer does** — an unintended asymmetry under "slots, not placeholders", worth an owner call.
 
+**Fix — a large package made the workspace unopenable (2026-08-28, from owner test use).** After a 333-file
+/ 21.8 MB course uploaded successfully to GitHub, the workspace page failed with the generic error boundary.
+Cause: **the read path pulled the entire package's file CONTENT on every page load** — `store.listFiles`
+returns whole file bodies, and binaries are held base64 (≈+33%), so roughly 30 MB crossed the wire twice per
+load: once for the empty-state check and once inside `listChapters`, whose `readManifest` fetched every file
+merely to find `alembic.json`. Small packages hid it completely. `PackageStore` gains two narrow reads —
+**`listPaths`** (repo+path only, still paginated) and **`readFile`** (one row) — and the hot paths use them:
+`readManifest`, `updateManifest` (which retries under CAS, so it was re-reading the whole package per
+attempt), the workspace empty-state check, and the four action sites that read the manifest via
+`manifestFromFiles(await listFiles(...))` (new `readManifestFromStore` helper). The CAS-interleaving
+adversarial tests were re-pointed at `readFile`, so they still exercise the real race. Typecheck +
+**1239 tests** + web build green. *Remaining whole-package reads are in `collection-actions` existence
+checks, `site-actions` (needs content), and the exempt publish path — recorded as follow-up.*
+
 **Fix — chunked upload died on a phantom deletion (2026-08-28, from owner test use).** A real package
 upload committed 206 files, then a chunk failed with GitHub `422 GitRPC::BadObjectState` on
 `POST /git/trees`. Cause: a `sha: null` tree entry deleting a path that is **absent from `base_tree`** —

@@ -82,10 +82,10 @@ async function readManifest(
   store: PackageStore,
   packageId: string,
 ): Promise<PackageManifest> {
-  const files = await store.listFiles(packageId);
-  const file = files.find(
-    (f) => f.repo === "public" && f.path === MANIFEST_PATH,
-  );
+  // ONE row, not the whole package: a real course is hundreds of files and tens
+  // of megabytes, and this runs on every workspace page load.
+  const content = await store.readFile(packageId, "public", MANIFEST_PATH);
+  const file = content === null ? null : { content };
   if (!file) {
     throw new ChapterOperationError(
       `Manifest (${MANIFEST_PATH}) not found for package ${packageId}`,

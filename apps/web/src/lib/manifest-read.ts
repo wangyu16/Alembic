@@ -20,3 +20,24 @@ export function manifestFromFiles(files: PackageFile[]): PackageManifest {
   }
   return parseManifest(JSON.parse(file.content));
 }
+
+/**
+ * Read the authoritative FILE manifest with a single-row query.
+ *
+ * Prefer this over `manifestFromFiles(await store.listFiles(id))`: the latter
+ * pulls every file's content — a real course package is hundreds of files and
+ * tens of megabytes, with binaries held base64 — to answer a question about one
+ * small JSON file.
+ */
+export async function readManifestFromStore(
+  store: { readFile: (id: string, repo: "public" | "private", path: string) => Promise<string | null> },
+  packageId: string,
+): Promise<PackageManifest> {
+  const raw = await store.readFile(packageId, "public", "alembic.json");
+  if (raw === null) {
+    throw new Error(
+      "Package manifest file (public alembic.json) is missing — cannot update the manifest.",
+    );
+  }
+  return parseManifest(JSON.parse(raw));
+}

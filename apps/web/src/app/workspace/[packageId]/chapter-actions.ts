@@ -20,7 +20,7 @@ import { UnitTermSchema, type PackageManifest } from "@alembic/package-contract"
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
 import { committerFor } from "@/lib/committer";
-import { manifestFromFiles } from "@/lib/manifest-read";
+import { readManifestFromStore } from "@/lib/manifest-read";
 
 /**
  * Chapter operations, on the one write path
@@ -103,7 +103,7 @@ async function currentManifest(
   store: SupabaseSandboxStore,
   packageId: string,
 ): Promise<PackageManifest> {
-  return manifestFromFiles(await store.listFiles(packageId));
+  return await readManifestFromStore(store, packageId);
 }
 
 export async function createChapterAction(

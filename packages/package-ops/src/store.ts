@@ -29,6 +29,27 @@ export interface PackageStore {
   createPackage(record: PackageRecord, files: PackageFile[]): Promise<void>;
   getPackage(packageId: string): Promise<PackageRecord | null>;
   listFiles(packageId: string): Promise<PackageFile[]>;
+  /**
+   * Every file's (repo, path) WITHOUT its content.
+   *
+   * `listFiles` returns whole file bodies, which is ruinous for the questions
+   * that only need to know what exists: a real course package runs to hundreds
+   * of files and tens of megabytes (binaries are stored base64, inflating them
+   * by a third), and pulling all of it to answer "is this course empty?" or "is
+   * this path taken?" is what made a large package unopenable. Implementations
+   * MUST project only the two columns.
+   */
+  listPaths(packageId: string): Promise<Array<{ repo: RepoKind; path: string }>>;
+  /**
+   * One file's content, or null when absent. For the very common case of
+   * reading a single known path (`alembic.json`, one chapter's document)
+   * without dragging the whole package through memory.
+   */
+  readFile(
+    packageId: string,
+    repo: RepoKind,
+    path: string,
+  ): Promise<string | null>;
   /** Upsert files by (repo, path). Callers validate paths first. */
   putFiles(packageId: string, files: PackageFile[]): Promise<void>;
   /**

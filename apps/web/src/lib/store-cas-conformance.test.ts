@@ -279,15 +279,19 @@ describe.each(IMPLS)("replaceFileIf CAS conformance — %s", (_name, make) => {
     const raced: PackageStore = {
       createPackage: (r, f) => store.createPackage(r, f),
       getPackage: (id) => store.getPackage(id),
-      async listFiles(id) {
-        const stale = await store.listFiles(id);
+      listFiles: (id) => store.listFiles(id),
+      listPaths: (id) => store.listPaths(id),
+      // `updateManifest` reads the manifest as ONE row, so the foreign write is
+      // interleaved here — after the read, before the CAS.
+      async readFile(id, repo, path) {
+        const stale = await store.readFile(id, repo, path);
         if (++reads === 1) {
           await updateManifest(store, null, id, (m) => ({
             ...m,
             description: "Other tab.",
           }));
         }
-        return stale.map((f) => ({ ...f }));
+        return stale;
       },
       putFiles: (id, f) => store.putFiles(id, f),
       deleteFiles: (id, f) => store.deleteFiles(id, f),
@@ -314,6 +318,8 @@ describe.each(IMPLS)("replaceFileIf CAS conformance — %s", (_name, make) => {
       createPackage: (r, f) => store.createPackage(r, f),
       getPackage: (id) => store.getPackage(id),
       listFiles: (id) => store.listFiles(id),
+      listPaths: (id) => store.listPaths(id),
+      readFile: (id, repo, path) => store.readFile(id, repo, path),
       putFiles: (id, f) => store.putFiles(id, f),
       deleteFiles: (id, f) => store.deleteFiles(id, f),
       async replaceFileIf() {
