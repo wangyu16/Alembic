@@ -33,9 +33,9 @@ export async function loadSlidesDeck(
   packageId: string,
   path: string,
 ): Promise<SlidesDeckDoc> {
-  const files = await store.listFiles(packageId);
-  const file = files.find((f) => f.repo === "public" && f.path === path);
-  return { path, source: file?.content ?? "" };
+  // ONE row (see loadStudyGuide): opening a deck must not read the package.
+  const content = await store.readFile(packageId, "public", path);
+  return { path, source: content ?? "" };
 }
 
 /**

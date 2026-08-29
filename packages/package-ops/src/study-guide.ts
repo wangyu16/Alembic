@@ -42,12 +42,13 @@ export async function loadStudyGuide(
   packageId: string,
   path: string = DEFAULT_STUDY_GUIDE_PATH,
 ): Promise<StudyGuideDoc> {
-  const files = await store.listFiles(packageId);
-  const file = files.find((f) => f.repo === "public" && f.path === path);
-  if (!file) {
+  // ONE row. This runs every time a document is opened, and reading the whole
+  // package to find a single file is what made a real course feel slow.
+  const content = await store.readFile(packageId, "public", path);
+  if (content === null) {
     return { path, preamble: "", blocks: [] };
   }
-  const parsed = parseStudyGuide(file.content);
+  const parsed = parseStudyGuide(content);
   return { path, preamble: parsed.preamble, blocks: parsed.blocks };
 }
 

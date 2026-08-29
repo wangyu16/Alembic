@@ -19,6 +19,16 @@ import { chapterDocPath, parseWorkspaceView } from "./nav";
 import { syncPackageRegistry } from "@/lib/register";
 import { SupabaseDocumentRegistryStore } from "@/lib/document-registry-store";
 
+/**
+ * Server actions invoked from this page inherit its time budget, and publishing
+ * a course is the long one: it generates a self-contained document per chapter
+ * (study guide + slides + practice) and commits them, so a 19-chapter course is
+ * dozens of generations in a single request. The platform default cuts that off
+ * partway. 300s is Vercel's Node ceiling; the work is idempotent, so a retry
+ * after a cutoff re-publishes rather than corrupting anything.
+ */
+export const maxDuration = 300;
+
 export const dynamic = "force-dynamic";
 
 /**

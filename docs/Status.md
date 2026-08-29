@@ -98,6 +98,18 @@ resolver they were waiting on has shipped; and `forkPackage` (`packages/package-
 still seeds `private-instructor/notes/getting-started.md`, so **fork seeds a starter file while create no
 longer does** — an unintended asymmetry under "slots, not placeholders", worth an owner call.
 
+**Fix — opening a document read the whole package (2026-08-28).** `loadStudyGuide` and `loadSlidesDeck`
+each called `listFiles` — every file's content — to fetch ONE document, so every file open on the 333-file
+course pulled ~30 MB. Both now read a single row. (This was the remaining "loading a file is slow" after
+the page-load fixes.) **Publish time budget raised:** publishing generates a self-contained document per
+chapter (study guide + slides + practice) and commits them — up to ~57 generations for a 19-chapter course
+in one request — which the platform's default function timeout cuts off partway. `edit/page.tsx` now
+declares `maxDuration = 300` (Vercel's Node ceiling), which server actions invoked from it inherit;
+publishing is idempotent, so a cutoff retries cleanly. **Not yet done:** the generation loop is still
+sequential — bounded parallelism is the real fix if publish is still slow or still times out, and the
+publish path's release-gate bulk read is left as-is (publish-only, not per-navigation). Typecheck +
+**1239 tests** + web build green.
+
 **Fix — navigation was slow on a large course (2026-08-28, from owner test use).** With the 333-file
 package open, switching chapters and opening documents took seconds. Cause: **every workspace page load
 rebuilt the whole documents registry** — `syncPackageRegistry` read every file's content and then made one
