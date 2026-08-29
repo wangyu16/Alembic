@@ -426,6 +426,53 @@ open each doc → save one → publish flow dry-run in tests).
 
 ---
 
+## T51 — Registry: register what changed, not the world (DEFERRED, do deliberately)
+
+**Status: not started. Deliberately deferred 2026-08-28** — this is the
+highest-risk item in the scale audit, and the reactive-fix window is the wrong
+time to attempt it.
+
+**The problem.** `syncPackageRegistry` → `rebuildPackageRegistry`
+(`packages/package-ops/src/document-registry.ts:342`) reads every file's
+content and then, **per file**, does `getByDocId` *or* (`getByContentHash` then
+`getByLocation`) followed by an `upsert` — 2–3 round-trips each. For a 333-file
+course that is **~700–1000 serialized database round-trips**, and it runs on
+**every write**: 13 call sites, including all six collection writes
+(`collection-actions.ts:154, 223, 271, 319, 499, 627`), `term-actions.ts:172,
+373`, `populate-package/route.ts:294, 348` (twice per upload), and
+`lib/github.ts:203` (reconcile absorb). At even 5 ms per round-trip that is
+3.5–5 s of pure latency after every save. **This is why saving feels slow.**
+
+**The fix, in two independent halves.**
+
+1. **Targeted registration after a targeted write.** Every call site already
+   knows its own change set. Give `syncPackageRegistry` an optional `paths`
+   argument and register only those; `registerAdaptedFile`
+   (`apps/web/src/lib/register.ts:79`) already proves the single-file shape
+   works. This alone removes the cost from every ordinary save.
+2. **Batch the genuine full rebuild** (populate, reconcile, first
+   registration): one `listByPackage` up front to build the docId / content-hash
+   / location indexes **in memory**, then a single bulk `upsert`, instead of
+   per-file SELECT + upsert.
+
+**Why it is risky — read before touching it.** `registerFile`'s identity ladder
+is **order-sensitive**: embedded `uid` → content hash → location
+(`docs/specs/package-contract-v2.md` §2). Content-hash matching against rows
+written *earlier in the same rebuild* is what gives two byte-identical files
+distinct, stable identities. An in-memory index must therefore be **updated as
+rows are staged**, not just snapshotted at the start, or duplicates will mint
+separate docIds — and a docId is a permalink, so getting this wrong breaks
+citations that are already in the world. The whole-package *read* is correct
+and must stay (hashes and embedded uids come from bytes); only the round-trips
+are the bug.
+
+**Definition of done.** An ordinary save on a 333-file course performs a number
+of registry round-trips proportional to the files it wrote (≈1–3), not to the
+package. Tests: identity is preserved across a targeted registration; two
+byte-identical files still receive distinct docIds in a full rebuild; a
+tombstoned-then-recreated path does not reuse a docId; permalinks minted before
+the change still resolve afterwards.
+
 ## Performance follow-up — the registry rebuild on WRITES (2026-08-28)
 
 Page loads no longer rebuild the registry (they compare paths — two
