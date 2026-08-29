@@ -30,6 +30,10 @@ import { SupabaseSandboxStore } from "@/lib/sandbox-store";
 import { supabaseEventLogger } from "@/lib/events";
 import { clientForUser, recordSyncedSha } from "@/lib/github";
 import { commitFiles } from "@alembic/github-bridge";
+import { appBaseUrl } from "@/lib/app-url";
+import { SupabaseDocumentRegistryStore } from "@/lib/document-registry-store";
+import { rewritePageAssets, type AssetLocation } from "@/lib/site-assets";
+import { isBinaryPath } from "@/lib/collection-upload";
 import { getRenderTheme } from "@/lib/theme";
 import { generateSelfContainedFile } from "@/lib/worker-client";
 import { docMetaForPackage } from "@/lib/doc-metadata";
@@ -369,6 +373,9 @@ export async function publishSiteAction(
 
     const files = [
       ...buildCourseSite({
+        // Project Pages live under /<repo>/ — the 404's "home" link must not
+        // send the visitor to the account root.
+        baseHref: `/${repo.name}/`,
         title: record!.title,
         description: record!.manifest.description || undefined,
         instructor: record!.manifest.courseContext?.instructor,
@@ -398,6 +405,53 @@ export async function publishSiteAction(
       ...(currentTermBundle?.files ?? []),
     ];
 
+    // --- Make the site carry its own figures (see lib/site-assets.ts) ---
+    //
+    // Documents reference assets by permalink, which is right for a file that
+    // travels but made the PUBLISHED site depend on this platform for every
+    // image. Republish the referenced assets beside the site and point the
+    // pages at them relatively, so the site stands on its own — and no student
+    // request reaches us just to read a chapter.
+    const appOrigin = appBaseUrl();
+    const assetFiles: Array<{ path: string; content: string; encoding?: "utf-8" | "base64" }> = [];
+    const refusedPrivate = new Set<string>();
+    if (appOrigin) {
+      const registry = new SupabaseDocumentRegistryStore(supabase);
+      const locations = new Map<string, AssetLocation>();
+      for (const rec of await registry.listByPackage(packageId)) {
+        if (rec.tombstoned) continue;
+        locations.set(rec.docId, { repo: rec.repo, path: rec.path });
+      }
+
+      const needed = new Set<string>();
+      for (const file of files) {
+        const r = rewritePageAssets({
+          pagePath: file.path,
+          content: file.content,
+          appOrigin,
+          locations,
+        });
+        file.content = r.content;
+        r.used.forEach((p) => needed.add(p));
+        r.refusedPrivate.forEach((id) => refusedPrivate.add(id));
+      }
+
+      // Publish each referenced asset beside the site, at the same path the
+      // rewritten links point to. Binaries are stored base64 and committed as
+      // real blobs. An asset that has vanished from the store is skipped — the
+      // page keeps its permalink rather than gaining a broken relative link.
+      for (const path of needed) {
+        const content = await store.readFile(packageId, "public", path);
+        if (content === null) continue;
+        assetFiles.push(
+          isBinaryPath(path)
+            ? { path, content, encoding: "base64" }
+            : { path, content },
+        );
+      }
+    }
+    files.push(...assetFiles);
+
     const coords = { owner: repo.owner, repo: repo.name };
     await gh.client.publishToBranch({
       coords,
@@ -414,6 +468,14 @@ export async function publishSiteAction(
     if (skipped.length) {
       notes.push(
         `${skipped.length === 1 ? "One chapter isn't" : `${skipped.length} chapters aren't`} on the site yet, because ${skipped.length === 1 ? "it has" : "they have"} no study-guide content: ${skipped.join(", ")}. Write ${skipped.length === 1 ? "it" : "them"} and publish again to add ${skipped.length === 1 ? "it" : "them"}.`,
+      );
+    }
+    if (refusedPrivate.size) {
+      // A public page linked at an instructor-only document by permalink. The
+      // bytes were NOT published (the two-repo invariant outranks a working
+      // link), but the link is still on the page, so say so plainly.
+      notes.push(
+        `${refusedPrivate.size === 1 ? "A link on your site points" : `${refusedPrivate.size} links on your site point`} to instructor-only material, so ${refusedPrivate.size === 1 ? "it was" : "they were"} not published with it. Students will see ${refusedPrivate.size === 1 ? "a link that asks them to sign in" : "links that ask them to sign in"} — remove ${refusedPrivate.size === 1 ? "it" : "them"} from the student-facing pages.`,
       );
     }
     if (failed.length) {

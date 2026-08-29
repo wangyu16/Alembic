@@ -98,6 +98,18 @@ resolver they were waiting on has shipped; and `forkPackage` (`packages/package-
 still seeds `private-instructor/notes/getting-started.md`, so **fork seeds a starter file while create no
 longer does** — an unintended asymmetry under "slots, not placeholders", worth an owner call.
 
+**Published sites are self-sufficient + a branded 404 (2026-08-28, from blind acceptance testing).**
+**Assets:** the publish path now republishes every asset a page references onto `gh-pages` and rewrites its
+`/d/{docId}` permalinks to **relative paths** — so a published course no longer depends on the platform for
+its figures, and no student request reaches us to read a chapter. Two blind agents independently found the
+old behaviour, and one caught that `/guide/publish` promised the opposite. Permalinks remain what downloads
+and shared elements use ([spec §4a](specs/storage-and-write-paths.md)). **Fail-closed:** a permalink
+resolving into the private repo is never published beside the site — bytes withheld, link left as a
+permalink, educator told. New pure `lib/site-assets.ts` (13 tests incl. the private refusal).
+**404:** the site build now emits a branded `404.html`; without it GitHub Pages served **its own** error
+page — GitHub branding, "check the filename case and file permissions", a link to GitHub's docs, and no way
+back — to a student who mistyped a chapter URL. Typecheck + **1252 tests** + web build green.
+
 **Scale & UX audit + first fix pass (2026-08-28).** Two read-only audits over the whole codebase for the
 bug class the 333-file course exposed — full report:
 [reports/scale-audit-2026-08-28.md](reports/scale-audit-2026-08-28.md). **Eleven fixed now**, including:

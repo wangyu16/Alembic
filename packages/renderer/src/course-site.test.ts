@@ -18,10 +18,23 @@ const course = {
 };
 
 describe("buildCourseSite — course home hub", () => {
-  it("emits only the home + build metadata (chapter pages are added by the caller)", () => {
+  it("emits the home, a branded 404, and build metadata (chapter pages are added by the caller)", () => {
     const files = buildCourseSite(course);
     const paths = files.map((f) => f.path).sort();
-    expect(paths).toEqual([".nojekyll", "build-info.json", "index.html"]);
+    expect(paths).toEqual([".nojekyll", "404.html", "build-info.json", "index.html"]);
+  });
+
+  // Without a 404.html, GitHub Pages serves its own error page — GitHub
+  // branding, "filename case… file permissions", a link to GitHub's docs, and
+  // no way back — to a student who mistyped a chapter URL.
+  it("the 404 page names the course and links home, with no GitHub vocabulary", () => {
+    const notFound = buildCourseSite({ ...course, baseHref: "/genchem-oer/" }).find(
+      (f) => f.path === "404.html",
+    )!;
+    expect(notFound.content).toContain("General Chemistry");
+    expect(notFound.content).toContain('href="/genchem-oer/"');
+    expect(notFound.content).toMatch(/isn't here|couldn't find/i);
+    expect(notFound.content).not.toMatch(/file permissions|filename case|GitHub Pages/i);
   });
 
   it("links each chapter's self-contained view, slides, and practice pages", () => {

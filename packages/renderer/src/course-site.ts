@@ -155,6 +155,10 @@ export interface CourseTermData {
 
 export interface CourseSiteInput {
   title: string;
+  /** Root URL path the site is served from, for the 404 page's "go home" link.
+   *  A project Pages site lives under `/<repo>/`, so a bare `/` would leave the
+   *  repository. Defaults to `/`. */
+  baseHref?: string;
   /** The course description — one paragraph, PLAIN TEXT (not markdown),
    *  authored directly in the "Course details" card. Rendered as the visible
    *  intro (escaped, not markdown-rendered) and feeds the LRMI/portal summary
@@ -564,6 +568,33 @@ ${licenseNotice}
       title: input.title,
       bodyHtml: body,
       headHtml: indexHead,
+      theme: input.theme,
+      css: homeCss(input.theme),
+    }),
+  });
+
+  // A branded 404 for the educator's own site.
+  //
+  // Without this file GitHub Pages serves ITS OWN error page: GitHub's
+  // branding, "make sure the filename case matches… and any file
+  // permissions", and a link to the GitHub Pages documentation — shown to a
+  // student who mistyped a chapter URL, with no way back to the course. The
+  // educator's course simply disappears at the first typo. (Found by blind
+  // acceptance testing, 2026-08-28.) Absolute `/`-rooted links so the page
+  // works at any depth the visitor guessed wrong at.
+  const base = input.baseHref ?? "/";
+  const notFoundBody = `${ORZ_ICON_SYMBOL}
+<header class="hero">
+<h1>That page isn't here</h1>
+<p>We couldn't find that page in <strong>${escapeHtml(input.title)}</strong>. It may have been renamed, or the address may have a typo.</p>
+<p><a class="cta" href="${escapeHtml(base)}">Go to the course home</a></p>
+</header>
+${footer}`;
+  files.push({
+    path: "404.html",
+    content: themedDocument({
+      title: `Page not found — ${input.title}`,
+      bodyHtml: notFoundBody,
       theme: input.theme,
       css: homeCss(input.theme),
     }),

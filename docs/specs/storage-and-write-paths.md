@@ -124,6 +124,40 @@ blocker from an advisory. Imports of packages with not-yet-written chapters
 now succeed — which is what an author assembling a course incrementally
 (including coursewerk) actually produces.
 
+## 4a. Published sites carry their own assets (2026-08-28)
+
+Two reference forms, because two different consumers need different things:
+
+- **Inside the published site → RELATIVE paths.** The assets a site references
+  are published beside it on `gh-pages`, and its permalinks are rewritten to
+  relative paths at build time. The site is then self-sufficient: GitHub's CDN
+  serves it, it survives the platform disappearing, and **no student request
+  reaches the platform to read a chapter**.
+- **In downloads and shared elements → PERMALINKS.** A file that travels needs
+  a location-independent reference: a downloaded document, or an element
+  embedded in another educator's course, resolves anywhere and can be
+  corrected at the source.
+
+**Why this changed.** The save path's U3 rewrite (relative → permalink) is
+correct for travelling files, and the published site simply inherited it — so
+every figure on every published course was served from `alembic.orz.how`.
+Two independent blind acceptance agents found this on the same day, and one
+noted that `/guide/publish` promises the opposite ("If Alembic disappeared
+tomorrow, your published course would keep working"). It also meant the
+operator served all image bandwidth, and saw student traffic, for every
+published course — a governance question for a research platform, not just a
+cost one.
+
+**Fail-closed rule:** a permalink that resolves into the **private** repo is
+never published beside the site. The bytes stay unpublished, the link is left
+as a permalink (so it asks for sign-in rather than silently 404ing), and the
+educator is told. The two-repo invariant outranks a working image.
+
+**Not adopted:** a 302 from `/d/{id}` to GitHub Pages/jsDelivr. It would fix
+bandwidth but not *contact* — students would still hit the platform once per
+figure before being redirected. It remains the right mechanism for permalinks
+that must resolve from elsewhere, and is recorded as future work.
+
 ## 5. Raw materials & job artifacts (agent lane)
 
 Uploaded raw sources (Word/PDF/PPT) are **job-scoped**: staged in the
