@@ -114,3 +114,83 @@ Whether the public/private **split** was correct in the first place (nothing
 private leaked *out*; whether the right things went *in* is unprovable from
 outside); whether `/d/{id}` enforces auth for genuinely private documents (no
 private id was available to probe); the platform's own publish pipeline.
+
+---
+
+# Second verifier — public surfaces (browser, desktop + 375px)
+
+| Item | Verdict |
+|---|---|
+| A1 fresh arrival explains itself | **PARTIAL** |
+| A2 guide usable | **PASS** |
+| D2 published site real + navigable | **PASS** (chapter pages are dead ends) |
+| D3 only real content published | **PARTIAL** |
+| H1 cold start | **PASS** |
+| H4 error language | **FAIL** |
+| H5 phone | **FAIL** |
+
+Independently reached the **same conclusion about assets** as the leakage
+agent, without being told: *"if Alembic went down… every figure, chart,
+chemical structure and photograph in all 19 chapters and all 19 decks
+breaks"* — and noted that `/guide/publish` **promises the opposite**
+("If Alembic disappeared tomorrow, your published course would keep
+working"). Two blind agents, different methods, same finding.
+
+## Confirmed by the referee (reproduced independently)
+
+- **The course site has no `404.html`.** `…/nonsense-page` returns **GitHub's**
+  error page — GitHub branding, "check the filename case and file
+  permissions", a link to GitHub Pages documentation, and **no way back to
+  the course**. The educator's identity disappears at the first typo. This is
+  the developer-facing failure the product exists to prevent, sitting on its
+  headline deliverable.
+- **Copy defect in the deployed build:** the guide renders
+  `snapshot</strong>each term` (missing space); also `e— one`, `b— the`,
+  `t— a`. The *current source* has the space, so this is probably a stale
+  deploy — re-check after the next one.
+- **Public footer exposes a version string** to anonymous visitors
+  (`page.tsx:118`): "package schema v2 · orz-markdown@…".
+
+## NOT reproduced (recorded, not fixed)
+
+- **"Mobile menu paints behind the page and cannot be tapped."** Probed live
+  at 375px with device emulation: opening the `<details>` menu put the panel
+  at (183,58) 176×118 with `z-index 20`, opaque background, `pointer-events:
+  auto`, and `elementFromPoint` at its centre returned **the menu link**, not
+  the page — i.e. on top and hit-testable. A synthetic `summary.click()` also
+  opened it. The untested path is a **real finger tap** on a physical phone;
+  worth a five-second check on a handset before any fix. Recorded per referee
+  discipline: a finding that does not reproduce is not fixed.
+
+## Reported, plausible, not yet verified
+
+- **Chapter / slide / practice pages are dead ends** — no link home, to the
+  next chapter, or to that chapter's own slides/practice. A student following
+  a shared link to Chapter 13 can reach the other 18 only by editing the URL.
+- **Every practice page opens with a generation note naming an internal
+  file**: *"Auto-generated from the assessment guide
+  (`assessment-support/<slug>.md`), grouped by objective."* — shown to
+  students, in monospace.
+- **Chapter tails print raw asset paths** ("Asset and License Record":
+  `assets/nuclear_power_plant.jpg`) as student-facing UI — and those paths
+  404 on the published site (Finding 1 again).
+- **Slide decks cannot be advanced on a phone**: next/prev controls are
+  reveal-on-pointer-move (`opacity:0; visibility:hidden`, 0×0), which a touch
+  device never triggers. No affordance tells a student a 34-slide deck
+  exists. *(orz-slides upstream.)*
+- **Any anonymous visitor gets an edit pencil** on published pages, opening a
+  raw-markdown editor over the course, which pops **"Framework 0.9.3
+  available (file uses 0.9.0) [Update] [Dismiss]"** — a software upgrade
+  prompt on a student's chemistry homework. *(orz-mdhtml upstream; a product
+  decision about published vs downloaded context.)*
+- **Discover → Elements publishes test debris**: one entry, "test sharing",
+  tagged `test3`, resolving to a bare SVG with no title or attribution.
+  (Owner data, not code.)
+- **Homepage sells by developer analogy** before naming chapters, study
+  guides or a course website; jargon inventory in the agent's report.
+
+## Verdict quoted
+
+> **For the content, yes. For the site my students actually use, not yet.**
+> … Fix the asset independence, the course-site 404, the mobile menu and the
+> mobile slide controls, and my answer flips.
