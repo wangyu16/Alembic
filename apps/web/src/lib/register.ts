@@ -22,10 +22,38 @@ export async function syncPackageRegistry(
   supabase: SupabaseClient,
   packageId: string,
   origin: RegistrationRecord["origin"] = "created",
+  opts: { onlyIfPathsChanged?: boolean } = {},
 ): Promise<void> {
   try {
     const packageStore = new SupabaseSandboxStore(supabase);
     const registry = new SupabaseDocumentRegistryStore(supabase);
+
+    // A full rebuild reads every file's CONTENT and then does one database
+    // round-trip PER FILE. On a real course (hundreds of files) that is
+    // seconds of work, and it used to run on every workspace page load —
+    // every chapter switch, every document opened — which is what made a
+    // large package feel broken.
+    //
+    // A read has nothing to register: content changes arrive through the
+    // write paths (which sync afterwards) and through reconcile. The only
+    // thing a page load can legitimately discover is that the SET OF PATHS
+    // moved underneath it (a file committed straight to GitHub, say). So on
+    // reads, compare paths — two cheap, content-free queries — and do the
+    // expensive rebuild only when they actually disagree.
+    if (opts.onlyIfPathsChanged) {
+      const [paths, records] = await Promise.all([
+        packageStore.listPaths(packageId),
+        registry.listByPackage(packageId),
+      ]);
+      const live = new Set(paths.map((f) => `${f.repo} ${f.path}`));
+      const known = new Set(
+        records.filter((r) => !r.tombstoned).map((r) => `${r.repo} ${r.path}`),
+      );
+      const same =
+        live.size === known.size && [...live].every((loc) => known.has(loc));
+      if (same) return;
+    }
+
     await rebuildPackageRegistry(registry, packageStore, packageId, origin);
   } catch (err) {
     // Rebuildable projection — never surface a registry error to the educator,

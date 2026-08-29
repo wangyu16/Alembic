@@ -426,6 +426,21 @@ open each doc → save one → publish flow dry-run in tests).
 
 ---
 
+## Performance follow-up — the registry rebuild on WRITES (2026-08-28)
+
+Page loads no longer rebuild the registry (they compare paths — two
+content-free queries — and rebuild only when the path set actually moved).
+**Writes still do a full rebuild**: `syncPackageRegistry` → 
+`rebuildPackageRegistry` reads every file's content and performs one database
+round-trip **per file**, so a single save on a 333-file course does hundreds of
+serialized queries. There are 13 call sites.
+
+**Do:** register only the files the write actually touched — give
+`syncPackageRegistry` an optional `paths` argument and have `writeThrough`'s
+callers pass their own change set — falling back to the full rebuild only for
+populate/reconcile, where the whole package legitimately changed. The pieces
+exist (`registerFile` is already per-file); this is plumbing, not design.
+
 ## Open findings from the adversarial sweep (T41, 2026-08-28)
 
 Four of the seven findings were fixed at the gate (F1 duplicate paths in one

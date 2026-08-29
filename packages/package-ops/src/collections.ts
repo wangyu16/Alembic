@@ -75,7 +75,10 @@ export async function listCollection(
   opts: ListCollectionOptions,
 ): Promise<CollectionItem[]> {
   const { spaceDir, repo, chapterSlugs } = opts;
-  const files = await store.listFiles(packageId);
+  // Paths only: a listing shows names, scopes and kinds — it never needs a
+  // byte of content, and the Assets space is exactly where the heavy files
+  // live (images, PDFs, held base64 in the store).
+  const files = await store.listPaths(packageId);
   const out: CollectionItem[] = [];
   for (const f of files) {
     if (f.repo !== repo) continue;

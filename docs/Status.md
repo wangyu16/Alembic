@@ -98,6 +98,20 @@ resolver they were waiting on has shipped; and `forkPackage` (`packages/package-
 still seeds `private-instructor/notes/getting-started.md`, so **fork seeds a starter file while create no
 longer does** — an unintended asymmetry under "slots, not placeholders", worth an owner call.
 
+**Fix — navigation was slow on a large course (2026-08-28, from owner test use).** With the 333-file
+package open, switching chapters and opening documents took seconds. Cause: **every workspace page load
+rebuilt the whole documents registry** — `syncPackageRegistry` read every file's content and then made one
+database round-trip *per file*, hundreds of them serialized, before the page rendered. A read has nothing
+to register (content changes come through the write paths and reconcile), so page loads now compare the
+**path set** instead — two content-free queries — and rebuild only when it actually moved. Three further
+whole-package content reads on the same page were narrowed: fetching ONE document (concept map /
+assessment guide) read the entire package, the assets/private directory-convention probe read it again,
+and `listCollection` — which only ever uses repo, path and extension — pulled every image's base64 to
+build a file list. All now use `readFile`/`listPaths`. **Known remaining cost, recorded as follow-up:**
+writes still trigger a full registry rebuild (13 call sites), so a save on a large course is slower than
+it should be; the fix is to register only the files the write touched. Typecheck + **1239 tests** + web
+build green.
+
 **Fix — a large package made the workspace unopenable (2026-08-28, from owner test use).** After a 333-file
 / 21.8 MB course uploaded successfully to GitHub, the workspace page failed with the generic error boundary.
 Cause: **the read path pulled the entire package's file CONTENT on every page load** — `store.listFiles`

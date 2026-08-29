@@ -62,7 +62,11 @@ export default async function EditShellPage({
 
   // R2: keep the documents registry in sync with the package's current files
   // (rebuildable projection; best-effort, never blocks the editor).
-  await syncPackageRegistry(supabase, packageId, "created");
+  // Reads never register anything new; only a path set that moved underneath us
+  // is worth acting on, and that check is two content-free queries.
+  await syncPackageRegistry(supabase, packageId, "created", {
+    onlyIfPathsChanged: true,
+  });
 
   // A published package that hasn't been written in yet can be filled in one
   // shot by uploading an offline-authored .zip (images and all). Same predicate
@@ -111,9 +115,10 @@ export default async function EditShellPage({
         ? { path: chapterDocPath("concept-map", activeChapter.slug), repo: "public" as const }
         : null;
   if (single) {
-    const files = await store.listFiles(packageId);
-    const f = files.find((x) => x.repo === single.repo && x.path === single.path);
-    categoryFile = { path: single.path, repo: single.repo, content: f?.content ?? "" };
+    // ONE row. Reading the whole package to find one document is what made a
+    // real course crawl on every navigation.
+    const content = await store.readFile(packageId, single.repo, single.path);
+    categoryFile = { path: single.path, repo: single.repo, content: content ?? "" };
   }
 
   // Assets/Private live under either the v1 dir (`materials`/`private-instructor`,
@@ -122,9 +127,10 @@ export default async function EditShellPage({
   // packages still carry schemaVersion 2 — the "label bump"), so detect the dir a
   // package ACTUALLY uses from its files and use it for both read and write, so
   // the collection view isn't empty for an uploaded v2 package.
+  // Paths only — this decides a directory convention, and never reads content.
   const collectionFiles =
     category === "assets" || category === "private"
-      ? await store.listFiles(packageId)
+      ? await store.listPaths(packageId)
       : [];
   const usesDir = (repo: "public" | "private", dir: string) =>
     collectionFiles.some(
