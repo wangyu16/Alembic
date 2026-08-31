@@ -115,7 +115,15 @@ export default function Home() {
       </dl>
 
       <footer className="text-xs text-faint">
-        package schema v{PACKAGE_SCHEMA_VERSION} ·{" "}
+        <a
+          href="https://github.com/wangyu16/Alembic"
+          target="_blank"
+          rel="noreferrer"
+          className="hover:text-muted"
+        >
+          Alembic is open source
+        </a>{" "}
+        · package schema v{PACKAGE_SCHEMA_VERSION} ·{" "}
         <a href="https://markdown.orz.how" target="_blank" rel="noreferrer" className="hover:text-muted">
           {rendererVersion()}
         </a>
