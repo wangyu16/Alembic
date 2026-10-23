@@ -6,6 +6,58 @@ design, and what is deferred to the future. Complements [Status.md](Status.md)
 
 ---
 
+## 2026-10-23 — Permalink helpers emit `/d/`; upload links resolve in rounds (Phase 5 Track B.3)
+
+**Decision.** `livePermalink`/`pinnedPermalink` take a **docId**, never a path,
+and emit `/d/{docId}[@{version}]`. The whole-package upload no longer writes a
+raw GitHub URL for a `../` link it could not otherwise resolve: it commits the
+documents whose links resolve, registers them, and retries the rest in rounds.
+Documents that link only to each other (a cycle) or to nothing that exists are
+reported as broken links — the staged upload is kept, so the educator can fix
+and resume.
+
+**Why.** A raw URL is path-coupled, served `text/plain` + `nosniff`, and cannot
+serve private files (permalinks §7) — and it was being committed into the
+educator's own sources, where it outlives any later fix. A cycle gets reported
+rather than papered over because no permalink can exist before a commit, and
+committing first would mean committing a link the guard rejects.
+
+---
+
+## 2026-10-23 — Publish robustness: what is retried, and what is never replayed (Phase 5 Track B.2)
+
+| # | Decision | Why |
+|---|---|---|
+| 1 | **Rate-limit refusals are always retried; 5xx and dropped connections only for idempotent requests** (GET, PATCH of a ref to a fixed sha, POST of blobs/trees/commits). Repo creation, ref/tag creation and Pages setup are not replayed on 5xx. | A rate-limited request was not processed; a 5xx one may have been. Replaying a content-addressed object creation is harmless (same object, or an unreferenced commit); replaying "create" is not. |
+| 2 | **Honor GitHub's named wait up to 60 s; beyond that, fail at once** with educator wording ("busy right now… try again in a few minutes"). Backoff 1 s → 2 s → 4 s, three retries. | Publishing runs inside a 300 s function; waiting out an hour-long primary reset would only turn into a timeout with no message. |
+| 3 | **Same tree → no commit**, for both the Pages build and ordinary saves. | The Pages branch is a single root commit per build; republishing an unchanged course used to add a commit and re-deploy Pages for nothing. Content-addressed trees make the check exact and free. |
+| 4 | **Installation tokens come from a refreshing source** (mint ahead of expiry; one retry after 401). | Tokens last an hour and are minted per action today, so expiry mid-publish is unlikely — but a cached or long-lived client must never fail on it, and a 401 is a safe retry. |
+| 5 | **Failure copy states that the live site is unchanged** — true because the branch moves in one ref update at the very end. | It is the question an educator asks first; raw GitHub text stays in the server log (scale audit item 9). |
+
+**Not done here (open):** bounded parallelism of the per-chapter generation loop (scale audit queued item 2)
+— the loop is unchanged; the site build moves to orz-site in B.4.
+
+---
+
+## 2026-10-23 — Registry: register the change set, not the package (Phase 5 Track B.1)
+
+**Context.** The scale audit (2026-08-28, queued item 1) found every write
+re-registering the whole package: a whole-content read plus two or three
+round-trips per file — 668 on the 333-file course even when nothing else
+changed.
+
+| # | Decision | Why |
+|---|---|---|
+| 1 | **Writes register only their change set** (`registerChangedFiles`). Every write path already holds it; deletions travel as `content: null`. | The registry is a projection of what the write just did; re-deriving the other 332 files proved nothing. |
+| 2 | **One identity resolver for both paths**, in memory against one read of the live rows, including the rows staged earlier in the same run. Order unchanged: embedded uid → content hash → location → new. | The audit named the ladder "highest-risk": order-sensitive and dependent on in-run staging. One resolver means incremental and rebuild cannot disagree (a test asserts they agree). |
+| 3 | **Duplicate-content tiebreaker, as contract v2 §2 specified**: a cross-path hash match is a *move* only when its old location is gone and nothing is registered here; an exact location match wins over a cross-path hash match. | The spec claimed the rebuild did this; it did not, so byte-identical files stole one docId and flapped. |
+| 4 | **An embedded uid displaces (tombstones) a different identity at its location.** | One location holds one live identity (the DB's partial unique index says so); before, this case hit the index and the file silently stayed unregistered. |
+| 5 | **Full rebuilds stay for populate and large reconciles; their read stays full.** Only changed rows are written, in bulk; a refused bulk write falls back to per-row writes. | Hashes and uids come from bytes (audit, "confirmed correct"); the round-trips were the bug. |
+| 6 | **Tombstones are not pruned; they are kept out of the hot path** (`listLiveByPackage`, served by the existing partial location index). | A pruned tombstone would turn a 410 "no longer available, with provenance" into a 404 — the permalink promise. Live-only reads cost the same whatever the churn. |
+| 7 | **Indexes: add `(package_id, source_hash)` live-only (`0021`); not `adapted_from`.** | Add an index with the query that uses it; no query filters on lineage yet (Track A will). |
+
+---
+
 ## 2026-10-23 — Renderer on orz-markdown 2.4: no server file access; themes generated, not hand-vendored
 
 **Context.** Phase 5 Track 0.1 (STATUS D-39 in the family docs): with orz-markdown

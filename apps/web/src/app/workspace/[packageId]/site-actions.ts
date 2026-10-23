@@ -37,6 +37,7 @@ import { isBinaryPath } from "@/lib/collection-upload";
 import { getRenderTheme } from "@/lib/theme";
 import { generateSelfContainedFile } from "@/lib/worker-client";
 import { docMetaForPackage } from "@/lib/doc-metadata";
+import { emptyOutcome, publishErrorMessage, publishNotes, type PublishOutcome } from "@/lib/publish-report";
 
 const PAGES_BRANCH = "gh-pages";
 
@@ -267,15 +268,11 @@ export async function publishSiteAction(
     // that file rather than blocking publish.
     const pageFiles: SiteFile[] = [];
     const chapters: CourseChapter[] = [];
-    // Chapters skipped because their study guide is still empty — reported back
-    // so the educator learns why they aren't on the site (rather than silently
-    // missing).
-    const skipped: string[] = [];
-    // Chapters whose page could not be BUILT (as opposed to being empty). These
-    // used to be swallowed silently, so a publish could report success with
-    // chapters missing from the live site — worse than failing, because the
-    // educator ships a broken course believing it worked.
-    const failed: string[] = [];
+    // Everything that did NOT make it onto the site, reported back by name
+    // (lib/publish-report.ts). Chapter failures used to be swallowed silently,
+    // and slides / practice failures still were until Track B.2 — a publish
+    // must never report plain success with pieces missing from the live site.
+    const outcome: PublishOutcome = emptyOutcome();
     for (const ch of await listChapters(store, packageId)) {
       const guide = await loadStudyGuide(store, packageId, ch.path);
       const markdown = serializeStudyGuide(guide.preamble, guide.blocks);
@@ -290,7 +287,7 @@ export async function publishSiteAction(
       // publish a course where NO chapter has study-guide content, so a course
       // that gets this far always keeps at least one chapter.
       if (!slotHasContent(markdown)) {
-        skipped.push(ch.title);
+        outcome.emptyChapters.push(ch.title);
         continue;
       }
       const viewHref = `chapters/${ch.slug}.md.html`;
@@ -305,10 +302,11 @@ export async function publishSiteAction(
         pageFiles.push({ path: viewHref, content: html });
         const chapter: CourseChapter = { slug: ch.slug, title: ch.title, viewHref };
 
+        // Slides are an AUTHORED document — publish only the decks the educator
+        // actually created (`slides/NN.md`); a chapter with no deck simply omits
+        // its slides link (no auto-derived deck). A deck that exists but can't
+        // be built is reported, not silently dropped.
         try {
-          // Slides are an AUTHORED document — publish only the decks the educator
-          // actually created (`slides/NN.md`); a chapter with no deck simply omits
-          // its slides link (no auto-derived deck).
           const authored = await loadSlidesDeck(store, packageId, chapterSlidesPath(ch.slug));
           if (slotHasContent(authored.source)) {
             // The course-wide slides theme wins over this specific deck's own
@@ -324,7 +322,8 @@ export async function publishSiteAction(
             chapter.slidesHref = slidesHref;
           }
         } catch {
-          /* omit the slides link for this chapter */
+          // The chapter publishes without its slides link — and the educator is told.
+          outcome.missingSlides.push(ch.title);
         }
         try {
           // Practice questions are an AUTHORED per-chapter document, same lean-
@@ -340,7 +339,7 @@ export async function publishSiteAction(
             chapter.practiceHref = practiceHref;
           }
         } catch {
-          /* omit the practice link for this chapter */
+          outcome.missingPractice.push(ch.title);
         }
         // Print/paged view DISABLED for now (owner request, 2026-07-14): we
         // neither generate `paged/<slug>.paged.html` nor set `chapter.pagedHref`,
@@ -351,7 +350,7 @@ export async function publishSiteAction(
         chapters.push(chapter);
       } catch {
         // The rest of the course still publishes, but say so — never silently.
-        failed.push(ch.title);
+        outcome.failedChapters.push(ch.title);
       }
     }
 
@@ -415,11 +414,11 @@ export async function publishSiteAction(
     const appOrigin = appBaseUrl();
     const assetFiles: Array<{ path: string; content: string; encoding?: "utf-8" | "base64" }> = [];
     const refusedPrivate = new Set<string>();
+    let figuresNotCopied = 0;
     if (appOrigin) {
       const registry = new SupabaseDocumentRegistryStore(supabase);
       const locations = new Map<string, AssetLocation>();
-      for (const rec of await registry.listByPackage(packageId)) {
-        if (rec.tombstoned) continue;
+      for (const rec of await registry.listLiveByPackage(packageId)) {
         locations.set(rec.docId, { repo: rec.repo, path: rec.path });
       }
 
@@ -442,7 +441,10 @@ export async function publishSiteAction(
       // page keeps its permalink rather than gaining a broken relative link.
       for (const path of needed) {
         const content = await store.readFile(packageId, "public", path);
-        if (content === null) continue;
+        if (content === null) {
+          figuresNotCopied++;
+          continue;
+        }
         assetFiles.push(
           isBinaryPath(path)
             ? { path, content, encoding: "base64" }
@@ -453,44 +455,28 @@ export async function publishSiteAction(
     files.push(...assetFiles);
 
     const coords = { owner: repo.owner, repo: repo.name };
-    await gh.client.publishToBranch({
+    // One step for students: the live site switches over at the very end, or
+    // not at all. Same build as last time → nothing is published (idempotent).
+    const pushed = await gh.client.publishToBranch({
       coords,
       branch: PAGES_BRANCH,
       message: "Build site (Alembic)",
       files,
     });
+    outcome.unchanged = pushed.unchanged;
+    outcome.privateLinks = refusedPrivate.size;
+    outcome.figuresNotCopied = figuresNotCopied;
 
     let siteUrl = `https://${repo.owner}.github.io/${repo.name}/`;
     let pagesPending = false;
-    // Chapters left off the site because they have no study-guide content yet —
-    // said plainly, so their absence is never a mystery.
-    const notes: string[] = [];
-    if (skipped.length) {
-      notes.push(
-        `${skipped.length === 1 ? "One chapter isn't" : `${skipped.length} chapters aren't`} on the site yet, because ${skipped.length === 1 ? "it has" : "they have"} no study-guide content: ${skipped.join(", ")}. Write ${skipped.length === 1 ? "it" : "them"} and publish again to add ${skipped.length === 1 ? "it" : "them"}.`,
-      );
-    }
-    if (refusedPrivate.size) {
-      // A public page linked at an instructor-only document by permalink. The
-      // bytes were NOT published (the two-repo invariant outranks a working
-      // link), but the link is still on the page, so say so plainly.
-      notes.push(
-        `${refusedPrivate.size === 1 ? "A link on your site points" : `${refusedPrivate.size} links on your site point`} to instructor-only material, so ${refusedPrivate.size === 1 ? "it was" : "they were"} not published with it. Students will see ${refusedPrivate.size === 1 ? "a link that asks them to sign in" : "links that ask them to sign in"} — remove ${refusedPrivate.size === 1 ? "it" : "them"} from the student-facing pages.`,
-      );
-    }
-    if (failed.length) {
-      notes.push(
-        `${failed.length === 1 ? "One chapter couldn't be built" : `${failed.length} chapters couldn't be built`} and ${failed.length === 1 ? "is" : "are"} missing from the site: ${failed.join(", ")}. Everything else published. Try publishing again — if the same ${failed.length === 1 ? "chapter" : "chapters"} keep failing, open ${failed.length === 1 ? "it" : "them"} and check the content saves cleanly.`,
-      );
-    }
-    let warning: string | undefined = notes.length ? notes.join(" ") : undefined;
+    let warning = publishNotes(outcome);
     try {
       const pages = await gh.client.enablePages(coords, PAGES_BRANCH);
       siteUrl = pages.url;
     } catch {
       pagesPending = true;
       const pagesWarning =
-        "Your site files were published, but GitHub Pages isn't switched on yet. This usually means the GitHub App's new “Pages” permission is still pending — accept it under Settings → Applications → your Alembic app — or turn Pages on once in the repo's Settings → Pages (branch: gh-pages). Then it will be live at the address below.";
+        "Your site files were published, but GitHub Pages isn't switched on yet. This usually means the GitHub App's new “Pages” permission is still pending — accept it under Settings → Applications → your Alembic app — or turn Pages on once in the course's GitHub settings (Settings → Pages, source “gh-pages”). Then it will be live at the address below.";
       warning = warning ? `${pagesWarning} ${warning}` : pagesWarning;
     }
 
@@ -511,6 +497,8 @@ export async function publishSiteAction(
       detail: { kind: "site", reason: e instanceof Error ? e.message : "unknown" },
       occurredAt: new Date().toISOString(),
     });
-    return { ok: false, error: "Publishing the website didn't complete. Please try again." };
+    // Educator wording only; the raw cause goes to the server log.
+    console.warn(`[publish] site publish failed for ${packageId}:`, e);
+    return { ok: false, error: publishErrorMessage(e) };
   }
 }

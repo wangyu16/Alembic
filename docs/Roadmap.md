@@ -147,7 +147,7 @@ workspace, or upload to GitHub source, all registered correctly."*
   platform-served for private/trial/pinned), `/d/{docId}@{version}`
   (content-hash pins), `/p/{packageId}[@snapshot]`; permalink stamped into
   generated files; `livePermalink()`/`pinnedPermalink()` re-emit `/d/`
-  forms.
+  forms *(✅ 2026-10-23, Phase 5 B.3)*.
 - **P2. Share this**: per-file opt-in discoverability (Tier-3 spirit);
   element index feeds Discover's Elements scope (excludes `current`,
   never `private`).

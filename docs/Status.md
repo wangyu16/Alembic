@@ -52,6 +52,55 @@ same commit as the work it tracks. Statuses: ✅ done · 🔄 partially shipped 
 
 > **Current direction — self-contained editing (owner-locked, 2026-07).** Editing and viewing both live *in the files*: the workspace **hosts** the in-file editors of `.md.html` / `.slides.html` / `.paged.html` (orz-family) and **builds no editor of its own**; published pages **are** those self-contained files (thin CDN delivery — study guide ~74 KB, framework from jsDelivr, verified live 2026-07-06); every file gets a permalink. **Committed source of record (revised, 2026-07-08 — "lean-source model"):** a chapter's study guide, slides, and practice questions are each committed as lean markdown (`study-guide/`, `slides/`, `practice/` — `.md`, not `.md.html`); the self-contained `.md.html`/`.slides.html` is generated on demand, purely as the editing/viewing surface, and never itself committed. This supersedes the original plan (below, and in the specs) of `.md.html` as the committed source — the specs haven't all been updated to match yet; this line is authoritative until they are. Authoritative docs: [SteeringNote.md](SteeringNote.md), [self-contained-editing.md](specs/self-contained-editing.md), [workspace-framework.md](specs/workspace-framework.md), and the module-based [Roadmap.md](Roadmap.md) (Modules R/E/P/T/I/S/W — supersedes the phase-based plan). **Code state today:** the classic editor is **retired** (~2.2k lines removed; `/workspace/[id]` redirects to `/edit`); the local **Studio (`/studio`) is removed**, replaced by `/guide`; the workspace three-pane shell now *hosts* the in-file editors (`HostedStudyGuideEditor` for study guide + practice; `HostedSlidesEditor` for authored slide decks). The durable guardrails **G1–G8** (two-repo reference enforcement, block-ID reconcile on import, whole-package fork, single-source course metadata, AI-entitlement seam) that the earlier editor-overhaul design drove all **landed + tested**.
 
+**Phase 5 Track B — GitHub bridge & Pages publishing: keep, strengthen (2026-10-23, branch `phase5/trackB`,
+not yet deployed).** Plan: family `docs/PHASE5-ALEMBIC.md` Track B; B.4–B.6 wait for the orz release wave.
+
+- ✅ **B.1 Incremental registry** (scale audit queued item 1). Writes register **only the files they touched**
+  (`registerChangedFiles` in `package-ops`; web door `registerChanges` in `lib/register.ts`) — all eight write
+  call sites (collection ×6, term ×2) pass their change set; reconcile registers its diff (≤ 50 paths; a
+  larger foreign commit takes one full rebuild); the page-load fast path registers just the path
+  difference. Populate keeps the **full** rebuild (its read stays full — hashes and uids come from bytes),
+  which now resolves identity in memory against one read of the **live** rows and bulk-writes only the rows
+  that changed. **Measured** (fake store billing one round-trip per call / per 1000-row page, 333-file
+  package, `document-registry.batch.test.ts`): one-file save **668 → 2** round-trips and no content read;
+  rename ≤ 4; unchanged rebuild **668 → 2** (zero writes); first registration of 333 files **3**.
+  **Correctness fix found on the way:** the duplicate-content tiebreaker that `package-contract-v2.md` §2
+  said the rebuild implemented **did not exist** — a second byte-identical file took the first one's docId
+  and the two flapped on every rebuild (and the page-load path check could never settle). Now implemented in
+  both paths. Tombstones stay forever (410), but no longer ride along on writes (`listLiveByPackage`, served
+  by the partial location index); registry paging gained a `doc_id` tiebreak for stable pages. Rename no
+  longer reads the whole package. **Migration `0021_trackB_documents_hash_idx`** (optional, additive):
+  `(package_id, source_hash) where not tombstoned` for `getByContentHash`; no `adapted_from` index (no query
+  uses it). DecisionLog 2026-10-23.
+- ✅ **B.2 Publish robustness.** `github-bridge`: every request retries GitHub **5xx and rate limits** with
+  backoff, honoring `Retry-After` and the primary-limit reset (gives up at once when GitHub asks for more
+  than 60 s); 5xx / dropped connections are replayed **only for idempotent requests** (reads, ref updates
+  to a fixed sha, blob/tree/commit objects) — never repo/ref/tag/Pages creation; a plain 403 (permissions)
+  is never retried. **Installation-token refresh:** `installationTokenSource` reuses the one-hour token,
+  mints a new one 5 min before expiry, and a 401 refreshes once and retries (`clientForInstallation` uses
+  it). **Idempotent publish:** `publishToBranch` compares the new tree with the live one and makes **no
+  commit** when the site is unchanged (`unchanged: true`); `createCommitOnBranch` makes no empty commits;
+  a concurrently created Pages branch (422) is overwritten instead of failing. **Partial-failure report**
+  (`lib/publish-report.ts`): slides and practice questions that could not be built were still silently
+  dropped (only chapters were reported) — now every missing piece is named by chapter, plus figures that
+  could not be copied and "already up to date"; failures say in educator words whether GitHub was busy,
+  unreachable or no longer permitted, and that **the live site has not changed** (it switches over in one
+  step at the end). The Pages-setup hint lost "branch"/"repo". Tests: 17 against a stateful fake GitHub
+  (`robustness.test.ts`), 7 for the wording (no Git words, no GitHub text).
+- ✅ **B.3 Permalinks, not raw GitHub.** `livePermalink(docId, origin?)` / `pinnedPermalink(docId, version,
+  origin?)` now emit `/d/{docId}[@{version}]` and refuse a path (fail-closed); `classifyReference` knows `/d/`
+  (permalinks §7 closed). The only caller — the whole-package upload's `../` fallback — **was committing raw
+  `raw.githubusercontent.com` URLs into educators' documents**; it now resolves through the registry, and
+  documents linking to other documents of the same upload are committed **in rounds**
+  (`lib/populate-rounds.ts`, 6 tests) so each can link to the other's permalink; a cycle or a broken link is
+  reported as before. **Reconcile:** the private repo is never reconciled (public-only by design); four new
+  adversarial tests pin that a public reconcile cannot delete, overwrite or register anything private.
+  **Open (owner):** *(a)* a never-synced package's first reconcile records the head as its baseline without
+  absorbing anything (the client returns no diff for a null base; its comment promised "reconcile all" — now
+  corrected); *(b)* GitHub's compare lists at most 300 files, so a larger foreign change is absorbed only in
+  part; *(c)* the registry's `sourceHash` (and `/d/…@{version}` pins, served `immutable`) is a 32-bit FNV
+  hash — fine for identity at course scale, weak as an immutable version pin.
+
 **Phase 5 Track 0 — security and hygiene (2026-10-23, branch `phase5/track0`).** The first track of the
 Phase 5 revision plan (family `docs/PHASE5-ALEMBIC.md`). Committed locally, **not pushed** (a push to `main`
 deploys production; the owner says when).
@@ -558,7 +607,7 @@ theme-in-save).
 
 These are the only things blocking full production parity with the code:
 
-1. **Migrations pending: `0020` (required for zip upload), `0019` (required for CF4), `0013` (optional).** `0020_staging_bucket` creates the private `staging` bucket + owner-prefix RLS that the whole-course zip upload writes through — **it needs owner/service-role privileges** (it writes `storage.buckets` and `storage.objects` policies, which the anon/authenticated roles cannot) and **must be applied BEFORE the Wave-3 code is deployed**, or every zip upload fails at the signed-URL step. Supabase Storage has no automatic TTL, so the bucket's 24-hour lifetime also needs an **operator/cron sweep** deleting objects older than 24h (the happy path deletes each object on consumption); see [Deployment.md §1](Deployment.md). `0019_document_tags` adds the per-file `tags` column the Assets collection (CF4.1/4.2) reads/writes — **apply it before relying on asset tags/metadata in production** (CF4 asset writes are otherwise held; see the CF4 entry). `0013_drop_portal_eligible` drops the now-unused `profiles.portal_eligible` column — optional cleanup, apply anytime; no code references it. Applied: 0005–0012, **0014** (documents), **0015** (portal keywords, 2026-07-09), and **0016–0018** (profile column grants + user governance + ban backstop, ✅ **applied 2026-07-10** — see the security/UG banners above). Config notes: 0007's budget stays dormant until `AI_TOKEN_BUDGET` is set; portal listing is now open to all educators (the `portal_eligible` gate + admin toggle were removed); to reach `/admin`, **flag yourself `is_admin=true`** (dashboard) and set **`SUPABASE_SECRET_KEY`** (service-role reads) — optionally `RESEARCH_EXPORT_SALT`.
+1. **Migrations pending: `0020` (required for zip upload), `0019` (required for CF4), `0013` (optional), `0021_trackB_documents_hash_idx` (optional index, Phase 5 Track B.1 — apply anytime).** `0020_staging_bucket` creates the private `staging` bucket + owner-prefix RLS that the whole-course zip upload writes through — **it needs owner/service-role privileges** (it writes `storage.buckets` and `storage.objects` policies, which the anon/authenticated roles cannot) and **must be applied BEFORE the Wave-3 code is deployed**, or every zip upload fails at the signed-URL step. Supabase Storage has no automatic TTL, so the bucket's 24-hour lifetime also needs an **operator/cron sweep** deleting objects older than 24h (the happy path deletes each object on consumption); see [Deployment.md §1](Deployment.md). `0019_document_tags` adds the per-file `tags` column the Assets collection (CF4.1/4.2) reads/writes — **apply it before relying on asset tags/metadata in production** (CF4 asset writes are otherwise held; see the CF4 entry). `0013_drop_portal_eligible` drops the now-unused `profiles.portal_eligible` column — optional cleanup, apply anytime; no code references it. Applied: 0005–0012, **0014** (documents), **0015** (portal keywords, 2026-07-09), and **0016–0018** (profile column grants + user governance + ban backstop, ✅ **applied 2026-07-10** — see the security/UG banners above). Config notes: 0007's budget stays dormant until `AI_TOKEN_BUDGET` is set; portal listing is now open to all educators (the `portal_eligible` gate + admin toggle were removed); to reach `/admin`, **flag yourself `is_admin=true`** (dashboard) and set **`SUPABASE_SECRET_KEY`** (service-role reads) — optionally `RESEARCH_EXPORT_SALT`.
 2. ✅ **Done** — Vercel build command is `node ../../scripts/fetch-vendor.mjs && next build`; Plotly is vendored and the plot editor (M11b) works live.
 3. **Interactive verification passes** (can't run in CI): slides render (M13), the in-file hosted editors (`.md.html`/`.slides.html`/`.paged.html` save round-trip via the worker tier), and the AI/reconcile live runs (M18 coherence agent, M9.6 draft-from-plan, M20 reconcile, M23 question generation, M26–M28 adapt/pull/suggest-back) once the AI gateway is on Vercel. Ketcher (M11) and plots (M11b) are verified live.
 4. **Set the AI gateway env vars in Vercel** — the self-hosted LiteLLM gateway (decided 2026-08-28, replacing Portkey; [worker-tier.md](specs/worker-tier.md) §1.5): `AI_GATEWAY_URL=https://<litellm-host>/v1`, `AI_GATEWAY_API_KEY=<virtual key>`, `AI_MODEL_DEFAULT/FAST/STRONG` = the gateway's model names — to verify the **M18 coherence agent** live. (Local dev could not reach the earlier hosted gateway from this machine — the dev Mac's firewall blocks the `node` binary's outbound; Vercel's egress is clean.) See [ai-architecture.md](specs/ai-architecture.md).

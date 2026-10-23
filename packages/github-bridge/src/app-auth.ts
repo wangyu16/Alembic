@@ -1,5 +1,12 @@
 import { createSign } from "node:crypto";
-import { defaultFetch, GitHubError, type FetchLike } from "./http";
+import {
+  defaultFetch,
+  GitHubError,
+  isRateLimitResponse,
+  sendWithRetry,
+  type FetchLike,
+  type RetryPolicy,
+} from "./http";
 
 function base64url(buf: Buffer): string {
   return buf
@@ -41,10 +48,13 @@ export async function getInstallationToken(opts: {
   installationId: string | number;
   fetchImpl?: FetchLike;
   nowMs?: number;
+  retry?: Partial<RetryPolicy>;
 }): Promise<InstallationToken> {
   const jwt = mintAppJwt(opts.appId, opts.privateKey, opts.nowMs);
   const f = opts.fetchImpl ?? defaultFetch;
-  const res = await f(
+  // Minting a token twice is harmless, so 5xx and network errors are retried.
+  const res = await sendWithRetry(
+    f,
     `https://api.github.com/app/installations/${opts.installationId}/access_tokens`,
     {
       method: "POST",
@@ -54,12 +64,15 @@ export async function getInstallationToken(opts: {
         "X-GitHub-Api-Version": "2022-11-28",
       },
     },
+    { replayable: true, policy: opts.retry },
   );
   if (!res.ok) {
+    const body = await res.text().catch(() => "");
     throw new GitHubError(
       "Could not obtain an installation token",
       res.status,
-      await res.text().catch(() => undefined),
+      body || undefined,
+      { rateLimited: isRateLimitResponse(res, body) },
     );
   }
   const data = (await res.json()) as { token: string; expires_at: string };
@@ -113,4 +126,78 @@ export async function getInstallationAccount(opts: {
     throw new GitHubError("Installation has no account login", res.status);
   }
   return { login: data.account.login, type: data.account.type };
+}
+
+/**
+ * Where a client gets its bearer token. A static string never changes; an
+ * installation source mints, caches and REFRESHES the App's installation
+ * token, which GitHub expires after one hour.
+ */
+export interface TokenSource {
+  /** A token that is valid now (refreshed ahead of expiry). */
+  token(): Promise<string>;
+  /** Force a fresh token after GitHub answered 401. Returns null when this
+   *  source cannot refresh (a static token), so the caller does not retry. */
+  refresh(): Promise<string | null>;
+}
+
+export function staticTokenSource(token: string): TokenSource {
+  return { token: async () => token, refresh: async () => null };
+}
+
+/**
+ * An installation-token source: mints on first use, reuses the token until it
+ * is within `refreshBeforeMs` (default 5 min) of its expiry, then mints a new
+ * one — so a long publish never runs into the one-hour expiry. `refresh()`
+ * mints unconditionally (GitHub said 401: revoked, rotated or expired early).
+ * Concurrent callers share one in-flight mint.
+ */
+export function installationTokenSource(opts: {
+  appId: string;
+  privateKey: string;
+  installationId: string | number;
+  fetchImpl?: FetchLike;
+  now?: () => number;
+  refreshBeforeMs?: number;
+  retry?: Partial<RetryPolicy>;
+}): TokenSource {
+  const now = opts.now ?? Date.now;
+  const margin = opts.refreshBeforeMs ?? 5 * 60_000;
+  let current: { token: string; expiresAtMs: number } | null = null;
+  let inflight: Promise<string> | null = null;
+
+  const mint = (): Promise<string> => {
+    inflight ??= getInstallationToken({
+      appId: opts.appId,
+      privateKey: opts.privateKey,
+      installationId: opts.installationId,
+      fetchImpl: opts.fetchImpl,
+      nowMs: now(),
+      retry: opts.retry,
+    })
+      .then((t) => {
+        const parsed = Date.parse(t.expiresAt);
+        // An unparseable expiry: assume GitHub's documented one hour.
+        current = {
+          token: t.token,
+          expiresAtMs: Number.isFinite(parsed) ? parsed : now() + 60 * 60_000,
+        };
+        return t.token;
+      })
+      .finally(() => {
+        inflight = null;
+      });
+    return inflight;
+  };
+
+  return {
+    async token() {
+      if (current && current.expiresAtMs - now() > margin) return current.token;
+      return mint();
+    },
+    async refresh() {
+      current = null;
+      return mint();
+    },
+  };
 }

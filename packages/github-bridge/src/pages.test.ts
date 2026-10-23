@@ -52,6 +52,7 @@ describe("publishToBranch", () => {
       if (method === "POST" && url.endsWith("/git/trees")) return ok({ sha: "TREE" });
       if (method === "POST" && url.endsWith("/git/commits")) return ok({ sha: "COMMIT2" });
       if (method === "GET" && url.includes("/git/ref/heads/gh-pages")) return ok({ object: { sha: "OLD" } });
+      if (method === "GET" && url.includes("/git/commits/OLD")) return ok({ tree: { sha: "OLDTREE" } });
       if (method === "PATCH" && url.includes("/git/refs/heads/gh-pages")) return ok({});
       throw new Error(`unexpected ${method} ${url}`);
     };

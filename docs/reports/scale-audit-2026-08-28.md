@@ -24,7 +24,11 @@ base64, so **one whole-package read ≈ 29–30 MB**; `listPaths` ≈ 30 KB;
 
 ## Queued — highest value first
 
-1. **Registry rebuild on every WRITE** (`syncPackageRegistry`, 13 call sites):
+1. ✅ **Fixed 2026-10-23 (Phase 5 Track B.1)** — writes register only their
+   change set (`registerChangedFiles`), rebuilds resolve identity in memory and
+   bulk-write only changed rows; measured on a 333-file package: one-file save
+   668 → 2 round-trips, unchanged rebuild 668 → 2. See Status.md.
+   **Registry rebuild on every WRITE** (`syncPackageRegistry`, 13 call sites):
    a whole read **plus 2–3 DB round-trips per file** → ~700–1000 serialized
    round-trips after every save. Fix: register only the files the write
    touched (the call sites know their change set); batch the genuine full

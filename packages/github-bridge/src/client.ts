@@ -1,4 +1,12 @@
-import { defaultFetch, GitHubError, type FetchLike } from "./http";
+import { staticTokenSource, type TokenSource } from "./app-auth";
+import {
+  defaultFetch,
+  GitHubError,
+  isRateLimitResponse,
+  sendWithRetry,
+  type FetchLike,
+  type RetryPolicy,
+} from "./http";
 
 export interface RepoCoords {
   owner: string;
@@ -50,37 +58,76 @@ export async function fetchPublicRepoBytes(
 }
 
 /**
+ * Requests that are safe to send twice, so a 5xx or a dropped connection may
+ * be retried: reads, ref updates to a fixed sha (PATCH), and creation of
+ * content-addressed git objects (a duplicate blob/tree is the same object; a
+ * duplicate commit object is unreferenced and harmless). Creating a repo, a
+ * ref, a tag or a Pages site is NOT replayed on a 5xx — the first attempt may
+ * have landed. Rate-limit refusals are always retried: GitHub did not
+ * process them.
+ */
+function isReplayable(method: string, path: string): boolean {
+  if (method !== "POST") return true;
+  return /\/git\/(blobs|trees|commits)$/.test(path);
+}
+
+/**
  * Thin GitHub REST client over an installation token. Only the operations
  * Alembic needs: create repos from templates, commit a file set atomically
  * (Git Data API), list commits, and read a file at a ref (for restore).
+ *
+ * Robustness (Phase 5 Track B.2): every request retries GitHub 5xx and rate
+ * limits with backoff (honoring `Retry-After`), and a 401 refreshes the
+ * installation token once when the client was given a refreshable
+ * `TokenSource` (see `installationTokenSource`).
  */
 export class GitHubClient {
+  private readonly tokens: TokenSource;
+  private readonly retry: Partial<RetryPolicy> | undefined;
+
   constructor(
-    private readonly token: string,
+    token: string | TokenSource,
     private readonly fetchImpl: FetchLike = defaultFetch,
-  ) {}
+    opts: { retry?: Partial<RetryPolicy> } = {},
+  ) {
+    this.tokens = typeof token === "string" ? staticTokenSource(token) : token;
+    this.retry = opts.retry;
+  }
 
   private async request<T>(
     method: string,
     path: string,
     body?: unknown,
   ): Promise<T> {
-    const res = await this.fetchImpl(`https://api.github.com${path}`, {
-      method,
-      headers: {
-        Authorization: `Bearer ${this.token}`,
-        Accept: "application/vnd.github+json",
-        "X-GitHub-Api-Version": "2022-11-28",
-        ...(body ? { "Content-Type": "application/json" } : {}),
-      },
-      ...(body ? { body: JSON.stringify(body) } : {}),
-    });
-    if (!res.ok) {
-      throw new GitHubError(
-        `GitHub ${method} ${path} failed`,
-        res.status,
-        await res.text().catch(() => undefined),
+    const send = async (token: string) =>
+      sendWithRetry(
+        this.fetchImpl,
+        `https://api.github.com${path}`,
+        {
+          method,
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: "application/vnd.github+json",
+            "X-GitHub-Api-Version": "2022-11-28",
+            ...(body ? { "Content-Type": "application/json" } : {}),
+          },
+          ...(body ? { body: JSON.stringify(body) } : {}),
+        },
+        { replayable: isReplayable(method, path), policy: this.retry },
       );
+
+    let res = await send(await this.tokens.token());
+    if (res.status === 401) {
+      // Expired / revoked installation token: GitHub did not process the
+      // request, so one retry with a fresh token is always safe.
+      const fresh = await this.tokens.refresh();
+      if (fresh !== null) res = await send(fresh);
+    }
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new GitHubError(`GitHub ${method} ${path} failed`, res.status, text || undefined, {
+        rateLimited: isRateLimitResponse(res, text),
+      });
     }
     return (await res.json()) as T;
   }
@@ -215,6 +262,9 @@ export class GitHubClient {
       `/repos/${input.coords.owner}/${input.coords.repo}/git/trees`,
       { base_tree: baseTree, tree },
     );
+    // Same tree as the branch already has (a save that changed nothing, or a
+    // retried write that had in fact landed): no empty commit.
+    if (newTree.sha === baseTree) return { commitSha: parentSha };
     const commit = await this.request<{ sha: string }>(
       "POST",
       `/repos/${input.coords.owner}/${input.coords.repo}/git/commits`,
@@ -268,40 +318,61 @@ export class GitHubClient {
    * Replace a branch's entire contents with `files` as a single root commit
    * (no parent) — used for generated output like the Pages branch, so each
    * build yields a clean tree. Creates the branch if it doesn't exist.
+   *
+   * Idempotent: when the branch already holds exactly this tree, nothing is
+   * committed and `unchanged` is true. Atomic for readers: the branch moves
+   * in one ref update at the end, so a failure before that leaves the live
+   * site exactly as it was.
    */
   async publishToBranch(input: {
     coords: RepoCoords;
     branch: string;
     message: string;
     files: Array<{ path: string; content: string; encoding?: "utf-8" | "base64" }>;
-  }): Promise<{ commitSha: string }> {
+  }): Promise<{ commitSha: string; unchanged: boolean }> {
     const { coords, branch } = input;
+    const existing = await this.getRefSha(coords, `heads/${branch}`);
     const tree = await this.buildTreeEntries(coords, input.files);
     const newTree = await this.request<{ sha: string }>(
       "POST",
       `/repos/${coords.owner}/${coords.repo}/git/trees`,
       { tree },
     );
+    if (existing !== null) {
+      const head = await this.request<{ tree: { sha: string } }>(
+        "GET",
+        `/repos/${coords.owner}/${coords.repo}/git/commits/${existing}`,
+      );
+      if (head.tree.sha === newTree.sha) return { commitSha: existing, unchanged: true };
+    }
     const commit = await this.request<{ sha: string }>(
       "POST",
       `/repos/${coords.owner}/${coords.repo}/git/commits`,
       { message: input.message, tree: newTree.sha, parents: [] },
     );
-    const existing = await this.getRefSha(coords, `heads/${branch}`);
-    if (existing === null) {
-      await this.request(
-        "POST",
-        `/repos/${coords.owner}/${coords.repo}/git/refs`,
-        { ref: `refs/heads/${branch}`, sha: commit.sha },
-      );
-    } else {
-      await this.request(
+    const forceUpdate = () =>
+      this.request(
         "PATCH",
         `/repos/${coords.owner}/${coords.repo}/git/refs/heads/${branch}`,
         { sha: commit.sha, force: true },
       );
+    if (existing === null) {
+      try {
+        await this.request(
+          "POST",
+          `/repos/${coords.owner}/${coords.repo}/git/refs`,
+          { ref: `refs/heads/${branch}`, sha: commit.sha },
+        );
+      } catch (e) {
+        // 422 "Reference already exists": another publish created the branch
+        // between our read and our write. The branch is ours to overwrite.
+        if (!(e instanceof GitHubError && e.status === 422)) throw e;
+        await forceUpdate();
+      }
+    } else {
+      await forceUpdate();
     }
-    return { commitSha: commit.sha };
+    return { commitSha: commit.sha, unchanged: false };
   }
 
   /**
@@ -378,7 +449,11 @@ export class GitHubClient {
   /**
    * Paths changed between two commits (base..head), via the Compare API.
    * Used by reconciliation to find what a foreign commit touched. If base is
-   * null (never synced) returns []  — the caller treats that as "reconcile all".
+   * null (never synced) this returns [] — and reconcile then records the head
+   * as its baseline WITHOUT absorbing anything (corrected 2026-10-23: this
+   * comment used to promise "reconcile all", which no caller does). Note also
+   * that GitHub lists at most 300 files per comparison; a larger foreign change
+   * is absorbed only in part. Both are open items in Status.md (Track B).
    */
   async compareCommits(
     coords: RepoCoords,

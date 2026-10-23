@@ -18,7 +18,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
 import { rewriteMarkdownRefs } from "@/lib/rewrite-md-refs";
 import { committerFor } from "@/lib/committer";
-import { syncPackageRegistry } from "@/lib/register";
+import { registerChanges } from "@/lib/register";
 import { uploadVerdict } from "@/lib/collection-upload";
 import { placementNote, resolveReplaceTarget } from "@/lib/slot-upsert";
 import { generateEditableFile } from "@/lib/worker-client";
@@ -136,22 +136,23 @@ export async function uploadCollectionFileAction(
   // truth. Never a silent DB-only write on a published package. Binary content
   // is base64 — `encoding: "base64"` commits the bytes (not the base64 text)
   // and the store keeps the base64 as-is; do not decode.
+  const changes = [
+    {
+      repo: input.repo,
+      path: target,
+      content,
+      ...(input.isBinary ? { encoding: "base64" as const } : {}),
+    },
+  ];
   const written = await writeChanges({
     store,
     resolution: await committerFor(supabase, store, user.id, packageId),
     packageId,
-    changes: [
-      {
-        repo: input.repo,
-        path: target,
-        content,
-        ...(input.isBinary ? { encoding: "base64" as const } : {}),
-      },
-    ],
+    changes,
     summary: "Upload file (Alembic)",
   });
   if (!written.ok) return { ok: false, error: written.error };
-  await syncPackageRegistry(supabase, packageId);
+  await registerChanges(supabase, packageId, changes);
 
   revalidatePath(`/workspace/${packageId}`);
   return { ok: true, path: target, warning: verdict.warning };
@@ -213,15 +214,16 @@ export async function deleteCollectionEntryAction(
 
   // One write-through for the WHOLE subtree: every deletion of a folder lands
   // as a single commit, so a folder can no longer be half-deleted.
+  const changes = targets.map((f) => ({ repo, path: f.path, content: null }));
   const written = await writeChanges({
     store,
     resolution: await committerFor(supabase, store, user.id, packageId),
     packageId,
-    changes: targets.map((f) => ({ repo, path: f.path, content: null })),
+    changes,
     summary: isFolder ? "Delete folder (Alembic)" : "Delete file (Alembic)",
   });
   if (!written.ok) return { ok: false, error: written.error };
-  await syncPackageRegistry(supabase, packageId);
+  await registerChanges(supabase, packageId, changes);
   revalidatePath(`/workspace/${packageId}`);
   return { ok: true, count: targets.length };
 }
@@ -248,28 +250,33 @@ export async function renameCollectionFileAction(
   if (from === to) return { ok: true, path: to };
 
   const store = new SupabaseSandboxStore(supabase);
-  const files = await store.listFiles(packageId);
-  const source = files.find((f) => f.repo === repo && f.path === from);
-  if (!source) return { ok: false, error: "That file no longer exists." };
-  if (files.some((f) => f.repo === repo && f.path === to)) {
+  // Two single-row reads, not the whole package (scale audit 2026-08-28).
+  const [sourceContent, occupied] = await Promise.all([
+    store.readFile(packageId, repo, from),
+    store.readFile(packageId, repo, to),
+  ]);
+  if (sourceContent === null) return { ok: false, error: "That file no longer exists." };
+  if (occupied !== null) {
     return { ok: false, error: "A file already exists at that name." };
   }
 
   // Both halves of the move in ONE write-through: the new path and the removal
   // of the old one commit together and project together, so a rename can never
-  // leave two copies (or none).
+  // leave two copies (or none). The registry carries the file's identity (and
+  // permalink) to the new path.
+  const changes = [
+    { repo, path: to, content: sourceContent },
+    { repo, path: from, content: null },
+  ];
   const written = await writeChanges({
     store,
     resolution: await committerFor(supabase, store, user.id, packageId),
     packageId,
-    changes: [
-      { repo, path: to, content: source.content },
-      { repo, path: from, content: null },
-    ],
+    changes,
     summary: "Rename file (Alembic)",
   });
   if (!written.ok) return { ok: false, error: written.error };
-  await syncPackageRegistry(supabase, packageId);
+  await registerChanges(supabase, packageId, changes);
   revalidatePath(`/workspace/${packageId}`);
   return { ok: true, path: to };
 }
@@ -309,15 +316,16 @@ export async function saveCollectionFileAction(
   const rewritten = await rewriteMarkdownRefs(supabase, packageId, repo, clean, content);
 
   const store = new SupabaseSandboxStore(supabase);
+  const changes = [{ repo, path: clean, content: rewritten }];
   const written = await writeChanges({
     store,
     resolution: await committerFor(supabase, store, user.id, packageId),
     packageId,
-    changes: [{ repo, path: clean, content: rewritten }],
+    changes,
     summary: "Edit file (Alembic)",
   });
   if (!written.ok) return { ok: false, error: written.error };
-  await syncPackageRegistry(supabase, packageId);
+  await registerChanges(supabase, packageId, changes);
   revalidatePath(`/workspace/${packageId}`);
   return { ok: true };
 }
@@ -389,7 +397,7 @@ export interface ReplaceCollectionFileResult {
 
 /**
  * Replace a course document with an edited-offline version (U1). The new bytes
- * land at the document's canonical path, so `syncPackageRegistry`'s location
+ * land at the document's canonical path, so the registry's location
  * match keeps the same docId — the permalink is durable across the round-trip.
  *
  * Two semantics, decided by `resolveReplaceTarget` (storage spec §4):
@@ -482,22 +490,23 @@ export async function replaceCollectionFileAction(
     ? input.content
     : await rewriteMarkdownRefs(supabase, packageId, repo, clean, text);
 
+  const changes = [
+    {
+      repo,
+      path: clean,
+      content,
+      ...(input.isBinary ? { encoding: "base64" as const } : {}),
+    },
+  ];
   const written = await writeChanges({
     store,
     resolution: await committerFor(supabase, store, user.id, packageId),
     packageId,
-    changes: [
-      {
-        repo,
-        path: clean,
-        content,
-        ...(input.isBinary ? { encoding: "base64" as const } : {}),
-      },
-    ],
+    changes,
     summary: "Replace with edited version (Alembic)",
   });
   if (!written.ok) return { ok: false, error: written.error };
-  await syncPackageRegistry(supabase, packageId);
+  await registerChanges(supabase, packageId, changes);
 
   revalidatePath(`/workspace/${packageId}`);
   // Tell the educator where it landed when the picked name didn't match the
@@ -601,8 +610,8 @@ export async function createCollectionFileAction(
     // seeds the document so it opens on-brand.
     const theme = record.manifest.themes?.[input.space.split("/")[0]] ?? record.manifest.theme;
     // U2: mint the document's durable id NOW and embed it in the carrier's
-    // #orz-meta island, so its docId is fixed from birth. registerFile (below,
-    // via syncPackageRegistry) reads the embedded uid and adopts it AS the docId
+    // #orz-meta island, so its docId is fixed from birth. registration (below,
+    // via registerChanges) reads the embedded uid and adopts it AS the docId
     // — so the permalink survives any later rename/move/offline re-upload.
     const meta = docMetaForPackage(record.manifest, { title, uid: newDocId() });
     // `kind` here is one of md/slides/paged: markdown is handled above, and
@@ -616,15 +625,16 @@ export async function createCollectionFileAction(
     });
   }
 
+  const changes = [{ repo, path: target, content }];
   const written = await writeChanges({
     store,
     resolution: await committerFor(supabase, store, user.id, packageId),
     packageId,
-    changes: [{ repo, path: target, content }],
+    changes,
     summary: "Create file (Alembic)",
   });
   if (!written.ok) return { ok: false, error: written.error };
-  await syncPackageRegistry(supabase, packageId);
+  await registerChanges(supabase, packageId, changes);
   revalidatePath(`/workspace/${packageId}`);
   return { ok: true, path: target };
 }

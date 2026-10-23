@@ -374,6 +374,100 @@ describe("reconcilePublicRepo", () => {
   });
 });
 
+/**
+ * The PRIVATE repo is never reconciled (public-only by design — DecisionLog
+ * 2026-07-11, "Deferred" 1), so the boundary property to hold is: a public
+ * reconcile can never read, write, delete or register anything private.
+ * Adversarial cases (Phase 5 Track B.3).
+ */
+describe("reconcilePublicRepo — the private repo is out of reach", () => {
+  const SECRET = { repo: "private" as const, path: "private-instructor/notes/answers.md", content: "Answer key" };
+  const V2_SECRET = { repo: "private" as const, path: "private/notes/key.md", content: "Key v2" };
+
+  it("a foreign REMOVAL of a private-looking path deletes nothing private", async () => {
+    const store = new MemoryPackageStore();
+    await store.putFiles(PKG, [SECRET, V2_SECRET]);
+    // Someone deletes same-named paths in the PUBLIC repo (they never belonged
+    // there). Removals are not validated, so this must be harmless by design.
+    const reader = new FakeRepoReader(
+      "sha-2",
+      [
+        { path: SECRET.path, status: "removed" },
+        { path: V2_SECRET.path, status: "removed" },
+      ],
+      new Map(),
+    );
+    const out = await reconcilePublicRepo(store, PKG, { lastSyncedSha: "sha-1", reader });
+    expect(out.status).toBe("absorbed");
+    expect(await store.readFile(PKG, "private", SECRET.path)).toBe("Answer key");
+    expect(await store.readFile(PKG, "private", V2_SECRET.path)).toBe("Key v2");
+  });
+
+  it("absorbed files land in the PUBLIC partition only, never overwriting a private file", async () => {
+    const store = new MemoryPackageStore();
+    await store.putFiles(PKG, [SECRET]);
+    const reader = new FakeRepoReader(
+      "sha-2",
+      [{ path: "assets/fig.svg", status: "added" }],
+      new Map([["assets/fig.svg", "<svg/>"]]),
+    );
+    const out = await reconcilePublicRepo(store, PKG, { lastSyncedSha: "sha-1", reader });
+    expect(out.status).toBe("absorbed");
+    const files = await store.listFiles(PKG);
+    expect(files.filter((f) => f.repo === "private")).toEqual([SECRET]);
+    expect(files.find((f) => f.path === "assets/fig.svg")?.repo).toBe("public");
+  });
+
+  it("a quarantined leak is not readable afterwards from either partition", async () => {
+    const store = new MemoryPackageStore();
+    await store.putFiles(PKG, [SECRET]);
+    const reader = new FakeRepoReader(
+      "sha-2",
+      [{ path: SECRET.path, status: "modified" }],
+      new Map([[SECRET.path, "LEAKED copy"]]),
+    );
+    const out = await reconcilePublicRepo(store, PKG, { lastSyncedSha: "sha-1", reader });
+    expect(out.status).toBe("quarantined");
+    expect(await store.readFile(PKG, "public", SECRET.path)).toBeNull();
+    expect(await store.readFile(PKG, "private", SECRET.path)).toBe("Answer key");
+  });
+
+  it("registering an absorbed diff (the web door) touches no private record", async () => {
+    const { MemoryDocumentRegistryStore, rebuildPackageRegistry, registerChangedFiles } =
+      await import("./document-registry");
+    const store = new MemoryPackageStore();
+    await store.putFiles(PKG, [SECRET, { repo: "public", path: "assets/old.svg", content: "<svg>o</svg>" }]);
+    const registry = new MemoryDocumentRegistryStore();
+    await rebuildPackageRegistry(registry, store, PKG);
+    const privateBefore = (await registry.listByPackage(PKG)).filter((r) => r.repo === "private");
+    expect(privateBefore).toHaveLength(1);
+
+    const reader = new FakeRepoReader(
+      "sha-2",
+      [
+        { path: "assets/old.svg", status: "removed" },
+        { path: SECRET.path, status: "removed" },
+        { path: "assets/new.svg", status: "added" },
+      ],
+      new Map([["assets/new.svg", "<svg>n</svg>"]]),
+    );
+    const out = await reconcilePublicRepo(store, PKG, { lastSyncedSha: "sha-1", reader });
+    if (out.status !== "absorbed") throw new Error("expected absorb");
+    // What lib/github.ts does with the outcome: register the diff, public repo.
+    await registerChangedFiles(
+      registry,
+      store,
+      PKG,
+      out.changedPaths.map((path) => ({ repo: "public" as const, path })),
+      "external-commit",
+    );
+    const after = await registry.listByPackage(PKG);
+    expect(after.filter((r) => r.repo === "private")).toEqual(privateBefore);
+    expect(after.find((r) => r.path === "assets/old.svg")?.tombstoned).toBe(true);
+    expect(after.find((r) => r.path === "assets/new.svg" && !r.tombstoned)?.repo).toBe("public");
+  });
+});
+
 describe("findLeakedPaths (M21 audit)", () => {
   it("returns nothing for a clean public tree", () => {
     const paths = [

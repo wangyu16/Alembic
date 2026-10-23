@@ -3,7 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   commitFiles,
   getInstallationAccount,
-  getInstallationToken,
+  installationTokenSource,
   GitHubClient,
   type FileChange,
   type RepoCoords,
@@ -16,7 +16,7 @@ import {
   type RepoReader,
 } from "@alembic/package-ops";
 import type { PackageManifest } from "@alembic/package-contract";
-import { syncPackageRegistry } from "@/lib/register";
+import { registerChanges, syncPackageRegistry } from "@/lib/register";
 
 export interface GithubConfig {
   appId: string;
@@ -82,17 +82,23 @@ export async function installationAccountLogin(
   return account.login;
 }
 
-/** A GitHub client authenticated as a specific installation. */
+/**
+ * A GitHub client authenticated as a specific installation. The token source
+ * refreshes the one-hour installation token ahead of expiry and after a 401,
+ * so a long publish cannot run past it. The first token is minted here, so a
+ * broken installation still fails at this call, as before.
+ */
 export async function clientForInstallation(
   cfg: GithubConfig,
   installationId: number,
 ): Promise<GitHubClient> {
-  const { token } = await getInstallationToken({
+  const tokens = installationTokenSource({
     appId: cfg.appId,
     privateKey: cfg.privateKey,
     installationId,
   });
-  return new GitHubClient(token);
+  await tokens.token();
+  return new GitHubClient(tokens);
 }
 
 /**
@@ -199,8 +205,19 @@ export async function reconcilePackage(
   if (outcome.status === "up-to-date" || outcome.status === "absorbed") {
     await recordSyncedSha(supabase, packageId, outcome.headSha);
     // Door #3: register the absorbed external-commit files (best-effort).
+    // The diff names exactly what changed; a large foreign commit falls back
+    // to one full rebuild rather than hundreds of single-row reads.
     if (outcome.status === "absorbed") {
-      await syncPackageRegistry(supabase, packageId, "external-commit");
+      if (outcome.changedPaths.length <= 50) {
+        await registerChanges(
+          supabase,
+          packageId,
+          outcome.changedPaths.map((path) => ({ repo: "public" as const, path })),
+          "external-commit",
+        );
+      } else {
+        await syncPackageRegistry(supabase, packageId, "external-commit");
+      }
     }
   }
   return outcome;

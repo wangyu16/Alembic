@@ -64,22 +64,43 @@ export function assetRecordPath(assetId: string): string {
 
 /**
  * The three forms a markdown-image reference URL can take:
- * - "live"     — a repo-relative path (e.g. "materials/structures/x.ketcher.svg")
- *                or a GitHub raw URL whose ref is a branch name, not a sha.
- * - "pinned"   — a GitHub raw permalink whose ref is a 40-hex commit sha.
+ * - "live"     — a platform permalink `/d/{docId}` (resolves to the current
+ *                version), a repo-relative path (e.g.
+ *                "materials/structures/x.ketcher.svg"), or a legacy GitHub raw
+ *                URL whose ref is a branch name.
+ * - "pinned"   — a platform permalink `/d/{docId}@{version}`, or a legacy
+ *                GitHub raw URL whose ref is a 40-hex commit sha.
  * - "external" — any other absolute URL.
+ *
+ * Raw GitHub URLs are no longer emitted (permalinks-and-registration.md §7);
+ * they are still classified so documents written before 2026-10 keep working.
  */
 export type ReferenceForm = "live" | "pinned" | "external";
 
 const RAW_HOST = "raw.githubusercontent.com";
 const SHA40 = /^[0-9a-f]{40}$/;
+/** `/d/{docId}` or `/d/{docId}@{version}` (permalinks-and-registration.md §2). */
+const PLATFORM_PERMALINK = /^\/d\/(doc-[A-Za-z0-9_-]+)(?:@([A-Za-z0-9._-]+))?\/?$/;
 
 /**
- * Classify a reference URL. Repo-relative paths (no scheme, no host) are "live";
- * a raw.githubusercontent.com URL is "pinned" iff its ref segment is a 40-hex
- * commit sha, otherwise "live" (branch ref); everything else is "external".
+ * Classify a reference URL.
+ *
+ * - A root-relative `/d/{docId}[@{version}]` is a platform permalink; so is an
+ *   absolute one on `opts.appOrigin` (the platform's own origin). Without an
+ *   origin, an absolute `/d/…` URL on some other host is "external" — this is
+ *   pure code and cannot know which host is the platform.
+ * - Other repo-relative paths (no scheme, no host) are "live".
+ * - A raw.githubusercontent.com URL is "pinned" iff its ref segment is a 40-hex
+ *   commit sha, otherwise "live" (branch ref).
+ * - Everything else is "external".
  */
-export function classifyReference(url: string): ReferenceForm {
+export function classifyReference(
+  url: string,
+  opts: { appOrigin?: string } = {},
+): ReferenceForm {
+  const local = PLATFORM_PERMALINK.exec(url.split(/[?#]/)[0] ?? "");
+  if (local) return local[2] ? "pinned" : "live";
+
   // Absolute URL? Try to parse; if it has no scheme it is repo-relative.
   let parsed: URL | undefined;
   try {
@@ -91,6 +112,17 @@ export function classifyReference(url: string): ReferenceForm {
   if (!parsed) {
     // No scheme/host — treat as a repo-relative live path.
     return "live";
+  }
+
+  if (opts.appOrigin) {
+    let origin: string | null = null;
+    try {
+      origin = new URL(opts.appOrigin).origin;
+    } catch {
+      origin = null;
+    }
+    const platform = PLATFORM_PERMALINK.exec(parsed.pathname);
+    if (platform && origin === parsed.origin) return platform[2] ? "pinned" : "live";
   }
 
   if (parsed.hostname !== RAW_HOST) {
@@ -176,34 +208,38 @@ export function assertPublicMarkdownReferences(markdown: string): void {
   }
 }
 
-function rawUrl(
-  owner: string,
-  repo: string,
-  ref: string,
-  repoRelativePath: string,
-): string {
-  const path = repoRelativePath.replace(/\\/g, "/").replace(/^\/+/, "");
-  return `https://${RAW_HOST}/${owner}/${repo}/${ref}/${path}`;
+function platformPermalink(docId: string, version: string | null, origin: string): string {
+  if (!/^doc-[A-Za-z0-9_-]+$/.test(docId)) {
+    // Fail closed: before 2026-10 these helpers took a repo PATH; a path must
+    // never be turned into a link that looks like a permalink.
+    throw new Error(`Not a document id: ${JSON.stringify(docId)}`);
+  }
+  if (version !== null && !/^[A-Za-z0-9._-]+$/.test(version)) {
+    throw new Error(`Not a version: ${JSON.stringify(version)}`);
+  }
+  const base = origin.replace(/\/+$/, "");
+  return `${base}/d/${docId}${version === null ? "" : `@${version}`}`;
 }
 
 /**
- * Build a LIVE permalink (branch ref): edits on that branch propagate. Used
- * while authoring. Pure — no IO.
+ * The LIVE platform permalink of a registered file — `/d/{docId}`, which
+ * always resolves to the file's current version wherever it has moved
+ * (permalinks-and-registration.md §2–3). `origin` is the platform's origin
+ * (e.g. `https://alembic.orz.how`); omit it for a root-relative link. Pure.
+ *
+ * Changed 2026-10-23 (Phase 5 Track B.3): this used to return a
+ * raw.githubusercontent.com URL for a repo path — wrong MIME + nosniff,
+ * path-coupled, no private serving (spec §7). Raw GitHub stays an internal
+ * transport of the resolver only.
  */
-export function livePermalink(
-  repoRelativePath: string,
-  o: { owner: string; repo: string; branch: string },
-): string {
-  return rawUrl(o.owner, o.repo, o.branch, repoRelativePath);
+export function livePermalink(docId: string, origin = ""): string {
+  return platformPermalink(docId, null, origin);
 }
 
 /**
- * Build a PINNED permalink (commit sha ref): immutable and reproducible. Used at
- * publish/snapshot time. Pure — no IO.
+ * The PINNED platform permalink — `/d/{docId}@{version}`, where `version` is
+ * the file version's content hash (the registry's `sourceHash`). Pure.
  */
-export function pinnedPermalink(
-  repoRelativePath: string,
-  o: { owner: string; repo: string; sha: string },
-): string {
-  return rawUrl(o.owner, o.repo, o.sha, repoRelativePath);
+export function pinnedPermalink(docId: string, version: string, origin = ""): string {
+  return platformPermalink(docId, version, origin);
 }

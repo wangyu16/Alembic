@@ -26,7 +26,8 @@ describe("repoExists", () => {
 
   it("propagates non-404 errors so a transient failure isn't read as deletion", async () => {
     const fetchImpl: FetchLike = async () => status(500);
-    const client = new GitHubClient("t", fetchImpl);
+    // A persistent 500 is retried with backoff first (no real waiting here).
+    const client = new GitHubClient("t", fetchImpl, { retry: { sleep: async () => {} } });
     await expect(client.repoExists(coords)).rejects.toThrow();
   });
 });
