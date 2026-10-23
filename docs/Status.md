@@ -68,6 +68,27 @@ itself (A.1–A.4) is a parallel branch (`phase5/trackA-core`) and is not touche
   **Migration `0023_trackA_infra`** (additive, not applied): `research_events.user_id` nullable + a
   `(type, occurred_at)` index; rate-limit counters (A.6). Checked in PGlite. Tests: 9 (de-identification,
   taxonomy membership) + 3 in `research-events`.
+- ✅ **A.6 `/d/{docId}` cached by source hash; rate limits.** The answer moved out of the route into
+  `lib/permalink-response.ts` (the route is a thin adapter). After the rate limit and the ONE access check
+  (`lib/permalink-access.ts`, unchanged): public answers carry `ETag: W/"{source_hash}"`, answer
+  `If-None-Match` with **304 without reading GitHub**, pinned `@{hash}` is `immutable`, live answers are
+  `public, max-age=60, s-maxage=300, stale-while-revalidate=86400` (was `max-age=60`). Bytes are cached
+  per `(docId, hash)` (`lib/doc-bytes-cache.ts`: in-process LRU ≤ 64 MB, plus Next's data cache for files
+  ≤ 1 MB via `lib/next-doc-bytes-layer.ts`; concurrent misses share one read) — **GitHub is read once per
+  file version, not per view**. Only bytes that hash to the registry's hash are cached or labelled; when
+  the repo is ahead of the registry (direct commit, reconcile not yet run) the file is served the old way
+  (no ETag, `max-age=60`, uncached) — so a pin can never be cached `immutable` with another version's
+  bytes. **Owner-only answers are untouched by all of it:** `private, no-store`, no ETag, no 304, no CORS,
+  no server cache. 404s are now `no-store` (an owner never meets a CDN-cached 404 for their own private
+  file). **Rate limits** (`lib/rate-limit.ts`, door `lib/rate-limit-server.ts`): anonymous reports 5 / 10
+  min and 20 / day per address (Postgres `rate_limit_hit`, migration 0023, in-process fallback); `/d`
+  1200 / min and search 120 / min per address in process; keys are an HMAC of the address (none stored);
+  a 429 is `no-store` with `Retry-After`. **Pins stay on the 32-bit FNV hash** (Track B open item *c*):
+  deferred to the version store R3 with reasons — DecisionLog 2026-10-23 #4. Tests: 15 adversarial
+  (`permalink-response.adversarial.test.ts`: private/trial never publicly cacheable for anonymous,
+  stranger or owner, with or without `If-None-Match`/`*`/pins; a hidden file's 404 byte-identical to a
+  missing one's; cached-then-made-private; package back to trial; rate limit before lookup), 11 cache,
+  9 rate-limit.
 
 **Phase 5 Track B — GitHub bridge & Pages publishing: keep, strengthen (2026-10-23, branch `phase5/trackB`,
 not yet deployed).** Plan: family `docs/PHASE5-ALEMBIC.md` Track B; B.4–B.6 wait for the orz release wave.
