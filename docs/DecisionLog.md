@@ -6,6 +6,38 @@ design, and what is deferred to the future. Complements [Status.md](Status.md)
 
 ---
 
+## 2026-10-23 — Discovery index: derived in the database, kept fresh by triggers (Phase 5 Track A.1)
+
+**Decision.** The discovery index (`discovery_courses`, `discovery_elements`)
+is derived **in SQL** by `discovery_refresh_package`, called from triggers on
+the tables it reads (`portal_registrations`, `packages`, `documents`, the
+concept-map rows of `sandbox_files`), each wrapped so an error is only a
+warning. The app writes nothing to it. The listing consent stays in
+`portal_registrations` (its snapshot columns are no longer read for
+discovery; they are kept, additive-only). Spec:
+[discovery-index.md](specs/discovery-index.md).
+
+**Why.** Refresh points in app code would have to be added at every place
+that writes a manifest, the registry or a listing — about fifteen today,
+plus operator takedowns in the dashboard, which no app hook sees; one missed
+call site is a stale or leaking listing. Triggers see every write path,
+present and future. Deriving in SQL also lets the migration back-fill the
+index and lets an operator rebuild it with one statement, with no service
+key in the loop. The cost — the SQL reads manifest fields the contract owns —
+is held by `DISCOVERY_MANIFEST_FIELDS` and agreement tests that fail if the
+two drift.
+
+**Also decided.** Elements are listed on per-file consent alone (no course
+listing needed, document-model.md §4); a listed element of an unlisted
+course simply has no course page. Adaptation counts include trial and
+private adaptations (only the number is shown). `updated_at` survives
+re-projection but not a rebuild of an emptied table (it then restarts at the
+listing time) — acceptable for a ranking signal. Tests run against PGlite (a
+new web devDependency) because no local Supabase/Postgres exists on the
+build machines; it proves behaviour, not production performance.
+
+---
+
 ## 2026-10-23 — Permalink helpers emit `/d/`; upload links resolve in rounds (Phase 5 Track B.3)
 
 **Decision.** `livePermalink`/`pinnedPermalink` take a **docId**, never a path,

@@ -147,7 +147,9 @@ New Supabase migration (`0014_documents.sql`), following existing conventions
 (snake_case, `references public.packages(id)`, RLS `owner_id = auth.uid()`).
 Keyed by `doc_id` (primary), unique on `(package_id, repo, path)` among
 non-tombstoned rows. Owner reads their own; no public read in MVP (Discover
-reads a public-safe view later). **Rebuildable**: a full re-scan of a
+reads a public-safe view later — built 2026-10-23 as the discovery index,
+[discovery-index.md](discovery-index.md); `documents` itself stays
+owner-only). **Rebuildable**: a full re-scan of a
 package's repos reproduces every row; the table is a cache, repos are truth.
 
 **Registration hooks — all three doors** (R2):
