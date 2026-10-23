@@ -6,10 +6,13 @@
  */
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { SupabaseSandboxStore } from "./sandbox-store";
 import { SupabaseDocumentRegistryStore } from "./document-registry-store";
+
+// document-registry-store signals Discover (server-only next/cache); not under test here.
+vi.mock("./discovery-cache", () => ({ discoveryChanged: () => {} }));
 
 const SRC = join(__dirname, "..");
 

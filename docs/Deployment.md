@@ -25,7 +25,63 @@ In the Supabase SQL editor, run every file in
 `0020_staging_bucket` → `0021_trackB_documents_hash_idx` (optional index) →
 `0023_trackA_infra` (rate-limit counters + anonymous discovery events;
 optional, additive) → `0024_harden_report_cap` (database-side report cap +
-export index; needs `0023`; deploy the code first).
+export index; needs `0023`; deploy the code first) → the Phase 5 closed-loop
+round 1 set `0025_loop_r1_1` … `_5` → `0026_loop_r1b_discovery` →
+`0027_loop_r1b_registry` (**strictly in file order, and only as described in
+"Closed loop round 1" below** — they and the code depend on each other).
+
+### Closed loop round 1 (loops r1 + r1b, merged 2026-10-23): combined deploy order
+
+The security round (`0025_loop_r1_1…5`) wants the new code **before** `_1`,
+`_2` and `_5`; the correctness round (`0026`, `0027`) must be applied
+**before** the new code (it selects `sandbox_files.content_sha256` and calls
+`documents_apply`); and `0026` needs `0025_2` (its projector reads
+`packages.a11y_status`). So the five order-sensitive migrations and the code
+switch go together in one short quiet window:
+
+1. **Before the window (no effect on the running code).**
+   - Vercel: set `SUPABASE_SECRET_KEY` (publish / archive / restore / the
+     accessibility check and every research event now write through the
+     service client) and a non-blank `RESEARCH_EXPORT_SALT`.
+   - Worker: set a non-blank `WORKER_TOKEN` on Fly and the same value on
+     Vercel, then deploy the worker (it now refuses requests without one).
+   - Build the integrated web code as a deployment **without promoting it**
+     (a preview build of the branch), so the switch is a promotion, not a
+     build.
+   - Run the read-only pre-checks: the queries in the headers of
+     `0025_loop_r1_1_listing_consent.sql` (listing rows not made by the
+     package owner — step 5 deletes them) and
+     `0025_loop_r1_2_package_trust.sql` (published packages with no recorded
+     repo stop being listed; recorded vs manifest repo; listed courses whose
+     accessibility badge returns to "not checked"); and
+     `supabase/tests/0027_detect_cross_package_docids.sql` (docIds already
+     moved across packages, non-canonical ids — Q1–Q3 only; its repair
+     procedure is written out but must not be run without a decision).
+   - Optional, any time: `0025_loop_r1_3_report_cap` and
+     `0025_loop_r1_4_rpc_timeouts` (both work with the old and the new code).
+2. **The window** (quiet time: `0027` rewrites `sandbox_files` once under an
+   exclusive lock; `0025_2` and `0026` re-project Discover once). Apply, in
+   this order: `0025_loop_r1_1_listing_consent` → `0025_loop_r1_2_package_trust`
+   → (`_3`, `_4` if not yet) → `0025_loop_r1_5_research_events` →
+   `0026_loop_r1b_discovery` → `0027_loop_r1b_registry`; then **promote the
+   integrated deployment at once**. Until it is promoted, the old code's
+   publish / archive / restore / "List publicly" are refused (visible errors,
+   nothing half-written) and its client-side research events are dropped;
+   saves and reading are unaffected.
+3. **After.** Re-run `0027_detect_cross_package_docids.sql` Q1–Q3 (the guard
+   now prevents new moves; existing ones still need the owner's decision),
+   `supabase/tests/0024_verify_report_cap.sql`, and a smoke test: save a file
+   and fetch its `/d` link twice (second answer 304), publish, archive /
+   restore, list publicly, run the accessibility check. The first workspace
+   visit of each course re-verifies its registry once (pre-r1b rows carry no
+   content digest). Listed courses show "accessibility not checked" until
+   their owners re-run the check (no back-fill from the manifest, by design).
+   The template change (`persist-credentials: false`, the `.git` include
+   guard) reaches each course repo on its next template update.
+
+Never apply `0026` before `0025_2` (it fails: no `a11y_status`), and never
+re-apply `0025_2` after `0026`: it would put back the two-argument projector
+without r1b's guards and recency.
 
 You may use your existing dev project, or create a separate production project
 and run all migrations there (recommended for a real pilot).
@@ -39,6 +95,7 @@ and run all migrations there (recommended for a real pilot).
 | `0019_document_tags` | Required before relying on per-file asset tags/metadata in production. |
 | `0023_trackA_infra` | Additive, any order relative to the code (Phase 5 Track A.6–A.7). Makes `research_events.user_id` nullable (an anonymous visitor's discovery event has no participant) and adds `rate_limit_counters` + `rate_limit_hit()` (service role only). Without it: report rate limits count per server instance only, and anonymous discovery events are dropped. |
 | `0024_harden_report_cap` | **Deploy code first; needs `0023`; needs `SUPABASE_SECRET_KEY`.** Closes the direct anon/authenticated insert into `portal_reports` and makes `file_portal_report()` (service role only; per-package 10 / h, 30 / day; all reports 60 / h, 300 / day via `rate_limit_hit`) the only insert path; adds the `(occurred_at, id)` index the paged research export walks. Code from the Phase 5 hardening branch files reports through the function and falls back to the old direct insert only while the function does not exist — older code applied against 0024 cannot file reports. Verify with `supabase/tests/0024_verify_report_cap.sql`. |
+| `0025_loop_r1_1` … `_5`, `0026`, `0027` | **One window with the code switch** — see "Closed loop round 1" above. `_1` owner-only listing consent; `_2` package trust (column grants on `packages`, server a11y record, recorded repo); `_3` report cap v2 (either order); `_4` role statement timeouts (either order); `_5` server-only research events; `0026` incremental discovery projector + trigger-owned recency (needs `0025_2`); `0027` content digests, one package per docId, `documents_apply` (needs `0026`). |
 | `0020_staging_bucket` | **Requires owner / service-role privileges** — it inserts a row into `storage.buckets` and creates policies on `storage.objects`, which the ordinary anon/authenticated roles cannot do. Run it as the project owner in the SQL editor (or with the service-role connection), not from an app-side client. **Apply it *before* deploying the code that uses the staging bucket** (the Wave-3 zip-upload path: `api/staging-url`, `lib/staging.ts`, `api/populate-package`); without the bucket every whole-course zip upload fails at the signed-URL step. It is additive — a private `staging` bucket plus four owner-prefix RLS policies namespaced to it; no existing table, policy, or bucket changes. |
 
 #### The `staging` bucket: 24-hour TTL is an operator responsibility

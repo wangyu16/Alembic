@@ -1,6 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { SupabaseSandboxStore } from "./sandbox-store";
+
+// sandbox-store → document-registry-store signals Discover (server-only next/cache); not under test here.
+vi.mock("./discovery-cache", () => ({ discoveryChanged: () => {} }));
 
 /**
  * listFiles must page past PostgREST's per-response row cap (default

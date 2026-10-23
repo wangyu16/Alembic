@@ -1,6 +1,7 @@
 /**
- * The discovery projection is derived in SQL (0022), the schema is owned by
- * package-contract. These checks keep the two in step: the SQL reads exactly
+ * The discovery projection is derived in SQL (0022, redefined by 0025_* and
+ * 0026 — the checks read the live definitions from pg_proc where a later
+ * migration replaced 0022's), the schema is owned by package-contract. These checks keep the two in step: the SQL reads exactly
  * the manifest fields the contract names, lists exactly the open licences,
  * and excludes exactly the never-listed spaces.
  */
@@ -40,8 +41,13 @@ describe("SQL ⇄ package-contract agreement (discovery)", () => {
     expect([...read].sort()).toEqual([...DISCOVERY_MANIFEST_FIELDS].sort());
   });
 
-  it("[P5.A.1.j] projects exactly the contract's public courseContext keys", () => {
-    const m = SQL.match(/where k in \(([^)]*)\)/);
+  it("[P5.A.1.j] projects exactly the contract's public courseContext keys", async () => {
+    // The projector as the migrations leave it (0025_2, then 0026, redefine 0022's).
+    const { rows } = await db.query<{ src: string }>(
+      `select prosrc as src from pg_proc where proname = 'discovery_refresh_package'`,
+    );
+    expect(rows).toHaveLength(1);
+    const m = rows[0]!.src.match(/where k in \(([^)]*)\)/);
     const keys = [...(m?.[1] ?? "").matchAll(/'([A-Za-z]+)'/g)].map((x) => x[1]);
     expect(keys.sort()).toEqual([...DISCOVERY_COURSE_CONTEXT_KEYS].sort());
   });
@@ -56,8 +62,18 @@ describe("SQL ⇄ package-contract agreement (discovery)", () => {
     }
   });
 
-  it("[P5.A.1.j] every space exclusion in the SQL is the contract's never-listed set", () => {
-    const lists = [...SQL.matchAll(/space not in \(([^)]*)\)/g)].map((m) =>
+  it("[P5.A.1.j] every space exclusion in the SQL is the contract's never-listed set", async () => {
+    // 0022's text (its table checks and policies) plus every public function
+    // as the later migrations left it (0025_*, 0026 redefine the projector,
+    // the listability predicates and the documents triggers).
+    const { rows } = await db.query<{ src: string }>(
+      `select string_agg(p.prosrc, E'\\n' order by p.proname) as src
+         from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+        where n.nspname = 'public' and p.prosrc ~ 'space not in'`,
+    );
+    const live = rows[0]?.src ?? "";
+    expect(live).toMatch(/space not in/);
+    const lists = [...(SQL + "\n" + live).matchAll(/space not in \(([^)]*)\)/g)].map((m) =>
       [...m[1]!.matchAll(/'([a-z-]+)'/g)].map((x) => x[1]).sort(),
     );
     expect(lists.length).toBeGreaterThanOrEqual(5);

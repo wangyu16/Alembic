@@ -10,6 +10,11 @@
 --             column of the projection, including updated_at and listed_at.
 --             (§1 recency columns, §3 projector.)
 --
+-- Requires 0025_loop_r1_2_package_trust (loop-r1 integration, 2026-10-23):
+-- the projector below is 0025_2's (security loop r1, M2 — server-recorded
+-- a11y_status and public_repo, adaptations = distinct other educators with a
+-- published adapter), with r1b's changes on top. Apply strictly after 0025_*.
+--
 -- Backward compatible with the current web/worker code: no caller passes the
 -- new arguments, nothing reads the new columns, and the new functions are
 -- only used by a later migration (0027, the registry flush RPC). Apply it
@@ -100,7 +105,8 @@ as $$
     p_manifest -> 'discipline',
     p_manifest -> 'courseContext',
     p_manifest -> 'license',
-    p_manifest -> 'accessibility' -> 'status',
+    -- (accessibility: the server record packages.a11y_status since 0025_2,
+    -- compared in packages_listing_changed_at — not the untrusted manifest field)
     p_manifest -> 'adaptedFrom'
   )
 $$;
@@ -115,7 +121,8 @@ begin
   if tg_op = 'INSERT' then
     new.listing_changed_at := now();
   elsif public.discovery_listing_key(new.title, new.manifest)
-        is distinct from public.discovery_listing_key(old.title, old.manifest) then
+        is distinct from public.discovery_listing_key(old.title, old.manifest)
+     or new.a11y_status is distinct from old.a11y_status then
     new.listing_changed_at := now();
   else
     new.listing_changed_at := old.listing_changed_at;
@@ -279,9 +286,15 @@ begin
         coalesce(nullif(btrim(d.license), ''), v_license) as license,
         (nullif(btrim(d.description), '') is not null
           or nullif(btrim(d.alt_text), '') is not null) as described,
-        (select count(*)::integer from public.documents a
+        -- security loop r1 (M2, 0025_2): distinct OTHER educators whose copy
+        -- lives in a published, non-archived package.
+        (select count(distinct ap.owner_id)::integer
+           from public.documents a
+           join public.packages ap on ap.id = a.package_id
           where a.adapted_from = d.doc_id and a.package_id <> d.package_id
-            and not a.tombstoned) as adaptations,
+            and not a.tombstoned
+            and ap.storage = 'github' and ap.archived_at is null
+            and ap.owner_id <> v_pkg.owner_id) as adaptations,
         ((case when coalesce(array_length(regexp_split_to_array(btrim(coalesce(d.description, '')), '\s+'), 1), 0) >= 3
                and btrim(coalesce(d.description, '')) <> '' then 1 else 0 end)
           + (case when coalesce(cardinality(d.tags), 0) >= 1 then 1 else 0 end)
@@ -384,7 +397,9 @@ begin
   where k in ('courseName', 'level', 'institutionType', 'instructor', 'courseNumber', 'department')
     and btrim(v) <> '';
 
-  v_a11y := coalesce(v_m -> 'accessibility' ->> 'status', 'unknown');
+  -- security loop r1 (M2, 0025_2): the server-recorded check
+  -- (packages.a11y_status, service role only), never the manifest field.
+  v_a11y := coalesce(v_pkg.a11y_status, 'unknown');
   if v_a11y not in ('pass', 'warn', 'fail', 'unknown') then
     v_a11y := 'unknown';
   end if;
@@ -404,8 +419,10 @@ begin
   v_identity := concat_ws(' ', v_context ->> 'courseName', v_context ->> 'courseNumber',
     v_context ->> 'department', v_context ->> 'institutionType', v_context ->> 'instructor');
 
-  v_owner := v_m -> 'publicRepo' ->> 'owner';
-  v_repo := v_m -> 'publicRepo' ->> 'name';
+  -- security loop r1 (M2, 0025_2): the repository the publish path recorded
+  -- (packages.public_repo, service role only), never manifest.publicRepo.
+  v_owner := v_pkg.public_repo ->> 'owner';
+  v_repo := v_pkg.public_repo ->> 'name';
 
   -- Covers every listing column except element_count, adaptation_count,
   -- completeness and the timestamps (those are in the upsert guard).

@@ -3,12 +3,15 @@
  * PostgREST `max-rows` below our page size returns short pages while more
  * rows exist; a truncated listing made a registry rebuild tombstone live files.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { MemoryDocumentRegistryStore, rebuildPackageRegistry } from "@alembic/package-ops";
 import { pageAll } from "./page-all";
 import { SupabaseSandboxStore } from "./sandbox-store";
 import { SupabaseDocumentRegistryStore } from "./document-registry-store";
+
+// document-registry-store signals Discover (server-only next/cache); not under test here.
+vi.mock("./discovery-cache", () => ({ discoveryChanged: () => {} }));
 
 const CAP = 400; // the server's max-rows, below our page of 1000
 

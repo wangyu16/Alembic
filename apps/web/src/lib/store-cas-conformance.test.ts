@@ -15,7 +15,7 @@
  * is a finding, not a detail.
  */
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   MemoryPackageStore,
@@ -27,6 +27,9 @@ import {
 } from "@alembic/package-ops";
 import { parseManifest } from "@alembic/package-contract";
 import { SupabaseSandboxStore } from "./sandbox-store";
+
+// sandbox-store → document-registry-store signals Discover (server-only next/cache); not under test here.
+vi.mock("./discovery-cache", () => ({ discoveryChanged: () => {} }));
 
 /* -------------------------------------------------------------------------- *
  * A table-backed fake Postgres, faithful on the two behaviors the CAS needs:

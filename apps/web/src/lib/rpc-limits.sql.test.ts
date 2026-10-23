@@ -44,10 +44,15 @@ describe("L4a the anonymously callable discovery functions run under a statement
         order by 1, 2`,
     );
     // The inventory: the four search entry points and the two listability
-    // predicates the public read policies call. A new one needs review.
+    // predicates the public read policies call, plus 0026's deferral pair
+    // (authenticated only — the registry flush documents_apply calls them;
+    // begin sets a transaction-local flag, end drains only the calling
+    // transaction's own queued refreshes). A new one needs review.
     expect([...new Set(fns.map((f) => f.fn))].sort()).toEqual([
       "discovery_course_facets",
       "discovery_course_listable",
+      "discovery_defer_begin",
+      "discovery_defer_end",
       "discovery_element_facets",
       "discovery_element_listable",
       "discovery_search_courses",

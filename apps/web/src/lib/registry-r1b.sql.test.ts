@@ -5,7 +5,7 @@
  * store that speaks the same SQL as `SupabaseDocumentRegistryStore`
  * (`documents_apply`, `documents_foreign_doc_ids`, the row mappers).
  */
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { PGlite } from "@electric-sql/pglite";
 import { sha256Hex, type RegistrationRecord, type RepoKind } from "@alembic/package-contract";
 import {
@@ -17,6 +17,9 @@ import {
 } from "@alembic/package-ops";
 import { asRole, freshDatabase, manifestFor, seedPackage, seedUser } from "./discovery-pglite";
 import { fromRow, toRow, type DocumentRow } from "./document-registry-store";
+
+// document-registry-store signals Discover (server-only next/cache); not under test here.
+vi.mock("./discovery-cache", () => ({ discoveryChanged: () => {} }));
 
 let db: PGlite;
 let owner: string;

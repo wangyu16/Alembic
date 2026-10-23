@@ -52,6 +52,50 @@ same commit as the work it tracks. Statuses: ✅ done · 🔄 partially shipped 
 
 > **Current direction — self-contained editing (owner-locked, 2026-07).** Editing and viewing both live *in the files*: the workspace **hosts** the in-file editors of `.md.html` / `.slides.html` / `.paged.html` (orz-family) and **builds no editor of its own**; published pages **are** those self-contained files (thin CDN delivery — study guide ~74 KB, framework from jsDelivr, verified live 2026-07-06); every file gets a permalink. **Committed source of record (revised, 2026-07-08 — "lean-source model"):** a chapter's study guide, slides, and practice questions are each committed as lean markdown (`study-guide/`, `slides/`, `practice/` — `.md`, not `.md.html`); the self-contained `.md.html`/`.slides.html` is generated on demand, purely as the editing/viewing surface, and never itself committed. This supersedes the original plan (below, and in the specs) of `.md.html` as the committed source — the specs haven't all been updated to match yet; this line is authoritative until they are. Authoritative docs: [SteeringNote.md](SteeringNote.md), [self-contained-editing.md](specs/self-contained-editing.md), [workspace-framework.md](specs/workspace-framework.md), and the module-based [Roadmap.md](Roadmap.md) (Modules R/E/P/T/I/S/W — supersedes the phase-based plan). **Code state today:** the classic editor is **retired** (~2.2k lines removed; `/workspace/[id]` redirects to `/edit`); the local **Studio (`/studio`) is removed**, replaced by `/guide`; the workspace three-pane shell now *hosts* the in-file editors (`HostedStudyGuideEditor` for study guide + practice; `HostedSlidesEditor` for authored slide decks). The durable guardrails **G1–G8** (two-repo reference enforcement, block-ID reconcile on import, whole-package fork, single-source course metadata, AI-entitlement seam) that the earlier editor-overhaul design drove all **landed + tested**.
 
+**Phase 5 closed-loop verification — round 1 integration: loops r1 + r1b merged (2026-10-23, branch
+`phase5/loop-r1-integrate`, not pushed, migrations NOT applied).** `main` already carried loop r1 (security);
+loop r1b (correctness/scale) is merged on top, conflicts resolved keeping both sides (the `/d` 304 is r1b's
+verified-only answer with r1's cache/CDN headers; the registry store keeps r1b's `documents_apply` /
+foreign-id lookup / `pageAll` and r1's Discover invalidation; the claims registry is the union by id).
+Composition fixes (separate commit):
+
+- 🔴→✅ **0026 silently reverted r1's M2 projector.** Both rounds redefined `discovery_refresh_package` from
+  the same 0022 baseline; applied in file order, 0026 replaced 0025_2's version, so Discover would again have
+  shown the owner-writable `manifest.accessibility` and `manifest.publicRepo` and counted throw-away trial
+  adaptations (5 r1 probes failed against the merged migrations). 0026 (unapplied anywhere) now carries
+  0025_2's trust rules (server `a11y_status`, recorded `public_repo`, distinct published other-educator
+  adaptations) under r1b's guards and recency, and states that it requires 0025_2; listing recency follows
+  the server a11y record, not the manifest field.
+- ✅ **Tombstones through `documents_apply` did not invalidate the Discover cache** (r1's P5.S.8): the store's
+  `apply` now calls `discoveryChanged()` when a run tombstones.
+- ✅ Test seams: five r1b test files import the registry store (now reaching `server-only` via the Discover
+  cache) — they mock `./discovery-cache`; r1's RPC inventory (P5.S.9) reviewed and admits 0026's
+  `discovery_defer_begin/_end` (authenticated only, under the 8 s role timeout).
+- ✅ **Composition probes** `apps/web/src/lib/loop-integration.sql.test.ts` (PGlite, 0001–0027 in order):
+  r1b's flush runs as the owner's session under r1's grants/policies (another educator cannot write or take
+  over a docId); an owner's manifest edit moves the trigger-owned `listing_changed_at`, which the owner cannot
+  write; r1's service-role trust writes (publish, a11y check, archive, restore) pass r1b's triggers; the
+  docId guard binds the service role too. r1b's SQL-shape conformance checks now read the live function
+  definitions (pg_proc), not only 0022's text.
+- Checked, nothing to change: r1b adds no research event (r1's server writer stays the only one); r1b's new
+  writes to `packages` touch only `manifest` (granted); `documents_apply` is SECURITY INVOKER (RLS as the
+  caller) and r1 changed no `documents` policy.
+
+Verification (under the heavy lock): `pnpm install --frozen-lockfile`, `pnpm -r typecheck` (13 workspaces) and the web build green; vitest **154 files, 1705 tests, all passing** (`--maxWorkers=2`, one workspace at a time). `pnpm claims`: **146 claims: 124 bound, 22 UNBOUND, 0 missing** (exit 1, expected — r1 left 24 red, r1b 23, each counting the other's; P5.H.2.d stays red as the record of the superseded 0024 order, as r1 registered it).
+
+**Combined deploy order for the round** (full text: [Deployment.md](Deployment.md) "Closed loop round 1"):
+the r1 code must precede `0025_1/_2/_5`, the r1b code needs `0026`+`0027`, and `0026` needs `0025_2` — so:
+(1) before: `SUPABASE_SECRET_KEY` and a non-blank `RESEARCH_EXPORT_SALT` on Vercel; `WORKER_TOKEN` on the
+worker and Vercel, redeploy the worker; build the integrated web code without promoting it; run the read-only
+pre-checks in the headers of `0025_loop_r1_1` and `0025_loop_r1_2` and `supabase/tests/0027_detect_cross_package_docids.sql`
+(Q1–Q3; repair not run); optionally apply `0025_loop_r1_3` and `_4` early (either order with the code).
+(2) one quiet window: `0025_loop_r1_1` → `_2` → (`_3`, `_4`) → `_5` → `0026_loop_r1b_discovery` →
+`0027_loop_r1b_registry` (rewrites `sandbox_files` once), then promote the integrated code immediately (until
+then the old code's publish/archive/restore/"List publicly" are refused and its client events dropped; saves
+are unaffected). (3) after: re-run the 0027 detection, `0024_verify_report_cap.sql`, smoke-test save → `/d`
+(304 on repeat), publish, archive/restore, list, accessibility check. Never apply 0026 before 0025_2, never
+re-apply 0025_2 after 0026. The per-round deploy notes below are superseded by this order.
+
 **Phase 5 closed-loop verification — round 1, step 1: claims registry (2026-10-23, branch `phase5/loop-r1`,
 not merged).** The deployed Phase 5 revision (Track 0, A.1–A.4, A.6–A.7, B.1–B.3, H.1–H.2, and the owner
 rulings of 2026-10-23) stated as **114 falsifiable claims** in [claims/phase5.toml](claims/phase5.toml)

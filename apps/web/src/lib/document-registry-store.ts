@@ -121,6 +121,9 @@ export class SupabaseDocumentRegistryStore implements DocumentRegistryStore {
       if (foreign) throw new ForeignDocIdError(foreign);
       throw new Error(`Could not register the documents: ${error.message}`);
     }
+    // A shared element that leaves the registry leaves Discover at once
+    // (P5.S.8) — the run's tombstones now travel here, not via tombstoneMany.
+    if (change.tombstones.length > 0) discoveryChanged();
   }
 
   /**

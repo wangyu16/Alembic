@@ -6,6 +6,15 @@ design, and what is deferred to the future. Complements [Status.md](Status.md)
 
 ---
 
+## 2026-10-23 — Loop r1 + r1b integration: 0026 inherits 0025_2's projector; one deploy window
+
+| # | Decision | Why |
+|---|---|---|
+| 1 | **Edit the unapplied `0026_loop_r1b_discovery` so its projector is 0025_2's (server `a11y_status`, recorded `public_repo`, distinct published other-educator adaptations) plus r1b's guards and recency**, rather than add a later migration that re-applies r1's rules. 0026 now requires 0025_2. Listing recency (`listing_changed_at`) moves on the server a11y record, not on `manifest.accessibility`. | Both rounds rewrote the same 0022 function; in file order 0026 silently undid the M2 security fix. Neither file is applied anywhere, so fixing 0026 leaves no window in which the regression is live. |
+| 2 | **One quiet window for `0025_1/_2/_5` + `0026` + `0027` and the code switch** (promote a pre-built deployment right after the migrations). | r1 needs its code before `_1/_2/_5`, r1b's code needs `0027`, and `0026` needs `0025_2` — a cycle no strict order breaks. Migrations-first costs only refused publish/archive/listing and dropped client events for the window; code-first would break every workspace page load (missing `content_sha256`). |
+
+---
+
 ## 2026-10-23 — Security loop r1: report caps per reporting source; RPC time bound on the roles (M4, L4a)
 
 | # | Decision | Why |
