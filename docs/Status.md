@@ -76,7 +76,7 @@ then a fix for the whole class. Per finding (⬜ open · ✅ fixed on this branc
 
 - ⬜ **M1** research export not de-identified; client-inserted events (P5.S.2.a–b).
 
-- ⬜ **M2** owner-writable storage / archived_at / repo / signals (P5.S.3.a–d).
+- ✅ **M2** owner-writable storage / archived_at / repo / signals (P5.S.3.a–d). Migration `0025_loop_r1_2_package_trust.sql`: column grants — the API roles may insert only id/owner_id/title/manifest/review_all (a new row is always a trial) and update only title/manifest/review_all/last_synced_sha/updated_at; `storage`, `archived_at`, `public_repo`, `private_repo`, `default_branch` and the new server a11y record (`a11y_status`, `a11y_checked_at`) are written only through `lib/package-trust-writes.ts` (service client, filtered on the owner) by publish, archive/restore and the accessibility check. Discovery lists and links the publish-recorded repo (so does Adapt, which reads the listing), shows/filters/ranks on the server a11y record (no back-fill: listed courses show "not checked" until re-checked), and counts adaptations as distinct other educators with a published adapting course. `DISCOVERY_MANIFEST_FIELDS` drops `publicRepo` and `accessibility`. Probes: `package-trust.sql.test.ts`, `package-trust-writes.test.ts`. **Deploy: code first (SUPABASE_SECRET_KEY now required for publish/archive/restore), then the migration (after 0025_loop_r1_1); run its header pre-checks.** Open: the published mirror in `sandbox_files` stays owner-writable (concept-map topics and the a11y check read it).
 
 - ⬜ **M3** pinned `/d` answers cached a year at the CDN (P5.S.4.a–b).
 

@@ -21,7 +21,14 @@ import type { PackageSpace } from "./spaces";
  *  semester ephemera. */
 export const NEVER_LISTED_SPACES: readonly PackageSpace[] = ["private", "current"];
 
-/** The manifest fields the course projection reads (and nothing else). */
+/**
+ * The manifest fields the course projection reads (and nothing else). All are
+ * owner-asserted descriptions of the course. NOT read since security loop r1
+ * (M2, migration 0025): `publicRepo` (discovery uses the repository the publish
+ * path recorded, `packages.public_repo`) and `accessibility` (discovery uses
+ * the server's own check record, `packages.a11y_status`) — both are
+ * owner-writable and were trusted for listability, adapt and ranking.
+ */
 export const DISCOVERY_MANIFEST_FIELDS = [
   "title",
   "description",
@@ -29,9 +36,7 @@ export const DISCOVERY_MANIFEST_FIELDS = [
   "discipline",
   "courseContext",
   "license",
-  "accessibility",
   "chapters",
-  "publicRepo",
   "adaptedFrom",
 ] as const;
 

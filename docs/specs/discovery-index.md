@@ -20,7 +20,8 @@ store. No app code writes them; they are derived in the database by
 | Source | What it gives |
 |---|---|
 | `portal_registrations` | the Tier-3 **List publicly** consent (a row **written by the package's owner**: `owner_id` = `packages.owner_id`) and when it was given |
-| `packages.manifest` (the manifest read cache) | title, description, keywords, discipline, `courseContext` (level and public identity fields), licence, accessibility status, chapters, public repo, `adaptedFrom` — exactly `DISCOVERY_MANIFEST_FIELDS` in package-contract |
+| `packages.manifest` (the manifest read cache) | title, description, keywords, discipline, `courseContext` (level and public identity fields), licence, chapters, `adaptedFrom` — exactly `DISCOVERY_MANIFEST_FIELDS` in package-contract. All owner-asserted descriptions of the course; nothing discovery uses to decide *whether* or *where* something is public comes from here |
+| `packages` server columns (service role only since 0025, security loop r1 M2) | `storage`, `archived_at`, the publish-recorded repository `public_repo` (listability, repo and site URLs — never `manifest.publicRepo`), and the server's accessibility check record `a11y_status` (never `manifest.accessibility`) |
 | `documents` (the registry) | shared files: kind, space, path, description, alt text, tags, per-file licence, lineage (`adapted_from`), content hash |
 | `sandbox_files` (public `concepts/course.md`, legacy `metadata/course.md`) | concept-map headings → **topics** |
 
@@ -47,7 +48,7 @@ and the search columns.
   owner (security loop r1, H1: the database refuses a registration for a
   package the caller does not own, and a stray row lists nothing) **and** a published package
   (`storage = 'github'`) **and** not archived **and** an open licence **and**
-  a public repo in the manifest (`discovery_course_listable`).
+  a publish-recorded repository (`packages.public_repo`) (`discovery_course_listable`).
 - **Element:** `discoverable` ("share this") **and** not tombstoned **and**
   `repo = 'public'` **and** space not `private`/`current` **and** a published,
   non-archived package (`discovery_element_listable`). Per-file consent: it
@@ -204,11 +205,11 @@ query, relevance is 1 for every row (browse = quality order).
 
 | Signal | Weight | Value |
 |---|---|---|
-| accessibility | 0.30 | course: audit `pass` 1, `warn` 0.5, `fail`/`unknown` 0; element: 1 when it has a description or alt text |
+| accessibility | 0.30 | course: the server-recorded audit (`packages.a11y_status`, written only by the accessibility-check action) `pass` 1, `warn` 0.5, `fail`/`unknown` 0; element: 1 when it has a description or alt text |
 | open licence | 0.15 | 1 for an open licence (always true for listed courses; elements may carry their own) |
 | completeness | 0.20 | course: share of {description ≥ 15 words, ≥ 3 keywords, level, discipline, concept-map topics or ≥ 2 chapters}; element: share of {description ≥ 3 words, ≥ 1 tag, a licence} |
 | recency | 0.20 | `exp(−days since updated_at / 180)` (≈ 0.5 after four months; future dates count as now) |
-| adaptations | 0.15 | `min(ln(1 + n) / ln(21), 1)` — distinct adapting packages, saturating at 20 |
+| adaptations | 0.15 | `min(ln(1 + n) / ln(21), 1)` — distinct **other educators** whose adapting course (fork or element copy) is published and not archived, saturating at 20 (security loop r1 M2: trial packages and the owner's own packages never count) |
 
 **Citations** have no data yet (no citation registry); when they do, they
 join as a further signal and the weights are re-balanced to sum to 1.

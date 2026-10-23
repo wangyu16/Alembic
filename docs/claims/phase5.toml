@@ -222,7 +222,7 @@ bound_to = [
 
 [[claim]]
 id = "P5.A.1.f"
-claim = "The projection is fresh after every change it depends on: a manifest write refreshes it and bumps updated_at (a no-op does not), public saves bump updated_at (private ones do not), concept-map saves refresh topics, forks and element copies update the source's adaptation count, and publishing a listed trial package lists it."
+claim = "The projection is fresh after every change it depends on: a manifest write refreshes it and bumps updated_at (a no-op does not), public saves bump updated_at (private ones do not), concept-map saves refresh topics, forks and element copies by other educators' published courses update the source's adaptation count, and publishing a listed trial package lists it."
 oracle = "invariant"
 bound_to = [
   "apps/web/src/lib/discovery-projection.sql.test.ts :: a metadata edit (manifest write) refreshes the listing and bumps updated_at; a no-op does not",
@@ -234,10 +234,10 @@ bound_to = [
 
 [[claim]]
 id = "P5.A.1.g"
-claim = "An educator's own RLS-scoped session (list, share, archive) drives the projection, and another educator's session can neither list nor share someone else's course."
+claim = "An educator's own RLS-scoped session (list, share) and the server's archive write drive the projection, and another educator's session can neither list nor share someone else's course."
 oracle = "scenario"
 bound_to = [
-  "apps/web/src/lib/discovery-projection.sql.test.ts :: listing, sharing and archiving through the owner's own session refresh the index",
+  "apps/web/src/lib/discovery-projection.sql.test.ts :: listing and sharing through the owner's own session, and archiving through the server, refresh the index",
   "apps/web/src/lib/discovery-projection.sql.test.ts :: another educator's session can neither list nor share someone else's course",
 ]
 
@@ -1125,25 +1125,40 @@ bound_to = []
 id = "P5.S.3.a"
 claim = "Through the API roles an owner cannot set packages.storage, archived_at, public_repo or private_repo; a package row an owner creates is always a trial (sandbox, not archived)."
 oracle = "probe"
-bound_to = []
+bound_to = [
+  "apps/web/src/lib/package-trust.sql.test.ts :: an owner cannot publish, archive, restore or re-point a package through the API",
+  "apps/web/src/lib/package-trust.sql.test.ts :: an owner still creates trial packages and edits title, manifest and review settings",
+  "apps/web/src/lib/package-trust.sql.test.ts :: the audit's flip scenario lists nothing and exposes no trial element",
+  "apps/web/src/lib/package-trust-writes.test.ts :: publish, archive, restore and the a11y record filter on the package AND its owner",
+  "apps/web/src/lib/package-trust-writes.test.ts :: someone else's package (no row matched), a missing service key or an error is not success",
+]
 
 [[claim]]
 id = "P5.S.3.b"
 claim = "Discovery (listability, public_repo_url, site_url) and adaptFromPortalAction use the repository recorded by the publish path (packages.public_repo), never manifest.publicRepo."
 oracle = "probe"
-bound_to = []
+bound_to = [
+  "apps/web/src/lib/package-trust.sql.test.ts :: a listed course links the recorded repo, never manifest.publicRepo",
+  "apps/web/src/lib/package-trust.sql.test.ts :: a published package with no recorded repo is not listed, whatever its manifest says",
+  "apps/web/src/lib/discovery-agreement.test.ts :: the projector reads exactly the contract's manifest fields",
+]
 
 [[claim]]
 id = "P5.S.3.c"
 claim = "A course's adaptation_count counts distinct other educators whose adapting package is published and not archived; trial packages and the owner's own packages add nothing."
 oracle = "probe"
-bound_to = []
+bound_to = [
+  "apps/web/src/lib/package-trust.sql.test.ts :: trial socks and the owner's own packages add nothing; distinct educators count once",
+  "apps/web/src/lib/package-trust.sql.test.ts :: element copies count only from other educators' published packages",
+]
 
 [[claim]]
 id = "P5.S.3.d"
 claim = "The accessibility status Discover shows, filters and ranks on is the server-recorded check result, not the owner-writable manifest field."
 oracle = "probe"
-bound_to = []
+bound_to = [
+  "apps/web/src/lib/package-trust.sql.test.ts :: a manifest 'pass' the server never recorded shows as unknown",
+]
 
 # M3 — takedowns reach the CDN
 

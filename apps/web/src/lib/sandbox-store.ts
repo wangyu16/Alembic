@@ -24,12 +24,18 @@ export class SupabaseSandboxStore implements PackageStore {
     record: PackageRecord,
     files: PackageFile[],
   ): Promise<void> {
+    // A package row is born a trial: `storage` (default 'sandbox') and
+    // `archived_at` are service-role-only columns since migration 0025
+    // (security loop r1 M2), so they are never sent; publishing records
+    // storage through lib/package-trust-writes.ts.
+    if (record.storage !== "sandbox") {
+      throw new Error("Could not create the package: a new course always starts as a trial.");
+    }
     const { error } = await this.supabase.from("packages").insert({
       id: record.packageId,
       owner_id: record.ownerId,
       title: record.title,
       manifest: record.manifest,
-      storage: record.storage,
     });
     if (error) throw new Error(`Could not create the package: ${error.message}`);
     await this.putFiles(record.packageId, files);

@@ -62,6 +62,8 @@ describe("A.1 a listed, published course is projected from the manifest and regi
         ],
         accessibility: { status: "pass", errorCount: 0, warningCount: 0, checkedAt: "2026-10-01T00:00:00.000Z" },
       },
+      // The status discovery shows is the server's record (security loop r1, M2).
+      a11y: "pass",
       listed: true,
     });
     await db.query(
@@ -332,16 +334,17 @@ describe("A.1 freshness: the projection follows every change", () => {
     expect((await course(src))!["element_count"]).toBe(1);
     expect((await course(src))!["adaptation_count"]).toBe(0);
 
+    // Adaptations count distinct OTHER educators whose adapting course is
+    // published (security loop r1, M2; package-trust.sql.test.ts).
     const other = await seedUser(db, "adapter");
     // A whole-course fork (manifest.adaptedFrom) …
     await seedPackage(db, {
       owner: other,
-      storage: "sandbox",
       manifest: { adaptedFrom: { packageId: src, license: "CC-BY-4.0", attribution: "x" } },
     });
     expect((await course(src))!["adaptation_count"]).toBe(1);
-    // … and an element copy into a third package.
-    const third = await seedPackage(db, { owner: other });
+    // … and an element copy into another educator's package.
+    const third = await seedPackage(db, { owner: await seedUser(db, "adapter-2") });
     const copy = await seedDoc(db, { packageId: third, discoverable: false, adaptedFrom: srcDoc });
     expect((await course(src))!["adaptation_count"]).toBe(2);
     const { rows } = await db.query<{ adaptation_count: number }>(
@@ -356,8 +359,10 @@ describe("A.1 freshness: the projection follows every change", () => {
 
   it("[P5.A.1.f] listing after publication: a trial package that is published and listed appears", async () => {
     const id = await seedPackage(db, { owner, storage: "sandbox" });
+    // The publish path (service role) records storage and the repository.
     await db.query(
       `update public.packages set storage = 'github',
+         public_repo = '{"owner":"educator","name":"late-oer"}',
          manifest = manifest || '{"publicRepo":{"owner":"educator","name":"late-oer"}}' where id = $1`,
       [id],
     );
@@ -406,7 +411,7 @@ describe("A.1 best-effort and rebuild", () => {
 });
 
 describe("A.1 the real write path: an educator's own session (RLS) drives the projection", () => {
-  it("[P5.A.1.g] listing, sharing and archiving through the owner's own session refresh the index", async () => {
+  it("[P5.A.1.g] listing and sharing through the owner's own session, and archiving through the server, refresh the index", async () => {
     const me = await seedUser(db, "session-owner");
     const id = await seedPackage(db, { owner: me, title: "Session Course" });
     const doc = await seedDoc(db, { packageId: id, discoverable: false });
@@ -428,11 +433,10 @@ describe("A.1 the real write path: an educator's own session (RLS) drives the pr
     );
     expect(await courseIds()).toContain(id);
     expect(await elementIds()).toContain(doc);
-    await asRole(
-      db,
-      "authenticated",
-      () => db.query(`update public.packages set archived_at = now() where id = $1`, [id]),
-      me,
+    // Archiving is archivePackageAction's service-role write since 0025 (the
+    // owner's session may no longer set archived_at — package-trust.sql.test.ts).
+    await asRole(db, "service_role", () =>
+      db.query(`update public.packages set archived_at = now() where id = $1`, [id]),
     );
     expect(await courseIds()).not.toContain(id);
     expect(await elementIds()).not.toContain(doc);

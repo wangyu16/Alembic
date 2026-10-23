@@ -18,6 +18,18 @@ Recorded as claim P5.S.L2, deliberately red. **Owner decision pending.**
 
 ---
 
+## 2026-10-23 — Security loop r1: consent and trust columns belong to the owner and the server (H1, M2)
+
+| # | Decision | Why |
+|---|---|---|
+| 1 | A `portal_registrations` row counts as the "List publicly" consent only when its `owner_id` is the package owner; the API roles can write one only for a package they own, and cannot read `owner_id` at all (column grants; it defaults to `auth.uid()`). The same rule — a row that names a package needs its owner — now covers suggestions (sender owns `from_package_id`; the inbox follows the package owner), `package_changes` and `ai_invocations`. | Any signed-in user could list someone else's course under their own snapshot, keep it listed against the owner's will, and read the owner's suggestion inbox. |
+| 2 | `storage`, `archived_at`, `public_repo`, `private_repo`, `default_branch` and the accessibility record are **service-role-only columns**, written through one module (`lib/package-trust-writes.ts`) that always filters on the signed-in owner. Publishing, archiving and restoring therefore require `SUPABASE_SECRET_KEY`. | Column privileges are what Postgres has for "this row is yours but this column is not" (the 0016 pattern); a server-gated RPC callable by the owner would have been the same hole. |
+| 3 | Discovery and Adapt use the **publish-recorded repository**, never `manifest.publicRepo`. | The manifest is the owner's text (it can also arrive by a direct GitHub commit); the repo the GitHub App created under the educator's installation is a fact. |
+| 4 | The accessibility status Discover shows and ranks is the **server's record of its own check run**, with **no back-fill** from manifests: listed courses read "not checked" until the owner re-runs the check. | A back-fill would carry any forged "pass" forward. Residual: the check reads the course's `sandbox_files` mirror, which the owner can still write; the record proves the server ran the check on what it held then. |
+| 5 | Adaptations count **distinct other educators whose adapting course is published and not archived**. | Trial "sock" packages cost nothing; a published course needs a GitHub account and the publish path. |
+
+---
+
 ## 2026-10-23 — Owner rulings on Phase 5 open items
 
 | # | Decision | Why |

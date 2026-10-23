@@ -28,9 +28,14 @@ afterAll(async () => {
 });
 
 describe("SQL ⇄ package-contract agreement (discovery)", () => {
-  it("[P5.A.1.j] the projector reads exactly the contract's manifest fields", () => {
+  it("[P5.A.1.j] [P5.S.3.b] the projector reads exactly the contract's manifest fields", async () => {
+    // The projector as the migrations leave it (0025 redefines 0022's).
+    const { rows } = await db.query<{ src: string }>(
+      `select prosrc as src from pg_proc where proname = 'discovery_refresh_package'`,
+    );
+    expect(rows).toHaveLength(1);
     const read = new Set(
-      [...SQL.matchAll(/v_m\s*->>?\s*'([A-Za-z]+)'/g)].map((m) => m[1]!),
+      [...rows[0]!.src.matchAll(/v_m\s*->>?\s*'([A-Za-z]+)'/g)].map((m) => m[1]!),
     );
     expect([...read].sort()).toEqual([...DISCOVERY_MANIFEST_FIELDS].sort());
   });
