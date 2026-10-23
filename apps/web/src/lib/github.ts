@@ -19,6 +19,7 @@ import type { PackageManifest } from "@alembic/package-contract";
 import { registerChanges, syncPackageRegistry } from "@/lib/register";
 import { refreshManifestAfterReconcile } from "@/lib/reconcile-manifest";
 import { recordedPublicRepo } from "@/lib/recorded-repo";
+import { recordSyncedSha, syncedShaFor } from "./synced-sha";
 
 export interface GithubConfig {
   appId: string;
@@ -145,27 +146,7 @@ export async function mirrorManifestToSandbox(
   ]);
 }
 
-/** Persist the last commit SHA Alembic synced for a package (M20). */
-export async function recordSyncedSha(
-  supabase: SupabaseClient,
-  packageId: string,
-  sha: string,
-): Promise<void> {
-  await supabase.from("packages").update({ last_synced_sha: sha }).eq("id", packageId);
-}
-
-/** The last SHA Alembic synced, or null if never synced / unknown. */
-export async function syncedShaFor(
-  supabase: SupabaseClient,
-  packageId: string,
-): Promise<string | null> {
-  const { data } = await supabase
-    .from("packages")
-    .select("last_synced_sha")
-    .eq("id", packageId)
-    .maybeSingle();
-  return (data?.last_synced_sha as string | null) ?? null;
-}
+export { advanceSyncedSha, recordOwnCommit, recordSyncedSha, syncedShaFor } from "./synced-sha";
 
 /** A network-backed RepoReader over the public repo (keeps package-ops IO-free). */
 function githubRepoReader(client: GitHubClient, coords: RepoCoords): RepoReader {

@@ -20,13 +20,14 @@
  *     foreign-commit detection stays exact.
  *
  * Deliberately NOT a replacement for `github.ts`: this module reuses
- * `clientForUser` / `recordSyncedSha` from there. Wave 1 migrated callers off
+ * `clientForUser` / `syncedShaFor` / `recordOwnCommit` from there. Wave 1 migrated callers off
  * the old `syncFilesToGitHub` helpers (since removed); this file is the door.
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   commitFiles,
+  RemoteChangedError,
   validateCommitPlan,
   type CommitPlan,
   type RepoCoords,
@@ -38,7 +39,7 @@ import {
   type PackageStore,
 } from "@alembic/package-ops";
 import type { GitHubClient } from "@alembic/github-bridge";
-import { clientForUser, recordSyncedSha } from "./github";
+import { clientForUser, recordOwnCommit, syncedShaFor } from "./github";
 import { recordedPrivateRepo, recordedPublicRepo } from "./recorded-repo";
 
 /**
@@ -66,6 +67,16 @@ const MISSING_HOME =
   "This package is published but its online home is missing, so this change " +
   "can't be saved. Reconnect publishing from the package menu, then try " +
   "again. Nothing was changed.";
+
+/** Loop r2 (P5.B.3.f): the save would overwrite something changed outside. */
+const CHANGED_OUTSIDE =
+  "This course was changed outside Alembic since your last save, so this " +
+  "change wasn't saved — nothing was changed. Use \u201cCheck for outside " +
+  "changes\u201d to bring those changes in first, then try again.";
+
+const SAVE_FAILED =
+  "We couldn't save this change to the package's online home. " +
+  "Nothing was changed — please try again in a moment.";
 
 const MISSING_PACKAGE =
   "We couldn't find this package, so nothing was changed. Reload the page and " +
@@ -148,42 +159,64 @@ export function githubCommitter(args: {
       // this call only makes sure the boundary error escapes untouched.
       validateCommitPlan(commitPlan);
 
-      let commitSha: string;
+      // Public saves are guarded against changes made outside Alembic since
+      // the synced point (loop r2, P5.B.3.f): the bridge refuses — writing
+      // nothing — when such a change touched a file this save writes, and
+      // the pointer only advances when nothing sits in between.
+      let synced: string | null = null;
+      if (plan.repo === "public") {
+        try {
+          synced = await syncedShaFor(supabase, packageId);
+        } catch (err) {
+          console.warn(`[commit] ${packageId}: synced point unreadable:`, err instanceof Error ? err.message : err);
+          throw new CommitFailedError(SAVE_FAILED);
+        }
+      }
+
+      let result: { commitSha: string; parentSha: string };
       try {
-        ({ commitSha } = await commitFiles(client, coords, commitPlan));
+        result = await commitFiles(
+          client,
+          coords,
+          commitPlan,
+          "main",
+          plan.repo === "public" ? { unchangedSince: synced } : {},
+        );
       } catch (err) {
-        // Only the message is passed on: `CommitFailedError`'s constructor is
-        // the plain `Error(message)` one, so no `cause` option is assumed.
-        // The underlying text is a raw GitHub API string — method, path, HTTP
-        // status, and a JSON body like `{"message":"GitRPC::BadObjectState"}`.
-        // Twelve call sites re-surface this message to educators, so appending
-        // it put developer diagnostics in front of people who have never seen
-        // a repository. Log it for us; show plain language to them.
+        if (err instanceof RemoteChangedError) {
+          console.warn(
+            `[commit] ${coords.owner}/${coords.repo}: refused, changed outside Alembic (${err.reason}):`,
+            err.paths.join(", "),
+          );
+          throw new CommitFailedError(CHANGED_OUTSIDE, err);
+        }
+        // Only the message is passed on: the underlying text is a raw GitHub
+        // API string — method, path, HTTP status, and a JSON body like
+        // `{"message":"GitRPC::BadObjectState"}`. Twelve call sites
+        // re-surface this message to educators, so appending it put developer
+        // diagnostics in front of people who have never seen a repository.
+        // Log it for us; show plain language to them.
         console.warn(
           `[commit] ${coords.owner}/${coords.repo} (${plan.repo}) failed:`,
           err instanceof Error ? err.message : err,
         );
-        throw new CommitFailedError(
-          "We couldn't save this change to the package's online home. " +
-            "Nothing was changed — please try again in a moment.",
-        );
+        throw new CommitFailedError(SAVE_FAILED);
       }
 
       if (plan.repo === "public") {
-        // Track what we last synced so external (foreign) commits stay
-        // detectable. Best-effort ON PURPOSE: the commit already succeeded, so
-        // reporting a failure here would be a lie ("nothing was changed" would
-        // be false). A missed pointer update is self-healing — reconcile sees
-        // the un-recorded commit as foreign and absorbs it in the
-        // repo→projection direction, which is the correct outcome.
+        // Best-effort ON PURPOSE (inside `recordOwnCommit`): the commit
+        // already succeeded, so reporting a failure here would be a lie. A
+        // pointer left behind is self-healing — reconcile sees the commits
+        // after it as foreign and absorbs them in the repo→projection
+        // direction, which is the correct outcome.
         try {
-          await recordSyncedSha(supabase, packageId, commitSha);
+          await recordOwnCommit(supabase, packageId, synced, result);
         } catch {
           // Intentionally swallowed; see above.
         }
       }
 
-      return { commitSha };
+      return { commitSha: result.commitSha };
     },
   };
 }

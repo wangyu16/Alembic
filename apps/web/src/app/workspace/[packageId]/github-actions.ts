@@ -20,7 +20,9 @@ import {
   clientForUser,
   githubConfig,
   mirrorManifestToSandbox,
+  recordOwnCommit,
   recordSyncedSha,
+  syncedShaFor,
 } from "@/lib/github";
 import { slugForFile } from "@/lib/export";
 import { manifestFromFiles } from "@/lib/manifest-read";
@@ -325,14 +327,22 @@ export async function restoreStudyGuideAction(
       preamble: parsed.preamble,
       blocks: parsed.blocks,
     });
-    const { commitSha: newSha } = await commitFiles(gh.client, coords, {
-      repo: "public",
-      summary: `Restore ${path} to ${commitSha.slice(0, 7)}`,
-      changes: [{ path, content }],
-    });
+    const synced = await syncedShaFor(supabase, packageId);
+    const result = await commitFiles(
+      gh.client,
+      coords,
+      {
+        repo: "public",
+        summary: `Restore ${path} to ${commitSha.slice(0, 7)}`,
+        changes: [{ path, content }],
+      },
+      "main",
+      { unchangedSince: synced },
+    );
     // Advance the synced pointer so this restore commit isn't later mistaken
-    // for a foreign (externally-edited) commit and flagged for reconcile.
-    await recordSyncedSha(supabase, packageId, newSha);
+    // for a foreign (externally-edited) commit — but never past an outside
+    // change, which reconcile must still see (loop r2, P5.B.3.f).
+    await recordOwnCommit(supabase, packageId, synced, result);
     await supabaseEventLogger(supabase).log({
       type: "restore.completed",
       userId: user.id,

@@ -21,12 +21,13 @@ const mocks = vi.hoisted(() => ({
   clientForUser: vi.fn<
     (...args: unknown[]) => Promise<{ client: GitHubClient; owner: string } | null>
   >(),
-  recordSyncedSha: vi.fn<(...args: unknown[]) => Promise<void>>(),
+  recordOwnCommit: vi.fn<(...args: unknown[]) => Promise<void>>(),
 }));
 
 vi.mock("./github", () => ({
   clientForUser: mocks.clientForUser,
-  recordSyncedSha: mocks.recordSyncedSha,
+  syncedShaFor: async () => "sha-synced",
+  recordOwnCommit: mocks.recordOwnCommit,
 }));
 
 // eslint-disable-next-line import/first -- after vi.mock (hoisted) for clarity
@@ -84,10 +85,10 @@ interface CommitArgs {
 }
 
 /** A GitHubClient double: only `createCommitOnBranch` is ever reached. */
-function fakeClient(impl?: () => Promise<{ commitSha: string }>) {
+function fakeClient(impl?: () => Promise<{ commitSha: string; parentSha: string }>) {
   const createCommitOnBranch = vi.fn(
     async (_args: CommitArgs) =>
-      impl ? await impl() : { commitSha: "sha-abc123" },
+      impl ? await impl() : { commitSha: "sha-abc123", parentSha: "sha-synced" },
   );
   return {
     client: { createCommitOnBranch } as unknown as GitHubClient,
@@ -99,8 +100,8 @@ const supabase = {} as SupabaseClient;
 
 beforeEach(() => {
   mocks.clientForUser.mockReset();
-  mocks.recordSyncedSha.mockReset();
-  mocks.recordSyncedSha.mockResolvedValue(undefined);
+  mocks.recordOwnCommit.mockReset();
+  mocks.recordOwnCommit.mockResolvedValue(undefined);
 });
 
 describe("committerFor — which write path is this package on", () => {
@@ -154,7 +155,7 @@ describe("committerFor — which write path is this package on", () => {
 
 describe("the committer itself", () => {
   async function connected(
-    impl?: () => Promise<{ commitSha: string }>,
+    impl?: () => Promise<{ commitSha: string; parentSha: string }>,
     rec: PackageRecord = record(),
   ) {
     const gh = fakeClient(impl);
@@ -180,7 +181,13 @@ describe("the committer itself", () => {
       message: "Save study guide",
       files: [{ path: PUBLIC_PATH, content: "# Heat\n" }],
     });
-    expect(mocks.recordSyncedSha).toHaveBeenCalledWith(supabase, "pkg-1", "sha-abc123");
+    // Loop r2 (P5.B.3.f): guarded by the synced point, and recorded through
+    // the conditional pointer update.
+    expect(createCommitOnBranch.mock.calls[0]?.[0]).toMatchObject({ unchangedSince: "sha-synced" });
+    expect(mocks.recordOwnCommit).toHaveBeenCalledWith(supabase, "pkg-1", "sha-synced", {
+      commitSha: "sha-abc123",
+      parentSha: "sha-synced",
+    });
   });
 
   it("routes a private commit to the private repo and records no synced sha", async () => {
@@ -196,7 +203,7 @@ describe("the committer itself", () => {
     });
     // The synced pointer tracks the PUBLIC repo only (that is what reconcile
     // compares against); a private commit must not move it.
-    expect(mocks.recordSyncedSha).not.toHaveBeenCalled();
+    expect(mocks.recordOwnCommit).not.toHaveBeenCalled();
   });
 
   it("[P5.S.3.e] commits go to the recorded repos, never to the repos a re-pointed manifest names", async () => {
@@ -253,14 +260,14 @@ describe("the committer itself", () => {
         changes: [{ path: PUBLIC_PATH, content: "# Heat\n" }],
       }),
     ).rejects.toBeInstanceOf(CommitFailedError);
-    expect(mocks.recordSyncedSha).not.toHaveBeenCalled();
+    expect(mocks.recordOwnCommit).not.toHaveBeenCalled();
   });
 
   it("still reports success when the synced-sha bookkeeping fails", async () => {
     // The commit landed; claiming failure would be a lie ("nothing was
     // changed" would be false). Reconcile self-heals the missed pointer.
     const { committer } = await connected();
-    mocks.recordSyncedSha.mockRejectedValue(new Error("db down"));
+    mocks.recordOwnCommit.mockRejectedValue(new Error("db down"));
     const out = await committer.commit({
       repo: "public",
       summary: "Save study guide",
@@ -307,6 +314,6 @@ describe("the committer itself", () => {
       }),
     ).rejects.not.toBeInstanceOf(CommitFailedError);
     expect(createCommitOnBranch).not.toHaveBeenCalled();
-    expect(mocks.recordSyncedSha).not.toHaveBeenCalled();
+    expect(mocks.recordOwnCommit).not.toHaveBeenCalled();
   });
 });

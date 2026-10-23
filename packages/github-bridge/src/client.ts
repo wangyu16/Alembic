@@ -112,6 +112,30 @@ function isReplayable(method: string, path: string): boolean {
  * installation token once when the client was given a refreshable
  * `TokenSource` (see `installationTokenSource`).
  */
+/** GitHub's Compare API lists at most this many files. */
+const COMPARE_FILE_LIMIT = 300;
+
+/**
+ * A commit was refused because the branch moved since the caller's last sync
+ * and the outside change touched files this commit would write (`overlap`),
+ * or that could not be ruled out (`unverifiable`). Nothing was written.
+ * Developer-facing: callers map it to their own wording.
+ */
+export class RemoteChangedError extends Error {
+  constructor(
+    readonly paths: string[],
+    readonly reason: "overlap" | "unverifiable",
+    readonly cause?: unknown,
+  ) {
+    super(
+      reason === "overlap"
+        ? `branch changed since the last sync in: ${paths.join(", ")}`
+        : "branch changed since the last sync and the change could not be compared",
+    );
+    this.name = "RemoteChangedError";
+  }
+}
+
 export class GitHubClient {
   private readonly tokens: TokenSource;
   private readonly retry: Partial<RetryPolicy> | undefined;
@@ -245,18 +269,47 @@ export class GitHubClient {
     });
   }
 
-  /** Tree entry: text content to write, base64 binary, or null to delete. */
+  /**
+   * Tree entry: text content to write, base64 binary, or null to delete.
+   *
+   * Returns the new commit and `parentSha`, the branch head it was built on
+   * (equal to `commitSha` when nothing needed committing).
+   *
+   * `unchangedSince` (loop r2, P5.B.3.f): the head the caller last synced.
+   * When given and the branch has moved since, the change between the two is
+   * compared; if it touched any path this commit writes or deletes, a
+   * `RemoteChangedError` is thrown and NOTHING is written. A comparison that
+   * fails (unknown base, network) or may be incomplete (GitHub lists at most
+   * 300 files) refuses too — fail closed. Null/omitted: no check.
+   */
   async createCommitOnBranch(input: {
     coords: RepoCoords;
     branch?: string;
     message: string;
     files: Array<{ path: string; content: string | null; encoding?: "utf-8" | "base64" }>;
-  }): Promise<{ commitSha: string }> {
+    unchangedSince?: string | null;
+  }): Promise<{ commitSha: string; parentSha: string }> {
     const branch = input.branch ?? "main";
     const { commitSha: parentSha, treeSha: baseTree } = await this.getBranchHead(
       input.coords,
       branch,
     );
+
+    const since = input.unchangedSince;
+    if (since && since !== parentSha) {
+      let changed: Array<{ path: string }>;
+      try {
+        changed = await this.compareCommits(input.coords, since, parentSha);
+      } catch (cause) {
+        throw new RemoteChangedError([], "unverifiable", cause);
+      }
+      if (changed.length >= COMPARE_FILE_LIMIT) {
+        throw new RemoteChangedError([], "unverifiable");
+      }
+      const touched = new Set(changed.map((c) => c.path));
+      const overlap = [...new Set(input.files.map((f) => f.path))].filter((p) => touched.has(p));
+      if (overlap.length > 0) throw new RemoteChangedError(overlap, "overlap");
+    }
 
     // Drop deletions of paths the repository does not actually have.
     //
@@ -287,7 +340,7 @@ export class GitHubClient {
     // Everything asked for is already true of the repository (e.g. a resumed
     // upload whose remaining work was only no-op deletions). Committing an
     // unchanged tree would add an empty commit for nothing.
-    if (files.length === 0) return { commitSha: parentSha };
+    if (files.length === 0) return { commitSha: parentSha, parentSha };
 
     const tree = await this.buildTreeEntries(input.coords, files);
 
@@ -298,7 +351,7 @@ export class GitHubClient {
     );
     // Same tree as the branch already has (a save that changed nothing, or a
     // retried write that had in fact landed): no empty commit.
-    if (newTree.sha === baseTree) return { commitSha: parentSha };
+    if (newTree.sha === baseTree) return { commitSha: parentSha, parentSha };
     const commit = await this.request<{ sha: string }>(
       "POST",
       `/repos/${input.coords.owner}/${input.coords.repo}/git/commits`,
@@ -309,7 +362,7 @@ export class GitHubClient {
       `/repos/${input.coords.owner}/${input.coords.repo}/git/refs/heads/${branch}`,
       { sha: commit.sha },
     );
-    return { commitSha: commit.sha };
+    return { commitSha: commit.sha, parentSha };
   }
 
   async listCommits(

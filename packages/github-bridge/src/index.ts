@@ -62,18 +62,25 @@ export function validateCommitPlan(plan: CommitPlan): void {
  * Commit a validated file set to a repository as a single commit. The plan's
  * `repo` kind is re-checked against the invariant before any network call;
  * the caller maps that kind to the correct physical repository.
+ *
+ * `opts.unchangedSince` (loop r2, P5.B.3.f): refuse with `RemoteChangedError`,
+ * writing nothing, when the branch moved since that head and the outside
+ * change touched a path in this plan (see `createCommitOnBranch`). Returns the
+ * head the commit was built on as `parentSha`.
  */
 export async function commitFiles(
   client: GitHubClient,
   coords: RepoCoords,
   plan: CommitPlan,
   branch = "main",
-): Promise<{ commitSha: string }> {
+  opts: { unchangedSince?: string | null } = {},
+): Promise<{ commitSha: string; parentSha: string }> {
   validateCommitPlan(plan); // fail-closed, before the transport
   return client.createCommitOnBranch({
     coords,
     branch,
     message: plan.summary,
     files: plan.changes,
+    ...(opts.unchangedSince !== undefined ? { unchangedSince: opts.unchangedSince } : {}),
   });
 }

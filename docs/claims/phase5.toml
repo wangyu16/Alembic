@@ -1649,3 +1649,25 @@ bound_to = [
 ]
 note = "Loop r2 correctness MEDIUM-2 (repro /tmp/p5r2/dstale2.mts). Code only. Cost: a cold instance reads the origin once per document per 60 s for unpinned views; the shared layer now mainly serves pinned reads."
 
+# MEDIUM-4 — a save never hides or reverts a change made outside Alembic
+
+[[claim]]
+id = "P5.B.3.f"
+claim = "A public save is refused, writing nothing, when the branch moved since the synced point and the outside change touched a file the save writes or deletes (or the change cannot be compared — fail closed); the educator sees plain wording pointing to Check for outside changes. The synced pointer advances (compare-and-set) only when the new commit's parent is the synced point, so a commit made outside Alembic is never hidden from reconcile."
+oracle = "scenario"
+bound_to = [
+  "packages/github-bridge/src/unchanged-since.test.ts :: reports the head the commit was built on",
+  "packages/github-bridge/src/unchanged-since.test.ts :: an outside change to a file this commit writes is refused, and nothing is written",
+  "packages/github-bridge/src/unchanged-since.test.ts :: a planned DELETION of a file changed outside (incl. a rename's old name) is refused too",
+  "packages/github-bridge/src/unchanged-since.test.ts :: an outside change to OTHER files does not block the commit",
+  "packages/github-bridge/src/unchanged-since.test.ts :: head unchanged since the last sync: no comparison at all",
+  "packages/github-bridge/src/unchanged-since.test.ts :: a comparison that fails refuses the commit (fail closed)",
+  "packages/github-bridge/src/unchanged-since.test.ts :: callers that pass nothing (or null) keep the old behaviour",
+  "apps/web/src/lib/committer.remote-changes.test.ts :: an outside change to alembic.json: a course-details save is refused, nothing is written, the pointer stays",
+  "apps/web/src/lib/committer.remote-changes.test.ts :: an outside change to OTHER files: the save goes through but the pointer does not move past the outside change",
+  "apps/web/src/lib/committer.remote-changes.test.ts :: no outside change: the pointer advances, and two saves in a row advance normally",
+  "apps/web/src/lib/committer.remote-changes.test.ts :: when the outside change cannot be compared, the save is refused (fail closed)",
+  "apps/web/src/lib/committer.remote-changes.test.ts :: the pointer only moves from the value the save started from (atomic)",
+]
+note = "Loop r2 correctness MEDIUM-4. Code only (fake GitHub). Residual: after an outside commit, a save of a file Alembic itself committed after the synced point is refused until reconcile runs (it cannot tell its own later commits from outside ones without a ledger)."
+

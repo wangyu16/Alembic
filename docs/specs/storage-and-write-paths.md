@@ -47,6 +47,12 @@ chapter/manifest op, populate — goes through one shared path:
 > **commit to GitHub** → update the projection *from the commit result* →
 > `recordSyncedSha`.
 
+(Loop r2, P5.B.3.f: the commit is refused, writing nothing, when the public
+repo moved since the synced pointer and the outside change touched a file the
+plan writes; afterwards the pointer advances — compare-and-set — only when the
+commit's parent IS the synced pointer, so a foreign commit in between stays
+visible to reconcile. See `lib/synced-sha.ts`.)
+
 - If the commit fails, **nothing changed anywhere**; the educator sees a
   retryable, plain-language failure. A save that didn't reach permanence
   didn't happen — this is the version contract's "Save records a permanent

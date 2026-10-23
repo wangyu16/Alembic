@@ -27,7 +27,7 @@ import type { PackageRecord, PackageStore } from "@alembic/package-ops";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
 import { supabaseEventLogger } from "@/lib/events";
-import { clientForUser, recordSyncedSha } from "@/lib/github";
+import { clientForUser, recordOwnCommit, syncedShaFor } from "@/lib/github";
 import { commitFiles } from "@alembic/github-bridge";
 import { appBaseUrl } from "@/lib/app-url";
 import { SupabaseDocumentRegistryStore } from "@/lib/document-registry-store";
@@ -217,11 +217,14 @@ export async function publishSiteAction(
   // published before this feature existed never got one — the original backfill
   // only ran on FIRST publish, which an already-published course skips. A license
   // change also refreshes it here. Best-effort: a failure must not block the site
-  // publish. recordSyncedSha keeps the synced pointer current so this Alembic
-  // commit isn't later mistaken for an outside edit.
+  // publish. recordOwnCommit keeps the synced pointer current so this Alembic
+  // commit isn't later mistaken for an outside edit — and leaves it alone
+  // when an outside change sits in between, which reconcile must still see
+  // (loop r2, P5.B.3.f); an outside edit of LICENSE itself is not overwritten.
   try {
     if (await ensureLicenseFile(store, packageId, record!.manifest)) {
-      const { commitSha } = await commitFiles(
+      const synced = await syncedShaFor(supabase, packageId);
+      const result = await commitFiles(
         gh.client,
         { owner: repo.owner, repo: repo.name },
         {
@@ -229,8 +232,10 @@ export async function publishSiteAction(
           summary: "Add LICENSE (Alembic)",
           changes: [{ path: LICENSE_PATH, content: licenseFileContent(record!.manifest.license) }],
         },
+        "main",
+        { unchangedSince: synced },
       );
-      await recordSyncedSha(supabase, packageId, commitSha);
+      await recordOwnCommit(supabase, packageId, synced, result);
     }
   } catch (err) {
     console.warn(`LICENSE backfill failed for ${packageId}:`, err);

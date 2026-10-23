@@ -64,6 +64,18 @@ of the class ([DecisionLog](DecisionLog.md) 2026-10-23 "Closed loop r2 (correctn
   unlabelled, the shared-layer key is evicted (`unstable_cache` tags + `revalidateTag`) and the route re-registers
   that one file after the response (`after()`, service client, once per doc per window). Pinned answers keep the
   content-addressed cached bytes. Code only. **L-5:** P5.A.6.b's claim text now quotes the real headers.
+- ✅ **MEDIUM-4 — a save could hide or revert a change made outside Alembic (P5.B.3.f).** The committer recorded
+  every public commit as the synced point, even with a foreign commit in between (reconcile then never saw it), and
+  a course-details save rewrote the whole `alembic.json` over an outside edit. Now the bridge
+  (`createCommitOnBranch` / `commitFiles`, option `unchangedSince`) refuses — writing nothing — when the branch moved
+  since the synced point and the outside change touched a file this save writes (or cannot be compared: fail closed,
+  incl. GitHub's 300-file compare cap); the educator is told the course "was changed outside Alembic since your last
+  save … use "Check for outside changes" first". The pointer advances (compare-and-set, `lib/synced-sha.ts`) only
+  when the commit's parent IS the synced point; otherwise it stays, so reconcile still reports the outside commit
+  (quarantine stays visible). Same rule for the LICENSE backfill, CITATION.cff and single-chapter restore; the
+  publish baseline and reconcile stay unconditional. `syncedShaFor` throws on a read error (null would switch the
+  guard off). Code only. **Residual:** after an outside commit, a later save of a file Alembic itself committed
+  meanwhile is refused too (it lies after the synced point) until "Check for outside changes" runs.
 
 **Phase 5 closed-loop verification — round 2, steps 4–5: security audit probes and class fixes (2026-10-23,
 branch `phase5/loop-r2-sec`, not merged, migrations `0028_loop_r2_*` NOT applied).** Each round-2 security finding
