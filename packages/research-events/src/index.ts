@@ -64,14 +64,29 @@ export const EVENT_TYPES = [
   // Phase 9 editor overhaul — in-editor AI edit of the active file's carrier
   // source (the accept/reject reuse ai.suggestion.* with surface:"editor-inline").
   "ai.edit.requested",
+  // Phase 5 Track A.7 — discovery (2026-10-23). De-identified by construction:
+  // no query text, no docIds/paths in `detail`, the package only in the
+  // pseudonymized package column; an anonymous visitor has NO participant
+  // (userId omitted → null), never an IP or a fingerprint. Built only through
+  // `apps/web/src/lib/discovery-events.ts`.
+  "portal.searched",
+  "course.viewed",
+  "element.viewed",
+  "adaptation.started",
+  "element.shared",
+  "element.unshared",
+  "portal.unregistered",
+  "portal.reported",
 ] as const;
 
 export type EventType = (typeof EVENT_TYPES)[number];
 
 export const ResearchEventSchema = z.object({
   type: z.enum(EVENT_TYPES),
-  /** Platform user ID — never a GitHub identity in research exports. */
-  userId: z.string(),
+  /** Platform user ID — never a GitHub identity in research exports. Omitted
+   *  only for an anonymous visitor's discovery event (Track A.7): such a row
+   *  has no participant at all (`user_id` null, migration 0023). */
+  userId: z.string().optional(),
   packageId: z.string().optional(),
   /** Milliseconds spent on the step, when measurable. */
   durationMs: z.number().int().nonnegative().optional(),
@@ -87,13 +102,22 @@ export interface EventSink {
   write(event: ResearchEvent): Promise<void>;
 }
 
-/** Validates then forwards events; sink failures must never break authoring. */
+/**
+ * Validates then forwards events. Neither an invalid event nor a sink failure
+ * may break the workflow that logs it: an invalid event is dropped with a
+ * server-side warning (it used to throw out of `log`, before the try —
+ * Track A.7 fix), and a sink error is swallowed.
+ */
 export function createEventLogger(sink: EventSink) {
   return {
     async log(event: ResearchEvent): Promise<void> {
-      const parsed = ResearchEventSchema.parse(event);
+      const parsed = ResearchEventSchema.safeParse(event);
+      if (!parsed.success) {
+        console.warn(`[research-events] dropped an invalid "${String(event?.type)}" event`);
+        return;
+      }
       try {
-        await sink.write(parsed);
+        await sink.write(parsed.data);
       } catch {
         // Logging must never take down an educator workflow.
       }

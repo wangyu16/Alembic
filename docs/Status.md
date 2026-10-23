@@ -100,6 +100,74 @@ must be applied before this code is deployed** (it back-fills the index itself).
   tests (each signal reorders equal matches; a title match beats a much better-quality description match;
   low quality still listed).
 
+**Phase 5 Track A (infra) — A.6 scale infrastructure, A.7 events and harvest (2026-10-23, branch
+`phase5/trackA-infra`, not yet deployed).** Plan: family `docs/PHASE5-ALEMBIC.md` Track A; the portal search
+itself (A.1–A.4) is a parallel branch (`phase5/trackA-core`) and is not touched here. DecisionLog 2026-10-23.
+
+- ✅ **A.7a Discovery event taxonomy.** `EVENT_TYPES` gains `portal.searched`, `course.viewed`,
+  `element.viewed`, `adaptation.started`, `element.shared`, `element.unshared`, `portal.unregistered`,
+  `portal.reported`. Their `detail` is built in ONE place, `apps/web/src/lib/discovery-events.ts`
+  (no query text or filter values — only lengths, term counts and filter names; no docId, path or IP;
+  closed-vocabulary tokens), and recorded after the response by `recordDiscoveryEvent`
+  (`lib/record-discovery-event.ts` — **the helper the portal search and course pages call**). Anonymous
+  visitors' events have no participant (`userId` optional; export column empty) and are written by the
+  service client; signed-in visitors' through their own session. Fix on the way: `createEventLogger.log`
+  threw on an invalid event (validation ran outside its try) — now it drops it with a warning.
+  **Migration `0023_trackA_infra`** (additive, not applied): `research_events.user_id` nullable + a
+  `(type, occurred_at)` index; rate-limit counters (A.6). Checked in PGlite. Tests: 9 (de-identification,
+  taxonomy membership) + 3 in `research-events`.
+- ✅ **A.6 `/d/{docId}` cached by source hash; rate limits.** The answer moved out of the route into
+  `lib/permalink-response.ts` (the route is a thin adapter). After the rate limit and the ONE access check
+  (`lib/permalink-access.ts`, unchanged): public answers carry `ETag: W/"{source_hash}"`, answer
+  `If-None-Match` with **304 without reading GitHub**, pinned `@{hash}` is `immutable`, live answers are
+  `public, max-age=60, s-maxage=300, stale-while-revalidate=86400` (was `max-age=60`). Bytes are cached
+  per `(docId, hash)` (`lib/doc-bytes-cache.ts`: in-process LRU ≤ 64 MB, plus Next's data cache for files
+  ≤ 1 MB via `lib/next-doc-bytes-layer.ts`; concurrent misses share one read) — **GitHub is read once per
+  file version, not per view**. Only bytes that hash to the registry's hash are cached or labelled; when
+  the repo is ahead of the registry (direct commit, reconcile not yet run) the file is served the old way
+  (no ETag, `max-age=60`, uncached) — so a pin can never be cached `immutable` with another version's
+  bytes. **Owner-only answers are untouched by all of it:** `private, no-store`, no ETag, no 304, no CORS,
+  no server cache. 404s are now `no-store` (an owner never meets a CDN-cached 404 for their own private
+  file). **Rate limits** (`lib/rate-limit.ts`, door `lib/rate-limit-server.ts`): anonymous reports 5 / 10
+  min and 20 / day per address (Postgres `rate_limit_hit`, migration 0023, in-process fallback); `/d`
+  1200 / min and search 120 / min per address in process; keys are an HMAC of the address (none stored);
+  a 429 is `no-store` with `Retry-After`. **Pins stay on the 32-bit FNV hash** (Track B open item *c*):
+  deferred to the version store R3 with reasons — DecisionLog 2026-10-23 #4. Tests: 15 adversarial
+  (`permalink-response.adversarial.test.ts`: private/trial never publicly cacheable for anonymous,
+  stranger or owner, with or without `If-None-Match`/`*`/pins; a hidden file's 404 byte-identical to a
+  missing one's; cached-then-made-private; package back to trial; rate limit before lookup), 11 cache,
+  9 rate-limit.
+- ✅ **A.7b Events wired outside the portal search UI.** `/d` records `element.viewed` per public
+  DOCUMENT answered by the origin (200 or 304; not per embedded figure, not CDN hits, never owner-only
+  reads); anonymous reports `portal.reported` (+ the rate limit above); "share this" / asset metadata
+  `element.shared` / `element.unshared` only when the flag really flips; unlisting `portal.unregistered`
+  (`reason: owner`, or `archived` when archiving removed a listing); the four adapt actions
+  `adaptation.started` at the attempt (fork, chapter, portal, element — the element's source package is
+  not known yet and its docId is never logged). **Left for Track A core** (portal page / search / course
+  pages, not touched here): `portal.searched` and `course.viewed` — call `recordDiscoveryEvent` (usage in
+  its header comment) and `checkRateLimit("search", await headers())`.
+- ✅ **A.7c Harvest without the portal** (goal.md §6). `/feed/courses.jsonld[?page=N]`: every listed course
+  as a schema.org `DataFeed` of the SAME LRMI `LearningResource` records the published pages embed
+  (`learningResource()`), 100 per page, paged by HTTP `Link` (first/prev/next/last), CORS open,
+  CDN-cached 15 min + stale-while-revalidate. `/sitemap.xml` (an index → `/sitemaps/static.xml`, and
+  `/sitemaps/courses-{n}.xml` per 10 000 courses) and `/robots.txt` (public pages, `/d` and the feed
+  crawlable; workspace/admin/api/auth not). Reads through a cookie-less anon client
+  (`lib/supabase/public.ts`), so the answers are the same for everyone. **Seams for Track A core:**
+  `listListedCourses` (`lib/listed-courses.ts`) is the ONE data read — today `portal_registrations`,
+  repoint it at the discovery projection (A.1); course URLs enter the sitemap only when
+  `COURSE_PAGES_LIVE` is flipped in the commit that adds `/p/{packageId}` (A.4) — a sitemap may only list
+  its own host, so until then course records travel in the feed, pointing at each course's Pages site.
+  Tests: 6 (`listed-courses.test.ts`).
+- **Open (A.6/A.7):** *(a)* "cached discover pages, revalidated on listing changes" is the portal page's
+  job (A-core branch) — not done here; *(b)* the report limit binds the app only: `portal_reports` RLS
+  still lets anyone insert directly with the anon key (a database-side cap is open,
+  portal-governance.md); *(c)* the in-process `/d` and search limits are per server instance (soft);
+  *(d)* CDN copies of a public file can outlive its turning private/trial by ≤ 5 min (`s-maxage`),
+  origin answers change at once; *(e)* `/admin/export` reads every research event unpaged — with view
+  events it will grow; page it before the pilot's traffic; *(f)* pins on the 32-bit hash until R3;
+  *(g)* migration 0023 not applied — until then anonymous discovery events are dropped and the report
+  limit is per instance.
+
 **Phase 5 Track B — GitHub bridge & Pages publishing: keep, strengthen (2026-10-23, branch `phase5/trackB`,
 not yet deployed).** Plan: family `docs/PHASE5-ALEMBIC.md` Track B; B.4–B.6 wait for the orz release wave.
 
@@ -655,7 +723,7 @@ theme-in-save).
 
 These are the only things blocking full production parity with the code:
 
-1. **Migrations pending: `0020` (required for zip upload), `0019` (required for CF4), `0013` (optional), `0021_trackB_documents_hash_idx` (optional index, Phase 5 Track B.1 — apply anytime), `0022_trackA_discovery` (Phase 5 Track A — discovery index; apply BEFORE deploying the Track A code; it back-fills itself, and `select public.discovery_rebuild();` re-derives it any time).** `0020_staging_bucket` creates the private `staging` bucket + owner-prefix RLS that the whole-course zip upload writes through — **it needs owner/service-role privileges** (it writes `storage.buckets` and `storage.objects` policies, which the anon/authenticated roles cannot) and **must be applied BEFORE the Wave-3 code is deployed**, or every zip upload fails at the signed-URL step. Supabase Storage has no automatic TTL, so the bucket's 24-hour lifetime also needs an **operator/cron sweep** deleting objects older than 24h (the happy path deletes each object on consumption); see [Deployment.md §1](Deployment.md). `0019_document_tags` adds the per-file `tags` column the Assets collection (CF4.1/4.2) reads/writes — **apply it before relying on asset tags/metadata in production** (CF4 asset writes are otherwise held; see the CF4 entry). `0013_drop_portal_eligible` drops the now-unused `profiles.portal_eligible` column — optional cleanup, apply anytime; no code references it. Applied: 0005–0012, **0014** (documents), **0015** (portal keywords, 2026-07-09), and **0016–0018** (profile column grants + user governance + ban backstop, ✅ **applied 2026-07-10** — see the security/UG banners above). Config notes: 0007's budget stays dormant until `AI_TOKEN_BUDGET` is set; portal listing is now open to all educators (the `portal_eligible` gate + admin toggle were removed); to reach `/admin`, **flag yourself `is_admin=true`** (dashboard) and set **`SUPABASE_SECRET_KEY`** (service-role reads) — optionally `RESEARCH_EXPORT_SALT`.
+1. **Migrations pending: `0020` (required for zip upload), `0019` (required for CF4), `0013` (optional), `0021_trackB_documents_hash_idx` (optional index, Phase 5 Track B.1 — apply anytime), `0023_trackA_infra` (optional, additive, Phase 5 Track A.6–A.7 — nullable `research_events.user_id` for anonymous discovery events, shared report rate-limit counters; apply anytime), `0022_trackA_discovery` (Phase 5 Track A.1–A.3 — discovery index; apply BEFORE deploying the Track A core code; it back-fills itself, and `select public.discovery_rebuild();` re-derives it any time).** `0020_staging_bucket` creates the private `staging` bucket + owner-prefix RLS that the whole-course zip upload writes through — **it needs owner/service-role privileges** (it writes `storage.buckets` and `storage.objects` policies, which the anon/authenticated roles cannot) and **must be applied BEFORE the Wave-3 code is deployed**, or every zip upload fails at the signed-URL step. Supabase Storage has no automatic TTL, so the bucket's 24-hour lifetime also needs an **operator/cron sweep** deleting objects older than 24h (the happy path deletes each object on consumption); see [Deployment.md §1](Deployment.md). `0019_document_tags` adds the per-file `tags` column the Assets collection (CF4.1/4.2) reads/writes — **apply it before relying on asset tags/metadata in production** (CF4 asset writes are otherwise held; see the CF4 entry). `0013_drop_portal_eligible` drops the now-unused `profiles.portal_eligible` column — optional cleanup, apply anytime; no code references it. Applied: 0005–0012, **0014** (documents), **0015** (portal keywords, 2026-07-09), and **0016–0018** (profile column grants + user governance + ban backstop, ✅ **applied 2026-07-10** — see the security/UG banners above). Config notes: 0007's budget stays dormant until `AI_TOKEN_BUDGET` is set; portal listing is now open to all educators (the `portal_eligible` gate + admin toggle were removed); to reach `/admin`, **flag yourself `is_admin=true`** (dashboard) and set **`SUPABASE_SECRET_KEY`** (service-role reads) — optionally `RESEARCH_EXPORT_SALT`.
 2. ✅ **Done** — Vercel build command is `node ../../scripts/fetch-vendor.mjs && next build`; Plotly is vendored and the plot editor (M11b) works live.
 3. **Interactive verification passes** (can't run in CI): slides render (M13), the in-file hosted editors (`.md.html`/`.slides.html`/`.paged.html` save round-trip via the worker tier), and the AI/reconcile live runs (M18 coherence agent, M9.6 draft-from-plan, M20 reconcile, M23 question generation, M26–M28 adapt/pull/suggest-back) once the AI gateway is on Vercel. Ketcher (M11) and plots (M11b) are verified live.
 4. **Set the AI gateway env vars in Vercel** — the self-hosted LiteLLM gateway (decided 2026-08-28, replacing Portkey; [worker-tier.md](specs/worker-tier.md) §1.5): `AI_GATEWAY_URL=https://<litellm-host>/v1`, `AI_GATEWAY_API_KEY=<virtual key>`, `AI_MODEL_DEFAULT/FAST/STRONG` = the gateway's model names — to verify the **M18 coherence agent** live. (Local dev could not reach the earlier hosted gateway from this machine — the dev Mac's firewall blocks the `node` binary's outbound; Vercel's egress is clean.) See [ai-architecture.md](specs/ai-architecture.md).

@@ -17,6 +17,7 @@ import { SupabaseSandboxStore } from "@/lib/sandbox-store";
 import { clientForUser } from "@/lib/github";
 import { committerFor } from "@/lib/committer";
 import { supabaseEventLogger } from "@/lib/events";
+import { recordDiscoveryEvent } from "@/lib/record-discovery-event";
 
 export interface LifecycleResult {
   ok: boolean;
@@ -156,7 +157,17 @@ export async function archivePackageAction(
     return { ok: false, error: "Could not archive the package. Please try again." };
   }
   // Unlist from the public index — the owner is no longer managing it here.
-  await supabase.from("portal_registrations").delete().eq("package_id", packageId);
+  const { data: unlisted } = await supabase
+    .from("portal_registrations")
+    .delete()
+    .eq("package_id", packageId)
+    .select("package_id");
+  if (unlisted?.length) {
+    recordDiscoveryEvent(
+      { type: "portal.unregistered", packageId, reason: "archived" },
+      { userId: user.id, session: supabase },
+    );
+  }
   await supabaseEventLogger(supabase).log({
     type: "package.archived",
     userId: user.id,

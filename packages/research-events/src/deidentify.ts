@@ -9,10 +9,11 @@
  * the secret salt never lives here.
  */
 
-/** A raw research_events row (as stored; user_id is the platform id). */
+/** A raw research_events row (as stored; user_id is the platform id, or null
+ *  for an anonymous visitor's discovery event — migration 0023). */
 export interface ResearchEventRow {
   type: string;
-  user_id: string;
+  user_id: string | null;
   package_id: string | null;
   duration_ms: number | null;
   detail: Record<string, unknown>;
@@ -22,8 +23,9 @@ export interface ResearchEventRow {
 /** A de-identified event — pseudonymous, no raw identities. */
 export interface DeidentifiedEvent {
   type: string;
-  /** Stable participant pseudonym (from the injected one-way hash). */
-  participant: string;
+  /** Stable participant pseudonym (from the injected one-way hash), or null
+   *  for an anonymous visitor (no participant exists to pseudonymize). */
+  participant: string | null;
   /** Stable package pseudonym, or null (the slug could be identifying). */
   package: string | null;
   durationMs: number | null;
@@ -42,7 +44,7 @@ export function deidentifyEvents(
 ): DeidentifiedEvent[] {
   return rows.map((r) => ({
     type: r.type,
-    participant: pseudonymize(r.user_id),
+    participant: r.user_id ? pseudonymize(r.user_id) : null,
     package: r.package_id ? pseudonymize(r.package_id) : null,
     durationMs: r.duration_ms,
     detail: r.detail,
@@ -69,7 +71,7 @@ export function eventsToCsv(events: DeidentifiedEvent[]): string {
   const rows = events.map((e) =>
     [
       e.type,
-      e.participant,
+      e.participant ?? "",
       e.package ?? "",
       e.durationMs == null ? "" : String(e.durationMs),
       e.occurredAt,

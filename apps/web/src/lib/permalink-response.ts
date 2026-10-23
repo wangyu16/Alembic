@@ -1,0 +1,243 @@
+/**
+ * The `/d/{docId}` answer (permalinks spec §3), separated from the route so
+ * the caching rules are unit-tested against the real access check
+ * (`permalink-response.adversarial.test.ts`). Phase 5 Track A.6.
+ *
+ * Order matters, and is the security argument:
+ *  1. rate limit (per client IP) — before any lookup;
+ *  2. the ONE access check (`lib/permalink-access.ts`) — before anything that
+ *     depends on the file: no 304, no ETag and no cache lookup can happen for
+ *     a file the visitor may not read, so neither can reveal that it exists;
+ *  3. owner-only answers (private repo, trial package) — fetched fresh,
+ *     `private, no-store`, no ETag, no 304, no CORS, never in a shared cache;
+ *  4. public answers — keyed by the registry's `source_hash`:
+ *       ETag `W/"{hash}"`; `If-None-Match` → 304 without reading GitHub;
+ *       pinned `@{hash}` → `immutable` for a year;
+ *       live → browser 60 s, CDN 5 min + stale-while-revalidate 1 day;
+ *       bytes from `DocBytesCache` (GitHub read once per version).
+ *     Bytes that do not hash to the registry's hash (the repo moved ahead of
+ *     the registry) are served the old way: no ETag, `max-age=60`, uncached.
+ *
+ * The ETag is WEAK because for carrier files the hash covers the embedded
+ * source, not the rendered bytes: two renderings of one source are the same
+ * version, not the same bytes.
+ */
+
+import type { PermalinkAccess, PermalinkDoc } from "./permalink-access";
+import type { DocBytesCache } from "./doc-bytes-cache";
+import type { RateDecision } from "./rate-limit";
+import { tooManyRequests } from "./rate-limit";
+
+const MIME: Array<[RegExp, string]> = [
+  [/\.(md\.html|slides\.html|paged\.html|html)$/i, "text/html; charset=utf-8"],
+  [/\.svg$/i, "image/svg+xml"],
+  [/\.png$/i, "image/png"],
+  [/\.jpe?g$/i, "image/jpeg"],
+  [/\.gif$/i, "image/gif"],
+  [/\.webp$/i, "image/webp"],
+  [/\.pdf$/i, "application/pdf"],
+  [/\.(mp3)$/i, "audio/mpeg"],
+  [/\.(wav)$/i, "audio/wav"],
+  [/\.(m4a)$/i, "audio/mp4"],
+  [/\.(ogg|oga)$/i, "audio/ogg"],
+  // Video — so an inserted `<video src="/d/{docId}">` resolves.
+  [/\.mp4$/i, "video/mp4"],
+  [/\.webm$/i, "video/webm"],
+  [/\.mov$/i, "video/quicktime"],
+  [/\.m4v$/i, "video/mp4"],
+  [/\.ogv$/i, "video/ogg"],
+  [/\.json$/i, "application/json; charset=utf-8"],
+  [/\.md$/i, "text/markdown; charset=utf-8"],
+];
+
+export function mimeFor(path: string): string {
+  for (const [re, type] of MIME) if (re.test(path)) return type;
+  return "text/plain; charset=utf-8";
+}
+
+/** Active-content classes: self-contained HTML documents and SVG objects. */
+const ACTIVE_CONTENT = /\.(md\.html|slides\.html|paged\.html|html|svg)$/i;
+
+/**
+ * Security headers for served content. Self-contained documents legitimately
+ * carry their own scripts (the orz runtime renders the deck/markdown island),
+ * so we can't strip script — but a public permalink is on the SAME origin as
+ * the authenticated workspace. We serve active content in a CSP `sandbox` with
+ * `allow-scripts` but deliberately WITHOUT `allow-same-origin`: the file still
+ * runs and renders, but in an OPAQUE origin — it can't read the viewer's
+ * Alembic session cookies or call their Server Actions. That closes cross-user
+ * stored XSS via a shared `/d/{docId}` link (and the `adaptElementAction` SVG
+ * vector) without breaking the reader experience. `nosniff` pins every type so
+ * a mislabeled body can't be reinterpreted as HTML.
+ */
+export function securityHeaders(path: string): Record<string, string> {
+  const h: Record<string, string> = { "x-content-type-options": "nosniff" };
+  if (ACTIVE_CONTENT.test(path)) {
+    h["content-security-policy"] =
+      "sandbox allow-scripts allow-popups allow-popups-to-escape-sandbox allow-downloads";
+  }
+  return h;
+}
+
+/** Cache policies, named so tests and docs quote one source. */
+export const CACHE = {
+  ownerOnly: "private, no-store",
+  pinned: "public, max-age=31536000, immutable",
+  live: "public, max-age=60, s-maxage=300, stale-while-revalidate=86400",
+  /** Bytes we could not tie to the registry's hash: the pre-A.6 behaviour. */
+  unverified: "public, max-age=60",
+  /** Not found / no access: never stored, so an owner never sees a cached 404. */
+  none: "no-store",
+  /** Tombstones are permanent (docIds are never reused). */
+  gone: "public, max-age=3600",
+} as const;
+
+function page(status: number, title: string, body: string, cache: string): Response {
+  return new Response(
+    `<!doctype html><meta charset="utf-8"><title>${title}</title>` +
+      `<body style="font-family:system-ui;max-width:36rem;margin:4rem auto;padding:0 1rem">` +
+      `<h1 style="font-size:1.2rem">${title}</h1><p>${body}</p></body>`,
+    { status, headers: { "content-type": "text/html; charset=utf-8", "cache-control": cache } },
+  );
+}
+
+const notFound = () =>
+  page(
+    404,
+    "Not found",
+    "This link doesn't point to a shared file, or you don't have access to it.",
+    CACHE.none,
+  );
+
+/** Does an `If-None-Match` header match this weak ETag (weak comparison)? */
+export function etagMatches(ifNoneMatch: string | null, hash: string): boolean {
+  if (!ifNoneMatch) return false;
+  return ifNoneMatch.split(",").some((t) => {
+    const v = t.trim();
+    return v === "*" || v.replace(/^W\//, "").replace(/^"|"$/g, "") === hash;
+  });
+}
+
+export const etagFor = (hash: string) => `W/"${hash}"`;
+
+/** Split `docId` or `docId@version`. */
+export function parsePermalinkParam(raw: string): { docId: string; pin: string | null } {
+  const at = raw.indexOf("@");
+  return at === -1 ? { docId: raw, pin: null } : { docId: raw.slice(0, at), pin: raw.slice(at + 1) };
+}
+
+export interface ServedInfo {
+  doc: PermalinkDoc;
+  pinned: boolean;
+  status: 200 | 304;
+}
+
+export interface PermalinkDeps {
+  rateLimit?: () => Promise<RateDecision>;
+  access: (docId: string) => Promise<PermalinkAccess>;
+  /** Read the file's bytes wherever they live (GitHub or trial store). */
+  readBytes: (doc: PermalinkDoc, ok: Extract<PermalinkAccess, { status: "ok" }>) => Promise<Buffer | null>;
+  cache: DocBytesCache;
+  /** Called for every PUBLIC answer served (view events). Never for owner-only. */
+  onPublicServed?: (info: ServedInfo) => void;
+}
+
+/** The exact bytes of a Buffer as a standalone ArrayBuffer (a valid BodyInit). */
+function body(buf: Buffer): ArrayBuffer {
+  return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer;
+}
+
+export async function servePermalink(
+  rawParam: string,
+  reqHeaders: Pick<Headers, "get">,
+  deps: PermalinkDeps,
+): Promise<Response> {
+  if (deps.rateLimit) {
+    const gate = await deps.rateLimit();
+    if (!gate.ok) return tooManyRequests(gate.retryAfterSeconds);
+  }
+
+  const { docId, pin } = parsePermalinkParam(rawParam);
+
+  // Who may read this file: published public → anyone; private, or any file
+  // of an unpublished (trial) package → the owner's own session only.
+  const access = await deps.access(docId);
+  if (access.status === "not-found") return notFound();
+  if (access.status === "gone") {
+    return page(
+      410,
+      "This file was removed",
+      "The educator removed this file. Its address is never reused, so this page is permanent.",
+      CACHE.gone,
+    );
+  }
+  const { doc, ownerOnly } = access;
+  const hash = doc.source_hash;
+
+  // Version pin: the registry holds the CURRENT version; older pins arrive
+  // with R3's version store.
+  if (pin && hash && pin !== hash) {
+    return page(
+      404,
+      "That exact version isn't available yet",
+      "This link pins an older version of the file. Version history is coming; the current version is at " +
+        `<a href="/d/${docId}">this permalink</a>.`,
+      CACHE.none,
+    );
+  }
+  const pinned = Boolean(pin && hash && pin === hash);
+
+  // ── Owner-only: fresh every time, never shared, never conditional. ──
+  if (ownerOnly) {
+    const bytes = await deps.readBytes(doc, access);
+    if (bytes === null) return notFound();
+    return new Response(body(bytes), {
+      headers: {
+        "content-type": mimeFor(doc.path),
+        "cache-control": CACHE.ownerOnly,
+        ...securityHeaders(doc.path),
+      },
+    });
+  }
+
+  // ── Public file of a published package. ──
+  const shared = {
+    // Published public objects are embeddable cross-origin (permalink-as-src).
+    "access-control-allow-origin": "*",
+    ...securityHeaders(doc.path),
+  };
+
+  if (!hash) {
+    // No registry hash to key on (should not happen for registered files).
+    const bytes = await deps.readBytes(doc, access);
+    if (bytes === null) return notFound();
+    deps.onPublicServed?.({ doc, pinned: false, status: 200 });
+    return new Response(body(bytes), {
+      headers: { "content-type": mimeFor(doc.path), "cache-control": CACHE.unverified, ...shared },
+    });
+  }
+
+  const cacheControl = pinned ? CACHE.pinned : CACHE.live;
+  if (etagMatches(reqHeaders.get("if-none-match"), hash)) {
+    deps.onPublicServed?.({ doc, pinned, status: 304 });
+    return new Response(null, {
+      status: 304,
+      headers: { etag: etagFor(hash), "cache-control": cacheControl, ...shared },
+    });
+  }
+
+  const got = await deps.cache.get({ docId: doc.doc_id, hash, path: doc.path }, () =>
+    deps.readBytes(doc, access),
+  );
+  if (got === null) return notFound();
+  deps.onPublicServed?.({ doc, pinned, status: 200 });
+  return new Response(body(got.bytes), {
+    headers: {
+      "content-type": mimeFor(doc.path),
+      ...(got.verified
+        ? { etag: etagFor(hash), "cache-control": cacheControl }
+        : { "cache-control": CACHE.unverified }),
+      ...shared,
+    },
+  });
+}
