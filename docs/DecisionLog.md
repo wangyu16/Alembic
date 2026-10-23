@@ -6,6 +6,19 @@ design, and what is deferred to the future. Complements [Status.md](Status.md)
 
 ---
 
+## 2026-10-23 — Discover pages: one cached anonymous read, URL state, adapt with the source preselected (Phase 5 Track A.4)
+
+| # | Decision | Why |
+|---|---|---|
+| 1 | Every Discover read (search, facets, course and element pages) goes through the **cookie-less anonymous client** and is cached in Next's data cache under one tag, `discovery`, for ≤ 120 s; educator actions that change a listing call `updateTag("discovery")`. The visitor's session is read only for the adapt pickers. | Answers are identical for everyone, so they can be shared; the anonymous client also proves that nothing on these pages needs more than the public read policy. Tag invalidation gives the educator read-your-own-writes; the short window bounds everything else (operator takedowns, reconciled edits) — and stale *unlisted* content is still never served, because the search re-checks listability live. |
+| 2 | **All portal state in the URL**, plain GET form and links; keyset cursor (opaque, validated, ignored if tampered). No client-side filtering. | Works without JavaScript, is linkable and shareable, and scales: the old page loaded every listing into the browser. |
+| 3 | Course **Adapt** on `/p/{packageId}`: the course is the preselected source; the educator picks one of its chapters and one of their own chapters; the existing `adaptFromPortalAction` copies the sections (now also checking the source is listed *now* and the target chapter is theirs). | It was a link to `/workspace` that preselected nothing. Chapter-to-chapter is what the block-level adaptation primitive does today; a cross-owner whole-course fork is a separate feature (open item). |
+| 4 | Element detail at **`/portal/element/{docId}`**, not a new top-level form. | `/d/{docId}` is the file itself and must stay the permalink (permalinks §2); the detail page is a Discover page about it. |
+| 5 | **Subject and Level** become editable in Course details (free text + suggestions). | The discipline facet otherwise shows the manifest default for everyone and the level facet is empty; free text keeps old manifests valid (no schema change), and facets compare lower-cased. |
+| 6 | `lib/shared-elements.ts` (Track 0.3) and the client `PortalBrowser` are **removed**, not kept beside the index. | Two ways to list elements would be a second index (Roadmap rule 3). Track 0's leak cases live on as SQL tests against the index and the search. |
+
+---
+
 ## 2026-10-23 — Discover ranking: relevance × bounded quality; keyset pages pinned to an hour (Phase 5 Track A.2–A.3)
 
 **Decision.** `score = relevance × (0.75 + 0.5 × quality)`, rounded to 6

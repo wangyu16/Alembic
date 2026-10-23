@@ -45,6 +45,9 @@ export interface Cursor {
   id: string;
   /** The hour the scores were computed for (ISO). */
   asOf: string;
+  /** The 1-based number of the page this cursor opens (≥ 2) — for the
+   *  "page N" label and the research event, never for the query. */
+  page: number;
 }
 
 export type DiscoveryQuery =
@@ -80,7 +83,7 @@ const SCORE_RE = /^\d{1,6}(\.\d{1,6})?$/;
 const ID_RE = /^(pkg|doc)-[A-Za-z0-9_-]{1,120}$/;
 
 export function encodeCursor(c: Cursor): string {
-  return Buffer.from(JSON.stringify({ s: c.score, i: c.id, t: c.asOf }), "utf8").toString(
+  return Buffer.from(JSON.stringify({ s: c.score, i: c.id, t: c.asOf, n: c.page }), "utf8").toString(
     "base64url",
   );
 }
@@ -97,7 +100,9 @@ export function decodeCursor(raw: string, scope: DiscoveryScope): Cursor | null 
     if (typeof id !== "string" || !ID_RE.test(id)) return null;
     if (!id.startsWith(scope === "courses" ? "pkg-" : "doc-")) return null;
     if (typeof asOf !== "string" || Number.isNaN(Date.parse(asOf))) return null;
-    return { score, id, asOf: new Date(asOf).toISOString() };
+    const n = v["n"];
+    const page = typeof n === "number" && Number.isInteger(n) && n >= 2 && n <= 100_000 ? n : 2;
+    return { score, id, asOf: new Date(asOf).toISOString(), page };
   } catch {
     return null;
   }
@@ -273,10 +278,16 @@ function nextCursor<T extends { score: string }>(
   pageSize: number,
   idOf: (r: T) => string,
   asOf: string,
+  page: number,
 ): string | null {
   if (rows.length <= pageSize) return null;
   const last = rows[pageSize - 1]!;
-  return encodeCursor({ score: last.score, id: idOf(last), asOf });
+  return encodeCursor({ score: last.score, id: idOf(last), asOf, page: page + 1 });
+}
+
+/** The 1-based number of the page a query is on. */
+export function pageNumber(query: DiscoveryQuery): number {
+  return query.cursor?.page ?? 1;
 }
 
 export async function searchCourses(
@@ -294,7 +305,7 @@ export async function searchCourses(
   const rows = parseCourseRows(page.data, CourseHitSchema) as CourseHit[];
   return {
     hits: rows.slice(0, size),
-    next: nextCursor(rows, size, (r) => r.package_id, asOf),
+    next: nextCursor(rows, size, (r) => r.package_id, asOf, pageNumber(query)),
     facets: parseFacetRows(facets.error ? null : facets.data, COURSE_FILTERS),
     unavailable: false,
   };
@@ -322,7 +333,7 @@ export async function searchElements(
   const rows = parseElementRows(page.data, ElementHitSchema) as ElementHit[];
   return {
     hits: rows.slice(0, size),
-    next: nextCursor(rows, size, (r) => r.doc_id, asOf),
+    next: nextCursor(rows, size, (r) => r.doc_id, asOf, pageNumber(query)),
     facets: parseFacetRows(facets.error ? null : facets.data, ELEMENT_FILTERS),
     unavailable: false,
   };

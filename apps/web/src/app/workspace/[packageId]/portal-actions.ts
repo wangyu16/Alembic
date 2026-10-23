@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { releaseGates } from "@alembic/package-ops";
 import { isOpenLicense } from "@alembic/package-contract";
+import { discoveryChanged } from "@/lib/discovery-cache";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
 import { supabaseEventLogger } from "@/lib/events";
@@ -99,6 +100,7 @@ export async function registerPackageAction(
   });
   revalidatePath(`/workspace/${packageId}`);
   revalidatePath("/portal");
+  discoveryChanged();
   return { ok: true };
 }
 
@@ -127,5 +129,6 @@ export async function unregisterPackageAction(
   }
   revalidatePath(`/workspace/${packageId}`);
   revalidatePath("/portal");
+  discoveryChanged();
   return { ok: true };
 }

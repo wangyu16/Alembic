@@ -39,3 +39,45 @@ export function generateCitationCff(
   lines.push("url: " + y(input.url));
   return lines.join("\n") + "\n";
 }
+
+/**
+ * Human-readable "how to cite" lines for Discover's course and element pages
+ * (Phase 5 Track A.4). Pure: the caller passes the public facts. APA-like,
+ * one line, no markup — the page shows it as selectable text.
+ */
+export interface CourseCitationInput {
+  title: string;
+  /** Instructor name(s) if the course states them, else the publisher handle. */
+  author: string;
+  /** Year of the version being cited (last update). */
+  year: number;
+  /** The stable course page (permalink), absolute. */
+  url: string;
+  licenseLabel: string;
+}
+
+export function formatCourseCitation(c: CourseCitationInput): string {
+  const author = c.author.trim() || "Anonymous";
+  const lic = c.licenseLabel.trim();
+  return `${author} (${c.year}). ${c.title.trim()} [Open educational resource]. ${c.url}${
+    lic ? ` — ${lic}` : ""
+  }`;
+}
+
+export interface ElementCitationInput {
+  title: string;
+  courseTitle: string;
+  author: string;
+  year: number;
+  /** The element's permalink (`/d/{docId}`), absolute. */
+  url: string;
+  licenseLabel: string;
+}
+
+export function formatElementCitation(e: ElementCitationInput): string {
+  const author = e.author.trim() || "Anonymous";
+  const lic = e.licenseLabel.trim();
+  return `${author} (${e.year}). ${e.title.trim()}. In ${e.courseTitle.trim()} [Open educational resource]. ${e.url}${
+    lic ? ` — ${lic}` : ""
+  }`;
+}

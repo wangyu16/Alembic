@@ -13,6 +13,8 @@ import {
 } from "react";
 import {
   CREATABLE_FILE_TYPES,
+  DISCIPLINE_SUGGESTIONS,
+  LEVEL_SUGGESTIONS,
   editorKindForPath,
   isSeededOnCreate,
   serializeStudyGuide,
@@ -1344,6 +1346,47 @@ function CourseHome({
           />
           <span className="mt-1 block text-faint">Comma-separated.</span>
         </label>
+        <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <label className="text-xs">
+            <span className="mb-1 block text-muted">Subject</span>
+            <input
+              value={info.discipline ?? ""}
+              onChange={(e) => {
+                setInfo((v) => ({ ...v, discipline: e.target.value }));
+                setInfoDirty(true);
+              }}
+              list="course-subject-suggestions"
+              placeholder="chemistry"
+              className="field w-full"
+            />
+            <datalist id="course-subject-suggestions">
+              {DISCIPLINE_SUGGESTIONS.map((d) => (
+                <option key={d} value={d} />
+              ))}
+            </datalist>
+          </label>
+          <label className="text-xs">
+            <span className="mb-1 block text-muted">Level</span>
+            <input
+              value={info.level ?? ""}
+              onChange={(e) => {
+                setInfo((v) => ({ ...v, level: e.target.value }));
+                setInfoDirty(true);
+              }}
+              list="course-level-suggestions"
+              placeholder="introductory undergraduate"
+              className="field w-full"
+            />
+            <datalist id="course-level-suggestions">
+              {LEVEL_SUGGESTIONS.map((l) => (
+                <option key={l} value={l} />
+              ))}
+            </datalist>
+          </label>
+        </div>
+        <p className="mt-1 text-xs text-faint">
+          Subject and level help other educators find this course on Discover.
+        </p>
         {infoNote && <p className="mt-2 text-xs text-ok">{infoNote}</p>}
         {infoError && <p className="mt-2 text-sm text-danger">{infoError}</p>}
       </div>

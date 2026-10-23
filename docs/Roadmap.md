@@ -48,6 +48,10 @@ Modules stay independent because each concern has exactly one owner:
    Supabase projection of repo content) is the *only* place file metadata
    lives. Permalinks, discovery, notifications, version lists, and the
    student site index all read it; none keeps a private index.
+   *(The discovery index, Phase 5 Track A, is a derived projection of it —
+   written only by database functions from the registry, the manifest and
+   the listing consent, rebuildable by one call — not a second store;
+   [specs/discovery-index.md](specs/discovery-index.md).)*
 4. **One editor seam.** Editing surfaces mount only through
    `@alembic/editor-kit` (`EditorModule`/`EditorHandle`). Adding a format =
    registering a module; the shell never special-cases a format.
@@ -147,7 +151,8 @@ workspace, or upload to GitHub source, all registered correctly."*
   platform-served for private/trial/pinned), `/d/{docId}@{version}`
   (content-hash pins), `/p/{packageId}[@snapshot]`; permalink stamped into
   generated files; `livePermalink()`/`pinnedPermalink()` re-emit `/d/`
-  forms *(✅ 2026-10-23, Phase 5 B.3)*.
+  forms *(✅ 2026-10-23, Phase 5 B.3)*; `/p/{packageId}` course page
+  *(✅ 2026-10-23, Phase 5 A.4; `@snapshot` still planned)*.
 - **P2. Share this**: per-file opt-in discoverability (Tier-3 spirit);
   element index feeds Discover's Elements scope (excludes `current`,
   never `private`).

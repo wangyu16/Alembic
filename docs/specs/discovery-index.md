@@ -1,6 +1,6 @@
 # Discovery index — projection, search, ranking (Phase 5 Track A)
 
-Status: **A.1–A.3 built** (2026-10-23, branch `phase5/trackA-core`, migration
+Status: **A.1–A.4 built** (2026-10-23, branch `phase5/trackA-core`, migration
 `0022_trackA_discovery.sql` not yet applied anywhere). Binding inputs:
 [goal.md](../goal.md) §6 (portal: search facets, quality "gates prominence,
 not censorship", the portal consumes the same standard metadata) and §9
@@ -101,7 +101,7 @@ derived column.
   `authenticated` through the listability policy; no insert/update/delete
   for either (revoked, and no policy).
 - `documents` stays owner-only. The Elements list no longer needs the
-  service role (A.4).
+  service role (A.4): every Discover read goes through the anonymous client.
 - The projector functions are revoked from `anon`/`authenticated`
   (Supabase grants new functions to them by default); `discovery_rebuild` is
   granted to `service_role`.
@@ -229,3 +229,42 @@ almost never happen with continuous ranks; an additive blend would let a
 high-quality course outrank a much better match. A bounded factor keeps
 relevance in charge while letting quality decide between comparable
 matches — "prominence, not censorship".
+
+## 4. Pages (A.4)
+
+| Route | What it shows |
+|---|---|
+| `/portal` | Discover: two scopes (courses, elements), a GET search form (text + facet selects with counts), the result count (`role="status"`), results, and keyset paging links ("Next page", "First page"). Works without JavaScript; the only client parts are the description toggle, the report control and the element adapt picker. Each course result links to its course page; "Adapt" goes to the course page's adapt section. An `ItemList` of LRMI `LearningResource` records for the page's courses, and a `rel="alternate"` link to the LRMI feed. |
+| `/p/{packageId}` | A listed course: title, licence, subject, level, course identity, chapter count, accessibility, last update; description; **preview** (chapter outline, concept-map topics, keywords, up to 12 shared elements); **how to cite** (`formatCourseCitation`: author = stated instructor, else the publisher; year of the last update; the course page URL; licence); licence deed; **lineage** (adapted from — linked when that course is listed — and the listed courses adapted from it); **Adapt** with the course preselected: pick one of its chapters and one of your own chapters; the sections are copied with attribution (`adaptFromPortalAction`, which re-checks that the source is listed *now*, its licence allows it, and the target chapter is yours). JSON-LD `LearningResource` with `isBasedOn` for lineage. |
+| `/portal/element/{docId}` | A shared element: kind, type, course (linked when listed), tags; **preview** (images inline from the permalink; otherwise the description); the permalink; how to cite (`formatElementCitation`); licence; lineage (adapted from, reuse count); "Use it in your course" (objects only) with the element preselected (`adaptElementAction`). |
+
+Unlisted, private, trial and archived content is a plain 404 on every page
+(the index's read policy), never "this course is private".
+
+**Caching** (`lib/discovery-cache.ts`; the A.6 "cached discover pages"
+item): every Discover read uses the cookie-less anonymous client, so results
+are the same for everyone and are kept in Next's data cache under the
+`discovery` tag for at most 120 s (search entries are keyed by the query and
+the ranking hour). Educator actions that change what Discover shows (list /
+unlist, archive / restore, rename, course details, concept map, share /
+asset metadata, accessibility check) call `updateTag("discovery")`, so the
+educator sees the change at once; other changes (an operator takedown, a
+reconciled outside edit) show within 120 s — and are never *served* stale
+for unlisted content, since the search re-checks listability live. A search
+that cannot run is not cached.
+
+**Rate limit and events** (A.6/A.7 seams): a search (text, filters or a later
+page) is limited per address (`checkRateLimit("search")`); the landing view
+is not. Each results page records `portal.searched` (shape only: scope,
+query length and term count, filter names, result count, page number); a
+course page records `course.viewed`, and following "Adapt" from Discover
+(`?adapt=1`) records `adaptation.started` with `mode: "entry"`.
+
+**Harvest:** `listListedCourses` (feed and sitemaps) reads `discovery_courses`;
+`COURSE_PAGES_LIVE` is on, so feed records carry `@id` = the course page and
+`dateModified`, and the sitemaps list course pages with their last update.
+
+**Course details** gained **Subject** and **Level** (free text with
+suggestions — `DISCIPLINE_SUGGESTIONS`, `LEVEL_SUGGESTIONS`), so the
+discipline and level facets are filled by the educator instead of resting on
+the manifest default ("chemistry") and an empty level.

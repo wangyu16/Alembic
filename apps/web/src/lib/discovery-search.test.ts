@@ -53,7 +53,7 @@ describe("parseDiscoveryQuery", () => {
 });
 
 describe("keyset cursor", () => {
-  const c = { score: "1.234567", id: "pkg-gen-chem-abc12345", asOf: "2026-10-23T10:00:00.000Z" };
+  const c = { score: "1.234567", id: "pkg-gen-chem-abc12345", asOf: "2026-10-23T10:00:00.000Z", page: 3 };
 
   it("round-trips", () => {
     expect(decodeCursor(encodeCursor(c), "courses")).toEqual(c);
@@ -70,6 +70,15 @@ describe("keyset cursor", () => {
     ["an oversized cursor", "a".repeat(601)],
   ])("ignores %s (first page, not an error)", (_l, raw) => {
     expect(decodeCursor(raw, "courses")).toBeNull();
+  });
+
+  it("a missing or silly page number falls back to 2 (labels only)", () => {
+    const raw = (n: unknown) =>
+      Buffer.from(JSON.stringify({ s: c.score, i: c.id, t: c.asOf, n }), "utf8").toString("base64url");
+    expect(decodeCursor(raw(undefined), "courses")?.page).toBe(2);
+    expect(decodeCursor(raw(-4), "courses")?.page).toBe(2);
+    expect(decodeCursor(raw(2.5), "courses")?.page).toBe(2);
+    expect(decodeCursor(raw(7), "courses")?.page).toBe(7);
   });
 
   it("is scope-bound", () => {
@@ -101,7 +110,7 @@ describe("RPC arguments", () => {
   });
 
   it("later pages pass the keyset, never an offset", () => {
-    const cursor = encodeCursor({ score: "0.5", id: "pkg-b", asOf });
+    const cursor = encodeCursor({ score: "0.5", id: "pkg-b", asOf, page: 2 });
     const q = parseDiscoveryQuery({ after: cursor }) as Courses;
     const args = courseSearchArgs(q, asOf);
     expect(args.p_after_score).toBe("0.5");
@@ -121,7 +130,7 @@ describe("RPC arguments", () => {
 
 describe("discoveryHref", () => {
   it("keeps scope, text and filters; a change starts at page one", () => {
-    const after = encodeCursor({ score: "1", id: "doc-a", asOf: "2026-10-23T10:00:00.000Z" });
+    const after = encodeCursor({ score: "1", id: "doc-a", asOf: "2026-10-23T10:00:00.000Z", page: 2 });
     const q = parseDiscoveryQuery({ scope: "elements", q: "curve", kind: "svg", after });
     expect(discoveryHref(q)).toBe("/portal?scope=elements&q=curve&kind=svg");
     expect(discoveryHref(q, { kind: "" })).toBe("/portal?scope=elements&q=curve");
@@ -244,6 +253,7 @@ describe("searchCourses / searchElements", () => {
       score: "2.000000",
       id: "pkg-2",
       asOf: "2026-10-23T10:00:00.000Z",
+      page: 2,
     });
     expect(calls.map(([fn]) => fn).sort()).toEqual(["discovery_course_facets", "discovery_search_courses"]);
   });
@@ -257,8 +267,9 @@ describe("searchCourses / searchElements", () => {
   it("a later page keeps the cursor's hour, not the clock's", async () => {
     const asOf = "2026-10-20T08:00:00.000Z";
     const { client, calls } = fakeClient({});
-    const q = parseDiscoveryQuery({ after: encodeCursor({ score: "1", id: "pkg-z", asOf }) }) as Courses;
-    await searchCourses(client, q, { now });
+    const q = parseDiscoveryQuery({ after: encodeCursor({ score: "1", id: "pkg-z", asOf, page: 4 }) }) as Courses;
+    const page = await searchCourses(client, q, { now });
+    expect(page.next).toBeNull();
     expect(calls.find(([fn]) => fn === "discovery_search_courses")![1]["p_as_of"]).toBe(asOf);
   });
 

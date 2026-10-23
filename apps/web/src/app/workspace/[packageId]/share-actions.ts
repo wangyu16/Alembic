@@ -1,6 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { discoveryChanged } from "@/lib/discovery-cache";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { recordDiscoveryEvent } from "@/lib/record-discovery-event";
 
@@ -86,6 +87,7 @@ export async function shareFileAction(
   if (error) return { ok: false, error: "Couldn't update sharing. Please try again." };
   logShareChange(row, share, user.id, supabase);
 
+  discoveryChanged();
   return { ok: true, permalink: share ? `/d/${docId}` : undefined };
 }
 
@@ -145,5 +147,6 @@ export async function setAssetMetadataAction(
   if (error) return { ok: false, error: "Couldn't save. Please try again." };
   logShareChange(row, discoverable, user.id, supabase);
 
+  discoveryChanged();
   return { ok: true, permalink: discoverable ? `/d/${docId}` : undefined };
 }

@@ -4,15 +4,15 @@
  * without going through the portal").
  *
  * **The one data seam:** `listListedCourses` is the ONLY read behind
- * `/feed/courses.jsonld` and the sitemaps. Today it reads the public
- * `portal_registrations` index (RLS: anyone may read it; only listed — i.e.
- * published, openly licensed, Tier-3-approved — courses are in it). When the
- * discovery projection lands (Track A.1), point this function at it; nothing
- * else changes.
+ * `/feed/courses.jsonld` and the sitemaps. It reads the discovery index
+ * (`discovery_courses`, Track A.1 — its read policy serves listed courses
+ * only: published, not archived, openly licensed, Tier-3-consented), so the
+ * feed carries the CURRENT listing, not the listing-time snapshot that
+ * `portal_registrations` holds.
  *
- * **The course-page seam:** `/p/{packageId}` is Track A.4 (not built yet).
- * Sitemaps list course pages only once `COURSE_PAGES_LIVE` is true — flip it
- * in the commit that adds the route, so no sitemap ever points at a 404.
+ * **The course-page seam:** `/p/{packageId}` exists since Track A.4, so
+ * `COURSE_PAGES_LIVE` is on: sitemaps list course pages, and each feed record's
+ * `@id` is its course page.
  *
  * The record is the SAME `learningResource()` the published pages embed
  * (`@alembic/renderer`), so the portal, the feed and the course sites carry
@@ -25,8 +25,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { learningResource } from "@alembic/renderer";
 import type { License } from "@alembic/package-contract";
 
-/** Flip to true when Track A.4 ships `/p/{packageId}`. */
-export const COURSE_PAGES_LIVE = false;
+/** On since Track A.4 shipped `/p/{packageId}`. */
+export const COURSE_PAGES_LIVE = true;
 export const coursePagePath = (packageId: string) => `/p/${encodeURIComponent(packageId)}`;
 
 export const FEED_PAGE_SIZE = 100;
@@ -42,7 +42,11 @@ export interface ListedCourse {
   siteUrl: string;
   publicRepoUrl: string;
   accessibilityStatus: "pass" | "warn" | "fail" | "unknown";
+  /** When it was listed. */
   registeredAt: string;
+  /** Last change to the listing or the course's public files (Track A.1). */
+  updatedAt?: string;
+  level?: string;
 }
 
 export interface ListedCoursesPage {
@@ -50,17 +54,19 @@ export interface ListedCoursesPage {
   total: number;
 }
 
-interface RegistrationRow {
+interface ListedRow {
   package_id: string;
   title: string;
   description: string | null;
   keywords: string[] | null;
   discipline: string | null;
+  level: string | null;
   license: string;
   site_url: string;
   public_repo_url: string;
   accessibility_status: ListedCourse["accessibilityStatus"] | null;
-  registered_at: string;
+  listed_at: string;
+  updated_at: string | null;
 }
 
 /** One page of listed courses, newest listing first (stable: ties by id). */
@@ -69,16 +75,16 @@ export async function listListedCourses(
   { offset, limit }: { offset: number; limit: number },
 ): Promise<ListedCoursesPage> {
   const { data, count, error } = await db
-    .from("portal_registrations")
+    .from("discovery_courses")
     .select(
-      "package_id, title, description, keywords, discipline, license, site_url, public_repo_url, accessibility_status, registered_at",
+      "package_id, title, description, keywords, discipline, level, license, site_url, public_repo_url, accessibility_status, listed_at, updated_at",
       { count: "exact" },
     )
-    .order("registered_at", { ascending: false })
+    .order("listed_at", { ascending: false })
     .order("package_id", { ascending: true })
     .range(offset, offset + limit - 1);
   if (error) throw new Error("listed courses unavailable");
-  const rows = (data as RegistrationRow[] | null) ?? [];
+  const rows = (data as ListedRow[] | null) ?? [];
   return {
     total: count ?? rows.length,
     items: rows.map((r) => ({
@@ -91,7 +97,9 @@ export async function listListedCourses(
       siteUrl: r.site_url,
       publicRepoUrl: r.public_repo_url,
       accessibilityStatus: r.accessibility_status ?? "unknown",
-      registeredAt: r.registered_at,
+      registeredAt: r.listed_at,
+      ...(r.updated_at ? { updatedAt: r.updated_at } : {}),
+      ...(r.level ? { level: r.level } : {}),
     })),
   };
 }
@@ -103,6 +111,7 @@ export function courseLearningResource(c: ListedCourse, origin: string): Record<
     description: c.description || undefined,
     license: c.license as License,
     discipline: c.discipline || undefined,
+    educationalLevel: c.level || undefined,
     url: c.siteUrl || undefined,
     datePublished: c.registeredAt ? c.registeredAt.slice(0, 10) : undefined,
     accessibility: c.accessibilityStatus,
@@ -111,6 +120,7 @@ export function courseLearningResource(c: ListedCourse, origin: string): Record<
   return {
     ...ld,
     "@id": COURSE_PAGES_LIVE ? `${origin}${coursePagePath(c.packageId)}` : c.siteUrl,
+    ...(c.updatedAt ? { dateModified: c.updatedAt } : {}),
     identifier: c.packageId,
     ...(c.publicRepoUrl ? { sameAs: c.publicRepoUrl } : {}),
   };
@@ -127,7 +137,7 @@ export function buildCourseFeed(
   origin: string,
 ): { body: Record<string, unknown>; links: string[] } {
   const lastPage = Math.max(1, Math.ceil(result.total / FEED_PAGE_SIZE));
-  const modified = result.items.map((c) => c.registeredAt).sort().pop();
+  const modified = result.items.map((c) => c.updatedAt ?? c.registeredAt).sort().pop();
   const links = [`<${feedPageUrl(origin, 1)}>; rel="first"`, `<${feedPageUrl(origin, lastPage)}>; rel="last"`];
   if (page > 1) links.push(`<${feedPageUrl(origin, page - 1)}>; rel="prev"`);
   if (page < lastPage) links.push(`<${feedPageUrl(origin, page + 1)}>; rel="next"`);

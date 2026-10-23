@@ -65,6 +65,17 @@ published packages (Phase 5 Track 0.2/0.3); private and trial files are checked
 against the visitor's own session. The public-safe discovery projection
 (Phase 5 Track A.1) is meant to replace these service-role reads.)*
 
+*(Phase 5 Track A.1–A.4, 2026-10-23: **Discover's Elements list no longer
+uses the service role** — it, the course search and the course/element pages
+read the public discovery index (`discovery_courses`, `discovery_elements`)
+through the anonymous client, whose read policy serves listed courses and
+shared elements only; `documents` stays owner-only. Cross-owner course
+adaptation now checks the source is listed in that index (not the
+listing-time snapshot). Two service-role reads remain: the `/d/{docId}`
+resolver (it must read a public file's registry row to serve its bytes) and
+`adaptElementAction`'s source lookup (it reads the source file's bytes);
+both stay limited to public files of published packages.)*
+
 *(Phase 5 Track A.6–A.7, 2026-10-23: two more server-side, non-educator uses,
 both write-only and narrow — the report rate limit's counters
 (`rate_limit_hit`, executable by the service role only) and **anonymous

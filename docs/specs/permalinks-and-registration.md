@@ -39,13 +39,21 @@ its permalink resolves to a "no longer available" page with provenance).
 ```
 alembic.orz.how/d/{docId}                 live — the current version        [SHIPPED]
 alembic.orz.how/d/{docId}@{version}       pinned — one exact version        [SHIPPED]
-alembic.orz.how/p/{packageId}             package share point               [PLANNED — no route yet]
+alembic.orz.how/p/{packageId}             package share point               [SHIPPED 2026-10-23, Track A.4 — listed courses]
 alembic.orz.how/p/{packageId}@{snapshot}  package at a named snapshot       [PLANNED — no route yet]
 ```
 
 *(Shipped/planned markers added 2026-08-28: `/d` resolves
 (`apps/web/src/app/d/[docId]/route.ts`); there is no `/p` route in the app.
 The two forms sat in one table with nothing to distinguish them.)*
+
+*(2026-10-23, Phase 5 Track A.4: `/p/{packageId}` resolves for **listed**
+courses — preview (outline, topics, shared elements), how to cite, licence,
+lineage, and Adapt with the course preselected
+([discovery-index.md](discovery-index.md) §4). An unlisted, private, trial
+or archived package is a plain 404, so the page never confirms such a course
+exists. Element detail lives at `/portal/element/{docId}`; the element's
+permalink stays `/d/{docId}`. `/p/{packageId}@{snapshot}` is still planned.)*
 
 - `{version}` for files is a **short content hash** of the file version
   (decided; educators see it as a dated entry in the file's history, never

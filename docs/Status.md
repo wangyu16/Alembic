@@ -99,6 +99,27 @@ must be applied before this code is deployed** (it back-fills the index itself).
   quality, bounds, relevance dominance) + 1 SQL ⇄ TS agreement over 1,152 input combinations + 7 SQL ordering
   tests (each signal reorders equal matches; a title match beats a much better-quality description match;
   low quality still listed).
+- ✅ **A.4 Course and element pages; Discover on server search.** `/portal` is server-rendered over the index
+  (`lib/discovery-search.ts` + cached reads in `lib/discovery-cache.ts`): GET search form with facet counts,
+  URL state, keyset "Next page" links, works without JavaScript; cookie-less anonymous reads cached 120 s under
+  the `discovery` tag, refreshed at once by `updateTag` from the educator actions that change listings
+  (list/unlist, archive/restore, rename, course details, concept map, share/asset metadata, a11y check).
+  **`/p/{packageId}`** (permalinks §2, now shipped): preview (outline, topics, keywords, shared elements), how
+  to cite, licence, lineage (adapted from / adapted by), **Adapt with the source preselected** (pick its
+  chapter and yours; `adaptFromPortalAction` now checks the source is listed *now* in the index — not the
+  listing-time snapshot — and that the target chapter is the educator's own). **`/portal/element/{docId}`**:
+  preview, permalink, cite, licence, lineage, "Use it in your course". Unlisted/private/trial/archived = plain
+  404. **Course details** gained Subject and Level (the facets no longer rest on the "chemistry" default).
+  A.6/A.7 seams used: search rate limit, `portal.searched` / `course.viewed` / `adaptation.started` (`entry`)
+  events, `listListedCourses` repointed at `discovery_courses`, `COURSE_PAGES_LIVE` on (feed `@id` = course
+  page, `dateModified`; sitemaps list course pages). **Removed:** `lib/shared-elements.ts` (Track 0.3's
+  service-role Elements read — its leak cases are now SQL tests on the index) and the client-side
+  `PortalBrowser`. Tests: citation (2), `chaptersOfManifest` (1), labels (3), feed `@id` (1), cursor page (1).
+  **Open (owner):** *(a)* course adaptation still copies one chapter's sections at a time (whole-course
+  fork across owners is a follow-up — `forkOwnPackageAction` is same-owner only); *(b)* the portal no longer
+  has a client-side instant filter — results update on "Search" (or Enter); *(c)* a listing's
+  `portal_registrations` snapshot columns are no longer read for discovery (kept, additive-only); *(d)*
+  no blind-critique round has been run on the new pages yet (Track A's closing step).
 
 **Phase 5 Track A (infra) — A.6 scale infrastructure, A.7 events and harvest (2026-10-23, branch
 `phase5/trackA-infra`, not yet deployed).** Plan: family `docs/PHASE5-ALEMBIC.md` Track A; the portal search

@@ -312,6 +312,8 @@ export default async function EditShellPage({
         department: record.manifest.courseContext.department,
         description: record.manifest.description,
         keywords: record.manifest.keywords,
+        discipline: record.manifest.discipline,
+        level: record.manifest.courseContext.level,
       }}
       categoryFile={categoryFile}
       privateTree={privateTree}

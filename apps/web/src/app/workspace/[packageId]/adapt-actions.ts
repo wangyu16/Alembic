@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import {
+  LicenseSchema,
   serializeStudyGuide,
   parseStudyGuide,
   type License,
@@ -19,6 +20,7 @@ import {
   applyUpstreamUpdate,
   loadAdaptationProvenance,
   chapterStudyGuidePath,
+  chaptersOfManifest,
   DEFAULT_STUDY_GUIDE_PATH,
   AdaptationNotAllowedError,
   ADAPTATIONS_PROVENANCE_PATH,
@@ -247,16 +249,19 @@ export interface PortalAdaptSource {
   siteUrl: string;
 }
 
-/** M31 — portal-registered packages (other educators') offered as adapt sources. */
+/** M31 — listed courses (other educators') offered as adapt sources. */
 export async function listPortalAdaptSourcesAction(
   packageId: string,
 ): Promise<PortalAdaptSource[]> {
   const { supabase } = await requireUser();
+  // Track A: listed courses come from the discovery index (current, listed
+  // rows only), newest listing first, bounded.
   const { data } = await supabase
-    .from("portal_registrations")
+    .from("discovery_courses")
     .select("package_id, title, license, public_repo_url, site_url")
     .neq("package_id", packageId)
-    .order("registered_at", { ascending: false });
+    .order("listed_at", { ascending: false })
+    .limit(100);
   return (
     (data as
       | { package_id: string; title: string; license: License; public_repo_url: string; site_url: string }[]
@@ -287,6 +292,10 @@ export async function adaptFromPortalAction(
   packageId: string,
   sourcePackageId: string,
   targetPath: string,
+  /** Which of the source's chapters (0-based, as listed on its course page);
+   *  its title guards against the course having changed since. Absent = the
+   *  first chapter. */
+  sourceChapter?: { index: number; title: string },
 ): Promise<AdaptResult> {
   const { supabase, user } = await requireUser();
   recordDiscoveryEvent(
@@ -297,25 +306,41 @@ export async function adaptFromPortalAction(
   try {
     const target = await store.getPackage(packageId);
     if (!target) return { ok: false, error: "Package not found." };
+    // Only into one of the target's own chapters (never an arbitrary path).
+    if (!chaptersOfManifest(target.manifest).some((c) => c.path === targetPath)) {
+      return { ok: false, error: "Choose one of your chapters to add the sections to." };
+    }
 
-    // The source must be portal-registered (= public + consented to discovery).
+    // The source must be LISTED right now (Track A.1: the discovery index —
+    // published, not archived, openly licensed, consented; RLS serves listed
+    // rows only). Its licence and title are the current ones, not the
+    // listing-time snapshot.
     const { data: reg } = await supabase
-      .from("portal_registrations")
+      .from("discovery_courses")
       .select("title, license, public_repo_url, site_url")
       .eq("package_id", sourcePackageId)
       .maybeSingle();
-    if (!reg) return { ok: false, error: "That package isn't listed in the portal." };
-    const r = reg as { title: string; license: License; public_repo_url: string; site_url: string };
+    const listed = reg as { title: string; license: string; public_repo_url: string; site_url: string } | null;
+    const license = LicenseSchema.safeParse(listed?.license);
+    if (!listed || !license.success) {
+      return { ok: false, error: "That course isn't listed on Discover any more." };
+    }
+    const r = { ...listed, license: license.data };
     const coords = repoCoordsFromUrl(r.public_repo_url);
     if (!coords) return { ok: false, error: "Couldn't resolve the source repository." };
 
-    // Read the source's first chapter from its public repo (tokenless).
+    // Read the chosen (default: first) chapter from its public repo (tokenless).
     const manifestRaw = await fetchPublicRepoFile(coords, "alembic.json");
     let sourcePath = DEFAULT_STUDY_GUIDE_PATH;
     if (manifestRaw) {
       try {
-        const m = JSON.parse(manifestRaw) as { chapters?: { slug: string }[] };
-        if (m.chapters?.length) sourcePath = chapterStudyGuidePath(m.chapters[0]!.slug);
+        const m = JSON.parse(manifestRaw) as { chapters?: { slug: string; title?: string }[] };
+        const index = sourceChapter?.index ?? 0;
+        const chosen = m.chapters?.[index];
+        if (sourceChapter && (!chosen || chosen.title !== sourceChapter.title)) {
+          return { ok: false, error: "That course has changed since you opened it. Reload and try again." };
+        }
+        if (chosen) sourcePath = chapterStudyGuidePath(chosen.slug);
       } catch { /* fall back to the default chapter path */ }
     }
     const md = await fetchPublicRepoFile(coords, sourcePath);
