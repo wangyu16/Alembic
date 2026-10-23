@@ -449,7 +449,11 @@ export class GitHubClient {
   /**
    * Paths changed between two commits (base..head), via the Compare API.
    * Used by reconciliation to find what a foreign commit touched. If base is
-   * null (never synced) returns []  — the caller treats that as "reconcile all".
+   * null (never synced) this returns [] — and reconcile then records the head
+   * as its baseline WITHOUT absorbing anything (corrected 2026-10-23: this
+   * comment used to promise "reconcile all", which no caller does). Note also
+   * that GitHub lists at most 300 files per comparison; a larger foreign change
+   * is absorbed only in part. Both are open items in Status.md (Track B).
    */
   async compareCommits(
     coords: RepoCoords,

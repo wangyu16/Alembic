@@ -6,6 +6,24 @@ design, and what is deferred to the future. Complements [Status.md](Status.md)
 
 ---
 
+## 2026-10-23 — Permalink helpers emit `/d/`; upload links resolve in rounds (Phase 5 Track B.3)
+
+**Decision.** `livePermalink`/`pinnedPermalink` take a **docId**, never a path,
+and emit `/d/{docId}[@{version}]`. The whole-package upload no longer writes a
+raw GitHub URL for a `../` link it could not otherwise resolve: it commits the
+documents whose links resolve, registers them, and retries the rest in rounds.
+Documents that link only to each other (a cycle) or to nothing that exists are
+reported as broken links — the staged upload is kept, so the educator can fix
+and resume.
+
+**Why.** A raw URL is path-coupled, served `text/plain` + `nosniff`, and cannot
+serve private files (permalinks §7) — and it was being committed into the
+educator's own sources, where it outlives any later fix. A cycle gets reported
+rather than papered over because no permalink can exist before a commit, and
+committing first would mean committing a link the guard rejects.
+
+---
+
 ## 2026-10-23 — Publish robustness: what is retried, and what is never replayed (Phase 5 Track B.2)
 
 | # | Decision | Why |

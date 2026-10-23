@@ -203,12 +203,14 @@ remains opt-in via **List publicly** (Tier 3).
 - Raw `raw.githubusercontent.com` links: rejected as a shared form (wrong
   MIME + nosniff, path-coupled, no private serving, SHA-only pinning). May
   remain an internal transport inside the resolver.
-- `livePermalink()` / `pinnedPermalink()` in package-contract currently
-  emit raw-GitHub URLs — they will emit `/d/{docId}` forms once the
-  resolver exists; `classifyReference()` gains the `/d/` scheme.
-  **⚠️ Still outstanding as of 2026-08-28, though its stated condition is now
-  met:** the resolver ships (`apps/web/src/app/d/[docId]/route.ts`) and these
-  two helpers still emit raw-GitHub URLs. This is a real open work item, not a
-  waiting-on-dependency note.
+- `livePermalink()` / `pinnedPermalink()` in package-contract emit the
+  platform forms `/d/{docId}` and `/d/{docId}@{version}` (optionally on the
+  app origin), and refuse anything that is not a docId; `classifyReference()`
+  recognizes `/d/` (root-relative, or absolute on the app origin) and still
+  classifies legacy raw URLs. ✅ **Done 2026-10-23 (Phase 5 Track B.3)** — the
+  one caller (whole-package upload's `../` fallback) used to write raw GitHub
+  URLs into committed documents; it now resolves through the registry, and
+  documents that link to other documents of the same upload are committed in
+  rounds so each can link to the other's permalink.
 - The asset-only permalink scope: permalinks now cover **every** registered
   file, in two classes.

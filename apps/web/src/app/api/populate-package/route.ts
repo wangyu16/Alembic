@@ -19,6 +19,8 @@ import {
   assertPublicMarkdownReferences,
   livePermalink,
 } from "@alembic/package-contract";
+import { appBaseUrl } from "@/lib/app-url";
+import { SupabaseDocumentRegistryStore } from "@/lib/document-registry-store";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
 import { isBinaryPath } from "@/lib/collection-upload";
@@ -29,8 +31,9 @@ import {
   deleteStagingObject,
   downloadStagingObject,
 } from "@/lib/staging";
-import { syncPackageRegistry } from "@/lib/register";
+import { registerChanges, syncPackageRegistry } from "@/lib/register";
 import { rewriteMarkdownRefs } from "@/lib/rewrite-md-refs";
+import { commitInRounds } from "@/lib/populate-rounds";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -294,54 +297,62 @@ export async function POST(req: NextRequest) {
       await syncPackageRegistry(supabase, packageId, "uploaded");
     }
 
-    // Rewrite each document's relative asset references to durable permalinks —
-    // the same transform Insert and Replace apply — then commit the documents.
-    const resolved: RepoPlannedChange[] = [];
+    // Rewrite each document's relative references to durable permalinks — the
+    // same transform Insert and Replace apply — then commit the documents.
+    //
+    // In rounds: a document that links to ANOTHER document of this same upload
+    // can only get that document's permalink once it is committed and
+    // registered. So each round commits the documents whose links all resolve,
+    // registers them, and retries the rest; a round that makes no progress
+    // (a broken link, or two documents linking only to each other) reports
+    // what is left as fixable problems.
     const linkIssues = [...firstScreen.issues];
-    let linksResolved = 0;
-    for (const change of docPass) {
-      // Resolving links costs a registry lookup per reference, so it is part of
-      // the time budget too: hand the untouched documents to the next run.
-      if (outOfTime()) {
-        return partial(committed, docPass.length - resolved.length, skipped);
-      }
-      const before = change.content as string;
-      const after = await rewriteMarkdownRefs(
-        supabase,
-        packageId,
-        change.repo,
-        change.path,
-        before,
-      );
-      if (after !== before) linksResolved += 1;
-      // A public document may not reference a private file, and a link we could
-      // not resolve is a link that will be broken for students. Report it as a
-      // fixable problem instead of letting the commit path throw.
-      let content = after;
-      if (change.repo === "public" && !refsAreSafe(content)) {
-        // The guard fails closed on `../…` because it cannot resolve traversal.
-        // We can: any such reference that lands on a file this package puts in
-        // the PUBLIC repo is provably public-safe, so point it at that file
-        // directly instead of dropping the document.
-        content = await rewriteRelativeRefs(content, change.path, async (repoPath) =>
-          publicPaths.has(repoPath)
-            ? livePermalink(repoPath, {
-                owner: publicRepo.owner,
-                repo: publicRepo.name,
-                branch: "main",
-              })
-            : null,
+    const rewritten = new Set<string>();
+    const appOrigin = appBaseUrl();
+    const registry = new SupabaseDocumentRegistryStore(supabase);
+    const rounds = await commitInRounds(docPass, {
+      outOfTime,
+      resolve: async (change) => {
+        const before = change.content as string;
+        let content = await rewriteMarkdownRefs(
+          supabase,
+          packageId,
+          change.repo,
+          change.path,
+          before,
         );
-        if (!refsAreSafe(content)) {
-          linkIssues.push({ path: change.path, message: BROKEN_LINK });
-          continue;
+        // A public document may not reference a private file, and a link we
+        // could not resolve is a link that will be broken for students.
+        if (change.repo === "public" && !refsAreSafe(content)) {
+          // The guard fails closed on `../…` because it cannot resolve
+          // traversal. We can: a reference that lands on a REGISTERED file of
+          // the public repo is provably public-safe — point it at that file's
+          // platform permalink (never a raw GitHub URL; permalinks spec §7).
+          content = await rewriteRelativeRefs(content, change.path, async (repoPath) => {
+            if (!publicPaths.has(repoPath)) return null;
+            const rec = await registry.getByLocation(packageId, "public", repoPath);
+            return rec ? livePermalink(rec.docId, appOrigin) : null;
+          });
+          if (!refsAreSafe(content)) return null;
         }
-      }
-      resolved.push({ ...change, content });
+        if (content !== before) rewritten.add(change.path);
+        return { ...change, content };
+      },
+      commit: (changes) => commitChunks(changes, "Upload package contents (Alembic)"),
+      // The documents just committed can now be linked to by permalink.
+      register: (changes) =>
+        registerChanges(
+          supabase,
+          packageId,
+          changes.map((c) => ({ repo: c.repo, path: c.path, content: c.content })),
+          "uploaded",
+        ),
+    });
+    if (rounds.kind === "partial") return partial(committed, rounds.remaining, skipped);
+    for (const change of rounds.unresolved) {
+      linkIssues.push({ path: change.path, message: BROKEN_LINK });
     }
-
-    const second = await commitChunks(resolved, "Upload package contents (Alembic)");
-    if (!second.done) return partial(committed, second.remaining, skipped);
+    const linksResolved = rewritten.size;
 
     // The registry is a projection of what the repos now hold; rebuild it once
     // the documents have landed so every uploaded file has an identity.

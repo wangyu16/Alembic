@@ -87,6 +87,19 @@ not yet deployed).** Plan: family `docs/PHASE5-ALEMBIC.md` Track B; B.4–B.6 wa
   unreachable or no longer permitted, and that **the live site has not changed** (it switches over in one
   step at the end). The Pages-setup hint lost "branch"/"repo". Tests: 17 against a stateful fake GitHub
   (`robustness.test.ts`), 7 for the wording (no Git words, no GitHub text).
+- ✅ **B.3 Permalinks, not raw GitHub.** `livePermalink(docId, origin?)` / `pinnedPermalink(docId, version,
+  origin?)` now emit `/d/{docId}[@{version}]` and refuse a path (fail-closed); `classifyReference` knows `/d/`
+  (permalinks §7 closed). The only caller — the whole-package upload's `../` fallback — **was committing raw
+  `raw.githubusercontent.com` URLs into educators' documents**; it now resolves through the registry, and
+  documents linking to other documents of the same upload are committed **in rounds**
+  (`lib/populate-rounds.ts`, 6 tests) so each can link to the other's permalink; a cycle or a broken link is
+  reported as before. **Reconcile:** the private repo is never reconciled (public-only by design); four new
+  adversarial tests pin that a public reconcile cannot delete, overwrite or register anything private.
+  **Open (owner):** *(a)* a never-synced package's first reconcile records the head as its baseline without
+  absorbing anything (the client returns no diff for a null base; its comment promised "reconcile all" — now
+  corrected); *(b)* GitHub's compare lists at most 300 files, so a larger foreign change is absorbed only in
+  part; *(c)* the registry's `sourceHash` (and `/d/…@{version}` pins, served `immutable`) is a 32-bit FNV
+  hash — fine for identity at course scale, weak as an immutable version pin.
 
 **Wave 4 / T42 — doc coherence pass (2026-08-28).** Docs-only sweep after the storage/write-path waves
 (the CLAUDE.md "after each phase, run a coherence pass" rule). Corrected: the Waves-2–3 test count
