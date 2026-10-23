@@ -96,6 +96,14 @@ deploys production; the owner says when).
   signed-in stranger, owner, no service key, includes, tombstone, malformed ids, orphan rows). *Open for the
   owner:* "Share this" is still offered in a trial course; the file becomes visible to others only once the
   course is published.
+- **0.3 S2 — Discover's Elements list shows only shared public files of published, active courses.** It
+  listed every `discoverable` row, including files of archived packages and of trial packages (whose
+  permalinks are now owner-only). `apps/web/src/lib/shared-elements.ts` filters in the query (inner join on
+  `packages`: `storage = 'github'`, `archived_at is null`; `repo = 'public'`; spaces `private`/`current`
+  excluded; not tombstoned) and again over the returned rows (`isListableElement`), and reads the package
+  title in the same query (one round trip instead of two). Still capped at 200, still newest first —
+  search, paging and ranking are Track A. Tests: `shared-elements.adversarial.test.ts` (each leak class,
+  a query that forgot its filters, the filters sent, a query error).
 
 **Wave 4 / T42 — doc coherence pass (2026-08-28).** Docs-only sweep after the storage/write-path waves
 (the CLAUDE.md "after each phase, run a coherence pass" rule). Corrected: the Waves-2–3 test count

@@ -5,6 +5,7 @@ import { learningResource } from "@alembic/renderer";
 import type { License } from "@alembic/package-contract";
 import { PortalBrowser, type PortalRegistration } from "@/components/portal-browser";
 import { ElementAdapt, type AdaptTarget } from "./element-adapt";
+import { listSharedElements } from "@/lib/shared-elements";
 
 export const dynamic = "force-dynamic";
 
@@ -113,10 +114,11 @@ export default async function PortalPage({
 }
 
 /**
- * Elements scope (P2): every file an educator explicitly shared ("share
- * this"). The registry's RLS is owner-only, so the public listing reads
- * through the service client; without it (dev, or key unset) the scope
- * degrades to an explanatory message rather than an error.
+ * Elements scope (P2): files an educator explicitly shared ("share this") —
+ * only public files of published, active courses (S2; `lib/shared-elements`).
+ * The registry's RLS is owner-only, so the public listing reads through the
+ * service client; without it (dev, or key unset) the scope degrades to an
+ * explanatory message rather than an error.
  */
 async function ElementsList() {
   const service = createServiceClient();
@@ -128,22 +130,7 @@ async function ElementsList() {
     );
   }
 
-  const { data } = await service
-    .from("documents")
-    .select("doc_id, package_id, path, kind, description, alt_text")
-    .eq("discoverable", true)
-    .eq("tombstoned", false)
-    .order("registered_at", { ascending: false })
-    .limit(200);
-  const docs =
-    (data as Array<{
-      doc_id: string;
-      package_id: string;
-      path: string;
-      kind: string;
-      description: string | null;
-      alt_text: string | null;
-    }> | null) ?? [];
+  const docs = await listSharedElements(service);
 
   // The signed-in educator's own packages, offered as adaptation targets
   // ("Adapt into my package"). RLS scopes the select to packages they own, so
@@ -171,16 +158,6 @@ async function ElementsList() {
     );
   }
 
-  // Package titles for context (one query; index is small).
-  const ids = [...new Set(docs.map((d) => d.package_id))];
-  const { data: pkgs } = await service
-    .from("packages")
-    .select("id, title")
-    .in("id", ids);
-  const titles = new Map(
-    ((pkgs as Array<{ id: string; title: string }> | null) ?? []).map((p) => [p.id, p.title]),
-  );
-
   return (
     <ul className="divide-y divide-[var(--edge-soft)]">
       {docs.map((d) => (
@@ -191,7 +168,7 @@ async function ElementsList() {
             </div>
             <div className="mt-0.5 flex items-center gap-2 text-xs text-faint">
               <span className="chip">{d.kind}</span>
-              <span className="truncate">{titles.get(d.package_id) ?? "a course package"}</span>
+              <span className="truncate">{d.packageTitle}</span>
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-3">
