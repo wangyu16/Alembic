@@ -186,9 +186,18 @@ Two mechanisms, not one — don't conflate them:
   Alembic/orz-generated asset embeds a **stable id** in its carrier envelope
   (mint at generation; the generators have the seam). The docId derives from
   / preserves that id, so **registration is idempotent**: re-uploading the
-  same asset (a new version, or into another package) yields the **same
-  docId → same permalink** rather than a fresh unrelated id, and existing
-  references stay valid. Foreign assets with no embed (a raw `.png`/`.pdf`)
+  same asset (a new version) into its package yields the **same docId →
+  same permalink** rather than a fresh unrelated id, and existing
+  references stay valid. **Amended 2026-10-23 (loop r1b): a docId belongs
+  to exactly one package.** A copy in ANOTHER package (a fork, an adapted
+  element, a downloaded file uploaded elsewhere) gets its own docId: an
+  embedded id is adopted only if no package holds it or this package
+  already does, and fork/adapt re-mint the copy's embedded id. (The old
+  wording could not hold — `documents.doc_id` is the global key, so "the
+  same docId in another package" moved the original's row into the copy.)
+  An embedded id must have THE id shape (`doc-` + 1–64 lowercase base36,
+  `DOC_ID_PATTERN`) — the one `/d` serves; anything else is no identity
+  and is refused at import. Foreign assets with no embed (a raw `.png`/`.pdf`)
   get identity by **content hash** at first registration.
 - **The switch is a reference-rewrite pass** — the *path* is what it keys on:
   1. Register assets first (idempotent, by embedded id → content hash → new).

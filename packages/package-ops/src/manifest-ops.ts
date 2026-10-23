@@ -23,7 +23,7 @@ import {
   type PackageManifest,
 } from "@alembic/package-contract";
 import type { PackageStore } from "./store";
-import type { Committer } from "./write-through";
+import { registerWritten, type Committer } from "./write-through";
 
 /** Repo-relative path of the manifest file, in the public repo. */
 export const MANIFEST_PATH = "alembic.json";
@@ -127,6 +127,10 @@ export async function updateManifest(
       { content: raw },
     );
     if (outcome === "ok") {
+      // The manifest is a registered file too (loop r1b, P5.B.1.m).
+      await registerWritten(store, packageId, [
+        { repo: "public", path: MANIFEST_PATH, content: serialized },
+      ]);
       return commitSha === undefined
         ? { manifest: next }
         : { manifest: next, commitSha };

@@ -16,6 +16,7 @@
 import { z } from "zod";
 import { LAYER_DIR, LAYER_REPO, PACKAGE_LAYERS, layerForPath } from "./layers";
 import { PACKAGE_SPACES, SPACE_DIR } from "./spaces";
+import { DOC_ID_PATTERN, DOC_ID_SOURCE } from "./registration";
 
 export const ASSET_ID_PATTERN = /^ast-[a-z0-9]{8,}$/;
 
@@ -80,7 +81,10 @@ export type ReferenceForm = "live" | "pinned" | "external";
 const RAW_HOST = "raw.githubusercontent.com";
 const SHA40 = /^[0-9a-f]{40}$/;
 /** `/d/{docId}` or `/d/{docId}@{version}` (permalinks-and-registration.md §2). */
-const PLATFORM_PERMALINK = /^\/d\/(doc-[A-Za-z0-9_-]+)(?:@([A-Za-z0-9._-]+))?\/?$/;
+// The id part is THE docId shape (registration.ts, P5.B.1.o).
+const PLATFORM_PERMALINK = new RegExp(
+  `^/d/(${DOC_ID_SOURCE})(?:@([A-Za-z0-9._-]+))?/?$`,
+);
 
 /**
  * Classify a reference URL.
@@ -209,7 +213,7 @@ export function assertPublicMarkdownReferences(markdown: string): void {
 }
 
 function platformPermalink(docId: string, version: string | null, origin: string): string {
-  if (!/^doc-[A-Za-z0-9_-]+$/.test(docId)) {
+  if (!DOC_ID_PATTERN.test(docId)) {
     // Fail closed: before 2026-10 these helpers took a repo PATH; a path must
     // never be turned into a link that looks like a permalink.
     throw new Error(`Not a document id: ${JSON.stringify(docId)}`);

@@ -27,6 +27,7 @@ import {
   type PackageManifest,
 } from "@alembic/package-contract";
 import { extractSource, getKindByExtension } from "@alembic/carriers";
+import { remintEmbeddedUid } from "./document-registry";
 import type { PackageFile, PackageStore } from "./store";
 import { loadStudyGuide, prepareStudyGuideSave } from "./study-guide";
 
@@ -314,7 +315,9 @@ export function forkPackage(input: ForkPackageInput): ForkedPackage {
       });
       cloned.push({ repo: "public", path: f.path, content: serializeStudyGuide(parsed.preamble, reminted) });
     } else {
-      cloned.push({ repo: "public", path: f.path, content: f.content }); // remap below
+      // A copy is its own document: re-mint the carrier's embedded uid so the
+      // fork never claims the source's docId (loop r1b, P5.B.1.n).
+      cloned.push({ repo: "public", path: f.path, content: remintEmbeddedUid(f.content) }); // remap below
     }
   }
 

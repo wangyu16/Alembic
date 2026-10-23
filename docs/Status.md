@@ -74,10 +74,22 @@ rows are added as each finding lands.)
 
 | Finding | Claim | Fix | Measured |
 |---|---|---|---|
+| ✅ HIGH-1 stale `source_hash` | P5.B.1.m, P5.B.1.l | registration inside `writeThrough`/`updateManifest` (`PackageStore.registry`); page load compares content digests (`sandbox_files.content_sha256`); rename `movedFrom` hint; `/d` 304 only after a ≤ 60 s verification | one-file save 2 registry round-trips (unchanged); page-load check 2 content-free queries |
+| ✅ HIGH-2 docId moved across packages | P5.B.1.n | uid adopted only if unused or own (one definer lookup, only for unknown uids); fork + element adapt re-mint; DB trigger refuses a `package_id` change; atomic run (`documents_apply`); memory registry keyed by docId | uid'd save 2 round-trips; new uid 3 |
 | ✅ MEDIUM-3 projection rewrite cost | P5.A.1.m | 0026: fingerprint-guarded upserts, doc-scoped refresh, deferral queue (1 refresh per flush) | 333-element save: rows rewritten 333 → 1, ~230 → ~40 ms; refreshes per flush 3 → 1 |
 | ✅ MEDIUM-5 rebuild loses recency | P5.A.1.i | `documents.content_changed_at`, `packages.listing_changed_at` (trigger-owned); projector derives `updated_at` | rebuild from empty: `updated_at` and quality identical |
+| ✅ LOW-6 uid shapes disagreed | P5.B.1.o | one `DOC_ID_PATTERN` (`doc-[0-9a-z]{1,64}`) for registry, `/d`, cursor, builder/classifier; import refuses a malformed uid | — |
+| ✅ LOW-9 short page ended listings | P5.B.1.p | `pageAll`: exact count or empty page | — |
 
-**Deploy (owner):** apply `0026_loop_r1b_discovery` before or with this code (compatible with the current code).
+**Deploy (owner):** apply `0026_loop_r1b_discovery` → `0027_loop_r1b_registry` → deploy the code. 0026 is
+compatible with the current code; the r1b code needs 0027. 0027 adds a stored generated column to
+`sandbox_files` (one table rewrite, run in a quiet window); 0026 back-fills recency and re-projects once.
+Then run the read-only checks in `supabase/tests/0027_detect_cross_package_docids.sql` (rows already moved
+across packages, non-canonical ids); its repair procedure is written out but **not run**. The first workspace
+visit of each package after deploy re-verifies its registry once (pre-r1b rows carry no digest). **Open:** a
+pre-r1b carrier still embeds its source's uid until re-saved (harmless: it registers fresh); `/d` freshness is
+per instance; concept-map edits bump course recency only through the registered `concepts/course.md`; the
+two SQL-shape conformance tests scan 0022 only.
 
 **Phase 5 Track A — discovery at scale (2026-10-23, branch `phase5/trackA-core`, not yet deployed).** Plan:
 family `docs/PHASE5-ALEMBIC.md` Track A (A.1–A.4 here; A.6–A.7 on a parallel branch; A.5 after, owner Q1; A.8
@@ -801,6 +813,7 @@ theme-in-save).
 
 These are the only things blocking full production parity with the code:
 
+0. **Loop r1b (when merged): apply `0026_loop_r1b_discovery` then `0027_loop_r1b_registry` BEFORE deploying the r1b code**, then run `supabase/tests/0027_detect_cross_package_docids.sql` (read-only) and decide the repairs it lists (procedure inside the file). See the loop r1b entry above.
 1. **Migrations pending: `0020` (required for zip upload), `0013` (optional).** `0020_staging_bucket` creates the private `staging` bucket + owner-prefix RLS that the whole-course zip upload writes through — **it needs owner/service-role privileges** (it writes `storage.buckets` and `storage.objects` policies, which the anon/authenticated roles cannot) and **must be applied BEFORE the Wave-3 code is deployed**, or every zip upload fails at the signed-URL step. Supabase Storage has no automatic TTL, so the bucket's 24-hour lifetime also needs an **operator/cron sweep** deleting objects older than 24h (the happy path deletes each object on consumption); see [Deployment.md §1](Deployment.md). `0019_document_tags` adds the per-file `tags` column the Assets collection (CF4.1/4.2) reads/writes — **apply it before relying on asset tags/metadata in production** (CF4 asset writes are otherwise held; see the CF4 entry). `0013_drop_portal_eligible` drops the now-unused `profiles.portal_eligible` column — optional cleanup, apply anytime; no code references it. Applied: **0019, 0021, 0023, 0022, 0024** (✅ 2026-10-23, owner — 0024 after the Phase 5 code went live; pg_trgm was not enabled before, 0022 enabled it in `extensions`), 0005–0012, **0014** (documents), **0015** (portal keywords, 2026-07-09), and **0016–0018** (profile column grants + user governance + ban backstop, ✅ **applied 2026-07-10** — see the security/UG banners above). Config notes: 0007's budget stays dormant until `AI_TOKEN_BUDGET` is set; portal listing is now open to all educators (the `portal_eligible` gate + admin toggle were removed); to reach `/admin`, **flag yourself `is_admin=true`** (dashboard) and set **`SUPABASE_SECRET_KEY`** (service-role reads) — optionally `RESEARCH_EXPORT_SALT`.
 2. ✅ **Done** — Vercel build command is `node ../../scripts/fetch-vendor.mjs && next build`; Plotly is vendored and the plot editor (M11b) works live.
 3. **Interactive verification passes** (can't run in CI): slides render (M13), the in-file hosted editors (`.md.html`/`.slides.html`/`.paged.html` save round-trip via the worker tier), and the AI/reconcile live runs (M18 coherence agent, M9.6 draft-from-plan, M20 reconcile, M23 question generation, M26–M28 adapt/pull/suggest-back) once the AI gateway is on Vercel. Ketcher (M11) and plots (M11b) are verified live.

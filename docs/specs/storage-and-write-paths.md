@@ -54,6 +54,16 @@ chapter/manifest op, populate — goes through one shared path:
   (the `if (!gh) return` pattern is abolished).
 - For a **trial** package the trial store *is* the truth: write DB only.
   One branch, decided in one place.
+- **The document registry is part of the projection** (loop r1b,
+  2026-10-23). After projecting, `writeThrough` / `updateManifest` register
+  exactly the files they wrote when the store carries a registry — the
+  production store always does — so no caller can forget (before, ~17 save
+  paths never registered and `source_hash` went stale). Registration is
+  best-effort (it never fails a save that reached permanence); a page load
+  compares the stored bytes' digest (`sandbox_files.content_sha256`) with
+  the digest each registration recorded and heals any drift. A rename passes
+  an explicit `movedFrom` hint; a run is applied atomically
+  (`documents_apply`, migration 0027).
 - Cost accepted: Save on a published package carries the latency of a
   GitHub commit (~1–2 s) behind a visible saving state. A pending-outbox
   ("1 change not yet saved") is a possible future refinement — fail-loudly

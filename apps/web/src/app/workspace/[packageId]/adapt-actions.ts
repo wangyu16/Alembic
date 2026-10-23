@@ -7,6 +7,7 @@ import {
   serializeStudyGuide,
   parseStudyGuide,
   type License,
+  DOC_ID_SOURCE,
 } from "@alembic/package-contract";
 import {
   adaptBlocksInto,
@@ -25,6 +26,7 @@ import {
   AdaptationNotAllowedError,
   ADAPTATIONS_PROVENANCE_PATH,
   writeThrough,
+  remintEmbeddedUid,
   CommitFailedError,
   CommitUnavailableError,
   type UpstreamUpdate,
@@ -417,8 +419,8 @@ export async function adaptFromPortalAction(
 
 /** Extract a docId from a permalink URL or a bare `doc-…` id. */
 function parseDocId(input: string): string | null {
-  const m = input.trim().match(/doc-[a-z0-9]+/i);
-  return m ? m[0].toLowerCase() : null;
+  const m = input.trim().toLowerCase().match(new RegExp(DOC_ID_SOURCE));
+  return m ? m[0] : null;
 }
 
 interface SourceDocRow {
@@ -513,8 +515,11 @@ export async function adaptElementAction(
     if (!sourceLicense) return { ok: false, error: "Couldn't read the source's license." };
 
     // A carrier is a self-contained HTML doc (text); decode the bytes as UTF-8.
-    const carrier = (await fetchDocBytes(db, doc))?.toString("utf8") ?? null;
-    if (carrier == null) return { ok: false, error: "Couldn't read that element." };
+    const sourceBytes = (await fetchDocBytes(db, doc))?.toString("utf8") ?? null;
+    if (sourceBytes == null) return { ok: false, error: "Couldn't read that element." };
+    // The copy is its own document: never carry the source's embedded uid
+    // (loop r1b, P5.B.1.n — it would claim the source's docId).
+    const carrier = remintEmbeddedUid(sourceBytes);
 
     // Already have this exact object here? Return its permalink, don't duplicate.
     const registry = new SupabaseDocumentRegistryStore(supabase);

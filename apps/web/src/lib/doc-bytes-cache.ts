@@ -75,7 +75,15 @@ export interface DocBytesCacheOptions {
    *  data cache refuses items over ~2 MB, and base64 inflates by a third). */
   shared?: SharedBytesLayer;
   sharedMaxItemBytes?: number;
+  /** Clock (tests). */
+  now?: () => number;
 }
+
+/** What `revalidate` found. */
+export type Revalidation =
+  | { status: "fresh" }
+  | { status: "stale"; bytes: Buffer }
+  | null;
 
 export class DocBytesCache {
   private readonly lru = new Map<string, Buffer>();
@@ -84,11 +92,56 @@ export class DocBytesCache {
   private readonly maxBytes: number;
   private readonly maxItemBytes: number;
   private readonly sharedMaxItemBytes: number;
+  /** When each key was last verified against bytes read from ORIGIN. */
+  private readonly verifiedAt = new Map<string, number>();
+  private readonly now: () => number;
+
+  /**
+   * How long an origin verification licenses a conditional (304) answer
+   * (loop r1b, P5.B.1.m). Past it, a revalidation re-reads the file.
+   */
+  static readonly REVALIDATE_MS = 60_000;
 
   constructor(private readonly opts: DocBytesCacheOptions = {}) {
     this.maxBytes = opts.maxBytes ?? 64 * 1024 * 1024;
     this.maxItemBytes = opts.maxItemBytes ?? 8 * 1024 * 1024;
     this.sharedMaxItemBytes = opts.sharedMaxItemBytes ?? 1024 * 1024;
+    this.now = opts.now ?? Date.now;
+  }
+
+  /**
+   * May a conditional request for `key` be answered 304? Only if `key`'s hash
+   * was verified against the file's CURRENT bytes (read from origin) within
+   * `REVALIDATE_MS` (loop r1b, P5.B.1.m) — the shared layer's copy proves
+   * only that those bytes once had that hash, not that the file still does.
+   * Otherwise re-read: a match → "fresh" (and remembered); a mismatch → the
+   * registry is stale, the remembered copy is dropped from this instance and
+   * the current bytes are returned to be served unlabelled; null → not found.
+   */
+  async revalidate(key: DocBytesKey, load: () => Promise<Buffer | null>): Promise<Revalidation> {
+    const id = DocBytesCache.keyOf(key);
+    const at = this.verifiedAt.get(id);
+    if (at !== undefined && this.now() - at < DocBytesCache.REVALIDATE_MS) {
+      return { status: "fresh" };
+    }
+    const bytes = await load();
+    if (bytes === null) return null;
+    if (bytesMatchHash(key.path, bytes, key.hash)) {
+      this.verifiedAt.set(id, this.now());
+      this.remember(id, bytes);
+      return { status: "fresh" };
+    }
+    this.forget(id);
+    return { status: "stale", bytes };
+  }
+
+  private forget(id: string): void {
+    this.verifiedAt.delete(id);
+    const buf = this.lru.get(id);
+    if (buf) {
+      this.lru.delete(id);
+      this.total -= buf.length;
+    }
   }
 
   static keyOf(k: DocBytesKey): string {
@@ -148,7 +201,10 @@ export class DocBytesCache {
       result = r ? { ...r, from: "origin" } : null;
     }
 
-    if (result?.verified) this.remember(id, result.bytes);
+    if (result?.verified) {
+      this.remember(id, result.bytes);
+      if (result.from === "origin") this.verifiedAt.set(id, this.now());
+    }
     return result;
   }
 

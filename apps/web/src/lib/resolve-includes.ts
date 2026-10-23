@@ -1,4 +1,5 @@
 import "server-only";
+import { DOC_ID_SOURCE } from "@alembic/package-contract";
 import { prepareSources } from "@alembic/renderer";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
@@ -99,7 +100,7 @@ export async function resolveIncludeUrl(url: string): Promise<string | null> {
     return null;
   }
   if (parsed.host.toLowerCase() !== PERMALINK_HOST.toLowerCase()) return null;
-  const permalink = /^\/d\/(doc-[a-z0-9]+)(?:@([^/]+))?\/?$/.exec(parsed.pathname);
+  const permalink = new RegExp(`^/d/(${DOC_ID_SOURCE})(?:@([^/]+))?/?$`).exec(parsed.pathname);
   if (permalink) return resolveOwnPermalink(permalink[1]!, permalink[2] ?? null);
   return guardedFetch(url);
 }

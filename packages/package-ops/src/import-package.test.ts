@@ -124,6 +124,18 @@ describe("importPackageFromFiles", () => {
     expect(result.issues.some((i) => /shares an identity/.test(i.message))).toBe(true);
   });
 
+  it("[P5.B.1.o] refuses a document whose embedded id the platform could never serve as a link", async () => {
+    const store = new MemoryPackageStore();
+    const files = [
+      ...goodFiles(),
+      { path: "practice/b.md.html", content: carrier("doc-Ch1_Intro.v2"), isBinary: false },
+    ];
+    const result = await importPackageFromFiles(store, { ownerId: "u1", files });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.issues.some((i) => i.path === "practice/b.md.html" && /isn't one Alembic can use/.test(i.message))).toBe(true);
+  });
+
   it("never creates a package when validation fails", async () => {
     const store = new MemoryPackageStore();
     const before = new Set(Object.keys((store as unknown as { packages: Record<string, unknown> }).packages ?? {}));

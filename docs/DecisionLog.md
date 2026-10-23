@@ -13,9 +13,19 @@ P5.A.1.m, P5.A.1.i (strengthened), P5.A.2.m, P5.B.2.a/h (action level), P5.B.3.e
 
 | # | Decision | Why |
 |---|---|---|
+| 1 | **Registration is part of the one write path.** `PackageStore.registry` (the production store always carries one); `writeThrough` / `updateManifest` register exactly what they wrote, best-effort; hand registration after a write is gone. | Most saves (hosted editors, edit page, change review, assets, assessments, planning, metadata, adaptation) never registered, so `source_hash`, `/d` ETags and element recency went stale. A hook in the seam cannot be forgotten by the next caller. |
+| 2 | **The page-load check compares content digests, not only path sets.** `sandbox_files.content_sha256` is a generated column (SHA-256 of the stored text); each registration records the digest it saw (`documents.content_sha256`). | A content change with an unchanged path set was invisible. SHA-256 rather than the registry's FNV source hash because Postgres can compute it without shipping bytes. Cost: the same two content-free queries; one re-verify of every pre-r1b row on the first visit. |
+| 3 | **Renames pass an explicit `movedFrom` hint**; `writeThrough` refuses a hint whose old path the change set does not delete. | Hash matching lost the identity when a file was edited and renamed in one write. |
+| 4 | **`/d` answers 304 only if the hash was verified against the current bytes within 60 s** (per instance); otherwise one read decides, and a mismatch serves the current bytes unlabelled. | A stale registry row kept clients and the CDN on the old version indefinitely. Touches the other loop agent's `/d` area minimally (the conditional branch only; headers unchanged). |
+| 5 | **A docId belongs to exactly one package.** An embedded uid is adopted only if globally unused or already this package's (one SECURITY DEFINER lookup, only when a run carries an unknown uid); fork and element adaptation re-mint the copy's uid; a database trigger refuses any change of `documents.package_id`; a registration run is one transaction (`documents_apply`, RLS as the caller). | `documents.doc_id` is the global key: a copy carrying the source's uid MOVED the row (same owner) or was refused after its tombstones had landed (other owner). The permalink spec's "same docId in another package" could never hold and is amended. |
+| 6 | **One id shape** `doc-[0-9a-z]{1,64}` (`DOC_ID_PATTERN`, package-contract) for uid adoption, `/d`, the cursor, the permalink builder/classifier and import; stored rows keep a lenient read shape. | The registry adopted ids `/d` 404ed. Lenient reads keep a legacy row from making a package's registry unreadable. |
+| 7 | **Listings end on the exact count or an empty page, never a short page.** | A server row cap below 1000 truncated listings, and a rebuild then tombstoned live files. |
 | 8 | **Discovery: fingerprint-guarded upserts, doc-scoped refreshes, one refresh per flush (deferral queue), recency in base tables.** Element recency = the file content's last change (`documents.content_changed_at`); course recency = greatest(listing time, `packages.listing_changed_at`, latest public content change). Both columns are trigger-owned. | 333/333 element rows were rewritten per save and 3 refreshes ran per flush; a rebuild from empty lost `updated_at`. A package rename or a description edit no longer bumps element recency (deliberate). |
 
-Deploy: migration `0026_loop_r1b_discovery` (compatible with the current code).
+Deploy order: migrations `0026_loop_r1b_discovery` then `0027_loop_r1b_registry`, then the code (0026 alone
+is compatible with the current code; the code needs 0027). 0027 adds a stored generated column to
+`sandbox_files` (one table rewrite). Production check for rows already moved across packages, and the
+repair procedure: `supabase/tests/0027_detect_cross_package_docids.sql` (read-only; repair not run).
 
 ---
 

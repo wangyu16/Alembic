@@ -25,10 +25,11 @@ import {
   repoForPath,
   type PackageManifest,
   type ValidationIssue,
+  isDocId,
 } from "@alembic/package-contract";
 import type { PackageFile, PackageStore } from "./store";
 import { LICENSE_PATH, licenseFileContent } from "./license-file";
-import { extractEmbeddedUid } from "./document-registry";
+import { extractEmbeddedUid, rawEmbeddedUid } from "./document-registry";
 import { validatePackageForImport } from "./validate-package";
 
 const MANIFEST_PATH = "alembic.json";
@@ -122,6 +123,16 @@ export async function importPackageFromFiles(
   const uidOwner = new Map<string, string>();
   for (const f of withLicense) {
     if (f.isBinary) continue;
+    const raw = rawEmbeddedUid(f.content);
+    if (raw !== null && !isDocId(raw)) {
+      // One id shape for every door (P5.B.1.o): an id the platform could
+      // never serve as a link is refused here, not silently dropped later.
+      errors.push({
+        path: f.path,
+        message: `This document's id "${raw}" isn't one Alembic can use (it must look like "doc-" followed by lowercase letters and digits). Remove it or give it a fresh one.`,
+      });
+      continue;
+    }
     const uid = extractEmbeddedUid(f.content);
     if (!uid) continue;
     const prev = uidOwner.get(uid);

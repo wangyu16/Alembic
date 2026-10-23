@@ -24,7 +24,6 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
 import { readManifestFromStore } from "@/lib/manifest-read";
 import { committerFor } from "@/lib/committer";
-import { registerChanges } from "@/lib/register";
 
 /**
  * Term operations for the Current collection (CF5.3), the thin server layer
@@ -170,7 +169,6 @@ export async function startTermAction(
           changes,
           summary: `Carry materials into ${termId} (Alembic)`,
         });
-        await registerChanges(supabase, packageId, changes);
       }
     } catch (e) {
       return {
@@ -372,7 +370,6 @@ export async function postAnnouncementAction(
       error: writeError(e, "Couldn't post the announcement. Please try again."),
     };
   }
-  await registerChanges(supabase, packageId, changes);
   revalidatePath(`/workspace/${packageId}`);
   return { ok: true, path: target };
 }
