@@ -92,3 +92,44 @@ describe("enablePages", () => {
     expect((post.body as { source: { branch: string } }).source.branch).toBe("gh-pages");
   });
 });
+
+describe("publishToBranch — bounded blob uploads", () => {
+  it("[P5.B.2.a] uploads 150 binary files with at most 8 blob requests in flight, all of them in the tree", async () => {
+    let inflight = 0;
+    let max = 0;
+    let blobs = 0;
+    let tree: Array<{ path: string; sha: string }> = [];
+    const fetchImpl: FetchLike = async (url, init) => {
+      const method = init?.method ?? "GET";
+      if (method === "GET" && url.includes("/git/ref/heads/gh-pages")) return notFound();
+      if (method === "POST" && url.endsWith("/git/blobs")) {
+        const n = ++blobs;
+        inflight++;
+        max = Math.max(max, inflight);
+        await new Promise((r) => setTimeout(r, 2));
+        inflight--;
+        return ok({ sha: `b${n}` });
+      }
+      if (method === "POST" && url.endsWith("/git/trees")) {
+        tree = JSON.parse(init!.body!).tree;
+        return ok({ sha: "TREE" });
+      }
+      if (method === "POST" && url.endsWith("/git/commits")) return ok({ sha: "COMMIT" });
+      if (method === "POST" && url.endsWith("/git/refs")) return ok({});
+      throw new Error(`unexpected ${method} ${url}`);
+    };
+    const client = new GitHubClient("t", fetchImpl);
+    const files = Array.from({ length: 150 }, (_, i) => ({
+      path: `assets/img${i}.png`,
+      content: "aGVsbG8=",
+      encoding: "base64" as const,
+    }));
+    await client.publishToBranch({ coords, branch: "gh-pages", message: "m", files });
+    expect(blobs).toBe(150);
+    expect(max).toBeLessThanOrEqual(8);
+    expect(max).toBeGreaterThan(1); // still parallel, just bounded
+    // Order and pairing preserved: entry i is file i.
+    expect(tree.map((e) => e.path)).toEqual(files.map((f) => f.path));
+    expect(new Set(tree.map((e) => e.sha)).size).toBe(150);
+  });
+});

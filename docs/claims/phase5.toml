@@ -905,6 +905,11 @@ bound_to = [
   "packages/github-bridge/src/robustness.test.ts :: publishing the same site twice makes no second commit and leaves the branch alone",
   "packages/github-bridge/src/robustness.test.ts :: a changed site is a new root commit replacing the whole tree",
   "packages/github-bridge/src/robustness.test.ts :: a branch created concurrently (422 on create) is overwritten, not an error",
+  "apps/web/src/lib/site-publish.test.ts :: publishing the same course twice (minutes apart) makes no second commit and the report says it was unchanged",
+  "apps/web/src/lib/site-publish.test.ts :: the publish action builds and pushes through these helpers (no second, timestamped path)",
+  "packages/renderer/src/course-site.test.ts :: the same course built at two different times is byte-identical (no build timestamp in the deployed tree)",
+  "packages/renderer/src/site.test.ts :: the same site built at two different times is byte-identical",
+  "packages/github-bridge/src/pages.test.ts :: uploads 150 binary files with at most 8 blob requests in flight, all of them in the tree",
 ]
 
 [[claim]]
@@ -973,6 +978,7 @@ bound_to = [
   "apps/web/src/lib/publish-report.test.ts :: says nothing when everything published",
   "apps/web/src/lib/publish-report.test.ts :: names every missing piece, by chapter, with what to do",
   "apps/web/src/lib/publish-report.test.ts :: an unchanged site is said plainly",
+  "apps/web/src/lib/site-publish.test.ts :: a changed course is published and not reported as unchanged",
 ]
 
 [[claim]]

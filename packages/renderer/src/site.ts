@@ -22,7 +22,7 @@ export interface SiteInput {
   title: string;
   studyGuideMarkdown: string;
   worksheets: SiteWorksheet[];
-  /** ISO timestamp, passed in for deterministic builds. */
+  /** ISO timestamp of the build (kept for callers; not written into the output). */
   builtAt: string;
   /** Render theme — matches the educator's editor selection (default dark). */
   theme?: RenderTheme;
@@ -65,7 +65,11 @@ export function buildSite(input: SiteInput): SiteFile[] {
     path: "build-info.json",
     content:
       JSON.stringify(
-        { generator: "Alembic", renderer: rendererVersion(), builtAt: input.builtAt },
+        // No build timestamp: the same content must build to the same bytes,
+        // or every publish would differ and "nothing changed → no new
+        // commit" could never trigger (P5.B.2.a). The renderer version is
+        // the durable, useful stamp; the publish time lives in Git history.
+        { generator: "Alembic", renderer: rendererVersion() },
         null,
         2,
       ) + "\n",

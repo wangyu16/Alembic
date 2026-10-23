@@ -14,7 +14,6 @@ import {
   releaseGates,
 } from "@alembic/package-ops";
 import {
-  buildCourseSite,
   renderMarkdown,
   slotHasContent,
   themeScheme,
@@ -38,8 +37,7 @@ import { getRenderTheme } from "@/lib/theme";
 import { generateSelfContainedFile } from "@/lib/worker-client";
 import { docMetaForPackage } from "@/lib/doc-metadata";
 import { emptyOutcome, publishErrorMessage, publishNotes, type PublishOutcome } from "@/lib/publish-report";
-
-const PAGES_BRANCH = "gh-pages";
+import { courseSiteFiles, PAGES_BRANCH, pushCourseSite } from "@/lib/site-publish";
 
 /** Deterministic UTC date formatter for announcement stamps ("July 11, 2026"). */
 const ANNOUNCEMENT_DATE_FMT = new Intl.DateTimeFormat("en-US", {
@@ -371,7 +369,7 @@ export async function publishSiteAction(
     const currentTermBundle = await gatherCurrentTerm(store, packageId, record!);
 
     const files = [
-      ...buildCourseSite({
+      ...courseSiteFiles({
         // Project Pages live under /<repo>/ — the 404's "home" link must not
         // send the visitor to the account root.
         baseHref: `/${repo.name}/`,
@@ -384,7 +382,6 @@ export async function publishSiteAction(
         currentTerm: currentTermBundle?.data,
         // The visible rights notice on the published home page.
         license: record!.manifest.license,
-        builtAt: new Date().toISOString(),
         // The published site's hub matches the course theme's dark/light scheme.
         theme: hubScheme,
         // LRMI/schema.org LearningResource metadata for the published index (M30).
@@ -457,13 +454,9 @@ export async function publishSiteAction(
     const coords = { owner: repo.owner, repo: repo.name };
     // One step for students: the live site switches over at the very end, or
     // not at all. Same build as last time → nothing is published (idempotent).
-    const pushed = await gh.client.publishToBranch({
-      coords,
-      branch: PAGES_BRANCH,
-      message: "Build site (Alembic)",
-      files,
-    });
-    outcome.unchanged = pushed.unchanged;
+    // The build carries no timestamp (lib/site-publish), so this really does
+    // trigger: an unchanged course is reported "already up to date".
+    await pushCourseSite(gh.client, coords, files, outcome);
     outcome.privateLinks = refusedPrivate.size;
     outcome.figuresNotCopied = figuresNotCopied;
 
