@@ -161,6 +161,19 @@ export function etagMatches(ifNoneMatch: string | null, hash: string): boolean {
 
 export const etagFor = (hash: string) => `W/"${hash}"`;
 
+/**
+ * Percent-decode the route parameter (an encoded `@` must still split the
+ * pin). A malformed escape (`%zz`, a truncated UTF-8 sequence) is null: the
+ * caller answers it exactly like a missing doc, never a 500.
+ */
+export function decodePermalinkParam(raw: string): string | null {
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    return null;
+  }
+}
+
 /** Split `docId` or `docId@version`. */
 export function parsePermalinkParam(raw: string): { docId: string; pin: string | null } {
   const at = raw.indexOf("@");
@@ -188,6 +201,11 @@ function body(buf: Buffer): ArrayBuffer {
   return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer;
 }
 
+/**
+ * `rawParam` is the route parameter as received (still percent-encoded where
+ * the address was); it is decoded here, AFTER the rate limit, so a malformed
+ * address costs the caller a hit like any other request.
+ */
 export async function servePermalink(
   rawParam: string,
   reqHeaders: Pick<Headers, "get">,
@@ -198,7 +216,9 @@ export async function servePermalink(
     if (!gate.ok) return tooManyRequests(gate.retryAfterSeconds);
   }
 
-  const { docId, pin } = parsePermalinkParam(rawParam);
+  const decoded = decodePermalinkParam(rawParam);
+  if (decoded === null) return notFound();
+  const { docId, pin } = parsePermalinkParam(decoded);
 
   // Who may read this file: published public → anyone; private, or any file
   // of an unpublished (trial) package → the owner's own session only.

@@ -49,7 +49,9 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ docId: string }> },
 ) {
-  const raw = decodeURIComponent((await params).docId);
+  // Decoded inside `servePermalink`, after the rate limit: a malformed
+  // escape answers like a missing doc (security loop r1, L1).
+  const raw = (await params).docId;
   const session = await createSupabaseServerClient();
 
   return servePermalink(raw, req.headers, {

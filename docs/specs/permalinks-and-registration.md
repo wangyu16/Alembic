@@ -98,7 +98,7 @@ file the visitor may not read.
 | public, pinned to the current hash | `private, max-age=31536000, immutable`, plus `CDN-Cache-Control` and `Vercel-CDN-Cache-Control: public, max-age=300` | same ETag |
 | public, bytes not matching the registry hash (repo ahead of reconcile) | `public, max-age=60` | none — never labelled with a hash it does not have |
 | owner-only (private repo, trial package) | `private, no-store` | none; never 304, no CORS, never in a shared or server cache |
-| not found / no access / older pin | `no-store` | — |
+| not found / no access / older pin / malformed address (bad `%` escape — same 404, after the rate limit) | `no-store` | — |
 | tombstone (410) | `public, max-age=3600, s-maxage=300` | — |
 
 **Takedown bound: 300 seconds** (`TAKEDOWN_BOUND_SECONDS`, security loop r1,

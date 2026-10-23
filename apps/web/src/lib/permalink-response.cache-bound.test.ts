@@ -102,6 +102,7 @@ const CASES: Case[] = [
   { kind: "public, bytes missing", param: "doc-pub", access: ok(doc()), bytes: null, status: 404 },
   { kind: "public, no hash, bytes missing", param: "doc-pub", access: ok(doc({ source_hash: null })), bytes: null, status: 404 },
   { kind: "older pin", param: "doc-pub@deadbeef", access: ok(doc()), status: 404 },
+  { kind: "malformed address", param: "doc-pub%zz", access: ok(doc()), status: 404 },
   { kind: "not found", param: "doc-nope", access: { status: "not-found" }, status: 404 },
   { kind: "tombstone", param: "doc-gone", access: { status: "gone" }, status: 410 },
   { kind: "tombstone, pinned", param: `doc-gone@${H1}`, access: { status: "gone" }, status: 410 },

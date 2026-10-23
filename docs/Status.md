@@ -84,7 +84,7 @@ then a fix for the whole class. Per finding (⬜ open · ✅ fixed on this branc
 
 - ⬜ **M5** unauthenticated `/api/preview` fan-out (P5.S.6.a–b).
 
-- ⬜ **L1** `/d` malformed escape → 500 (P5.S.7).
+- ✅ **L1** `/d` malformed escape → 500 (P5.S.7). The route no longer decodes the address itself; `servePermalink` decodes it after the rate limit and answers a malformed escape with the missing-doc 404. Probe: `apps/web/src/app/d/[docId]/route.test.ts` (route-level, real permalink response).
 
 - ⬜ **L3** discovery cache staleness bound (P5.S.8).
 

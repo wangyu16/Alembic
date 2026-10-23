@@ -1237,7 +1237,10 @@ bound_to = []
 id = "P5.S.7"
 claim = "/d with a malformed percent escape answers like a missing doc (no 500), after the rate limiter."
 oracle = "probe"
-bound_to = []
+bound_to = [
+  "apps/web/src/app/d/[docId]/route.test.ts :: a malformed percent escape answers 404 like a missing doc, after the rate limiter",
+  "apps/web/src/app/d/[docId]/route.test.ts :: a malformed escape still counts against the rate limit",
+]
 
 [[claim]]
 id = "P5.S.8"
