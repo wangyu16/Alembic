@@ -47,7 +47,7 @@ sections and **✕** to remove one. Click **Save** when you're happy.
   change those sections, the worksheet is flagged out-of-date so you can
   **Regenerate** or **Keep mine**.
 
-## 5. Share a self-contained file
+## 5. Share a self-editing file
 
 **Download .md.html** gives you a single file that opens in any browser *and*
 keeps your editable source inside it — handy for emailing a colleague or

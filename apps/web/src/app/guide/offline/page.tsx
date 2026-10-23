@@ -22,7 +22,7 @@ export default function OfflinePage() {
       >
         <p>
           Take a document out with <strong>Download</strong>. Alembic&rsquo;s
-          documents are <strong>self-contained</strong>{" "}— the editor is built into
+          documents are <strong>self-editing</strong>{" "}— the editor is built into
           the file — so on your own computer you just open it in a browser and edit
           in place, with nothing to install and no account needed. Prefer to work
           with AI? Hand the file to any AI agent along with its{" "}

@@ -1,4 +1,4 @@
-# Steering note — self-contained editing era (July 2026)
+# Steering note — self-editing files era (July 2026)
 
 **Status: living document.** Owner's working notes from the 2026-07-03 design
 discussion, to be refined further **before implementation** — nothing here is
@@ -10,7 +10,7 @@ updated. The core product idea in [goal.md](goal.md) is unchanged.
 ## 1. Editing moves out of the platform (decided)
 
 Editing has been largely offloaded from the Alembic platform to
-**self-contained files**, built by the sibling projects in the `orz-family`
+**self-editing files**, built by the sibling projects in the `orz-family`
 mother folder:
 
 | Format | Project | Role |
@@ -24,7 +24,7 @@ Consequences:
 - **The workspace builds no editors.** It simply **plugs in** the three
   in-file editors and hosts them. Alembic's jobs: registration, validation,
   versioning, GitHub publication, provenance, permalinks, reuse.
-- **Studio (`/studio`) is removed.** A self-contained file *is* the local,
+- **Studio (`/studio`) is removed.** A self-editing file *is* the local,
   anonymous, nothing-to-install editor — open in a browser, click the pencil.
   *(Done 2026-07-04: `/studio` deleted and replaced by a `/guide` page — a
   brief orientation to the most important concepts.)*
@@ -77,6 +77,13 @@ means commit SHAs. Instead:
   owner-only → served through the platform (GitHub-App token or Supabase)
   with access checks and correct content-type (the existing
   `/api/asset/{pkg}/{path}` pattern, generalized).
+  *(Superseded — the 302 half: the shipped resolver serves published public
+  files **through the platform** with the correct MIME, it does not redirect
+  to Pages — see [permalinks-and-registration.md](specs/permalinks-and-registration.md)
+  §3 (corrected 2026-08-28) and the owner's 2026-10-23 decision to keep
+  serving `/d/{docId}` from Alembic with a strong cache. The private / trial /
+  owner-only half stands and is enforced for trial packages since
+  2026-10-23.)*
 - **Object permalinks serve raw bytes** with correct `Content-Type`,
   permissive CORS for public objects, cache split by form (live = short
   cache; `@snapshot` = immutable).
@@ -94,6 +101,14 @@ file, not units of storage or sharing. (Consequence: the chapter's source of
 record is the `.md.html` file itself, with markdown source embedded;
 registration extracts and hashes it. Slides/paged handouts derive from the
 chapter file and trace to it — study-guide-centered, coarser grain.)
+
+*(Superseded — the source-of-record half: the committed source of every
+chapter document is **lean `.md`** (2026-07-08 "lean-source model", made
+permanent by the 2026-08-28 educator version contract —
+[DecisionLog.md](DecisionLog.md), "Lean `.md` committed source is
+permanent"; [educator-version-contract.md](specs/educator-version-contract.md)).
+The `.md.html` file is generated on demand as the editing/viewing surface and
+never committed. "The whole study guide of a chapter is the unit" stands.)*
 
 **Sharing at two levels:**
 
@@ -131,7 +146,7 @@ The owner delivered the taxonomy in
 [UserInputs/userguide.md](UserInputs/userguide.md); it is structured in
 [specs/document-model.md](specs/document-model.md) (DRAFT, open questions
 marked). Highlights: course concept map + per-chapter {concept map, study
-guide `.md.html` (source of truth), slides, assessment guide, practice
+guide (source of truth: lean `.md` — see the §3b note), slides, assessment guide, practice
 questions} + three file spaces {assets, current, private}; start-small
 element publishing with report→correct→notify and revise→fork loops;
 element discovery is **per-file**, not gated on whole-package portal
@@ -139,14 +154,17 @@ listing. Confirmed same day: block IDs demote to optional anchors; file
 versions are a dated history, named versions exist only at package level.
 
 Other open questions (tracked in the spec §6): study-guide source of record
-(`.md` source vs `.md.html`-native); fate of the current studio-shell block
+(`.md` source vs `.md.html`-native — *resolved 2026-08-28: lean `.md`,
+permanent*); fate of the current studio-shell block
 editor; `.md.pdf` vs `.paged.html`; upload policy vs the trial-storage
 decision.
 
 ## 5. Unchanged foundations
 
-Two-repo public/private invariant (fail-closed everywhere) · `packageOps` as
-the single validated write path · repos as source of truth (DB = rebuildable
+Two-repo public/private invariant (fail-closed everywhere) · one validated
+write path (`packageOps`; for published packages the repo-first
+`writeThrough`/`updateManifest` seam —
+[storage-and-write-paths.md](specs/storage-and-write-paths.md)) · repos as source of truth (DB = rebuildable
 projection) · immutable block IDs · Tier-3 educator approval for
 publish/registration · orz-markdown as the only markdown engine.
 

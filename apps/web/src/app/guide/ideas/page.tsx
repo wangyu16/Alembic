@@ -9,7 +9,7 @@ import {
 export const metadata = {
   title: "Core ideas — Alembic Guide",
   description:
-    "The three ideas Alembic is built on: you get versioning and publishing without ever touching Git, you lead while AI handles the tedious details, and every document is a self-contained file that carries its own editor.",
+    "The three ideas Alembic is built on: you get versioning and publishing without ever touching Git, you lead while AI handles the tedious details, and every document is a self-editing file that carries its own editor.",
 };
 
 export default function CoreIdeasPage() {
@@ -79,10 +79,10 @@ export default function CoreIdeasPage() {
       <GuideSection
         heading="Documents carry their own editor"
         figure={<SelfContainedFigure />}
-        figureCaption="A self-contained file opens in any browser to read — and the editor travels inside it."
+        figureCaption="A self-editing file opens in any browser to read — and the editor travels inside it."
       >
         <p>
-          Alembic&rsquo;s documents are <strong>self-contained files</strong>: a
+          Alembic&rsquo;s documents are <strong>self-editing files</strong>: a
           page, a slide deck, or a print document, each one a single file that opens
           in any browser to read, present, or print — with an editor built into the
           file itself. Under every document is a{" "}

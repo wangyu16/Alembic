@@ -39,10 +39,10 @@ satisfy `auth.uid() = id` — a user cannot change their `id`, but they *can*
 change any other column of their own row.
 
 `NEXT_PUBLIC_SUPABASE_ANON_KEY` is deliberately shipped to the browser
-(`apps/web/src/app/signin/page.tsx:17`). So any signed-in user can bypass the
+(`apps/web/src/app/signin/page.tsx`). So any signed-in user can bypass the
 Next.js app entirely, call PostgREST with their own JWT, and set
 `is_admin = true` on themselves. `profiles.is_admin` has existed since migration
-`0011`, and `requireAdmin()` (`apps/web/src/lib/admin.ts:14`) trusts it. No
+`0011`, and `requireAdmin()` (`apps/web/src/lib/admin.ts`) trusts it. No
 application code writes the column, which is why this has gone unnoticed.
 
 The column this spec adds (`ai_status`) lives in the same table under the same
@@ -158,25 +158,26 @@ No dedicated gate. They require a signed-in session, which a banned user cannot
 obtain or refresh. Within the ≤1h residual window they are stopped by middleware
 (server actions post to the matched `/workspace/*` path).
 
-Recorded for whoever revisits this: `clientForUser` (`lib/github.ts:102`) is
-**not** the only door to an installation token — `github-actions.ts:166` calls
-`clientForInstallation` directly, and that is the main publish path. Any future
+Recorded for whoever revisits this: `clientForUser` (`lib/github.ts`) is
+**not** the only door to an installation token — the publish action in
+`app/workspace/[packageId]/github-actions.ts` calls `clientForInstallation`
+directly, and that is the main publish path. Any future
 per-user GitHub gate must cover both.
 
 ### 2.3 AI calls → `governedProvider`
 
 Every one of the nine AI server actions funnels through `governedProvider`
-(`apps/web/src/lib/ai.ts:204`), which already calls
-`can({kind:"user"}, "ai")` at `:212` and throws `AINotEntitledError`. Today
-`resolveEntitlements` (`lib/entitlements.ts:35`) hands **every** signed-in user
+(`apps/web/src/lib/ai.ts`), which already calls
+`can({kind:"user"}, "ai")` and throws `AINotEntitledError`. Today
+`resolveEntitlements` (`lib/entitlements.ts`) hands **every** signed-in user
 the `ai` capability. This is the chokepoint; the per-user check goes here.
 
 Two constraints:
 
 - `resolveEntitlements` is pure and synchronous; the approval flag needs IO.
   Do the DB read at the top of `GovernedProvider.generateText` (already async)
-  and throw **before** `inner.generateText` (`ai.ts:180`).
-- The neighbouring rate-limit and budget checks (`ai.ts:154`, `:166`)
+  and throw **before** `inner.generateText` (in `GovernedProvider`, `ai.ts`).
+- The neighbouring rate-limit and budget checks (also in `GovernedProvider`)
   deliberately **fail open**. The approval gate must **fail closed** — on a DB
   error, deny. Do not copy the neighbours.
 
@@ -201,7 +202,7 @@ maintainability wart, tracked separately, not a security dependency here.
 
 ### 2.5 Known ungated write
 
-`apps/web/src/app/portal/actions.ts:21` (`reportPackageAction`) has no user
+`reportPackageAction` (`apps/web/src/app/portal/actions.ts`) has no user
 guard at all — `reporter_id` is nullable by design ("open to anyone"). A
 disabled user can still file an abuse report. Left as-is intentionally; noted
 so it is not mistaken for an oversight.
@@ -239,8 +240,10 @@ Guardrails, enforced server-side:
   live session there.
 - **AI not approved:** the Assistant button renders disabled with a **Request
   access** action; once requested it reads "Access requested". The hosted
-  `orz-host-ai` bridge is not wired, so the in-file editors advertise no AI
-  operations. Server-side enforcement stands regardless of what the UI shows.
+  `orz-host-ai` bridge is wired for study guides and slides (paged has no AI);
+  the workspace offers the in-file editors AI operations only when the account
+  is approved, so an unapproved educator's editors advertise none.
+  Server-side enforcement stands regardless of what the UI shows.
 
 ## 4a. Deploy order (the two orderings are opposite — read this)
 
@@ -264,7 +267,7 @@ So: **code before migration for G0; migration before code for G3.**
 produces an admin without manual SQL.
 
 `profiles.github_username` is overwritten by the GitHub App install callback
-(`api/github/installed/route.ts:33`) with the *installation account* login,
+(`api/github/installed/route.ts`) with the *installation account* login,
 which may be an org. `is_admin` is a separate column and is unaffected once
 set — but do not key any future admin check off `github_username`.
 
