@@ -6,7 +6,7 @@
  * is wrapped in `.markdown-body` (the class the themes target).
  */
 
-import { md } from "orz-markdown";
+import { renderMarkdown } from "./markdown";
 import { getBrowserRuntimeScript } from "orz-markdown/runtime";
 import { rendererVersion } from "./index";
 import { themeCss, type RenderTheme } from "./theme-css";
@@ -90,7 +90,7 @@ export function renderDocument(
   heading?: string,
 ): string {
   const h1 = heading && !STARTS_WITH_H1.test(markdown) ? `<h1>${escapeHtml(heading)}</h1>\n` : "";
-  return themedDocument({ title, bodyHtml: h1 + md.render(markdown), theme });
+  return themedDocument({ title, bodyHtml: h1 + renderMarkdown(markdown), theme });
 }
 
 /**
@@ -125,7 +125,7 @@ ${PLAIN_CSS}
 </style>
 </head>
 <body>
-${h1}${md.render(markdown)}
+${h1}${renderMarkdown(markdown)}
 </body>
 </html>
 `;

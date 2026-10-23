@@ -1,0 +1,12 @@
+{
+  "name": "alembic-site-build",
+  "private": true,
+  "type": "module",
+  "description": "Standalone site build for this OER package (orz-markdown only; no Alembic dependency).",
+  "scripts": {
+    "build": "node build-site.mjs"
+  },
+  "dependencies": {
+    "orz-markdown": "^2.4.0"
+  }
+}

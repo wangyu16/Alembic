@@ -52,6 +52,36 @@ same commit as the work it tracks. Statuses: ✅ done · 🔄 partially shipped 
 
 > **Current direction — self-contained editing (owner-locked, 2026-07).** Editing and viewing both live *in the files*: the workspace **hosts** the in-file editors of `.md.html` / `.slides.html` / `.paged.html` (orz-family) and **builds no editor of its own**; published pages **are** those self-contained files (thin CDN delivery — study guide ~74 KB, framework from jsDelivr, verified live 2026-07-06); every file gets a permalink. **Committed source of record (revised, 2026-07-08 — "lean-source model"):** a chapter's study guide, slides, and practice questions are each committed as lean markdown (`study-guide/`, `slides/`, `practice/` — `.md`, not `.md.html`); the self-contained `.md.html`/`.slides.html` is generated on demand, purely as the editing/viewing surface, and never itself committed. This supersedes the original plan (below, and in the specs) of `.md.html` as the committed source — the specs haven't all been updated to match yet; this line is authoritative until they are. Authoritative docs: [SteeringNote.md](SteeringNote.md), [self-contained-editing.md](specs/self-contained-editing.md), [workspace-framework.md](specs/workspace-framework.md), and the module-based [Roadmap.md](Roadmap.md) (Modules R/E/P/T/I/S/W — supersedes the phase-based plan). **Code state today:** the classic editor is **retired** (~2.2k lines removed; `/workspace/[id]` redirects to `/edit`); the local **Studio (`/studio`) is removed**, replaced by `/guide`; the workspace three-pane shell now *hosts* the in-file editors (`HostedStudyGuideEditor` for study guide + practice; `HostedSlidesEditor` for authored slide decks). The durable guardrails **G1–G8** (two-repo reference enforcement, block-ID reconcile on import, whole-package fork, single-source course metadata, AI-entitlement seam) that the earlier editor-overhaul design drove all **landed + tested**.
 
+**Phase 5 Track 0 — security and hygiene (2026-10-23, branch `phase5/track0`).** The first track of the
+Phase 5 revision plan (family `docs/PHASE5-ALEMBIC.md`). Committed locally, **not pushed** (a push to `main`
+deploys production; the owner says when).
+- **0.1 D-39 — server-side Markdown can no longer read local files.** `packages/renderer` moved from
+  orz-markdown `^1.6.0` to **`^2.4.0`**. Kit 1.x resolved `{{md path}}` / `{{markdown path}}` /
+  `{{md-include path}}` from `process.cwd()` when no env was given, so a study guide containing
+  `{{md /etc/hosts}}` or `{{md ../.env}}` rendered the server's file into the preview, the export and the
+  published site. Kit 2.x makes file includes opt-in; every renderer render now goes through one function,
+  `renderMarkdown` (`packages/renderer/src/markdown.ts`), with a fresh empty env (no `markdownBasePath`, no
+  `readFile`). URL includes are unchanged: `prepareSources` with `allowedHosts` + the guarded fetcher
+  (`apps/web/src/lib/resolve-includes.ts`). The kit ships its own types, so the ambient `orz.d.ts` is gone.
+  **Themes:** `theme-css.ts` is now *generated* from the installed kit's `themes/*.css` by
+  `scripts/vendor-themes.mjs` (replaces `vendor-light-theme.mjs`), and `theme-css.test.ts` fails when it
+  drifts — the dark-elegant and light-academic looks follow kit 2.4 (D-45: chart/diagram tokens, inline
+  images in links/lists/cells, revised theme CSS). **Worker:** `packages/generators` keeps orz-mdhtml 0.9 /
+  orz-slides 0.8 / orz-paged 0.7 (kit 1.6; the port is Track C.1); both kit versions coexist under pnpm. Its
+  `build*Html` entry points render in the reader's browser, but kit 1.6 is loaded in the worker process, so
+  `no-file-includes.ts` re-registers the three include aliases on kit 1.6's global registry to render
+  nothing (defence in depth; remove with kit 1.x). **Template build:** the public template's standalone
+  site build (`templates/public-repo/.alembic/build/`) had never been committed — the root `.gitignore`'s
+  `build/` swallowed it, so `GitHubAppSetup.md` pointed at a directory that only existed on the owner's
+  machine. It is now committed (a `.gitignore` exception), on `orz-markdown ^2.4.0`, renders with
+  `markdownBasePath` = the file's folder and `markdownIncludeRoot` = the repo (includes stay inside the
+  checkout), and reads `practice/*.md` instead of the v1 `materials/worksheets/` (still listed as a
+  fallback). Tests: renderer `markdown.adversarial.test.ts` (absolute, `../`, `./../` and `/etc/hosts`
+  through every render entry point), generators `no-file-includes.adversarial.test.ts` (fails without the
+  guard), `theme-css.test.ts`. **Operator actions:** redeploy **web and worker** (the worker's lockfile
+  changed — `fly deploy` from the repo root); copy the new `.alembic/build/` into the
+  `alembic-public-template` repo on GitHub (existing package repos keep their old manual-only copy).
+
 **Wave 4 / T42 — doc coherence pass (2026-08-28).** Docs-only sweep after the storage/write-path waves
 (the CLAUDE.md "after each phase, run a coherence pass" rule). Corrected: the Waves-2–3 test count
 (**1081**, not 1048 — re-counted at commit `851bcef`); "Implementation not started" and "Fixes not yet
@@ -479,7 +509,7 @@ These are the only things blocking full production parity with the code:
 3. **Interactive verification passes** (can't run in CI): slides render (M13), the in-file hosted editors (`.md.html`/`.slides.html`/`.paged.html` save round-trip via the worker tier), and the AI/reconcile live runs (M18 coherence agent, M9.6 draft-from-plan, M20 reconcile, M23 question generation, M26–M28 adapt/pull/suggest-back) once Portkey is on Vercel. Ketcher (M11) and plots (M11b) are verified live.
 4. **Set the Portkey env vars in Vercel** (`AI_GATEWAY_URL=https://api.portkey.ai/v1`, `AI_GATEWAY_API_KEY`, `AI_MODEL_DEFAULT/FAST/STRONG` = `@<provider-slug>/<model>`) to verify the **M18 coherence agent** live. Local dev can't reach Portkey from this machine (the dev Mac's security/firewall blocks the `node` binary's outbound — `curl` works, `node` ETIMEDOUTs — not an app issue); Vercel's egress is clean. See [ai-architecture.md](specs/ai-architecture.md).
 
-**Deferred chore:** bump renderer to orz-markdown 1.1.0 (published) — reverted to 1.0.0 temporarily because the npm registry was unreachable during M2 and CI uses `--frozen-lockfile`. Behavior is unaffected (1.0.0 supports the attrs block-ID syntax); redo when the registry is reachable.
+~~**Deferred chore:** bump renderer to orz-markdown 1.1.0~~ — *superseded:* the renderer moved to 1.6 during the 2026-07 work and to **orz-markdown ^2.4.0 on 2026-10-23** (Phase 5 Track 0.1, see the entry above). `packages/generators` stays on the 0.x carriers (kit 1.6) until Track C.1.
 
 ## Phase overview (full project)
 
@@ -517,9 +547,9 @@ unless a dependency is noted.
 
 | Gap | Needed by | Status |
 | --- | --- | --- |
-| 1. TOC vs custom heading IDs ordering bug (one-line fix) | M2 (preview with TOC) | ✅ fixed upstream in 1.1.0 — not yet consumed (renderer pinned at 1.0.0) |
-| 2. Ship Agent Skill in the npm tarball | M3 (AI drafting) | ✅ fixed upstream in 1.1.0 — not yet consumed (renderer pinned at 1.0.0) |
-| 3. Add ID-preservation rules to the Agent Skill | M3 (AI drafting) | ✅ fixed upstream in 1.1.0 — not yet consumed (renderer pinned at 1.0.0) |
+| 1. TOC vs custom heading IDs ordering bug (one-line fix) | M2 (preview with TOC) | ✅ fixed upstream in 1.1.0 — consumed (renderer on orz-markdown ^2.4.0 since 2026-10-23) |
+| 2. Ship Agent Skill in the npm tarball | M3 (AI drafting) | ✅ fixed upstream in 1.1.0 — consumed (renderer on orz-markdown ^2.4.0 since 2026-10-23) |
+| 3. Add ID-preservation rules to the Agent Skill | M3 (AI drafting) | ✅ fixed upstream in 1.1.0 — consumed (renderer on orz-markdown ^2.4.0 since 2026-10-23) |
 | 4. Versioned embed/extract module + format-version marker | M4 (.md.html export) | ⬜ |
 | 5. Attribute pass-through for plugin blocks (equations/structures) | — | ⏸ superseded by the M11.0 carrier registry (assets are addressable carrier files, not attr-tagged plugin blocks) |
 
@@ -624,8 +654,8 @@ hold before calling v0.1 shipped. Current standing:
 - **M8.3 pilot** — run with 1–3 chemistry educators against criteria 1 & 6
   (the last substantive gate); protocol + success bar in
   [PilotReadiness.md](PilotReadiness.md) Part C.
-- **Deferred chore** — bump renderer to orz-markdown 1.1.0 once the npm
-  registry is reachable from the dev machine (CI/Vercel builds already reach it).
+- ~~**Deferred chore** — bump renderer to orz-markdown 1.1.0~~ — done and
+  overtaken: the renderer is on orz-markdown ^2.4.0 (2026-10-23).
 
 Closed recently: no-lock-in build config (criterion #3 — committed to the
 public template); M7 portal (migration 0004 applied).

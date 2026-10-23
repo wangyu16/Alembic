@@ -6,6 +6,21 @@ design, and what is deferred to the future. Complements [Status.md](Status.md)
 
 ---
 
+## 2026-10-23 — Renderer on orz-markdown 2.4: no server file access; themes generated, not hand-vendored
+
+**Context.** Phase 5 Track 0.1 (STATUS D-39 in the family docs): with orz-markdown
+≤ 1.6, `md.render(src)` without an env read any local file named by a
+`{{md path}}` directive. Alembic renders educator content server-side.
+
+| # | Decision | Why |
+|---|---|---|
+| 1 | **One render function, no file access.** Every `@alembic/renderer` render goes through `renderMarkdown` with a fresh, empty env; no file-access key (`markdownBasePath`, `readFile`, `markdownIncludeRoot`) is ever set server-side. | Educator content is untrusted input to the server. Kit 2.x already defaults to no file includes; a single choke point keeps a later caller from opting in by accident, and the adversarial test pins it. Alembic has no use for server-side file includes — cross-file reuse is by permalink (`{{md-include https://…/d/{docId}}}`), resolved by `prepareSources` with an allowlist. |
+| 2 | **Theme CSS stays inlined, but is generated from the kit** (`scripts/vendor-themes.mjs` → `theme-css.ts`, checked by `theme-css.test.ts`) rather than read from `orz-markdown/themes/*.css` at runtime. | The renderer runs in Vercel serverless functions; reading package files from disk there depends on output file tracing, while a generated string has no such risk. The kit's `orz-markdown/themes` export is theme *metadata* (`THEMES`), not CSS. The drift test turns "vendored" into "the kit's own bytes". |
+| 3 | **The worker's kit 1.6 gets a process-wide include guard** (`packages/generators/src/no-file-includes.ts`) instead of a version bump. | The 0.x carriers depend on kit 1.x and are only replaced by the 1.x port (Track C.1). Their build entry points render in the browser, so the guard is defence in depth; it uses the kit's own public `register` and is deleted with kit 1.x. |
+| 4 | **The template repo's standalone build is committed and kept working** (kit 2.4, includes confined to the repo, `practice/` read) — not retired here. | Retiring it or replacing it with `orz-site init --github` is Track B.6 (after the release wave). Until then the docs that point at it should point at something real and safe. |
+
+---
+
 ## 2026-08-28 — Storage & write-path implementation: four rulings made during execution
 
 **Context.** Implementing [specs/storage-and-write-paths.md](specs/storage-and-write-paths.md)
