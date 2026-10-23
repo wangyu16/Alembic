@@ -1,0 +1,1062 @@
+# Phase 5 claims registry — closed-loop verification of the Phase 5 revision.
+#
+# One entry per requirement, each a single sentence a test could falsify.
+# Sources: family docs/PHASE5-ALEMBIC.md (Track 0, A.1–A.4, A.6–A.7, B.1–B.3,
+# hardening H.1–H.2), docs/Status.md and docs/DecisionLog.md 2026-10-23 entries
+# (incl. "Owner rulings on Phase 5 open items" → P5.R.*), and the specs they cite
+# (discovery-index, permalinks-and-registration, portal-governance,
+# data-handling-review, package-contract-v2, storage-and-write-paths, the
+# 2026-08-28 scale audit).
+#
+# Fields:
+#   id        P5.<track>.<task>.<letter>   (P5.R.n = owner ruling n of 2026-10-23)
+#   claim     the falsifiable sentence
+#   oracle    invariant | conformance | scenario | probe | human
+#   bound_to  ["<test file> :: <test title without its [id] tags>", ...]
+#             The test's title carries "[<id>] " in the source; `pnpm claims`
+#             checks it. [] = UNBOUND (red) — no existing test proves it yet.
+#   note      optional: gaps, weak pins, why unbound
+#
+# Syntax: a small TOML subset (see scripts/claims-check.mjs): [[claim]] tables,
+# basic "strings" (escape only \" and \\) and arrays of strings.
+
+[registry]
+name = "Alembic Phase 5"
+round = "r1"
+baseline = "ff39af5"
+
+# ─── Track 0 — security and hygiene ───────────────────────────────────────
+
+[[claim]]
+id = "P5.0.1.a"
+claim = "No server-side Markdown render (renderMarkdown, renderDocument, renderPlainDocument, buildMdHtml, buildSlidesHtml, buildSite) ever contains the bytes of a local file named by an absolute, ../ or /etc/hosts {{md …}} include."
+oracle = "invariant"
+bound_to = [
+  "packages/renderer/src/markdown.adversarial.test.ts :: the probe is real: the target file exists and the relative path climbs out with ../",
+  "packages/renderer/src/markdown.adversarial.test.ts :: renderMarkdown resolves no absolute or ../ file include",
+  "packages/renderer/src/markdown.adversarial.test.ts :: renderDocument / renderPlainDocument resolve none",
+  "packages/renderer/src/markdown.adversarial.test.ts :: buildMdHtml / buildSlidesHtml / buildSite resolve none",
+  "packages/renderer/src/markdown.adversarial.test.ts :: does not read /etc/hosts either",
+]
+
+[[claim]]
+id = "P5.0.1.b"
+claim = "A worker-generated file of every kind (kit 1.x carriers) never contains the bytes of a local file named by a file include."
+oracle = "invariant"
+bound_to = [
+  "packages/generators/src/no-file-includes.adversarial.test.ts :: the probe is real: the file exists and the relative path climbs with ../",
+  "packages/generators/src/no-file-includes.adversarial.test.ts :: the shared kit-1.x md renders file includes as nothing",
+  "packages/generators/src/no-file-includes.adversarial.test.ts :: ${kind}: the generated file never contains the file's content",
+  "packages/generators/src/no-file-includes.adversarial.test.ts :: does not read /etc/hosts either",
+]
+
+[[claim]]
+id = "P5.0.1.c"
+claim = "The theme CSS the renderer inlines is byte-equal to the installed orz-markdown's themes/*.css (D-45: no hand-vendored drift)."
+oracle = "conformance"
+bound_to = [
+  "packages/renderer/src/theme-css.test.ts :: were generated from the installed orz-markdown version",
+]
+
+[[claim]]
+id = "P5.0.2.a"
+claim = "A trial package's public-space file resolves for anyone but its owner (anonymous or signed-in stranger, with or without the service client) to the same not-found as a missing doc, and for its owner only as owner-only."
+oracle = "invariant"
+bound_to = [
+  "apps/web/src/lib/permalink-access.adversarial.test.ts :: an anonymous reader gets 404 for a trial package's PUBLIC-space file",
+  "apps/web/src/lib/permalink-access.adversarial.test.ts :: a signed-in stranger gets 404 for it too (same answer as a missing doc)",
+  "apps/web/src/lib/permalink-access.adversarial.test.ts :: the owner can open their own trial file, owner-only (no shared cache, no CORS)",
+  "apps/web/src/lib/permalink-access.adversarial.test.ts :: works without the service client (owner via session; stranger refused)",
+]
+
+[[claim]]
+id = "P5.0.2.b"
+claim = "A trial package's /d/{docId} 404 is byte-identical (status, headers, body) to a missing doc's, for anonymous visitors and strangers, with or without If-None-Match."
+oracle = "invariant"
+bound_to = []
+note = "The byte-identity test covers only a private-repo file (doc-pubpriv); trial is pinned at the access-status level (P5.0.2.a) and for 404/no-store/no-ETag/no-CORS, not byte-for-byte."
+
+[[claim]]
+id = "P5.0.2.c"
+claim = "A private-repo file is owner-only whether its package is published or not, and as an include it never resolves, not even for its owner."
+oracle = "invariant"
+bound_to = [
+  "apps/web/src/lib/permalink-access.adversarial.test.ts :: private-repo files are owner-only, published or not",
+  "apps/web/src/lib/permalink-access.adversarial.test.ts :: as an INCLUDE, a private file never resolves — not even for its owner",
+]
+
+[[claim]]
+id = "P5.0.2.d"
+claim = "A private file's /d 404 is byte-identical to a missing file's (no existence oracle)."
+oracle = "invariant"
+bound_to = [
+  "apps/web/src/lib/permalink-response.adversarial.test.ts :: a private file's 404 is byte-identical to a missing file's (no existence oracle)",
+]
+
+[[claim]]
+id = "P5.0.2.e"
+claim = "A tombstoned doc answers 410 for everyone, a malformed docId never reaches the database, and a doc whose package row is unreadable is not served."
+oracle = "invariant"
+bound_to = [
+  "apps/web/src/lib/permalink-access.adversarial.test.ts :: a tombstone answers 'removed'; malformed ids never reach the database",
+  "apps/web/src/lib/permalink-access.adversarial.test.ts :: a doc whose package row is unreadable is not served",
+  "apps/web/src/lib/permalink-response.adversarial.test.ts :: tombstones answer 410 for everyone (unchanged by A.6)",
+]
+
+[[claim]]
+id = "P5.0.2.f"
+claim = "adaptElementAction refuses a trial package's file to every educator but its owner."
+oracle = "scenario"
+bound_to = []
+note = "Server action; no test exists."
+
+[[claim]]
+id = "P5.0.3.a"
+claim = "Discover's element scope never lists a file of a trial or archived package, a private-repo file, a private- or current-space file, an unshared file or a tombstoned file — even when the projection row is stale."
+oracle = "invariant"
+bound_to = [
+  "apps/web/src/lib/discovery-projection.sql.test.ts :: a shared file of a trial package",
+  "apps/web/src/lib/discovery-projection.sql.test.ts :: archiving removes the course and its elements; restoring brings them back",
+  "apps/web/src/lib/discovery-projection.sql.test.ts :: unsharing, deleting (tombstone) or moving into `current` removes it",
+  "apps/web/src/lib/discovery-projection.sql.test.ts :: the table itself refuses a private or current row",
+  "apps/web/src/lib/discovery-search.sql.test.ts :: element %s behind the projector's back",
+]
+
+[[claim]]
+id = "P5.0.4.a"
+claim = "SteeringNote's \"302 to Pages\" and \".md.html is the source of record\" passages carry dated superseded notes (lean .md permanent; /d served by Alembic)."
+oracle = "human"
+bound_to = []
+
+[[claim]]
+id = "P5.0.4.b"
+claim = "No Portkey reference remains in Status.md's operator list, Deployment.md, .env.example, data-handling-review.md or ai-architecture.md outside historical log entries."
+oracle = "conformance"
+bound_to = []
+note = "grep-checkable; no test or script pins it."
+
+[[claim]]
+id = "P5.0.4.c"
+claim = "DecisionLog's deferred item E3 is marked resolved by the 2026-08-28 lean-.md ruling."
+oracle = "human"
+bound_to = []
+
+[[claim]]
+id = "P5.0.4.d"
+claim = "Deployment.md describes the worker as needed for the in-file editors (fly deploy, WORKER_URL/WORKER_TOKEN, redeploy on lockfile change) and no longer says it is not needed."
+oracle = "human"
+bound_to = []
+
+[[claim]]
+id = "P5.0.4.e"
+claim = "Positioning docs say \"self-editing\", not \"self-contained\", for orz files (D-33), except historical entries, code identifiers and the skills (Track C.6)."
+oracle = "conformance"
+bound_to = []
+
+[[claim]]
+id = "P5.0.4.f"
+claim = "README lists all eleven workspace packages (D-32) and user-governance.md cites symbols, not stale file:line references."
+oracle = "human"
+bound_to = []
+
+[[claim]]
+id = "P5.0.5.a"
+claim = "The stale comments named in Track 0.5 (hosted-carrier save, validateProject header, committer.ts syncFilesToGitHub) state current behaviour."
+oracle = "human"
+bound_to = []
+
+[[claim]]
+id = "P5.0.5.b"
+claim = "Alembic/CLAUDE.md carries the committed one-line orz-family pointer to ../CLAUDE.md (D-38)."
+oracle = "conformance"
+bound_to = []
+
+# ─── Track A — discovery at scale ─────────────────────────────────────────
+
+[[claim]]
+id = "P5.A.1.a"
+claim = "A listed, published course's discovery row carries its title, description, keywords, chapter titles, topics, discipline, level, licence, a11y status, chapter and element counts, updated_at and lineage, derived from the manifest and registry."
+oracle = "scenario"
+bound_to = [
+  "apps/web/src/lib/discovery-projection.sql.test.ts :: carries the listing fields",
+  "apps/web/src/lib/discovery-projection.sql.test.ts :: a package without chapters counts as one chapter; discipline/level may be absent",
+]
+
+[[claim]]
+id = "P5.A.1.b"
+claim = "A course leaves (or never enters) the course projection in the same transaction when it is unlisted (by its owner or an operator takedown), archived, re-licensed all-rights-reserved, deleted, or was never listed."
+oracle = "invariant"
+bound_to = [
+  "apps/web/src/lib/discovery-projection.sql.test.ts :: a published package nobody listed",
+  "apps/web/src/lib/discovery-projection.sql.test.ts :: unlisting (owner, or an operator deleting the row) removes it at once",
+  "apps/web/src/lib/discovery-projection.sql.test.ts :: archiving removes the course and its elements; restoring brings them back",
+  "apps/web/src/lib/discovery-projection.sql.test.ts :: a licence changed to all-rights-reserved after listing drops the course",
+  "apps/web/src/lib/discovery-projection.sql.test.ts :: deleting a package removes everything",
+]
+
+[[claim]]
+id = "P5.A.1.c"
+claim = "A shared public file of a published, active package is projected on per-file consent alone, without its course being listed."
+oracle = "scenario"
+bound_to = [
+  "apps/web/src/lib/discovery-projection.sql.test.ts :: a shared public file of a published, active package is projected (course listing not needed)",
+]
+
+[[claim]]
+id = "P5.A.1.d"
+claim = "The public read policy serves only rows that are listable now: a stale projection row (projector bypassed) is invisible to anon and authenticated readers."
+oracle = "invariant"
+bound_to = [
+  "apps/web/src/lib/discovery-projection.sql.test.ts :: a stale row (projector bypassed) is still invisible to the public",
+  "apps/web/src/lib/discovery-projection.sql.test.ts :: anon reads a listed course and a shared element",
+]
+
+[[claim]]
+id = "P5.A.1.e"
+claim = "Neither anon nor authenticated can write the discovery tables or run the projector, and the documents registry stays owner-only."
+oracle = "invariant"
+bound_to = [
+  "apps/web/src/lib/discovery-projection.sql.test.ts :: the documents registry stays owner-only",
+  "apps/web/src/lib/discovery-projection.sql.test.ts :: %s cannot write the projection or run the projector",
+]
+
+[[claim]]
+id = "P5.A.1.f"
+claim = "The projection is fresh after every change it depends on: a manifest write refreshes it and bumps updated_at (a no-op does not), public saves bump updated_at (private ones do not), concept-map saves refresh topics, forks and element copies update the source's adaptation count, and publishing a listed trial package lists it."
+oracle = "invariant"
+bound_to = [
+  "apps/web/src/lib/discovery-projection.sql.test.ts :: a metadata edit (manifest write) refreshes the listing and bumps updated_at; a no-op does not",
+  "apps/web/src/lib/discovery-projection.sql.test.ts :: saving the course's public files counts as an update; private files do not",
+  "apps/web/src/lib/discovery-projection.sql.test.ts :: concept-map saves refresh the topics",
+  "apps/web/src/lib/discovery-projection.sql.test.ts :: share counts and adaptation counts follow forks and element copies",
+  "apps/web/src/lib/discovery-projection.sql.test.ts :: listing after publication: a trial package that is published and listed appears",
+]
+
+[[claim]]
+id = "P5.A.1.g"
+claim = "An educator's own RLS-scoped session (list, share, archive) drives the projection, and another educator's session can neither list nor share someone else's course."
+oracle = "scenario"
+bound_to = [
+  "apps/web/src/lib/discovery-projection.sql.test.ts :: listing, sharing and archiving through the owner's own session refresh the index",
+  "apps/web/src/lib/discovery-projection.sql.test.ts :: another educator's session can neither list nor share someone else's course",
+]
+
+[[claim]]
+id = "P5.A.1.h"
+claim = "A failing projector never fails the educator's write (best-effort: a WARNING, not an error)."
+oracle = "invariant"
+bound_to = [
+  "apps/web/src/lib/discovery-projection.sql.test.ts :: a failing projector never fails the educator's write",
+]
+
+[[claim]]
+id = "P5.A.1.i"
+claim = "discovery_rebuild() from empty tables reproduces every derived column of the projection."
+oracle = "invariant"
+bound_to = [
+  "apps/web/src/lib/discovery-projection.sql.test.ts :: a rebuild from empty reproduces the projection",
+]
+
+[[claim]]
+id = "P5.A.1.j"
+claim = "The SQL projector and package-contract agree exactly on the manifest fields read, the public courseContext keys, the open licences and the never-listed spaces (private, current)."
+oracle = "conformance"
+bound_to = [
+  "apps/web/src/lib/discovery-agreement.test.ts :: the projector reads exactly the contract's manifest fields",
+  "apps/web/src/lib/discovery-agreement.test.ts :: projects exactly the contract's public courseContext keys",
+  "apps/web/src/lib/discovery-agreement.test.ts :: lists exactly the open licences",
+  "apps/web/src/lib/discovery-agreement.test.ts :: every space exclusion in the SQL is the contract's never-listed set",
+  "packages/package-contract/src/discovery.test.ts :: never lists private or current",
+  "packages/package-contract/src/discovery.test.ts :: open licences are exactly the contract's",
+]
+
+[[claim]]
+id = "P5.A.1.k"
+claim = "The app parses discovery rows fail-closed: a malformed, out-of-bounds, all-rights-reserved, private or current row returned by a regressed query is dropped, never shown."
+oracle = "invariant"
+bound_to = [
+  "packages/package-contract/src/discovery.test.ts :: parses well-formed rows and drops malformed or out-of-bounds ones (fail closed)",
+  "apps/web/src/lib/discovery-search.test.ts :: adversarial: drops rows a regressed query might return (ARR licence, private, current)",
+]
+
+[[claim]]
+id = "P5.A.1.l"
+claim = "Every Discover read (search, facets, course and element pages, feed, sitemaps) goes through the cookie-less anonymous client; no Discover path uses the service role."
+oracle = "probe"
+bound_to = []
+note = "data-handling-review says two service-role reads remain (/d resolver, adapt); no test pins the Discover side."
+
+[[claim]]
+id = "P5.A.2.a"
+claim = "Course search matches stemmed full words, prefixes ('titr' → Titration) and one-letter typos ('chemstry'), weights title > keywords > description, and an empty query lists every listed course."
+oracle = "scenario"
+bound_to = [
+  "apps/web/src/lib/discovery-search.sql.test.ts :: full words, stemmed: 'acid' finds the keyword 'acids' and the description",
+  "apps/web/src/lib/discovery-search.sql.test.ts :: weights: a keyword match outranks a description-only match",
+  "apps/web/src/lib/discovery-search.sql.test.ts :: weights: a title match outranks a description match",
+  "apps/web/src/lib/discovery-search.sql.test.ts :: prefixes: 'titr' finds the chapter 'Titration', 'thermo' finds 'Thermodynamics'",
+  "apps/web/src/lib/discovery-search.sql.test.ts :: typos: 'stoichiometery' and 'chemstry' still match (trigram)",
+  "apps/web/src/lib/discovery-search.sql.test.ts :: no query lists every listed course",
+]
+
+[[claim]]
+id = "P5.A.2.b"
+claim = "Filters compare normalised values, each facet is counted in SQL with the other filters and the text query applied, and the total uses all filters."
+oracle = "scenario"
+bound_to = [
+  "apps/web/src/lib/discovery-search.sql.test.ts :: filters compare normalised values",
+  "apps/web/src/lib/discovery-search.sql.test.ts :: each facet is counted with the OTHER filters applied; total with all",
+  "apps/web/src/lib/discovery-search.sql.test.ts :: facets follow the text query",
+  "apps/web/src/lib/discovery-search.sql.test.ts :: element facets: kind, type, licence, discipline",
+  "apps/web/src/lib/discovery-search.test.ts :: collects counts per facet and the total; ignores junk",
+]
+
+[[claim]]
+id = "P5.A.2.c"
+claim = "Keyset paging walks the whole result exactly once, in score order, with ties broken deterministically by id."
+oracle = "invariant"
+bound_to = [
+  "apps/web/src/lib/discovery-search.sql.test.ts :: pages of 2 walk the whole result exactly once, in order",
+  "apps/web/src/lib/discovery-search.sql.test.ts :: ties on score are broken by id (deterministic)",
+]
+
+[[claim]]
+id = "P5.A.2.d"
+claim = "A search page returns at most 51 rows whatever limit is asked, the app's page size is clamped to 1…50 (+1 row to detect a next page), and every facet list is capped at 50 values."
+oracle = "invariant"
+bound_to = [
+  "apps/web/src/lib/discovery-search.sql.test.ts :: a page is never larger than 51 rows, whatever is asked",
+  "apps/web/src/lib/discovery-search.sql.test.ts :: %s: keyset predicate, deterministic order, clamped limit",
+  "apps/web/src/lib/discovery-search.sql.test.ts :: %s: every facet list is capped",
+  "apps/web/src/lib/discovery-search.test.ts :: page size is clamped to 1…50",
+  "apps/web/src/lib/discovery-search.test.ts :: first page: no keyset, one extra row to detect a next page",
+]
+
+[[claim]]
+id = "P5.A.2.e"
+claim = "No search query uses OFFSET: the migration contains none and later pages pass only the keyset."
+oracle = "conformance"
+bound_to = [
+  "apps/web/src/lib/discovery-search.sql.test.ts :: no OFFSET anywhere in the migration",
+  "apps/web/src/lib/discovery-search.test.ts :: later pages pass the keyset, never an offset",
+]
+
+[[claim]]
+id = "P5.A.2.f"
+claim = "A stale projection row is never served by search or counted by facets: a course archived, sent back to trial, unlisted or re-licensed ARR, and an element unshared, tombstoned, moved to current or to the private repo, behind the projector's back."
+oracle = "invariant"
+bound_to = [
+  "apps/web/src/lib/discovery-search.sql.test.ts :: course %s behind the projector's back",
+  "apps/web/src/lib/discovery-search.sql.test.ts :: element %s behind the projector's back",
+]
+
+[[claim]]
+id = "P5.A.2.g"
+claim = "anon may call only the four public search/facet functions; the search helpers stay internal."
+oracle = "invariant"
+bound_to = [
+  "apps/web/src/lib/discovery-search.sql.test.ts :: anon may search and count; the helpers stay internal",
+]
+
+[[claim]]
+id = "P5.A.2.h"
+claim = "Text search on both discovery tables is GIN-indexed (tsvector and trigram)."
+oracle = "conformance"
+bound_to = [
+  "apps/web/src/lib/discovery-search.sql.test.ts :: text search is index-backed (GIN on the tsvector and the trigram text)",
+]
+
+[[claim]]
+id = "P5.A.2.i"
+claim = "The keyset cursor round-trips, is scope-bound, pins the first page's hour (later pages keep it, not the clock), and any tampered, malformed or oversized cursor falls back to page one, never an error."
+oracle = "invariant"
+bound_to = [
+  "apps/web/src/lib/discovery-search.test.ts :: round-trips",
+  "apps/web/src/lib/discovery-search.test.ts :: ignores %s (first page, not an error)",
+  "apps/web/src/lib/discovery-search.test.ts :: is scope-bound",
+  "apps/web/src/lib/discovery-search.test.ts :: pins the first page's hour",
+  "apps/web/src/lib/discovery-search.test.ts :: a later page keeps the cursor's hour, not the clock's",
+]
+
+[[claim]]
+id = "P5.A.2.j"
+claim = "The URL query is cleaned and capped: text length capped, only the scope's own filters kept (capped), a11y outside its closed set dropped."
+oracle = "invariant"
+bound_to = [
+  "apps/web/src/lib/discovery-search.test.ts :: cleans and caps the text query",
+  "apps/web/src/lib/discovery-search.test.ts :: keeps only the scope's own filters, capped",
+  "apps/web/src/lib/discovery-search.test.ts :: drops an a11y value outside the closed set",
+]
+
+[[claim]]
+id = "P5.A.2.k"
+claim = "A search the database cannot run is reported as unavailable with nothing listed."
+oracle = "scenario"
+bound_to = [
+  "apps/web/src/lib/discovery-search.test.ts :: a database error is reported as unavailable, with nothing listed",
+]
+
+[[claim]]
+id = "P5.A.2.l"
+claim = "Element search matches description, tags and course title, filters by kind, type and course, and returns the file's live path after a rename."
+oracle = "scenario"
+bound_to = [
+  "apps/web/src/lib/discovery-search.sql.test.ts :: matches description, tags and the course title; filters by kind, type and course",
+  "apps/web/src/lib/discovery-search.sql.test.ts :: returns the live path after a rename",
+]
+
+[[claim]]
+id = "P5.A.3.a"
+claim = "Quality is a weighted sum whose weights total 1, so quality ∈ [0, 1]."
+oracle = "invariant"
+bound_to = [
+  "packages/package-contract/src/discovery-ranking.test.ts :: the weights sum to 1, so quality is 0 … 1",
+]
+
+[[claim]]
+id = "P5.A.3.b"
+claim = "Relevance comes first: quality multiplies relevance by 0.75…1.25 (at most 5/3 between any two equal matches), so a title match beats a description-only match of much higher quality."
+oracle = "invariant"
+bound_to = [
+  "packages/package-contract/src/discovery-ranking.test.ts :: relevance first: quality can only reorder matches within a factor of 5/3",
+  "apps/web/src/lib/discovery-ranking.sql.test.ts :: relevance first: a title match beats a description-only match of much higher quality",
+]
+
+[[claim]]
+id = "P5.A.3.c"
+claim = "Quality gates prominence, never visibility: every match keeps a positive score and a bare, low-quality course is still listed."
+oracle = "invariant"
+bound_to = [
+  "packages/package-contract/src/discovery-ranking.test.ts :: prominence, not censorship: any match keeps a positive score, whatever its quality",
+  "apps/web/src/lib/discovery-ranking.sql.test.ts :: browsing: an accessible, complete, recently updated course comes first; a bare one is still listed",
+]
+
+[[claim]]
+id = "P5.A.3.d"
+claim = "Each quality signal reorders equal matches the stated way: accessibility/description, open licence, recency (halving in ~4 months, never negative) and adaptations (log, saturating)."
+oracle = "scenario"
+bound_to = [
+  "packages/package-contract/src/discovery-ranking.test.ts :: an open licence raises quality (elements may carry their own licence)",
+  "packages/package-contract/src/discovery-ranking.test.ts :: recency halves in about four months and never goes negative or explodes",
+  "packages/package-contract/src/discovery-ranking.test.ts :: adaptations saturate",
+  "apps/web/src/lib/discovery-ranking.sql.test.ts :: all else equal, the more recently updated ranks higher",
+  "apps/web/src/lib/discovery-ranking.sql.test.ts :: all else equal, a course others adapted ranks higher",
+  "apps/web/src/lib/discovery-ranking.sql.test.ts :: elements: a described element ranks above an undescribed one with the same match",
+]
+
+[[claim]]
+id = "P5.A.3.e"
+claim = "SQL discovery_quality/discovery_score equal package-contract qualityScore/rankScore on every one of 1,152 input combinations."
+oracle = "conformance"
+bound_to = [
+  "apps/web/src/lib/discovery-agreement.test.ts :: ranking: SQL discovery_quality / discovery_score equal the contract's qualityScore / rankScore",
+]
+
+[[claim]]
+id = "P5.A.4.a"
+claim = "/p/{packageId} and /portal/element/{docId} answer a plain 404 for unlisted, private, trial and archived content, never confirming it exists."
+oracle = "probe"
+bound_to = []
+note = "Pages are untested; only their helpers are."
+
+[[claim]]
+id = "P5.A.4.b"
+claim = "Adapt on /p/{packageId} preselects the course, and adaptFromPortalAction refuses unless the source is listed now (not at listing time), its licence allows it, and the target chapter is the educator's own."
+oracle = "scenario"
+bound_to = []
+
+[[claim]]
+id = "P5.A.4.c"
+claim = "A course is cited by author, year, title, stable course-page URL and licence; an element names its course and degrades gracefully with a blank author or licence."
+oracle = "conformance"
+bound_to = [
+  "packages/package-ops/src/citation.test.ts :: cites a course by author, year, title, stable URL and licence",
+  "packages/package-ops/src/citation.test.ts :: an element names its course; a blank author or licence degrades gracefully",
+]
+
+[[claim]]
+id = "P5.A.4.d"
+claim = "Discover labels and publish messages use educator words and never say repository, branch, commit or GitHub."
+oracle = "conformance"
+bound_to = [
+  "apps/web/src/lib/discovery-labels.test.ts :: names spaces, kinds and licences",
+  "apps/web/src/lib/discovery-labels.test.ts :: never says repository, branch, commit or GitHub",
+]
+
+[[claim]]
+id = "P5.A.4.e"
+claim = "All Discover state lives in the URL: links keep scope, text and filters, a change restarts at page one, and user text is encoded safely."
+oracle = "invariant"
+bound_to = [
+  "apps/web/src/lib/discovery-search.test.ts :: keeps scope, text and filters; a change starts at page one",
+  "apps/web/src/lib/discovery-search.test.ts :: encodes user text safely",
+]
+
+[[claim]]
+id = "P5.A.4.f"
+claim = "The course page's outline (chaptersOfManifest) agrees with listChapters."
+oracle = "conformance"
+bound_to = [
+  "packages/package-ops/src/chapters.test.ts :: chaptersOfManifest (pure) agrees with listChapters",
+]
+
+[[claim]]
+id = "P5.A.6.a"
+claim = "Anonymous Discover reads are cached ≤ 120 s under the 'discovery' tag, and every educator action that changes a listing (list/unlist, archive/restore, rename, course details, concept map, share/asset metadata, a11y check) calls updateTag('discovery'); a failed search is not cached."
+oracle = "probe"
+bound_to = []
+
+[[claim]]
+id = "P5.A.6.b"
+claim = "A public live /d answer carries ETag W/\"{source_hash}\", Cache-Control 'public, max-age=60, s-maxage=300, stale-while-revalidate=86400' and CORS; one pinned to the current hash is 'immutable'."
+oracle = "conformance"
+bound_to = [
+  "apps/web/src/lib/permalink-response.adversarial.test.ts :: live: ETag = hash, CDN cache with stale-while-revalidate, CORS",
+  "apps/web/src/lib/permalink-response.adversarial.test.ts :: pinned to the current hash: immutable",
+]
+
+[[claim]]
+id = "P5.A.6.c"
+claim = "A matching If-None-Match on a public /d answer gets 304 with zero byte reads; a stale one gets the full new version."
+oracle = "invariant"
+bound_to = [
+  "apps/web/src/lib/permalink-response.adversarial.test.ts :: If-None-Match → 304 without reading the bytes at all",
+  "apps/web/src/lib/permalink-response.adversarial.test.ts :: a stale If-None-Match gets the full new version",
+  "apps/web/src/lib/permalink-response.adversarial.test.ts :: weak comparison over a list",
+]
+
+[[claim]]
+id = "P5.A.6.d"
+claim = "GitHub is read once per (docId, source_hash), not per view: repeat views, a cold instance with the shared layer, and concurrent misses cost ≤ 1 origin read."
+oracle = "invariant"
+bound_to = [
+  "apps/web/src/lib/permalink-response.adversarial.test.ts :: GitHub is read once per version, not once per view",
+  "apps/web/src/lib/doc-bytes-cache.test.ts :: reads the origin once per (docId, hash), then serves from memory",
+  "apps/web/src/lib/doc-bytes-cache.test.ts :: a cold instance is served by the shared layer without the origin",
+  "apps/web/src/lib/doc-bytes-cache.test.ts :: concurrent misses share one origin read",
+]
+
+[[claim]]
+id = "P5.A.6.e"
+claim = "Only bytes that hash to the registry's source_hash (text, or either binary registration form) are cached or labelled; otherwise they are served uncached, without ETag, never immutable, and a new version never gets the old bytes."
+oracle = "invariant"
+bound_to = [
+  "apps/web/src/lib/permalink-response.adversarial.test.ts :: repo ahead of the registry: served uncached, no ETag, never immutable",
+  "apps/web/src/lib/doc-bytes-cache.test.ts :: bytes that do not hash to the key are served but NOT cached, and flagged",
+  "apps/web/src/lib/doc-bytes-cache.test.ts :: a new version is a new key — the old bytes are never served for it",
+  "apps/web/src/lib/doc-bytes-cache.test.ts :: text: matches the registration hash of the UTF-8 content",
+  "apps/web/src/lib/doc-bytes-cache.test.ts :: binary: matches either registration form (GitHub UTF-8 read, trial base64)",
+]
+
+[[claim]]
+id = "P5.A.6.f"
+claim = "An older pin is not served (interim page) and its answer is no-store."
+oracle = "invariant"
+bound_to = [
+  "apps/web/src/lib/permalink-response.adversarial.test.ts :: an older pin is not served (interim page), and that answer is not stored",
+]
+
+[[claim]]
+id = "P5.A.6.g"
+claim = "Private and trial files are never publicly cacheable: anonymous and strangers get 404 no-store with no ETag or CORS (with or without If-None-Match or a pin, and no byte read), and the owner gets 'private, no-store' with no ETag, no 304, no CORS and no server cache."
+oracle = "invariant"
+bound_to = [
+  "apps/web/src/lib/permalink-response.adversarial.test.ts :: anonymous and strangers: 404, no-store, no ETag — with or without If-None-Match",
+  "apps/web/src/lib/permalink-response.adversarial.test.ts :: the owner gets private, no-store — no ETag, no 304, no CORS, nothing cached",
+]
+
+[[claim]]
+id = "P5.A.6.h"
+claim = "A public file that turns private, or whose package goes back to trial, stops being served publicly by the origin at once, even if its bytes are cached."
+oracle = "invariant"
+bound_to = [
+  "apps/web/src/lib/permalink-response.adversarial.test.ts :: a file cached while public is not served once it turns private",
+  "apps/web/src/lib/permalink-response.adversarial.test.ts :: a package taken back to trial stops being cacheable at once",
+]
+
+[[claim]]
+id = "P5.A.6.i"
+claim = "The server bytes cache is bounded by total bytes (LRU, ≤ 64 MB), files over the shared limit (1 MB) stay in process only, not-found is never cached, and a broken shared layer degrades to a direct read."
+oracle = "invariant"
+bound_to = [
+  "apps/web/src/lib/doc-bytes-cache.test.ts :: memory is bounded by total bytes (least recently used goes first)",
+  "apps/web/src/lib/doc-bytes-cache.test.ts :: files over the shared limit stay in process only",
+  "apps/web/src/lib/doc-bytes-cache.test.ts :: not found is not cached",
+  "apps/web/src/lib/doc-bytes-cache.test.ts :: a broken shared layer degrades to a direct read",
+]
+note = "Tests bound behaviour with small limits; the 64 MB / 1 MB constants themselves are not asserted."
+
+[[claim]]
+id = "P5.A.6.j"
+claim = "The /d rate limit answers before any lookup or read, with a 429 that is no-store and carries Retry-After."
+oracle = "invariant"
+bound_to = [
+  "apps/web/src/lib/permalink-response.adversarial.test.ts :: rate limit answers first, before any lookup, and is never cached",
+  "apps/web/src/lib/rate-limit.test.ts :: a 429 is never cached and says when to retry",
+]
+
+[[claim]]
+id = "P5.A.6.k"
+claim = "Per client address, the 6th report within 10 minutes is refused (Retry-After ≤ 600 s) and the 21st within a day is refused, without affecting other addresses."
+oracle = "invariant"
+bound_to = [
+  "apps/web/src/lib/rate-limit.test.ts :: report: the 6th report within 10 minutes is refused, with a retry time",
+  "apps/web/src/lib/rate-limit.test.ts :: report: the daily cap holds across 10-minute windows",
+]
+
+[[claim]]
+id = "P5.A.6.l"
+claim = "/d allows one address its full per-minute budget (1200/min), refuses the next request, and reopens the next minute."
+oracle = "invariant"
+bound_to = [
+  "apps/web/src/lib/rate-limit.test.ts :: permalink: generous per-minute budget (a class behind one NAT)",
+]
+note = "The test iterates RATE_LIMITS.permalink's own limit; the number 1200 is not asserted."
+
+[[claim]]
+id = "P5.A.6.m"
+claim = "A search (text, filters or a later page) is limited to 120/min per address; the landing view is not limited."
+oracle = "probe"
+bound_to = []
+
+[[claim]]
+id = "P5.A.6.n"
+claim = "Rate-limit keys are an HMAC of (bucket, address, secret) — no address stored; the in-memory store stays bounded under a flood of keys; the Postgres counter is used when present, memory otherwise."
+oracle = "invariant"
+bound_to = [
+  "apps/web/src/lib/rate-limit.test.ts :: keys are one-way: no address in the key, per bucket, per secret",
+  "apps/web/src/lib/rate-limit.test.ts :: memory store stays bounded under a flood of distinct keys",
+  "apps/web/src/lib/rate-limit.test.ts :: falls back to memory when the Postgres store is unavailable",
+  "apps/web/src/lib/rate-limit.test.ts :: uses the Postgres count when available",
+  "apps/web/src/lib/rate-limit.test.ts :: client IP: first forwarded-for entry, then x-real-ip",
+]
+
+[[claim]]
+id = "P5.A.7.a"
+claim = "Discovery events are de-identified by construction: no query text, filter values, report reason, docId, path or IP in detail — only shapes, lengths, counts and closed-vocabulary tokens."
+oracle = "invariant"
+bound_to = [
+  "apps/web/src/lib/discovery-events.test.ts :: a search keeps the query's shape, never its text or filter values",
+  "apps/web/src/lib/discovery-events.test.ts :: free text cannot ride in through a sort or filter name",
+  "apps/web/src/lib/discovery-events.test.ts :: a report logs the reason's length, not the reason",
+  "apps/web/src/lib/discovery-events.test.ts :: no docId, path or IP ever appears in detail",
+  "apps/web/src/lib/discovery-events.test.ts :: token(): closed vocabulary only",
+]
+
+[[claim]]
+id = "P5.A.7.b"
+claim = "Every discovery event type is in the shared EVENT_TYPES."
+oracle = "conformance"
+bound_to = [
+  "apps/web/src/lib/discovery-events.test.ts :: every discovery type is in the shared EVENT_TYPES",
+]
+
+[[claim]]
+id = "P5.A.7.c"
+claim = "An anonymous visitor's event has no participant (null user, never a pseudonym of null) and is accepted by the logger."
+oracle = "invariant"
+bound_to = [
+  "packages/research-events/src/deidentify.test.ts :: an anonymous row has no participant, never a pseudonym of null",
+  "packages/research-events/src/index.test.ts :: accepts an anonymous discovery event (no participant)",
+]
+
+[[claim]]
+id = "P5.A.7.d"
+claim = "Event logging never breaks a workflow: an invalid event is dropped, not thrown, and sink failures are swallowed."
+oracle = "invariant"
+bound_to = [
+  "packages/research-events/src/index.test.ts :: drops an invalid event instead of throwing into the workflow (A.7)",
+  "packages/research-events/src/index.test.ts :: swallows sink failures (logging never breaks authoring)",
+]
+
+[[claim]]
+id = "P5.A.7.e"
+claim = "/d records no public view event for owner-only, refused or not-found answers."
+oracle = "invariant"
+bound_to = [
+  "apps/web/src/lib/permalink-response.adversarial.test.ts :: anonymous and strangers: 404, no-store, no ETag — with or without If-None-Match",
+  "apps/web/src/lib/permalink-response.adversarial.test.ts :: the owner gets private, no-store — no ETag, no 304, no CORS, nothing cached",
+]
+
+[[claim]]
+id = "P5.A.7.f"
+claim = "element.shared/unshared fire only when the flag really flips, portal.unregistered carries reason owner|archived, and all four adapt actions record adaptation.started without the element's docId."
+oracle = "scenario"
+bound_to = []
+
+[[claim]]
+id = "P5.A.7.g"
+claim = "/feed/courses.jsonld is a schema.org DataFeed of LRMI LearningResource records (@id = course page, dateModified), 100 per page with first/prev/next/last Link headers, no next on the last page, and no owner or private field."
+oracle = "conformance"
+bound_to = [
+  "apps/web/src/lib/listed-courses.test.ts :: reads one page from the discovery index (the one data seam, Track A.1)",
+  "apps/web/src/lib/listed-courses.test.ts :: the feed is a schema.org DataFeed of LRMI LearningResources, paged by Link headers",
+  "apps/web/src/lib/listed-courses.test.ts :: the last page has no next link; an empty index is one empty page",
+  "apps/web/src/lib/listed-courses.test.ts :: carries only public listing fields (no owner, no private data)",
+]
+
+[[claim]]
+id = "P5.A.7.h"
+claim = "Sitemaps escape XML, list course pages, and use only absolute URLs on the configured app origin."
+oracle = "conformance"
+bound_to = [
+  "apps/web/src/lib/listed-courses.test.ts :: sitemaps escape XML and list course pages once they exist (Track A.4)",
+  "apps/web/src/lib/listed-courses.test.ts :: absolute URLs use the configured app origin",
+]
+
+[[claim]]
+id = "P5.A.7.i"
+claim = "robots.txt allows the public pages, /d and the feed, and disallows workspace, admin, api and auth."
+oracle = "conformance"
+bound_to = []
+
+# ─── Track B — GitHub bridge and Pages publishing ─────────────────────────
+
+[[claim]]
+id = "P5.B.1.a"
+claim = "A one-file save on a 333-file package costs ≤ 3 store round-trips (measured 2; was ~668) and reads no file content."
+oracle = "invariant"
+bound_to = [
+  "packages/package-ops/src/document-registry.batch.test.ts :: one-file save: ≤ 3 round-trips and no whole-package read (was ~668)",
+]
+note = "Status/DecisionLog record 2 round-trips; the test pins ≤ 3. Tightening to ≤ 2 is a test change, not done in this step."
+
+[[claim]]
+id = "P5.B.1.b"
+claim = "A rename on a 333-file package costs ≤ 4 round-trips, carries the docId to the new location and retires the old location without tombstoning the identity."
+oracle = "invariant"
+bound_to = [
+  "packages/package-ops/src/document-registry.batch.test.ts :: rename: ≤ 4 round-trips, identity carried, old location retired",
+]
+
+[[claim]]
+id = "P5.B.1.c"
+claim = "A full rebuild of an unchanged 333-file package costs exactly 2 round-trips (one file read, one live-row read) and writes nothing."
+oracle = "invariant"
+bound_to = [
+  "packages/package-ops/src/document-registry.batch.test.ts :: rebuild of an unchanged package writes nothing (one read of files + one of rows)",
+]
+
+[[claim]]
+id = "P5.B.1.d"
+claim = "First registration of 333 files is one bulk write (2 registry round-trips), not one per file."
+oracle = "invariant"
+bound_to = [
+  "packages/package-ops/src/document-registry.batch.test.ts :: first registration of 333 files is one bulk write, not one per file",
+]
+
+[[claim]]
+id = "P5.B.1.e"
+claim = "Tombstones stay forever but do not ride the write path: with 1,500 tombstones a one-file save still costs 2 registry round-trips."
+oracle = "invariant"
+bound_to = [
+  "packages/package-ops/src/document-registry.batch.test.ts :: tombstones do not ride along on the write path",
+]
+
+[[claim]]
+id = "P5.B.1.f"
+claim = "Identity resolves in the order embedded uid → content hash → location → new, and an embedded uid displaces (tombstones) a different identity at its location."
+oracle = "invariant"
+bound_to = [
+  "packages/package-ops/src/document-registry.batch.test.ts :: an embedded uid outranks hash and location, and displaces the location's old identity",
+]
+
+[[claim]]
+id = "P5.B.1.g"
+claim = "Byte-identical files get distinct docIds that stay stable across rebuilds; an uploaded duplicate mints a new identity; an edit that makes a file identical to another keeps its own."
+oracle = "invariant"
+bound_to = [
+  "packages/package-ops/src/document-registry.batch.test.ts :: byte-identical duplicates get distinct docIds and stay stable across rebuilds",
+  "packages/package-ops/src/document-registry.batch.test.ts :: uploading a duplicate of an existing file mints a new identity (incremental)",
+  "packages/package-ops/src/document-registry.batch.test.ts :: an edit that makes a file identical to another keeps its own identity",
+]
+
+[[claim]]
+id = "P5.B.1.h"
+claim = "A deleted file is tombstoned (410), not removed, and its docId is never reused."
+oracle = "invariant"
+bound_to = [
+  "packages/package-ops/src/document-registry.batch.test.ts :: a deleted file is tombstoned (410), not removed, and its docId is never reused",
+]
+
+[[claim]]
+id = "P5.B.1.i"
+claim = "Incremental registration and a full rebuild produce the same registry."
+oracle = "invariant"
+bound_to = [
+  "packages/package-ops/src/document-registry.batch.test.ts :: incremental and full rebuild agree on the resulting registry",
+]
+
+[[claim]]
+id = "P5.B.1.j"
+claim = "Incremental registration keeps owner-set fields, registers private files in the private space as never discoverable, and refuses a public-space path claimed for the private repo (fail-closed)."
+oracle = "invariant"
+bound_to = [
+  "packages/package-ops/src/document-registry.batch.test.ts :: owner-set fields survive an incremental re-registration",
+  "packages/package-ops/src/document-registry.batch.test.ts :: private files register in the private space and never become discoverable",
+  "packages/package-ops/src/document-registry.batch.test.ts :: a public-space path claimed for the private repo is refused (two-repo, fail-closed)",
+]
+
+[[claim]]
+id = "P5.B.1.k"
+claim = "A refused bulk registry write falls back to per-row writes."
+oracle = "scenario"
+bound_to = [
+  "packages/package-ops/src/document-registry.batch.test.ts :: falls back to per-row writes when the bulk write is refused",
+]
+
+[[claim]]
+id = "P5.B.1.l"
+claim = "All eight write call sites (collection ×6, term ×2) register only their change set, and reconcile registers its diff (≤ 50 paths, else one full rebuild)."
+oracle = "conformance"
+bound_to = []
+
+[[claim]]
+id = "P5.B.2.a"
+claim = "Publishing the same site twice makes no second commit and leaves the branch alone; a changed site is one new root commit; a concurrently created Pages branch (422) is overwritten, not an error."
+oracle = "invariant"
+bound_to = [
+  "packages/github-bridge/src/robustness.test.ts :: publishing the same site twice makes no second commit and leaves the branch alone",
+  "packages/github-bridge/src/robustness.test.ts :: a changed site is a new root commit replacing the whole tree",
+  "packages/github-bridge/src/robustness.test.ts :: a branch created concurrently (422 on create) is overwritten, not an error",
+]
+
+[[claim]]
+id = "P5.B.2.b"
+claim = "A write that changes nothing (including only no-op deletions) makes no commit and returns the current head."
+oracle = "invariant"
+bound_to = [
+  "packages/github-bridge/src/robustness.test.ts :: a write that changes nothing returns the current head and commits nothing",
+  "packages/github-bridge/src/commit.test.ts :: makes no commit at all when every requested change is a no-op deletion",
+]
+
+[[claim]]
+id = "P5.B.2.c"
+claim = "GitHub 5xx is retried with growing backoff (3 retries) and, once the budget is spent, the live branch is untouched."
+oracle = "invariant"
+bound_to = [
+  "packages/github-bridge/src/robustness.test.ts :: retries GitHub 5xx with growing backoff and then succeeds",
+  "packages/github-bridge/src/robustness.test.ts :: gives up after the retry budget and leaves the live branch untouched",
+]
+
+[[claim]]
+id = "P5.B.2.d"
+claim = "Rate limits are always retried (even for non-replayable requests), honouring Retry-After and waiting for a primary reset ≤ 60 s away, and failing at once for a farther one."
+oracle = "invariant"
+bound_to = [
+  "packages/github-bridge/src/robustness.test.ts :: honors Retry-After on a secondary rate limit",
+  "packages/github-bridge/src/robustness.test.ts :: retries a rate-limited NON-replayable request (it was not processed)",
+  "packages/github-bridge/src/robustness.test.ts :: waits for a near primary rate-limit reset, gives up on a far one",
+]
+
+[[claim]]
+id = "P5.B.2.e"
+claim = "A non-idempotent request (repo/ref/tag/Pages creation) is never replayed after a 5xx or a dropped connection, a replayable one is, and a plain 403 is never retried."
+oracle = "invariant"
+bound_to = [
+  "packages/github-bridge/src/robustness.test.ts :: never replays a non-idempotent request after a 5xx or a dropped connection",
+  "packages/github-bridge/src/robustness.test.ts :: retries a dropped connection on a replayable request",
+  "packages/github-bridge/src/robustness.test.ts :: a ref update that landed before a 502 is safely replayed",
+  "packages/github-bridge/src/robustness.test.ts :: does not retry a plain 403 (a permission problem, not a rate limit)",
+]
+
+[[claim]]
+id = "P5.B.2.f"
+claim = "The two-repo invariant refuses a private path in a public commit before any network call or retry machinery."
+oracle = "invariant"
+bound_to = [
+  "packages/github-bridge/src/robustness.test.ts :: the two-repo invariant is checked before any retry machinery runs",
+  "packages/github-bridge/src/commit.test.ts :: REFUSES a private path in a public commit before any network call",
+]
+
+[[claim]]
+id = "P5.B.2.g"
+claim = "An installation token is reused until 5 minutes before expiry and minted ahead; a 401 mid-publish refreshes it once and carries on; a static token's 401 surfaces."
+oracle = "invariant"
+bound_to = [
+  "packages/github-bridge/src/robustness.test.ts :: a 401 mid-publish refreshes the installation token once and carries on",
+  "packages/github-bridge/src/robustness.test.ts :: a static token is not 'refreshed': the 401 surfaces",
+  "packages/github-bridge/src/robustness.test.ts :: reuses a token until 5 minutes before expiry, then mints ahead of time",
+]
+
+[[claim]]
+id = "P5.B.2.h"
+claim = "The publish report names every missing piece by chapter with what to do, says plainly when the site is unchanged, and says nothing when all published."
+oracle = "scenario"
+bound_to = [
+  "apps/web/src/lib/publish-report.test.ts :: says nothing when everything published",
+  "apps/web/src/lib/publish-report.test.ts :: names every missing piece, by chapter, with what to do",
+  "apps/web/src/lib/publish-report.test.ts :: an unchanged site is said plainly",
+]
+
+[[claim]]
+id = "P5.B.2.i"
+claim = "Every publish failure message (rate limited, 5xx, permission, other) is in educator words, says the live website hasn't changed, and contains no Git word or GitHub's own text."
+oracle = "conformance"
+bound_to = [
+  "apps/web/src/lib/publish-report.test.ts :: ${name}",
+]
+
+[[claim]]
+id = "P5.B.3.a"
+claim = "livePermalink/pinnedPermalink emit /d/{docId}[@{version}], never a raw GitHub URL, refuse a path (fail-closed), and classify back as live/pinned (an absolute /d/ only on the platform's origin)."
+oracle = "invariant"
+bound_to = [
+  "packages/package-contract/src/assets.test.ts :: builds a live /d/{docId} permalink",
+  "packages/package-contract/src/assets.test.ts :: builds a pinned /d/{docId}@{version} permalink",
+  "packages/package-contract/src/assets.test.ts :: never emits a raw GitHub URL",
+  "packages/package-contract/src/assets.test.ts :: refuses a path where a document id belongs (the old signature), fail-closed",
+  "packages/package-contract/src/assets.test.ts :: built permalinks classify back (round-trip)",
+  "packages/package-contract/src/assets.test.ts :: a root-relative /d/{docId} is live, /d/{docId}@{version} is pinned",
+  "packages/package-contract/src/assets.test.ts :: an absolute /d/ link counts only on the platform's own origin",
+]
+
+[[claim]]
+id = "P5.B.3.b"
+claim = "A whole-package upload commits linked documents in rounds so each links to the other's permalink; a cycle or broken link is reported and never committed; running out of time loses nothing."
+oracle = "scenario"
+bound_to = [
+  "apps/web/src/lib/populate-rounds.test.ts :: documents linking only to assets go in one round, with no extra registration",
+  "apps/web/src/lib/populate-rounds.test.ts :: a document linking to another document of the same upload waits one round",
+  "apps/web/src/lib/populate-rounds.test.ts :: chains resolve over as many rounds as they need",
+  "apps/web/src/lib/populate-rounds.test.ts :: a broken link or a cycle is reported, never committed, and the loop ends",
+  "apps/web/src/lib/populate-rounds.test.ts :: out of time: nothing of the unfinished round is lost, all of it is handed on",
+  "apps/web/src/lib/populate-rounds.test.ts :: a commit that runs out of time reports its remainder plus the held documents",
+]
+
+[[claim]]
+id = "P5.B.3.c"
+claim = "A public-repo reconcile can neither delete, overwrite, expose nor register anything private."
+oracle = "invariant"
+bound_to = [
+  "packages/package-ops/src/reconcile.test.ts :: a foreign REMOVAL of a private-looking path deletes nothing private",
+  "packages/package-ops/src/reconcile.test.ts :: absorbed files land in the PUBLIC partition only, never overwriting a private file",
+  "packages/package-ops/src/reconcile.test.ts :: a quarantined leak is not readable afterwards from either partition",
+  "packages/package-ops/src/reconcile.test.ts :: registering an absorbed diff (the web door) touches no private record",
+]
+
+[[claim]]
+id = "P5.B.3.d"
+claim = "The whole-package upload never commits a raw.githubusercontent.com URL into an educator's document."
+oracle = "probe"
+bound_to = []
+
+# ─── Hardening ────────────────────────────────────────────────────────────
+
+[[claim]]
+id = "P5.H.1.a"
+claim = "The research export visits every row exactly once in (occurred_at, id) order in pages ≤ the batch size; a short page does not end the walk, a non-advancing or oversized page is refused."
+oracle = "invariant"
+bound_to = [
+  "apps/web/src/lib/research-export.test.ts :: visits every row exactly once in (occurred_at, id) order, in bounded pages",
+  "apps/web/src/lib/research-export.test.ts :: does not stop at a short page (a server row cap below the batch size)",
+  "apps/web/src/lib/research-export.test.ts :: refuses a store that does not advance (no infinite loop)",
+  "apps/web/src/lib/research-export.test.ts :: refuses a page larger than requested and a bad batch size",
+]
+
+[[claim]]
+id = "P5.H.1.b"
+claim = "The paged export is byte-identical to the former one-shot CSV/JSON, however the events are batched, including when empty."
+oracle = "invariant"
+bound_to = [
+  "apps/web/src/lib/research-export.test.ts :: streams exactly what the one-shot export produced (CSV and JSON)",
+  "apps/web/src/lib/research-export.test.ts :: empty store → header-only CSV / empty JSON array",
+  "packages/research-events/src/deidentify.test.ts :: is byte-identical to the one-shot serializers, however the events are batched",
+  "packages/research-events/src/deidentify.test.ts :: an empty export matches too (header only / empty array)",
+]
+
+[[claim]]
+id = "P5.H.1.c"
+claim = "The export never contains a raw user identity or row id; identities become stable pseudonyms."
+oracle = "invariant"
+bound_to = [
+  "apps/web/src/lib/research-export.test.ts :: never leaks raw identities or the row id",
+  "packages/research-events/src/deidentify.test.ts :: replaces raw identities with stable pseudonyms (no user_id leaks)",
+]
+
+[[claim]]
+id = "P5.H.1.d"
+claim = "A failing first page fails before any response is built, a later failure errors the stream (never a silently truncated file), and a cancelled download stops fetching."
+oracle = "invariant"
+bound_to = [
+  "apps/web/src/lib/research-export.test.ts :: a failing first page rejects before any response is built",
+  "apps/web/src/lib/research-export.test.ts :: a failure mid-export errors the stream (no silently truncated file)",
+  "apps/web/src/lib/research-export.test.ts :: reads lazily: a cancelled download stops fetching pages",
+]
+
+[[claim]]
+id = "P5.H.1.e"
+claim = "The export's keyset filter is strict, quotes the time, and rejects values that could break out of the filter syntax."
+oracle = "invariant"
+bound_to = [
+  "apps/web/src/lib/research-export.test.ts :: builds the strict keyset predicate with quoted time",
+  "apps/web/src/lib/research-export.test.ts :: rejects values that could break out of the filter syntax",
+]
+
+[[claim]]
+id = "P5.H.2.a"
+claim = "The app files reports only through file_portal_report and falls back to the session insert only when the function is missing (PGRST202/42883), never on any other error, including a cap refusal."
+oracle = "invariant"
+bound_to = [
+  "apps/web/src/lib/report-submit.test.ts :: files through the capped function, never the direct insert",
+  "apps/web/src/lib/report-submit.test.ts :: a database cap answer is reported as rate_limited, without falling back",
+  "apps/web/src/lib/report-submit.test.ts :: adversarial: any error other than 'function missing' never falls back to the direct insert",
+  "apps/web/src/lib/report-submit.test.ts :: falls back to the session insert when the function does not exist yet",
+  "apps/web/src/lib/report-submit.test.ts :: only matches PostgREST/Postgres 'function not found' codes",
+]
+
+[[claim]]
+id = "P5.H.2.b"
+claim = "The app passes the signed-in reporter and a capped reason, refuses a malformed package id or blank reason before calling anything, and treats an invalid or unexpected answer as an error."
+oracle = "invariant"
+bound_to = [
+  "apps/web/src/lib/report-submit.test.ts :: passes the signed-in reporter and caps the reason",
+  "apps/web/src/lib/report-submit.test.ts :: refuses a malformed package id or blank reason before calling anything",
+  "apps/web/src/lib/report-submit.test.ts :: passes the function's invalid answer through",
+  "apps/web/src/lib/report-submit.test.ts :: an unexpected answer is an error, not success",
+  "apps/web/src/lib/report-submit.test.ts :: without a service client, uses the session insert (and reports its failure)",
+]
+
+[[claim]]
+id = "P5.H.2.c"
+claim = "With migration 0024, anon and authenticated can neither insert into portal_reports nor execute file_portal_report."
+oracle = "probe"
+bound_to = []
+note = "Checked by an out-of-repo PGlite harness and the operator script supabase/tests/0024_verify_report_cap.sql; no in-repo test."
+
+[[claim]]
+id = "P5.H.2.d"
+claim = "file_portal_report caps reports at 10/hour and 30/day per package and 60/hour and 300/day overall, checking the global cap first."
+oracle = "probe"
+bound_to = []
+note = "Same as P5.H.2.c: no in-repo test."
+
+# ─── Owner rulings, 2026-10-23 ────────────────────────────────────────────
+
+[[claim]]
+id = "P5.R.1"
+claim = "Alembic CLAUDE.md says Studio is removed (2026-07-04, replaced by /guide) and names writeThrough/updateManifest as the one validated write path."
+oracle = "human"
+bound_to = []
+
+[[claim]]
+id = "P5.R.2"
+claim = "\"Share this\" is not offered for any file of a trial course, and returns once the course is published."
+oracle = "scenario"
+bound_to = []
+note = "Ruled 2026-10-23; NOT BUILT yet — stays red."
+
+[[claim]]
+id = "P5.R.3"
+claim = "A never-synced repo's first reconcile absorbs no earlier commit: comparing from a null base yields an empty diff without a network call."
+oracle = "invariant"
+bound_to = [
+  "packages/github-bridge/src/compare.test.ts :: returns [] without a network call when base is null",
+]
+note = "That the head is then recorded as the baseline is not tested. reconcile.test's 'never synced (lastSyncedSha null): validates then absorbs' tests package-ops absorbing a diff it is handed — consistent, but its title reads against the ruling."
+
+[[claim]]
+id = "P5.R.4"
+claim = "Discover searches on Search/Enter through a plain GET form that works without JavaScript; there is no client-side instant filter."
+oracle = "human"
+bound_to = []

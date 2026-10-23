@@ -9,7 +9,7 @@ import {
 } from "./discovery-labels";
 
 describe("Discover labels (educator words, no Git words)", () => {
-  it("names spaces, kinds and licences", () => {
+  it("[P5.A.4.d] names spaces, kinds and licences", () => {
     expect(spaceLabel("practice")).toBe("Practice questions");
     expect(spaceLabel("some-new-space")).toBe("Some new space");
     expect(kindLabel("md")).toBe("Text");
@@ -18,7 +18,7 @@ describe("Discover labels (educator words, no Git words)", () => {
     expect(licenseLabelOf("Custom")).toBe("Custom");
   });
 
-  it("never says repository, branch, commit or GitHub", () => {
+  it("[P5.A.4.d] never says repository, branch, commit or GitHub", () => {
     const words = ["study-guide", "slides", "practice", "concepts", "assessment-support", "assets", "metadata", "provenance"]
       .map(spaceLabel)
       .concat(["md", "slides", "paged", "svg", "png", "pdf", "html"].map(kindLabel))

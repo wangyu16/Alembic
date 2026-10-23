@@ -102,7 +102,7 @@ const live = async (r: DocumentRegistryStore) =>
   (await r.listByPackage(PKG)).filter((x) => !x.tombstoned);
 
 describe("cost — round-trips per write on a 333-file package", () => {
-  it("one-file save: ≤ 3 round-trips and no whole-package read (was ~668)", async () => {
+  it("[P5.B.1.a] one-file save: ≤ 3 round-trips and no whole-package read (was ~668)", async () => {
     const { registry, packageStore } = await seeded();
     const path = "study-guide/ch3.md";
     const content = "# Chapter 3\n\nEdited.";
@@ -120,7 +120,7 @@ describe("cost — round-trips per write on a 333-file package", () => {
     console.info(`[B.1] one-file save on 333 files: ${trips} round-trips (registry ${registry.trips}, files ${packageStore.trips})`);
   });
 
-  it("rename: ≤ 4 round-trips, identity carried, old location retired", async () => {
+  it("[P5.B.1.b] rename: ≤ 4 round-trips, identity carried, old location retired", async () => {
     const { registry, packageStore } = await seeded();
     const from = "assets/fig100.svg";
     const to = "assets/renamed/fig100.svg";
@@ -142,7 +142,7 @@ describe("cost — round-trips per write on a 333-file package", () => {
     expect((await registry.inner.getByDocId(PKG, before.docId))?.tombstoned).toBe(false);
   });
 
-  it("rebuild of an unchanged package writes nothing (one read of files + one of rows)", async () => {
+  it("[P5.B.1.c] rebuild of an unchanged package writes nothing (one read of files + one of rows)", async () => {
     const { registry, packageStore } = await seeded();
     await rebuildPackageRegistry(registry, packageStore, PKG);
     expect(registry.trips).toBe(1); // listLiveByPackage; zero writes
@@ -150,7 +150,7 @@ describe("cost — round-trips per write on a 333-file package", () => {
     console.info(`[B.1] steady-state rebuild on 333 files: ${registry.trips + packageStore.trips} round-trips`);
   });
 
-  it("first registration of 333 files is one bulk write, not one per file", async () => {
+  it("[P5.B.1.d] first registration of 333 files is one bulk write, not one per file", async () => {
     const registry = new CountingRegistry();
     const packageStore = new CountingPackageStore();
     await packageStore.createPackage(RECORD, course());
@@ -160,7 +160,7 @@ describe("cost — round-trips per write on a 333-file package", () => {
     console.info(`[B.1] first registration of 333 files: ${registry.trips + packageStore.trips} round-trips`);
   });
 
-  it("tombstones do not ride along on the write path", async () => {
+  it("[P5.B.1.e] tombstones do not ride along on the write path", async () => {
     const { registry, packageStore } = await seeded();
     // Churn: 1500 historical tombstones (beyond one PostgREST page).
     for (let i = 0; i < 1500; i++) {
@@ -180,7 +180,7 @@ describe("cost — round-trips per write on a 333-file package", () => {
 });
 
 describe("semantics — identity ladder and tiebreaker", () => {
-  it("byte-identical duplicates get distinct docIds and stay stable across rebuilds", async () => {
+  it("[P5.B.1.g] byte-identical duplicates get distinct docIds and stay stable across rebuilds", async () => {
     const registry = new MemoryDocumentRegistryStore();
     const packageStore = new MemoryPackageStore();
     await packageStore.createPackage(RECORD, [
@@ -198,7 +198,7 @@ describe("semantics — identity ladder and tiebreaker", () => {
     expect(await live(registry)).toHaveLength(2);
   });
 
-  it("uploading a duplicate of an existing file mints a new identity (incremental)", async () => {
+  it("[P5.B.1.g] uploading a duplicate of an existing file mints a new identity (incremental)", async () => {
     const registry = new MemoryDocumentRegistryStore();
     const packageStore = new MemoryPackageStore();
     await packageStore.createPackage(RECORD, [
@@ -216,7 +216,7 @@ describe("semantics — identity ladder and tiebreaker", () => {
     expect((await registry.getByLocation(PKG, "public", "assets/a.svg"))!.docId).toBe(a.docId);
   });
 
-  it("an edit that makes a file identical to another keeps its own identity", async () => {
+  it("[P5.B.1.g] an edit that makes a file identical to another keeps its own identity", async () => {
     const registry = new MemoryDocumentRegistryStore();
     const packageStore = new MemoryPackageStore();
     await packageStore.createPackage(RECORD, [
@@ -234,7 +234,7 @@ describe("semantics — identity ladder and tiebreaker", () => {
     expect((await registry.getByLocation(PKG, "public", "assets/a.svg"))!.docId).toBe(a.docId);
   });
 
-  it("a deleted file is tombstoned (410), not removed, and its docId is never reused", async () => {
+  it("[P5.B.1.h] a deleted file is tombstoned (410), not removed, and its docId is never reused", async () => {
     const { registry, packageStore } = await seeded();
     const path = "assets/fig200.svg";
     const gone = (await registry.inner.getByLocation(PKG, "public", path))!;
@@ -249,7 +249,7 @@ describe("semantics — identity ladder and tiebreaker", () => {
     expect(fresh.docId).not.toBe(gone.docId);
   });
 
-  it("an embedded uid outranks hash and location, and displaces the location's old identity", async () => {
+  it("[P5.B.1.f] an embedded uid outranks hash and location, and displaces the location's old identity", async () => {
     const withUid = (uid: string, body: string) =>
       `<script type="application/orz-meta+json" id="orz-meta">${JSON.stringify({ uid })}</script>${body}`;
     const registry = new MemoryDocumentRegistryStore();
@@ -269,7 +269,7 @@ describe("semantics — identity ladder and tiebreaker", () => {
     expect(await live(registry)).toHaveLength(1);
   });
 
-  it("owner-set fields survive an incremental re-registration", async () => {
+  it("[P5.B.1.j] owner-set fields survive an incremental re-registration", async () => {
     const { registry, packageStore } = await seeded();
     const path = "assets/fig120.svg";
     const rec = (await registry.inner.getByLocation(PKG, "public", path))!;
@@ -279,7 +279,7 @@ describe("semantics — identity ladder and tiebreaker", () => {
     expect(after).toMatchObject({ docId: rec.docId, discoverable: true, description: "A figure", tags: ["acid"] });
   });
 
-  it("private files register in the private space and never become discoverable", async () => {
+  it("[P5.B.1.j] private files register in the private space and never become discoverable", async () => {
     const { registry, packageStore } = await seeded();
     await registerChangedFiles(registry, packageStore, PKG, [
       { repo: "private", path: "private/notes/answers.md", content: "updated secret" },
@@ -289,7 +289,7 @@ describe("semantics — identity ladder and tiebreaker", () => {
     expect(rec.discoverable).toBe(false);
   });
 
-  it("a public-space path claimed for the private repo is refused (two-repo, fail-closed)", async () => {
+  it("[P5.B.1.j] a public-space path claimed for the private repo is refused (two-repo, fail-closed)", async () => {
     const { registry, packageStore } = await seeded();
     const out = await registerChangedFiles(registry, packageStore, PKG, [
       { repo: "private", path: "study-guide/leak.md", content: "x" },
@@ -301,7 +301,7 @@ describe("semantics — identity ladder and tiebreaker", () => {
     expect(isRegistrableLocation("private", "private/notes/x.md")).toBe(true);
   });
 
-  it("incremental and full rebuild agree on the resulting registry", async () => {
+  it("[P5.B.1.i] incremental and full rebuild agree on the resulting registry", async () => {
     const files = course();
     const a = await seeded(files);
     const b = await seeded(files);
@@ -328,7 +328,7 @@ describe("semantics — identity ladder and tiebreaker", () => {
 });
 
 describe("flush resilience", () => {
-  it("falls back to per-row writes when the bulk write is refused", async () => {
+  it("[P5.B.1.k] falls back to per-row writes when the bulk write is refused", async () => {
     const registry = new MemoryDocumentRegistryStore();
     registry.upsertMany = async () => {
       throw new Error("location index tripped mid-statement");

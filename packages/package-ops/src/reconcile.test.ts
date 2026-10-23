@@ -384,7 +384,7 @@ describe("reconcilePublicRepo — the private repo is out of reach", () => {
   const SECRET = { repo: "private" as const, path: "private-instructor/notes/answers.md", content: "Answer key" };
   const V2_SECRET = { repo: "private" as const, path: "private/notes/key.md", content: "Key v2" };
 
-  it("a foreign REMOVAL of a private-looking path deletes nothing private", async () => {
+  it("[P5.B.3.c] a foreign REMOVAL of a private-looking path deletes nothing private", async () => {
     const store = new MemoryPackageStore();
     await store.putFiles(PKG, [SECRET, V2_SECRET]);
     // Someone deletes same-named paths in the PUBLIC repo (they never belonged
@@ -403,7 +403,7 @@ describe("reconcilePublicRepo — the private repo is out of reach", () => {
     expect(await store.readFile(PKG, "private", V2_SECRET.path)).toBe("Key v2");
   });
 
-  it("absorbed files land in the PUBLIC partition only, never overwriting a private file", async () => {
+  it("[P5.B.3.c] absorbed files land in the PUBLIC partition only, never overwriting a private file", async () => {
     const store = new MemoryPackageStore();
     await store.putFiles(PKG, [SECRET]);
     const reader = new FakeRepoReader(
@@ -418,7 +418,7 @@ describe("reconcilePublicRepo — the private repo is out of reach", () => {
     expect(files.find((f) => f.path === "assets/fig.svg")?.repo).toBe("public");
   });
 
-  it("a quarantined leak is not readable afterwards from either partition", async () => {
+  it("[P5.B.3.c] a quarantined leak is not readable afterwards from either partition", async () => {
     const store = new MemoryPackageStore();
     await store.putFiles(PKG, [SECRET]);
     const reader = new FakeRepoReader(
@@ -432,7 +432,7 @@ describe("reconcilePublicRepo — the private repo is out of reach", () => {
     expect(await store.readFile(PKG, "private", SECRET.path)).toBe("Answer key");
   });
 
-  it("registering an absorbed diff (the web door) touches no private record", async () => {
+  it("[P5.B.3.c] registering an absorbed diff (the web door) touches no private record", async () => {
     const { MemoryDocumentRegistryStore, rebuildPackageRegistry, registerChangedFiles } =
       await import("./document-registry");
     const store = new MemoryPackageStore();

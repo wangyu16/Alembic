@@ -6,11 +6,11 @@ import { emptyOutcome, publishErrorMessage, publishNotes } from "./publish-repor
 const GIT_WORDS = /\b(git|github api|branch|commit|repo|repository|push|merge|sha|http|gh-pages|4\d\d|5\d\d)\b/i;
 
 describe("publishNotes — the partial-failure report", () => {
-  it("says nothing when everything published", () => {
+  it("[P5.B.2.h] says nothing when everything published", () => {
     expect(publishNotes(emptyOutcome())).toBeUndefined();
   });
 
-  it("names every missing piece, by chapter, with what to do", () => {
+  it("[P5.B.2.h] names every missing piece, by chapter, with what to do", () => {
     const text = publishNotes({
       ...emptyOutcome(),
       failedChapters: ["Acids and Bases"],
@@ -30,7 +30,7 @@ describe("publishNotes — the partial-failure report", () => {
     expect(text).not.toMatch(GIT_WORDS);
   });
 
-  it("an unchanged site is said plainly", () => {
+  it("[P5.B.2.h] an unchanged site is said plainly", () => {
     expect(publishNotes({ ...emptyOutcome(), unchanged: true })).toMatch(/already up to date/);
   });
 });
@@ -43,7 +43,7 @@ describe("publishErrorMessage — educator wording, never GitHub's", () => {
     ["anything else", new Error("GitRPC::BadObjectState"), /didn't complete/],
   ];
   for (const [name, err, expected] of cases) {
-    it(name, () => {
+    it(`[P5.B.2.i] ${name}`, () => {
       const msg = publishErrorMessage(err);
       expect(msg).toMatch(expected);
       expect(msg).toMatch(/live website hasn't changed/);

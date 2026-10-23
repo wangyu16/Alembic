@@ -100,7 +100,7 @@ const PRIVATE_OR_TRIAL = ["doc-pubpriv", "doc-trialpub", "doc-trialpriv"];
 const inm = (h: string) => ({ "if-none-match": `W/"${h}"` });
 
 describe("public answers (Track A.6)", () => {
-  it("live: ETag = hash, CDN cache with stale-while-revalidate, CORS", async () => {
+  it("[P5.A.6.b] live: ETag = hash, CDN cache with stale-while-revalidate, CORS", async () => {
     const { get } = harness();
     const r = await get("doc-pubpub", null);
     expect(r.status).toBe(200);
@@ -111,14 +111,14 @@ describe("public answers (Track A.6)", () => {
     expect(await r.text()).toBe(V1);
   });
 
-  it("pinned to the current hash: immutable", async () => {
+  it("[P5.A.6.b] pinned to the current hash: immutable", async () => {
     const { get } = harness();
     const r = await get(`doc-pubpub@${H1}`, null);
     expect(r.headers.get("cache-control")).toBe(CACHE.pinned);
     expect(r.headers.get("etag")).toBe(`W/"${H1}"`);
   });
 
-  it("If-None-Match → 304 without reading the bytes at all", async () => {
+  it("[P5.A.6.c] If-None-Match → 304 without reading the bytes at all", async () => {
     const { get, reads } = harness();
     const r = await get("doc-pubpub", null, inm(H1));
     expect(r.status).toBe(304);
@@ -127,13 +127,13 @@ describe("public answers (Track A.6)", () => {
     expect(reads).toEqual([]);
   });
 
-  it("GitHub is read once per version, not once per view", async () => {
+  it("[P5.A.6.d] GitHub is read once per version, not once per view", async () => {
     const { get, reads } = harness();
     for (let i = 0; i < 5; i++) expect((await get("doc-pubpub", null)).status).toBe(200);
     expect(reads).toEqual(["doc-pubpub"]);
   });
 
-  it("repo ahead of the registry: served uncached, no ETag, never immutable", async () => {
+  it("[P5.A.6.e] repo ahead of the registry: served uncached, no ETag, never immutable", async () => {
     const { get, world, cache } = harness();
     world.bytes["doc-pubpub"] = "# Version two (committed on GitHub, not yet reconciled)";
     for (const param of ["doc-pubpub", `doc-pubpub@${H1}`]) {
@@ -145,7 +145,7 @@ describe("public answers (Track A.6)", () => {
     expect(cache.size).toBe(0);
   });
 
-  it("a stale If-None-Match gets the full new version", async () => {
+  it("[P5.A.6.c] a stale If-None-Match gets the full new version", async () => {
     const { get, world } = harness();
     const v2 = "# v2";
     world.documents[0] = { ...world.documents[0]!, source_hash: computeSourceHash(v2) };
@@ -155,7 +155,7 @@ describe("public answers (Track A.6)", () => {
     expect(await r.text()).toBe(v2);
   });
 
-  it("an older pin is not served (interim page), and that answer is not stored", async () => {
+  it("[P5.A.6.f] an older pin is not served (interim page), and that answer is not stored", async () => {
     const { get } = harness();
     const r = await get("doc-pubpub@deadbeef", null);
     expect(r.status).toBe(404);
@@ -164,7 +164,7 @@ describe("public answers (Track A.6)", () => {
 });
 
 describe("adversarial: private and trial files are never publicly cacheable", () => {
-  it("anonymous and strangers: 404, no-store, no ETag — with or without If-None-Match", async () => {
+  it("[P5.A.6.g] [P5.A.7.e] anonymous and strangers: 404, no-store, no ETag — with or without If-None-Match", async () => {
     const { get, reads, served } = harness();
     for (const id of PRIVATE_OR_TRIAL) {
       for (const viewer of [null, STRANGER]) {
@@ -183,7 +183,7 @@ describe("adversarial: private and trial files are never publicly cacheable", ()
     expect(served).toEqual([]);
   });
 
-  it("a private file's 404 is byte-identical to a missing file's (no existence oracle)", async () => {
+  it("[P5.0.2.d] a private file's 404 is byte-identical to a missing file's (no existence oracle)", async () => {
     const { get } = harness();
     const missing = await get("doc-doesnotexist", null, inm(H1));
     const hidden = await get("doc-pubpriv", null, inm(H1));
@@ -192,7 +192,7 @@ describe("adversarial: private and trial files are never publicly cacheable", ()
     expect(await hidden.text()).toBe(await missing.text());
   });
 
-  it("the owner gets private, no-store — no ETag, no 304, no CORS, nothing cached", async () => {
+  it("[P5.A.6.g] [P5.A.7.e] the owner gets private, no-store — no ETag, no 304, no CORS, nothing cached", async () => {
     const { get, cache, reads, served } = harness();
     for (const id of PRIVATE_OR_TRIAL) {
       for (const param of [id, `${id}@${H1}`]) {
@@ -208,7 +208,7 @@ describe("adversarial: private and trial files are never publicly cacheable", ()
     expect(served).toEqual([]); // no public view events for owner-only reads
   });
 
-  it("a file cached while public is not served once it turns private", async () => {
+  it("[P5.A.6.h] a file cached while public is not served once it turns private", async () => {
     const { get, world } = harness();
     expect((await get("doc-pubpub", null)).status).toBe(200); // now in the bytes cache
     world.documents[0] = { ...world.documents[0]!, repo: "private", path: "private/x.md" };
@@ -217,7 +217,7 @@ describe("adversarial: private and trial files are never publicly cacheable", ()
     expect(r.headers.get("cache-control")).toBe(CACHE.none);
   });
 
-  it("a package taken back to trial stops being cacheable at once", async () => {
+  it("[P5.A.6.h] a package taken back to trial stops being cacheable at once", async () => {
     const { get, world } = harness();
     expect((await get("doc-pubpub", null)).status).toBe(200);
     world.packages[1] = { ...world.packages[1]!, storage: "sandbox" };
@@ -227,12 +227,12 @@ describe("adversarial: private and trial files are never publicly cacheable", ()
     expect(own.headers.get("cache-control")).toBe(CACHE.ownerOnly);
   });
 
-  it("tombstones answer 410 for everyone (unchanged by A.6)", async () => {
+  it("[P5.0.2.e] tombstones answer 410 for everyone (unchanged by A.6)", async () => {
     const { get } = harness();
     expect((await get("doc-gone", null, inm(H1))).status).toBe(410);
   });
 
-  it("rate limit answers first, before any lookup, and is never cached", async () => {
+  it("[P5.A.6.j] rate limit answers first, before any lookup, and is never cached", async () => {
     const { reads } = harness();
     let looked = false;
     const r = await servePermalink("doc-pubpub", new Headers(), {
@@ -249,7 +249,7 @@ describe("adversarial: private and trial files are never publicly cacheable", ()
 });
 
 describe("etagMatches", () => {
-  it("weak comparison over a list", () => {
+  it("[P5.A.6.c] weak comparison over a list", () => {
     expect(etagMatches(`"x", W/"${H1}"`, H1)).toBe(true);
     expect(etagMatches(`"${H1}"`, H1)).toBe(true);
     expect(etagMatches(`W/"other"`, H1)).toBe(false);

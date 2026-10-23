@@ -61,7 +61,7 @@ const element = {
 };
 
 describe("discovery contract", () => {
-  it("never lists private or current", () => {
+  it("[P5.A.1.j] never lists private or current", () => {
     expect([...NEVER_LISTED_SPACES].sort()).toEqual(["current", "private"]);
   });
 
@@ -71,14 +71,14 @@ describe("discovery contract", () => {
     expect(facetValue(null)).toBeNull();
   });
 
-  it("open licences are exactly the contract's", () => {
+  it("[P5.A.1.j] open licences are exactly the contract's", () => {
     for (const l of OPEN_LICENSES) expect(isOpenLicenseId(l)).toBe(true);
     expect(isOpenLicenseId("ALL-RIGHTS-RESERVED")).toBe(false);
     expect(isOpenLicenseId("cc-by-4.0")).toBe(false);
     expect(isOpenLicenseId(null)).toBe(false);
   });
 
-  it("parses well-formed rows and drops malformed or out-of-bounds ones (fail closed)", () => {
+  it("[P5.A.1.k] parses well-formed rows and drops malformed or out-of-bounds ones (fail closed)", () => {
     expect(parseCourseRows([course])).toHaveLength(1);
     expect(parseCourseRows([{ ...course, license: "ALL-RIGHTS-RESERVED" }])).toHaveLength(0);
     expect(parseCourseRows([{ ...course, accessibility_status: "great" }])).toHaveLength(0);

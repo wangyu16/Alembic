@@ -52,7 +52,7 @@ function db(rows: ReturnType<typeof row>[], seen: { table?: string; range?: [num
 }
 
 describe("listed courses for harvest (Track A.7)", () => {
-  it("reads one page from the discovery index (the one data seam, Track A.1)", async () => {
+  it("[P5.A.7.g] reads one page from the discovery index (the one data seam, Track A.1)", async () => {
     const seen: { table?: string; range?: [number, number] } = {};
     const rows = Array.from({ length: 250 }, (_, i) => row(i));
     const page = await listListedCourses(db(rows, seen), { offset: 100, limit: 100 });
@@ -63,7 +63,7 @@ describe("listed courses for harvest (Track A.7)", () => {
     expect(page.items[0]).toMatchObject({ discipline: "chemistry", license: "CC-BY-4.0" });
   });
 
-  it("the feed is a schema.org DataFeed of LRMI LearningResources, paged by Link headers", async () => {
+  it("[P5.A.7.g] the feed is a schema.org DataFeed of LRMI LearningResources, paged by Link headers", async () => {
     const rows = Array.from({ length: 250 }, (_, i) => row(i));
     const result = await listListedCourses(db(rows), { offset: FEED_PAGE_SIZE, limit: FEED_PAGE_SIZE });
     const { body, links } = buildCourseFeed(2, result, ORIGIN);
@@ -86,20 +86,20 @@ describe("listed courses for harvest (Track A.7)", () => {
     expect(links).toContain(`<${ORIGIN}/feed/courses.jsonld?page=3>; rel="last"`);
   });
 
-  it("the last page has no next link; an empty index is one empty page", () => {
+  it("[P5.A.7.g] the last page has no next link; an empty index is one empty page", () => {
     const course = { packageId: "p", title: "T", description: "", keywords: [], discipline: "", license: "CC0-1.0", siteUrl: "https://s/", publicRepoUrl: "", accessibilityStatus: "unknown", registeredAt: "2026-10-01T00:00:00Z" } satisfies ListedCourse;
     expect(buildCourseFeed(1, { items: [course], total: 1 }, ORIGIN).links.some((l) => l.includes("next"))).toBe(false);
     const empty = buildCourseFeed(1, { items: [], total: 0 }, ORIGIN);
     expect(empty.body["dataFeedElement"]).toEqual([]);
   });
 
-  it("carries only public listing fields (no owner, no private data)", async () => {
+  it("[P5.A.7.g] carries only public listing fields (no owner, no private data)", async () => {
     const result = await listListedCourses(db([{ ...row(1), owner_id: "user-secret" } as ReturnType<typeof row>]), { offset: 0, limit: 10 });
     const json = JSON.stringify(buildCourseFeed(1, result, ORIGIN).body);
     expect(json).not.toContain("user-secret");
   });
 
-  it("sitemaps escape XML and list course pages once they exist (Track A.4)", () => {
+  it("[P5.A.7.h] sitemaps escape XML and list course pages once they exist (Track A.4)", () => {
     expect(COURSE_PAGES_LIVE).toBe(true);
     expect(urlset([{ loc: "https://x/a?b=1&c=<2>" }])).toContain("<loc>https://x/a?b=1&amp;c=&lt;2&gt;</loc>");
     const files = sitemapFiles(25_000, ORIGIN);
@@ -108,7 +108,7 @@ describe("listed courses for harvest (Track A.7)", () => {
     else expect(files).toHaveLength(1 + 3);
   });
 
-  it("absolute URLs use the configured app origin", () => {
+  it("[P5.A.7.h] absolute URLs use the configured app origin", () => {
     expect(harvestOrigin("http://localhost:3000/x", { NEXT_PUBLIC_APP_URL: "https://alembic.orz.how/" })).toBe(
       "https://alembic.orz.how",
     );

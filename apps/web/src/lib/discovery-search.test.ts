@@ -29,7 +29,7 @@ describe("parseDiscoveryQuery", () => {
     expect(parseDiscoveryQuery({})).toEqual({ scope: "courses", q: "", filters: {}, cursor: null });
   });
 
-  it("cleans and caps the text query", () => {
+  it("[P5.A.2.j] cleans and caps the text query", () => {
     const q = parseDiscoveryQuery({ q: `  acid\n\tbase\u0000 ${"x".repeat(500)}` });
     expect(q.q.startsWith("acid base ")).toBe(true);
     expect(q.q.length).toBe(200);
@@ -39,14 +39,14 @@ describe("parseDiscoveryQuery", () => {
     expect(parseDiscoveryQuery({ q: ["one", "two"] }).q).toBe("one");
   });
 
-  it("keeps only the scope's own filters, capped", () => {
+  it("[P5.A.2.j] keeps only the scope's own filters, capped", () => {
     const c = parseDiscoveryQuery({ discipline: "Chemistry", kind: "svg", level: "y".repeat(300) });
     expect(c.filters).toEqual({ discipline: "Chemistry", level: "y".repeat(80) });
     const e = parseDiscoveryQuery({ scope: "elements", kind: "svg", type: "assets", level: "x" });
     expect(e.filters).toEqual({ kind: "svg", type: "assets" });
   });
 
-  it("drops an a11y value outside the closed set", () => {
+  it("[P5.A.2.j] drops an a11y value outside the closed set", () => {
     expect(parseDiscoveryQuery({ a11y: "pass" }).filters).toEqual({ a11y: "pass" });
     expect(parseDiscoveryQuery({ a11y: "great" }).filters).toEqual({});
   });
@@ -55,7 +55,7 @@ describe("parseDiscoveryQuery", () => {
 describe("keyset cursor", () => {
   const c = { score: "1.234567", id: "pkg-gen-chem-abc12345", asOf: "2026-10-23T10:00:00.000Z", page: 3 };
 
-  it("round-trips", () => {
+  it("[P5.A.2.i] round-trips", () => {
     expect(decodeCursor(encodeCursor(c), "courses")).toEqual(c);
   });
 
@@ -68,7 +68,7 @@ describe("keyset cursor", () => {
     ["an id with odd characters", encodeCursor({ ...c, id: "pkg-a'b" })],
     ["a bad date", encodeCursor({ ...c, asOf: "yesterday" })],
     ["an oversized cursor", "a".repeat(601)],
-  ])("ignores %s (first page, not an error)", (_l, raw) => {
+  ])("[P5.A.2.i] ignores %s (first page, not an error)", (_l, raw) => {
     expect(decodeCursor(raw, "courses")).toBeNull();
   });
 
@@ -81,11 +81,11 @@ describe("keyset cursor", () => {
     expect(decodeCursor(raw(7), "courses")?.page).toBe(7);
   });
 
-  it("is scope-bound", () => {
+  it("[P5.A.2.i] is scope-bound", () => {
     expect(decodeCursor(encodeCursor({ ...c, id: "doc-xyz" }), "elements")?.id).toBe("doc-xyz");
   });
 
-  it("pins the first page's hour", () => {
+  it("[P5.A.2.i] pins the first page's hour", () => {
     expect(pageAsOf(new Date("2026-10-23T10:42:17.123Z"))).toBe("2026-10-23T10:00:00.000Z");
   });
 });
@@ -93,7 +93,7 @@ describe("keyset cursor", () => {
 describe("RPC arguments", () => {
   const asOf = "2026-10-23T10:00:00.000Z";
 
-  it("first page: no keyset, one extra row to detect a next page", () => {
+  it("[P5.A.2.d] first page: no keyset, one extra row to detect a next page", () => {
     const q = parseDiscoveryQuery({ q: "acids", discipline: "chemistry" }) as Courses;
     const args = courseSearchArgs(q, asOf);
     expect(args).toEqual({
@@ -109,7 +109,7 @@ describe("RPC arguments", () => {
     });
   });
 
-  it("later pages pass the keyset, never an offset", () => {
+  it("[P5.A.2.e] later pages pass the keyset, never an offset", () => {
     const cursor = encodeCursor({ score: "0.5", id: "pkg-b", asOf, page: 2 });
     const q = parseDiscoveryQuery({ after: cursor }) as Courses;
     const args = courseSearchArgs(q, asOf);
@@ -118,7 +118,7 @@ describe("RPC arguments", () => {
     expect(Object.keys(args).some((k) => /offset|page/i.test(k))).toBe(false);
   });
 
-  it("page size is clamped to 1…50", () => {
+  it("[P5.A.2.d] page size is clamped to 1…50", () => {
     const q = parseDiscoveryQuery({}) as Courses;
     expect(courseSearchArgs(q, asOf, 10_000).p_limit).toBe(MAX_PAGE_SIZE + 1);
     expect(courseSearchArgs(q, asOf, -3).p_limit).toBe(2);
@@ -129,7 +129,7 @@ describe("RPC arguments", () => {
 });
 
 describe("discoveryHref", () => {
-  it("keeps scope, text and filters; a change starts at page one", () => {
+  it("[P5.A.4.e] keeps scope, text and filters; a change starts at page one", () => {
     const after = encodeCursor({ score: "1", id: "doc-a", asOf: "2026-10-23T10:00:00.000Z", page: 2 });
     const q = parseDiscoveryQuery({ scope: "elements", q: "curve", kind: "svg", after });
     expect(discoveryHref(q)).toBe("/portal?scope=elements&q=curve&kind=svg");
@@ -138,14 +138,14 @@ describe("discoveryHref", () => {
     expect(discoveryHref(q, { after: "abc" })).toBe("/portal?scope=elements&q=curve&kind=svg&after=abc");
   });
 
-  it("encodes user text safely", () => {
+  it("[P5.A.4.e] encodes user text safely", () => {
     const q = parseDiscoveryQuery({ q: "a&b=c <x>" });
     expect(discoveryHref(q)).toBe("/portal?q=a%26b%3Dc+%3Cx%3E");
   });
 });
 
 describe("parseFacetRows", () => {
-  it("collects counts per facet and the total; ignores junk", () => {
+  it("[P5.A.2.b] collects counts per facet and the total; ignores junk", () => {
     const f = parseFacetRows(
       [
         { facet: "total", value: null, n: "12" },
@@ -264,7 +264,7 @@ describe("searchCourses / searchElements", () => {
     expect(page.next).toBeNull();
   });
 
-  it("a later page keeps the cursor's hour, not the clock's", async () => {
+  it("[P5.A.2.i] a later page keeps the cursor's hour, not the clock's", async () => {
     const asOf = "2026-10-20T08:00:00.000Z";
     const { client, calls } = fakeClient({});
     const q = parseDiscoveryQuery({ after: encodeCursor({ score: "1", id: "pkg-z", asOf, page: 4 }) }) as Courses;
@@ -273,7 +273,7 @@ describe("searchCourses / searchElements", () => {
     expect(calls.find(([fn]) => fn === "discovery_search_courses")![1]["p_as_of"]).toBe(asOf);
   });
 
-  it("adversarial: drops rows a regressed query might return (ARR licence, private, current)", async () => {
+  it("[P5.A.1.k] adversarial: drops rows a regressed query might return (ARR licence, private, current)", async () => {
     const { client } = fakeClient({
       discovery_search_courses: {
         data: [course("pkg-ok"), course("pkg-arr", { license: "ALL-RIGHTS-RESERVED" }), { junk: true }],
@@ -295,7 +295,7 @@ describe("searchCourses / searchElements", () => {
     expect(e.hits.map((h) => h.doc_id)).toEqual(["doc-ok"]);
   });
 
-  it("a database error is reported as unavailable, with nothing listed", async () => {
+  it("[P5.A.2.k] a database error is reported as unavailable, with nothing listed", async () => {
     const { client } = fakeClient({
       discovery_search_courses: { data: [course("pkg-ok")], error: { message: "function does not exist" } },
     });

@@ -35,12 +35,12 @@ function fakeShared(): SharedBytesLayer & { store: Map<string, Buffer> } {
 }
 
 describe("bytesMatchHash", () => {
-  it("text: matches the registration hash of the UTF-8 content", () => {
+  it("[P5.A.6.e] text: matches the registration hash of the UTF-8 content", () => {
     expect(bytesMatchHash("a.md", text("# Hi"), computeSourceHash("# Hi"))).toBe(true);
     expect(bytesMatchHash("a.md", text("# Hi!"), computeSourceHash("# Hi"))).toBe(false);
   });
 
-  it("binary: matches either registration form (GitHub UTF-8 read, trial base64)", () => {
+  it("[P5.A.6.e] binary: matches either registration form (GitHub UTF-8 read, trial base64)", () => {
     const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0xff, 0x00, 0x10]);
     expect(bytesMatchHash("assets/x.png", png, computeSourceHash(png.toString("utf8")))).toBe(true);
     expect(bytesMatchHash("assets/x.png", png, computeSourceHash(png.toString("base64")))).toBe(true);
@@ -50,7 +50,7 @@ describe("bytesMatchHash", () => {
 });
 
 describe("DocBytesCache (Track A.6)", () => {
-  it("reads the origin once per (docId, hash), then serves from memory", async () => {
+  it("[P5.A.6.d] reads the origin once per (docId, hash), then serves from memory", async () => {
     const cache = new DocBytesCache();
     const src = counter(text("v1"));
     const k = key("v1");
@@ -61,14 +61,14 @@ describe("DocBytesCache (Track A.6)", () => {
     expect(src.calls).toBe(1);
   });
 
-  it("a new version is a new key — the old bytes are never served for it", async () => {
+  it("[P5.A.6.e] a new version is a new key — the old bytes are never served for it", async () => {
     const cache = new DocBytesCache();
     await cache.get(key("v1"), counter(text("v1")).load);
     const v2 = await cache.get(key("v2"), counter(text("v2")).load);
     expect(v2?.bytes.toString()).toBe("v2");
   });
 
-  it("bytes that do not hash to the key are served but NOT cached, and flagged", async () => {
+  it("[P5.A.6.e] bytes that do not hash to the key are served but NOT cached, and flagged", async () => {
     // registry says v1; the repo already holds v2 (reconcile has not run)
     const cache = new DocBytesCache();
     const shared = fakeShared();
@@ -82,7 +82,7 @@ describe("DocBytesCache (Track A.6)", () => {
     expect(shared.store.size).toBe(0);
   });
 
-  it("not found is not cached", async () => {
+  it("[P5.A.6.i] not found is not cached", async () => {
     const shared = fakeShared();
     const cache = new DocBytesCache({ shared });
     const src = counter(null);
@@ -92,7 +92,7 @@ describe("DocBytesCache (Track A.6)", () => {
     expect(shared.store.size).toBe(0);
   });
 
-  it("a cold instance is served by the shared layer without the origin", async () => {
+  it("[P5.A.6.d] a cold instance is served by the shared layer without the origin", async () => {
     const shared = fakeShared();
     const warm = new DocBytesCache({ shared });
     await warm.get(key("v1"), counter(text("v1")).load);
@@ -103,7 +103,7 @@ describe("DocBytesCache (Track A.6)", () => {
     expect(src.calls).toBe(0);
   });
 
-  it("files over the shared limit stay in process only", async () => {
+  it("[P5.A.6.i] files over the shared limit stay in process only", async () => {
     const shared = fakeShared();
     const cache = new DocBytesCache({ shared, sharedMaxItemBytes: 4 });
     const got = await cache.get(key("long content"), counter(text("long content")).load);
@@ -112,7 +112,7 @@ describe("DocBytesCache (Track A.6)", () => {
     expect(cache.size).toBe(1);
   });
 
-  it("a broken shared layer degrades to a direct read", async () => {
+  it("[P5.A.6.i] a broken shared layer degrades to a direct read", async () => {
     const cache = new DocBytesCache({
       shared: { getOrLoad: async () => { throw new Error("incrementalCache missing"); } },
     });
@@ -120,7 +120,7 @@ describe("DocBytesCache (Track A.6)", () => {
     expect(got).toMatchObject({ verified: true, from: "origin" });
   });
 
-  it("concurrent misses share one origin read", async () => {
+  it("[P5.A.6.d] concurrent misses share one origin read", async () => {
     const cache = new DocBytesCache();
     const src = counter(text("v1"));
     const results = await Promise.all([1, 2, 3].map(() => cache.get(key("v1"), src.load)));
@@ -128,7 +128,7 @@ describe("DocBytesCache (Track A.6)", () => {
     expect(src.calls).toBe(1);
   });
 
-  it("memory is bounded by total bytes (least recently used goes first)", async () => {
+  it("[P5.A.6.i] memory is bounded by total bytes (least recently used goes first)", async () => {
     const cache = new DocBytesCache({ maxBytes: 10 });
     for (const v of ["aaaa", "bbbb", "cccc"]) {
       await cache.get(key(v, `doc-${v}`), counter(text(v)).load);

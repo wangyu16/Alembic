@@ -27,14 +27,14 @@ function harness(opts: { registered?: string[]; budget?: number; commitDone?: bo
 }
 
 describe("commitInRounds", () => {
-  it("documents linking only to assets go in one round, with no extra registration", async () => {
+  it("[P5.B.3.b] documents linking only to assets go in one round, with no extra registration", async () => {
     const { steps, log } = harness({ registered: ["fig.svg"] });
     const r = await commitInRounds([{ name: "ch1", links: ["fig.svg"] }, { name: "ch2", links: [] }], steps);
     expect(r).toMatchObject({ kind: "done", unresolved: [] });
     expect(log).toEqual(["commit ch1,ch2"]);
   });
 
-  it("a document linking to another document of the same upload waits one round", async () => {
+  it("[P5.B.3.b] a document linking to another document of the same upload waits one round", async () => {
     const { steps, log } = harness({ registered: ["fig.svg"] });
     const r = await commitInRounds(
       [
@@ -47,7 +47,7 @@ describe("commitInRounds", () => {
     expect(log).toEqual(["commit practice", "register practice", "commit guide"]);
   });
 
-  it("chains resolve over as many rounds as they need", async () => {
+  it("[P5.B.3.b] chains resolve over as many rounds as they need", async () => {
     const { steps, log } = harness();
     await commitInRounds(
       [
@@ -60,7 +60,7 @@ describe("commitInRounds", () => {
     expect(log.filter((l) => l.startsWith("commit"))).toEqual(["commit c", "commit b", "commit a"]);
   });
 
-  it("a broken link or a cycle is reported, never committed, and the loop ends", async () => {
+  it("[P5.B.3.b] a broken link or a cycle is reported, never committed, and the loop ends", async () => {
     const { steps, log } = harness();
     const r = await commitInRounds(
       [
@@ -76,7 +76,7 @@ describe("commitInRounds", () => {
     expect(log).toEqual(["commit fine", "register fine"]);
   });
 
-  it("out of time: nothing of the unfinished round is lost, all of it is handed on", async () => {
+  it("[P5.B.3.b] out of time: nothing of the unfinished round is lost, all of it is handed on", async () => {
     const { steps, log } = harness({ budget: 1 });
     const r = await commitInRounds(
       [
@@ -89,7 +89,7 @@ describe("commitInRounds", () => {
     expect(log).toEqual([]);
   });
 
-  it("a commit that runs out of time reports its remainder plus the held documents", async () => {
+  it("[P5.B.3.b] a commit that runs out of time reports its remainder plus the held documents", async () => {
     const { steps } = harness({ commitDone: false });
     const r = await commitInRounds(
       [

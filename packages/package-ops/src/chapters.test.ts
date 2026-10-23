@@ -119,7 +119,7 @@ describe("listChapters", () => {
     const manifest = await readManifest(store, packageId);
     expect(manifest.chapters).toBeUndefined();
   });
-  it("chaptersOfManifest (pure) agrees with listChapters", async () => {
+  it("[P5.A.4.f] chaptersOfManifest (pure) agrees with listChapters", async () => {
     for (const make of [seeded, legacy]) {
       const { store, packageId } = await make();
       expect(chaptersOfManifest(await readManifest(store, packageId))).toEqual(

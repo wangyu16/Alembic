@@ -47,7 +47,7 @@ async function course(id: string) {
 }
 
 describe("A.1 a listed, published course is projected from the manifest and registry", () => {
-  it("carries the listing fields", async () => {
+  it("[P5.A.1.a] carries the listing fields", async () => {
     const id = await seedPackage(db, {
       owner,
       title: "General Chemistry",
@@ -88,7 +88,7 @@ describe("A.1 a listed, published course is projected from the manifest and regi
     expect(c["completeness"]).toBe(1);
   });
 
-  it("a package without chapters counts as one chapter; discipline/level may be absent", async () => {
+  it("[P5.A.1.a] a package without chapters counts as one chapter; discipline/level may be absent", async () => {
     const id = await seedPackage(db, { owner, manifest: { discipline: "" }, listed: true });
     const c = (await course(id))!;
     expect(c["chapter_count"]).toBe(1);
@@ -108,19 +108,19 @@ describe("A.1 adversarial: what never enters the course projection", () => {
     expect(await courseIds()).not.toContain(id);
   });
 
-  it("a published package nobody listed", async () => {
+  it("[P5.A.1.b] a published package nobody listed", async () => {
     const id = await seedPackage(db, { owner });
     expect(await courseIds()).not.toContain(id);
   });
 
-  it("unlisting (owner, or an operator deleting the row) removes it at once", async () => {
+  it("[P5.A.1.b] unlisting (owner, or an operator deleting the row) removes it at once", async () => {
     const id = await seedPackage(db, { owner, listed: true });
     expect(await courseIds()).toContain(id);
     await db.query(`delete from public.portal_registrations where package_id = $1`, [id]);
     expect(await courseIds()).not.toContain(id);
   });
 
-  it("archiving removes the course and its elements; restoring brings them back", async () => {
+  it("[P5.0.3.a] [P5.A.1.b] archiving removes the course and its elements; restoring brings them back", async () => {
     const id = await seedPackage(db, { owner, listed: true });
     const doc = await seedDoc(db, { packageId: id });
     expect(await courseIds()).toContain(id);
@@ -133,7 +133,7 @@ describe("A.1 adversarial: what never enters the course projection", () => {
     expect(await elementIds()).toContain(doc);
   });
 
-  it("a licence changed to all-rights-reserved after listing drops the course", async () => {
+  it("[P5.A.1.b] a licence changed to all-rights-reserved after listing drops the course", async () => {
     const id = await seedPackage(db, { owner, listed: true });
     await db.query(
       `update public.packages set manifest = manifest || '{"license":"ALL-RIGHTS-RESERVED"}' where id = $1`,
@@ -142,7 +142,7 @@ describe("A.1 adversarial: what never enters the course projection", () => {
     expect(await courseIds()).not.toContain(id);
   });
 
-  it("deleting a package removes everything", async () => {
+  it("[P5.A.1.b] deleting a package removes everything", async () => {
     const id = await seedPackage(db, { owner, listed: true });
     await seedDoc(db, { packageId: id });
     await db.query(`delete from public.packages where id = $1`, [id]);
@@ -158,7 +158,7 @@ describe("A.1 adversarial: what never enters the element projection", () => {
     pub = await seedPackage(db, { owner }); // published, not listed: elements are per-file consent
   });
 
-  it("a shared public file of a published, active package is projected (course listing not needed)", async () => {
+  it("[P5.A.1.c] a shared public file of a published, active package is projected (course listing not needed)", async () => {
     const doc = await seedDoc(db, { packageId: pub, tags: ["acid-base"] });
     expect(await elementIds()).toContain(doc);
     const { rows } = await db.query<Record<string, unknown>>(
@@ -182,13 +182,13 @@ describe("A.1 adversarial: what never enters the element projection", () => {
     expect(await elementIds()).not.toContain(doc);
   });
 
-  it("a shared file of a trial package", async () => {
+  it("[P5.0.3.a] a shared file of a trial package", async () => {
     const trial = await seedPackage(db, { owner, storage: "sandbox" });
     const doc = await seedDoc(db, { packageId: trial });
     expect(await elementIds()).not.toContain(doc);
   });
 
-  it("unsharing, deleting (tombstone) or moving into `current` removes it", async () => {
+  it("[P5.0.3.a] unsharing, deleting (tombstone) or moving into `current` removes it", async () => {
     const a = await seedDoc(db, { packageId: pub });
     const b = await seedDoc(db, { packageId: pub });
     const c = await seedDoc(db, { packageId: pub });
@@ -202,7 +202,7 @@ describe("A.1 adversarial: what never enters the element projection", () => {
     expect(ids).not.toContain(c);
   });
 
-  it("the table itself refuses a private or current row", async () => {
+  it("[P5.0.3.a] the table itself refuses a private or current row", async () => {
     const doc = await seedDoc(db, { packageId: pub, discoverable: false });
     const insert = (repo: string, space: string) =>
       db.query(
@@ -218,7 +218,7 @@ describe("A.1 adversarial: what never enters the element projection", () => {
 });
 
 describe("A.1 public read: RLS serves listed rows only; nobody else writes", () => {
-  it("a stale row (projector bypassed) is still invisible to the public", async () => {
+  it("[P5.A.1.d] a stale row (projector bypassed) is still invisible to the public", async () => {
     const id = await seedPackage(db, { owner, listed: true });
     const doc = await seedDoc(db, { packageId: id });
     // Simulate a projection that missed the archive: disable the trigger.
@@ -240,7 +240,7 @@ describe("A.1 public read: RLS serves listed rows only; nobody else writes", () 
     expect(await courseIds()).not.toContain(id);
   });
 
-  it("anon reads a listed course and a shared element", async () => {
+  it("[P5.A.1.d] anon reads a listed course and a shared element", async () => {
     const id = await seedPackage(db, { owner, listed: true, title: "Readable" });
     const doc = await seedDoc(db, { packageId: id });
     const seen = await asRole(db, "anon", async () => ({
@@ -251,7 +251,7 @@ describe("A.1 public read: RLS serves listed rows only; nobody else writes", () 
     expect(seen.e).toHaveLength(1);
   });
 
-  it("the documents registry stays owner-only", async () => {
+  it("[P5.A.1.e] the documents registry stays owner-only", async () => {
     const id = await seedPackage(db, { owner });
     await seedDoc(db, { packageId: id });
     const rows = await asRole(db, "anon", async () =>
@@ -260,7 +260,7 @@ describe("A.1 public read: RLS serves listed rows only; nobody else writes", () 
     expect(rows).toHaveLength(0);
   });
 
-  it.each(["anon", "authenticated"] as const)("%s cannot write the projection or run the projector", async (role) => {
+  it.each(["anon", "authenticated"] as const)("[P5.A.1.e] %s cannot write the projection or run the projector", async (role) => {
     const id = await seedPackage(db, { owner, listed: true });
     const attempts = [
       `update public.discovery_courses set title = 'x' where package_id = '${id}'`,
@@ -279,7 +279,7 @@ describe("A.1 public read: RLS serves listed rows only; nobody else writes", () 
 });
 
 describe("A.1 freshness: the projection follows every change", () => {
-  it("a metadata edit (manifest write) refreshes the listing and bumps updated_at; a no-op does not", async () => {
+  it("[P5.A.1.f] a metadata edit (manifest write) refreshes the listing and bumps updated_at; a no-op does not", async () => {
     const id = await seedPackage(db, { owner, listed: true, title: "Old title" });
     await db.query(`update public.discovery_courses set updated_at = '2020-01-01' where package_id = $1`, [id]);
     // Same manifest re-written (refreshManifestColumn after an unchanged save).
@@ -295,7 +295,7 @@ describe("A.1 freshness: the projection follows every change", () => {
     expect(new Date(String(c["updated_at"])).getFullYear()).toBeGreaterThan(2020);
   });
 
-  it("saving the course's public files counts as an update; private files do not", async () => {
+  it("[P5.A.1.f] saving the course's public files counts as an update; private files do not", async () => {
     const id = await seedPackage(db, { owner, listed: true });
     const pubDoc = await seedDoc(db, { packageId: id, discoverable: false, path: "study-guide/a.md", space: "study-guide", kind: "md" });
     const privDoc = await seedDoc(db, { packageId: id, discoverable: false, repo: "private", space: "private", path: "private/n.md" });
@@ -306,7 +306,7 @@ describe("A.1 freshness: the projection follows every change", () => {
     expect(String((await course(id))!["updated_at"])).not.toContain("2020");
   });
 
-  it("concept-map saves refresh the topics", async () => {
+  it("[P5.A.1.f] concept-map saves refresh the topics", async () => {
     const id = await seedPackage(db, { owner, listed: true });
     await db.query(
       `insert into public.sandbox_files (package_id, repo, path, content) values ($1, 'public', 'concepts/course.md', '# Gases')`,
@@ -326,7 +326,7 @@ describe("A.1 freshness: the projection follows every change", () => {
     expect((await course(id))!["topics"]).toEqual(["Gases", "Solutions"]);
   });
 
-  it("share counts and adaptation counts follow forks and element copies", async () => {
+  it("[P5.A.1.f] share counts and adaptation counts follow forks and element copies", async () => {
     const src = await seedPackage(db, { owner, listed: true });
     const srcDoc = await seedDoc(db, { packageId: src });
     expect((await course(src))!["element_count"]).toBe(1);
@@ -354,7 +354,7 @@ describe("A.1 freshness: the projection follows every change", () => {
     expect((await course(src))!["adaptation_count"]).toBe(1);
   });
 
-  it("listing after publication: a trial package that is published and listed appears", async () => {
+  it("[P5.A.1.f] listing after publication: a trial package that is published and listed appears", async () => {
     const id = await seedPackage(db, { owner, storage: "sandbox" });
     await db.query(
       `update public.packages set storage = 'github',
@@ -368,7 +368,7 @@ describe("A.1 freshness: the projection follows every change", () => {
 });
 
 describe("A.1 best-effort and rebuild", () => {
-  it("a failing projector never fails the educator's write", async () => {
+  it("[P5.A.1.h] a failing projector never fails the educator's write", async () => {
     const id = await seedPackage(db, { owner, listed: true });
     await db.exec(`
       alter function public.discovery_refresh_package(text, boolean) rename to discovery_refresh_package_real;
@@ -389,7 +389,7 @@ describe("A.1 best-effort and rebuild", () => {
     expect((await course(id))!["title"]).toBe("Still saved");
   });
 
-  it("a rebuild from empty reproduces the projection", async () => {
+  it("[P5.A.1.i] a rebuild from empty reproduces the projection", async () => {
     const cols = `package_id, title, description, keywords, chapter_titles, topics, discipline, level,
       course_context, license, accessibility_status, chapter_count, element_count, adaptation_count,
       site_url, completeness, fingerprint, search_text, search_vector::text as v`;
@@ -406,7 +406,7 @@ describe("A.1 best-effort and rebuild", () => {
 });
 
 describe("A.1 the real write path: an educator's own session (RLS) drives the projection", () => {
-  it("listing, sharing and archiving through the owner's own session refresh the index", async () => {
+  it("[P5.A.1.g] listing, sharing and archiving through the owner's own session refresh the index", async () => {
     const me = await seedUser(db, "session-owner");
     const id = await seedPackage(db, { owner: me, title: "Session Course" });
     const doc = await seedDoc(db, { packageId: id, discoverable: false });
@@ -438,7 +438,7 @@ describe("A.1 the real write path: an educator's own session (RLS) drives the pr
     expect(await elementIds()).not.toContain(doc);
   });
 
-  it("another educator's session can neither list nor share someone else's course", async () => {
+  it("[P5.A.1.g] another educator's session can neither list nor share someone else's course", async () => {
     const victim = await seedUser(db, "victim");
     const attacker = await seedUser(db, "attacker");
     const id = await seedPackage(db, { owner: victim });

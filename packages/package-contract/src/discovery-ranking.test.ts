@@ -19,7 +19,7 @@ const base: QualitySignals = {
 };
 
 describe("A.3 ranking", () => {
-  it("the weights sum to 1, so quality is 0 … 1", () => {
+  it("[P5.A.3.a] the weights sum to 1, so quality is 0 … 1", () => {
     const sum = Object.values(RANKING.weights).reduce((a, b) => a + b, 0);
     expect(sum).toBeCloseTo(1, 12);
     const best = qualityScore({ a11y: "pass", license: "CC0-1.0", completeness: 1, adaptations: 1000, updatedAt: asOf, asOf });
@@ -38,11 +38,11 @@ describe("A.3 ranking", () => {
     expect(qualityScore({ ...base, ...over })).toBeGreaterThan(qualityScore(base));
   });
 
-  it("an open licence raises quality (elements may carry their own licence)", () => {
+  it("[P5.A.3.d] an open licence raises quality (elements may carry their own licence)", () => {
     expect(qualityScore(base)).toBeGreaterThan(qualityScore({ ...base, license: "ALL-RIGHTS-RESERVED" }));
   });
 
-  it("recency halves in about four months and never goes negative or explodes", () => {
+  it("[P5.A.3.d] recency halves in about four months and never goes negative or explodes", () => {
     expect(recencySignal(asOf, asOf)).toBe(1);
     expect(recencySignal("2026-06-20T00:00:00Z", asOf)).toBeGreaterThan(0.45);
     expect(recencySignal("2026-06-20T00:00:00Z", asOf)).toBeLessThan(0.55);
@@ -51,19 +51,19 @@ describe("A.3 ranking", () => {
     expect(recencySignal("2030-01-01T00:00:00Z", asOf)).toBe(1);
   });
 
-  it("adaptations saturate", () => {
+  it("[P5.A.3.d] adaptations saturate", () => {
     expect(adaptationSignal(0)).toBe(0);
     expect(adaptationSignal(20)).toBeCloseTo(1, 12);
     expect(adaptationSignal(10_000)).toBe(1);
   });
 
-  it("prominence, not censorship: any match keeps a positive score, whatever its quality", () => {
+  it("[P5.A.3.c] prominence, not censorship: any match keeps a positive score, whatever its quality", () => {
     expect(rankScore(0.01, 0)).toBeGreaterThan(0);
     expect(rankScore(1, 0)).toBe(0.75);
     expect(rankScore(1, 1)).toBe(1.25);
   });
 
-  it("relevance first: quality can only reorder matches within a factor of 5/3", () => {
+  it("[P5.A.3.b] relevance first: quality can only reorder matches within a factor of 5/3", () => {
     // a match more than 5/3 as relevant always wins, whatever the qualities
     expect(rankScore(1.0, 0)).toBeGreaterThan(rankScore(0.59, 1));
     // near-ties are decided by quality

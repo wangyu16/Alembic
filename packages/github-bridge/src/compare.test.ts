@@ -28,7 +28,7 @@ function compareMock(payload: unknown): {
 const coords = { owner: "edu", repo: "thermo-oer" };
 
 describe("GitHubClient.compareCommits", () => {
-  it("returns [] without a network call when base is null", async () => {
+  it("[P5.R.3] returns [] without a network call when base is null", async () => {
     const { fetchImpl, calls } = compareMock({ files: [] });
     const client = new GitHubClient("ghs_x", fetchImpl);
     const result = await client.compareCommits(coords, null, "HEAD");
