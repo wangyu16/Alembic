@@ -6,7 +6,9 @@ import { parseStudyGuide, type PackageManifest } from "@alembic/package-contract
 import {
   DEFAULT_STUDY_GUIDE_PATH,
   ensureLicenseFile,
+  ManifestNotFoundError,
   saveStudyGuide,
+  updateManifest,
 } from "@alembic/package-ops";
 import { commitFiles, GitHubError } from "@alembic/github-bridge";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -19,7 +21,6 @@ import {
   clientForInstallation,
   clientForUser,
   githubConfig,
-  mirrorManifestToSandbox,
   recordOwnCommit,
   recordSyncedSha,
   syncedShaFor,
@@ -257,8 +258,22 @@ export async function publishToGitHubAction(
     if (!recorded.ok) {
       throw new Error(`Could not record the published course (${recorded.reason}).`);
     }
-    // Keep the sandbox file mirror in step — see mirrorManifestToSandbox's doc.
-    await mirrorManifestToSandbox(store, packageId, manifest);
+    // Keep the trial store's alembic.json in step with what the publish
+    // commit carried — through the ONE manifest writer (loop r2, P5.B.1.w:
+    // compare-and-swap + registration; a direct putFiles had neither). Null
+    // committer: the publish commit above already carried this exact
+    // alembic.json. Every other manifest writer reads the FILE copy, so
+    // skipping this would let the next one write the repo pair away.
+    try {
+      await updateManifest(store, null, packageId, () => manifest, {
+        summary: "Publish from Alembic",
+      });
+    } catch (e) {
+      // A malformed package with no alembic.json at all: the publish commit
+      // carried none either (it mirrors the store), so there is nothing to
+      // keep in step; the read cache was set by recordPublished above.
+      if (!(e instanceof ManifestNotFoundError)) throw e;
+    }
 
     await events.log({
       type: "publish.completed",

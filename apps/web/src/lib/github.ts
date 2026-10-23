@@ -15,7 +15,6 @@ import {
   type ReconcileOutcome,
   type RepoReader,
 } from "@alembic/package-ops";
-import type { PackageManifest } from "@alembic/package-contract";
 import { registerChanges, syncPackageRegistry } from "@/lib/register";
 import { refreshManifestAfterReconcile } from "@/lib/reconcile-manifest";
 import { recordedPublicRepo } from "@/lib/recorded-repo";
@@ -122,28 +121,6 @@ export async function clientForUser(
   if (!profile?.github_installation_id || !profile.github_username) return null;
   const client = await clientForInstallation(cfg, profile.github_installation_id);
   return { client, owner: profile.github_username };
-}
-
-/**
- * Mirror a full manifest into the trial-sandbox file store's own alembic.json
- * row. Every OTHER manifest writer (course description, chapters, rename,
- * adaptation, …) is file-based — it reads its starting manifest from
- * `store.listFiles`/`readManifest`, not the `packages.manifest` DB column.
- * Any action that updates the `packages.manifest` column directly (publish,
- * theme, course-info, accessibility recheck) MUST call this too, or the next
- * file-based write reads the stale sandbox copy and clobbers the DB column
- * back to it — silently wiping out whatever the direct write just set (this
- * is exactly how a published package's `manifest.publicRepo` disappears
- * after an unrelated edit like the course description).
- */
-export async function mirrorManifestToSandbox(
-  store: PackageStore,
-  packageId: string,
-  manifest: PackageManifest,
-): Promise<void> {
-  await store.putFiles(packageId, [
-    { repo: "public", path: "alembic.json", content: JSON.stringify(manifest, null, 2) + "\n" },
-  ]);
 }
 
 export { advanceSyncedSha, recordOwnCommit, recordSyncedSha, syncedShaFor } from "./synced-sha";

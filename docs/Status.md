@@ -76,6 +76,11 @@ of the class ([DecisionLog](DecisionLog.md) 2026-10-23 "Closed loop r2 (correctn
   publish baseline and reconcile stay unconditional. `syncedShaFor` throws on a read error (null would switch the
   guard off). Code only. **Residual:** after an outside commit, a later save of a file Alembic itself committed
   meanwhile is refused too (it lies after the synced point) until "Check for outside changes" runs.
+- ✅ **L-3 — the publish path wrote `alembic.json` around the manifest owner (P5.B.1.w).** `mirrorManifestToSandbox`
+  (`lib/github.ts`, its one caller the publish action) `putFiles`-ed the manifest: no CAS, no registration (the
+  registry row went stale until a page load healed it). Removed; publish now goes through `updateManifest(store,
+  null, …)` (the publish commit already carried these exact bytes). A scan test refuses any `alembic.json`
+  `putFiles` outside package-ops. (Earlier Status entries naming `mirrorManifestToSandbox` are history.)
 
 **Phase 5 closed-loop verification — round 2, steps 4–5: security audit probes and class fixes (2026-10-23,
 branch `phase5/loop-r2-sec`, not merged, migrations `0028_loop_r2_*` NOT applied).** Each round-2 security finding

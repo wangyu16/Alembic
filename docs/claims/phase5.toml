@@ -1671,3 +1671,15 @@ bound_to = [
 ]
 note = "Loop r2 correctness MEDIUM-4. Code only (fake GitHub). Residual: after an outside commit, a save of a file Alembic itself committed after the synced point is refused until reconcile runs (it cannot tell its own later commits from outside ones without a ledger)."
 
+# L-3 — alembic.json has one writer
+
+[[claim]]
+id = "P5.B.1.w"
+claim = "No code outside package-ops writes alembic.json directly (putFiles); the publish path keeps the trial-store manifest in step through updateManifest (CAS + registration), never around it."
+oracle = "invariant"
+bound_to = [
+  "apps/web/src/lib/manifest-writers.scan.test.ts :: no code outside package-ops writes alembic.json via putFiles",
+  "apps/web/src/lib/manifest-writers.scan.test.ts :: the scan recognises a direct write and ignores comments",
+]
+note = "Loop r2 correctness L-3 (mirrorManifestToSandbox removed). Code only."
+
