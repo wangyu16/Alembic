@@ -922,7 +922,11 @@ bound_to = [
   "apps/web/src/lib/page-all.test.ts :: a rebuild over a capped listing tombstones nothing that still exists",
   "apps/web/src/lib/page-all.test.ts :: N rows cost ceil(N/1000) round-trips (min 1) when the count is returned — never an extra empty page",
   "apps/web/src/lib/page-all.test.ts :: a failed page throws (a partial listing is never returned)",
+  "apps/web/src/lib/sandbox-store.test.ts :: accumulates 2 full pages + a partial third, in order, by keyset",
   "apps/web/src/lib/sandbox-store.test.ts :: keeps the (repo, path) order across both repos",
+  "apps/web/src/lib/sandbox-store.test.ts :: stops after a single short page per repo (small package)",
+  "apps/web/src/lib/sandbox-store.test.ts :: returns [] for a package with no files",
+  "apps/web/src/lib/sandbox-store.test.ts :: throws the existing 'Could not load files' message when a page errors",
   "apps/web/src/lib/sandbox-store.test.ts :: needs no extra (empty) page when the total is a page multiple (the remaining count ends the walk)",
 ]
 note = "Loop r1b (LOW-9); keyset paging is loop r2 correctness L-4 (offset paging skipped a row under a concurrent delete). The remaining count rides on each page request (no extra round-trip)."
