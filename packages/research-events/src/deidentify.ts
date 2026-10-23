@@ -2,12 +2,16 @@
  * De-identified research export (Phase 7, M34.2).
  *
  * The evaluator team receives event data with NO platform/GitHub identities and
- * NO content — only a stable per-participant pseudonym plus the public-safe
- * `detail` the taxonomy already permits (no content, no secrets, no AI logs;
- * see ResearchEventSchema). Pure: the caller injects a `pseudonymize` function
- * (a salted one-way hash, server-side) so this module stays dependency-free and
- * the secret salt never lives here.
+ * NO content — only a stable per-participant pseudonym plus the `detail` keys
+ * the per-type allowlist permits (`./allowlist`, security loop r1 M1): counts,
+ * booleans, closed-vocabulary values and short tokens; every kept package/doc
+ * id pseudonymised like the package column; URLs, repo names, logins, paths
+ * and free text dropped; unknown types/keys dropped. Pure: the caller injects
+ * a `pseudonymize` function (a salted one-way hash, server-side) so this
+ * module stays dependency-free and the secret salt never lives here.
  */
+
+import { sanitizeDetail } from "./allowlist";
 
 /** A raw research_events row (as stored; user_id is the platform id, or null
  *  for an anonymous visitor's discovery event — migration 0023). */
@@ -36,7 +40,9 @@ export interface DeidentifiedEvent {
 /**
  * Map raw rows to de-identified events. `pseudonymize` must be a stable one-way
  * function (same input → same code; not reversible without the secret salt);
- * the caller supplies it. Drops the raw `user_id`/`package_id` entirely.
+ * the caller supplies it. Drops the raw `user_id`/`package_id` entirely and
+ * filters `detail` through the allowlist, pseudonymising kept ids with the
+ * same function.
  */
 export function deidentifyEvents(
   rows: ResearchEventRow[],
@@ -47,7 +53,7 @@ export function deidentifyEvents(
     participant: r.user_id ? pseudonymize(r.user_id) : null,
     package: r.package_id ? pseudonymize(r.package_id) : null,
     durationMs: r.duration_ms,
-    detail: r.detail,
+    detail: sanitizeDetail(r.type, r.detail, pseudonymize),
     occurredAt: r.occurred_at,
   }));
 }
