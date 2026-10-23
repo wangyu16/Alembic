@@ -25,11 +25,15 @@ in the choices for each deployment.
 
 ## Where it goes (the gateway question)
 
-Provider decision is **Portkey** (control plane) with Gemini behind it (see
-[ai-architecture.md](ai-architecture.md)). A gateway centralizes logging (good)
+Provider decision is a **self-hosted LiteLLM gateway** (control plane, on the
+owner's VPS; decided 2026-08-28, replacing the earlier Portkey choice) with
+Gemini behind it (see [worker-tier.md](worker-tier.md) §1.5 and
+[ai-architecture.md](ai-architecture.md)). Self-hosting keeps the gateway's own
+logs under the operator's control; the provider behind it still needs the checks
+below. A gateway centralizes logging (good)
 but routes prompts through a third party. Before enabling it for real data:
 
-1. **Confirm retention.** Determine what Portkey and each routed provider log/
+1. **Confirm retention.** Determine what the gateway and each routed provider log/
    retain (request/response bodies, duration, region). **Prefer a no-retention /
    zero-data-retention mode**; disable provider-side training on inputs.
 2. **Region / residency.** Confirm processing region meets institutional/IRB
@@ -53,11 +57,19 @@ export, the M36 dashboard). This is the same fail-closed discipline as the
 two-repo invariant: a future contributor must not add a "convenient"
 service-role shortcut to an educator path.
 
+*(Drift noted 2026-10-23: since P1/P2/P4 (2026-07-06) the service role also
+backs three registry reads that the owner-only `documents` RLS cannot express —
+the permalink resolver `/d/{docId}`, Discover's Elements list, and
+`adaptElementAction`'s source lookup. Each is limited to public files of
+published packages (Phase 5 Track 0.2/0.3); private and trial files are checked
+against the visitor's own session. The public-safe discovery projection
+(Phase 5 Track A.1) is meant to replace these service-role reads.)*
+
 ## Decision record (per deployment)
 
 | Item | Choice |
 |---|---|
-| Gateway / provider | _e.g. Portkey → Gemini_ |
+| Gateway / provider | _e.g. LiteLLM (self-hosted) → Gemini_ |
 | Retention mode | _e.g. zero-data-retention; no training on inputs_ |
 | Processing region | _…_ |
 | FERPA basis | _no-PII default / signed DPA_ |

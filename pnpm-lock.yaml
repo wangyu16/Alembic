@@ -195,8 +195,8 @@ importers:
         specifier: workspace:*
         version: link:../package-contract
       orz-markdown:
-        specifier: ^1.6.0
-        version: 1.6.0(@types/markdown-it@14.1.2)
+        specifier: ^2.4.0
+        version: 2.4.0
     devDependencies:
       '@types/markdown-it':
         specifier: ^14.1.2
@@ -2053,6 +2053,10 @@ packages:
     resolution: {integrity: sha512-3hN7NaskYvMDLQY55gnW3NQ+mesEAepTqlg+VEbj7zzqEMBVNhzcGYYeqFo/TlYz6eQiFcp1HcsCZO+nGgS8zg==}
     engines: {node: '>=6.9.0'}
 
+  get-east-asian-width@1.7.0:
+    resolution: {integrity: sha512-XjH1AECxf0giL2V1aU8vKyRR2ppRUb5c0EvT7zuJTokQ74bNo52zOtghqdWIqrhUD79fo3x0WfKZdOqxF6LG1Q==}
+    engines: {node: '>=18'}
+
   get-intrinsic@1.3.0:
     resolution: {integrity: sha512-9fSjSaos/fRIVIp+xSJlE6lfwhES7LNtKaCBIamHsjr2na1BiABJPo0mOjjz8GJDURarmCPGqaiVg5mfjb98CQ==}
     engines: {node: '>= 0.4'}
@@ -2451,6 +2455,9 @@ packages:
       '@types/markdown-it': '*'
       markdown-it: '*'
 
+  markdown-it-cjk-breaks@2.0.1:
+    resolution: {integrity: sha512-RDlQm+XvarIPZQxjyhiQ3VzdO4SfTXGEWmSNAQftfLkYCuqD+Bna0EBKUhpj6u/7iDEwa6QQv40XbWMLBDrBqg==}
+
   markdown-it-container@4.0.0:
     resolution: {integrity: sha512-HaNccxUH0l7BNGYbFbjmGpf5aLHAMTinqRZQAEQbMr2cdD3z91Q6kIo1oUn1CQndkT03jat6ckrdRYuwwqLlQw==}
 
@@ -2477,6 +2484,10 @@ packages:
 
   markdown-it@14.3.0:
     resolution: {integrity: sha512-RCEsPjR+sr0x+AuYp601tKTkgFG4YEPLCzHST3cQ/fhlJkqAkz1L2/Qbp1j9qw5SBwQHFBoW8+hoN5xssOF0Tw==}
+    hasBin: true
+
+  markdown-it@14.3.3:
+    resolution: {integrity: sha512-L//tDAkjTjJCU6pBUSBTgs3Kg4InVaZuUZog/b6V12UKhcDQ7S78877ibbCanRExwPuYP1CZD7Gd2dxSy1GXRg==}
     hasBin: true
 
   math-intrinsics@1.1.0:
@@ -2615,6 +2626,15 @@ packages:
 
   orz-markdown@1.6.0:
     resolution: {integrity: sha512-1IlbpgEm4OOljA1EFTzCF0sb0v6yKlP3JXuqB0w5jiusTroVAynNO8hGd1niaq4q0DEoFk0Q0rEmNXPrfpkB4A==}
+
+  orz-markdown@2.4.0:
+    resolution: {integrity: sha512-nORLfnBdfvwRt3wHVwmzLFU2zxrQVsElUxCFvNjMOV/ibqbj2Riy8dcKjDXWBpih1vFS22sksb1F5o4okThrwg==}
+    engines: {node: '>=20.16'}
+    peerDependencies:
+      playwright-core: '>=1.40.0'
+    peerDependenciesMeta:
+      playwright-core:
+        optional: true
 
   orz-mdhtml@0.9.0:
     resolution: {integrity: sha512-nD7sUJ5Jq+B2giecS7Ix3J36fSprHptl3gzkIOfO6TYRllyq9khU5BDNH28KES+XJLx+NW2aMcR43R08FQRpYA==}
@@ -5064,6 +5084,8 @@ snapshots:
 
   gensync@1.0.0-beta.2: {}
 
+  get-east-asian-width@1.7.0: {}
+
   get-intrinsic@1.3.0:
     dependencies:
       call-bind-apply-helpers: 1.0.2
@@ -5450,6 +5472,15 @@ snapshots:
       '@types/markdown-it': 14.1.2
       markdown-it: 14.3.0
 
+  markdown-it-anchor@9.2.0(@types/markdown-it@14.1.2)(markdown-it@14.3.3):
+    dependencies:
+      '@types/markdown-it': 14.1.2
+      markdown-it: 14.3.3
+
+  markdown-it-cjk-breaks@2.0.1:
+    dependencies:
+      get-east-asian-width: 1.7.0
+
   markdown-it-container@4.0.0: {}
 
   markdown-it-footnote@4.0.0: {}
@@ -5467,6 +5498,15 @@ snapshots:
   markdown-it-task-lists@2.1.1: {}
 
   markdown-it@14.3.0:
+    dependencies:
+      argparse: 2.0.1
+      entities: 4.5.0
+      linkify-it: 5.0.2
+      mdurl: 2.0.0
+      punycode.js: 2.3.1
+      uc.micro: 2.1.0
+
+  markdown-it@14.3.3:
     dependencies:
       argparse: 2.0.1
       entities: 4.5.0
@@ -5629,6 +5669,24 @@ snapshots:
       qrcode-svg: 1.1.0
     transitivePeerDependencies:
       - '@types/markdown-it'
+
+  orz-markdown@2.4.0:
+    dependencies:
+      '@traptitech/markdown-it-katex': 3.6.0
+      '@types/markdown-it': 14.1.2
+      katex: 0.16.47
+      markdown-it: 14.3.3
+      markdown-it-anchor: 9.2.0(@types/markdown-it@14.1.2)(markdown-it@14.3.3)
+      markdown-it-cjk-breaks: 2.0.1
+      markdown-it-container: 4.0.0
+      markdown-it-footnote: 4.0.0
+      markdown-it-ins: 4.0.0
+      markdown-it-mark: 4.0.0
+      markdown-it-sub: 2.0.0
+      markdown-it-sup: 2.0.0
+      markdown-it-task-lists: 2.1.1
+      node-emoji: 2.2.0
+      qrcode-svg: 1.1.0
 
   orz-mdhtml@0.9.0(@types/markdown-it@14.1.2):
     dependencies:

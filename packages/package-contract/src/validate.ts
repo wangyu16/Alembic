@@ -159,6 +159,7 @@ function matchesKnownCarrier(path: string, extensions: string[]): boolean {
  * Validate a whole project tree against the package contract.
  *
  * Checks (all collected; never throws on a validation problem):
+ *  0. The skeleton files `alembic.json` and `LICENSE` exist at the root (ERROR).
  *  1. The manifest parses (zod errors → one issue per problem).
  *  2. Every file path is allowed in its declared repo (two-repo invariant).
  *  3. If the manifest declares chapters, a chapter whose study-guide file
@@ -167,10 +168,11 @@ function matchesKnownCarrier(path: string, extensions: string[]): boolean {
  *     legitimate state, so this never fails validation.
  *  4. Every KNOWN carrier file sits in a PUBLIC layer (assets/documents are
  *     public). A known carrier under a private layer is an ERROR.
- *  5. A file that LOOKS like a carrier (.svg/.html/.pdf under materials/) but
+ *  5. A file that LOOKS like a carrier (.svg/.html/.pdf under materials/ (v1)
+ *     or assets/ (v2)) but
  *     matches no known extension is a WARNING-level issue: it is reported (so
  *     the author notices an unregistered/typo'd kind) but does NOT by itself
- *     fail validation. Rationale: materials/ legitimately holds plain images
+ *     fail validation. Rationale: these folders legitimately hold plain images
  *     and handouts; we surface the ambiguity without blocking upload.
  *
  * `ok` is true iff there are no ERROR-level issues. Warnings are still listed in

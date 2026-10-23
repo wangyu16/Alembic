@@ -6,7 +6,7 @@
  * renderer version is stamped into build metadata.
  */
 
-import { md } from "orz-markdown";
+import { renderMarkdown } from "./markdown";
 import { rendererVersion } from "./index";
 import { escapeHtml, themedDocument } from "./document";
 import type { RenderTheme } from "./theme-css";
@@ -43,7 +43,7 @@ export function buildSite(input: SiteInput): SiteFile[] {
         .join("\n")}\n</ul>`
     : "";
 
-  const indexBody = `<h1>${escapeHtml(input.title)}</h1>\n${md.render(
+  const indexBody = `<h1>${escapeHtml(input.title)}</h1>\n${renderMarkdown(
     input.studyGuideMarkdown,
   )}${worksheetNav ? `\n${worksheetNav}` : ""}`;
   files.push({
@@ -54,7 +54,7 @@ export function buildSite(input: SiteInput): SiteFile[] {
   for (const w of input.worksheets) {
     const body = `<p><a href="../index.html">← ${escapeHtml(input.title)}</a></p>\n<h1>${escapeHtml(
       w.title,
-    )}</h1>\n${md.render(w.markdown)}`;
+    )}</h1>\n${renderMarkdown(w.markdown)}`;
     files.push({
       path: `worksheets/${w.slug}.html`,
       content: themedDocument({ title: w.title, bodyHtml: body, theme: input.theme }),

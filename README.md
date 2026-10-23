@@ -17,14 +17,22 @@ milestone plan.
 ```
 apps/
   web/                  Next.js app (authoring workspace, API routes)
-  worker/               container worker: site builds, Pages publication
+  worker/               Fly worker: generates the self-editing .md.html /
+                        .slides.html / .paged.html files (Node-only generators)
 packages/
   package-contract/     package schema, block identity, two-repo invariant (pure TS)
-  renderer/             orz-markdown wrapper: preview, student pages, artifacts
+  package-ops/          UI-independent package operations; the validated write path
+  renderer/             orz-markdown wrapper: preview, student pages, course site
+  carriers/             carrier codec + kind registry (pure TS)
+  generators/           worker-side generation through orz-mdhtml/-slides/-paged
+  editor-kit/           host-agnostic editor-module interface
   github-bridge/        the only code that talks to GitHub
-  ai-assist/            provider-swappable AI interface (dev provider: Gemini)
+  ai-assist/            provider-swappable AI interface (AIProvider)
+  ai-operations/        typed catalog of AI operations (pure metadata)
+  a11y/                 accessibility checks over rendered HTML (pure TS)
   research-events/      research event taxonomy + logger
-docs/                   product vision, roadmap, plans
+templates/              files for the public/private template repositories
+docs/                   product vision, roadmap, plans, specs
 ```
 
 ## Development

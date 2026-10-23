@@ -8,9 +8,12 @@ import { createHostSaveClient, createHostAIClient, createHostIncludeClient } fro
  * parameterized by kind — the file brings its own editor; Alembic provides
  * persistence through the validated write path via `ctx.hostSave`.
  *
- * For these kinds `ctx.source` is the FULL FILE (the self-contained document
- * is the editable unit); a save persists the file's re-serialized `rendered`
- * bytes. Files generated before the protocol never answer the hello — the
+ * For these kinds `ctx.source` is the FULL FILE (the self-editing document
+ * is the editable unit). A save hands the host both the embedded `source` and
+ * the file's re-serialized `rendered` bytes; the HOST decides what is stored:
+ * chapter documents persist only the lean `.md` source (the file is
+ * regenerated from it — lean-source model), collection documents persist the
+ * `rendered` bytes verbatim. Files generated before the protocol never answer the hello — the
  * module reports the timeout via `ctx.onDirty`-independent fallback: the
  * file simply stays a viewer (its own chrome still works), and the host can
  * offer "regenerate to edit".

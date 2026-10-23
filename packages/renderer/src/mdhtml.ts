@@ -10,7 +10,7 @@
  * those via the regex fallback below, so old files always remain extractable.
  */
 
-import { md } from "orz-markdown";
+import { renderMarkdown } from "./markdown";
 import {
   embedSource,
   extractSource,
@@ -50,7 +50,7 @@ export interface BuildMdHtmlInput {
 export function buildMdHtml(input: BuildMdHtmlInput): string {
   const rendered = themedDocument({
     title: input.title,
-    bodyHtml: md.render(input.markdown),
+    bodyHtml: renderMarkdown(input.markdown),
     theme: input.theme ?? "dark",
   });
   return embedSource({

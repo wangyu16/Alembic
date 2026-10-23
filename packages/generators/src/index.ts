@@ -16,6 +16,8 @@
  */
 
 import type { DocMeta } from "orz-markdown/doc-meta";
+// Side effect first: no file includes in the kit-1.x renderer (D-39).
+import "./no-file-includes";
 import { buildMdHtml } from "orz-mdhtml";
 import { buildSlidesHtml } from "orz-slides";
 import { buildPagedHtml } from "orz-paged";

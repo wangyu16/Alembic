@@ -1,4 +1,4 @@
-# Design update: self-contained editing, document contract, universal permalinks
+# Design update: self-editing files, document contract, universal permalinks
 
 **Date:** 2026-07-03 · **Status:** direction locked (owner decision);
 **substantially implemented** — Studio removed (§2), the registration record and
@@ -9,6 +9,9 @@ readers to discount a doc that mostly describes shipped behavior. Three specific
 passages below are now WRONG rather than merely pending: the `.md.html`-native
 study guide in §6, "block IDs … never rewritten" in §4, and the 302-redirect
 resolution model in §7. Each carries its own correction.)*
+*(Wording 2026-10-23: the orz family calls these files **self-editing**, not
+"self-contained" (family RULES §7, STATUS D-33); this spec keeps its file name
+so links stay stable.)*
 **Companion:** [../SteeringNote.md](../SteeringNote.md) — the owner's living
 steering note for this direction; it is refined ahead of this spec, so treat
 it as newer thinking where the two disagree.
@@ -16,7 +19,7 @@ it as newer thinking where the two disagree.
 organize knowledge; the platform handles structure, versioning, GitHub
 publication, provenance, and reuse. What changes is *where editing happens*.
 
-## 1. Editing offloads to self-contained files
+## 1. Editing offloads to self-editing files
 
 Editing has largely moved out of the Alembic platform and into the
 dual-extension files themselves, built by the sibling orz-family projects
@@ -24,9 +27,9 @@ dual-extension files themselves, built by the sibling orz-family projects
 
 | Format | Project | What it is |
 |---|---|---|
-| `.md.html` | [orz-mdhtml](../../../orz-mdhtml) | self-contained webpage, quietly editable in place (pencil → edit → save) |
-| `.slides.html` | [orz-slides](../../../orz-slides) | self-contained slide deck (reveal.js), per-slide in-file editor |
-| `.paged.html` | [orz-paged](../../../orz-paged) | self-contained print-paged document (A4/Letter, headers, page numbers), in-browser editor + templates |
+| `.md.html` | [orz-mdhtml](../../../orz-mdhtml) | self-editing webpage, quietly editable in place (pencil → edit → save) |
+| `.slides.html` | [orz-slides](../../../orz-slides) | self-editing slide deck (reveal.js), per-slide in-file editor |
+| `.paged.html` | [orz-paged](../../../orz-paged) | self-editing print-paged document (A4/Letter, headers, page numbers), in-browser editor + templates |
 
 **Consequence for the workspace:** Alembic does **not** design built-in
 editors. The workspace *plugs in* the `.md.html`, `.slides.html`, and
@@ -39,7 +42,7 @@ file's own editor.)
 ## 2. Studio is removed
 
 The local Studio page (`/studio`, the anonymous in-browser markdown editor)
-is superseded: a self-contained file *is* the local, anonymous, no-account
+is superseded: a self-editing file *is* the local, anonymous, no-account
 editor — open it in a browser, click the pencil.
 ([local-mode.md](local-mode.md) is superseded accordingly.)
 

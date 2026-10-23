@@ -1,5 +1,3 @@
-import { md } from "orz-markdown";
-
 /** Version stamped into build metadata for diagnostics (never used to pin). */
 import pkg from "../package.json";
 
@@ -11,10 +9,8 @@ export function rendererVersion(): string {
   return `orz-markdown@${range.replace(/^[\^~]/, "")}`;
 }
 
-/** Render orz-markdown source to HTML (preview, student pages, artifacts). */
-export function renderMarkdown(source: string): string {
-  return md.render(source);
-}
+// The one server-side render: no file access (D-39). See ./markdown.
+export { renderMarkdown } from "./markdown";
 
 // The async URL-include pre-pass (`{{md-include https://…}}`), re-exported so
 // hosts resolve web transclusions before the synchronous render. See

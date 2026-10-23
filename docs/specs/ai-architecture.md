@@ -91,7 +91,8 @@ interface. This is the main cost/scale lever and almost pure upside.
 | --- | --- | --- |
 | **Direct provider SDK** (today) | simplicity; best prompt-caching fidelity | one provider; manual multi-model |
 | **OpenRouter** | breadth + simplicity, pay-as-you-go | huge model marketplace; lighter governance |
-| **Portkey** | governance: per-user/org virtual keys, budgets, guardrails, observability, self-host | best fit for managed credits + data governance + institution billing |
+| **Portkey** | governance: per-user/org virtual keys, budgets, guardrails, observability, self-host | best fit for managed credits + data governance + institution billing *(chosen 2026-06-16; superseded 2026-08-28)* |
+| **LiteLLM (self-hosted)** | the same governance (virtual keys, budgets, routing, fallback) on a host the operator controls | **the chosen control plane since 2026-08-28** ([worker-tier.md](worker-tier.md) §1.5) |
 
 What a gateway buys: **task→model routing** (cheap/fast model for drafts &
 checks; strong model for restructuring & Tier-B reasoning — one model for
@@ -125,7 +126,8 @@ on; the swap is config-only (the `GatewayProvider` is OpenAI-compatible).
    wins for Tier A; for Tier B, weigh routing closer to the native provider.
 2. **Data governance.** A gateway centralizes logging (good) but routes prompts
    through a third party — for student/IRB data, confirm its data handling
-   (Portkey self-host / data controls; OpenRouter forwards to providers). Ties
+   (the self-hosted LiteLLM keeps gateway logs under the operator's control;
+   OpenRouter forwards to providers). Ties
    to goal.md's governance rules.
 3. **Harness ↔ endpoint compatibility.** Claude Code SDK expects an
    Anthropic-compatible endpoint; routing it through a gateway works only if the
@@ -134,7 +136,8 @@ on; the swap is config-only (the `GatewayProvider` is OpenAI-compatible).
 ## Fit with the current architecture
 
 Nothing here requires reworking what exists:
-- `AIProvider` already abstracts the model → an OpenRouter/Portkey provider is a
+- `AIProvider` already abstracts the model → an OpenAI-compatible gateway
+  provider (LiteLLM, OpenRouter) is a
   drop-in, plus a small **task→model routing map**.
 - The **Agent Workers** module (Roadmap Phase 3) is the home for Tier B *only*,
   not for all AI.

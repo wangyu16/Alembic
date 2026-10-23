@@ -448,16 +448,22 @@ export async function adaptElementAction(
       };
     }
     // Must be shared, or a package the educator owns (getPackage is RLS-scoped).
-    if (!doc.discoverable && !(await store.getPackage(doc.package_id))) {
+    const ownsSource = Boolean(await store.getPackage(doc.package_id));
+    if (!doc.discoverable && !ownsSource) {
       return { ok: false, error: "That element isn't shared." };
     }
 
     // Source license from the source package manifest (gates `canAdapt`).
     const { data: srcPkg } = await db
       .from("packages")
-      .select("manifest")
+      .select("manifest, storage")
       .eq("id", doc.package_id)
       .maybeSingle();
+    // An unpublished (trial) course's files reach nobody but its owner — the
+    // same rule as its permalinks (S1, lib/permalink-access.ts), shared or not.
+    if (!ownsSource && srcPkg?.storage !== "github") {
+      return { ok: false, error: "That element isn't shared." };
+    }
     const sourceLicense = (srcPkg?.manifest as { license?: License } | null)?.license;
     if (!sourceLicense) return { ok: false, error: "Couldn't read the source's license." };
 

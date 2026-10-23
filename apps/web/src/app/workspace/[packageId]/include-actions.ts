@@ -6,8 +6,10 @@ import { resolveIncludeUrl } from "@/lib/resolve-includes";
 /**
  * Resolve one web-transclusion URL (`{{md-include https://…}}`) for a hosted
  * in-file editor's PREVIEW, over the `orz-host-include@1` bridge. Bounded to the
- * app's own permalink host (SSRF guard, in `resolveIncludeUrl`); the fetch is
- * unauthenticated, so private permalinks return 404 → null (never leaked).
+ * app's own permalink host (SSRF guard, in `resolveIncludeUrl`). Permalinks go
+ * through the resolver's access check with the caller's session: a trial
+ * package's file resolves for its owner only, and a private-repo file never
+ * (→ null, never leaked).
  * Returns the markdown, or null when it can't/shouldn't resolve.
  *
  * Sign-in gated: this action drives server-side fetches, so it's for authors in

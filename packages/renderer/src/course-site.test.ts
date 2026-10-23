@@ -17,6 +17,10 @@ const course = {
   builtAt: "2026-06-15T08:00:00Z",
 };
 
+/** The page minus its inline scripts: the kit's runtime (orz-markdown ≥ 2.x)
+ *  carries a "©" in a code comment, which is not a rights claim on the page. */
+const withoutScripts = (html: string) => html.replace(/<script\b[\s\S]*?<\/script>/gi, "");
+
 describe("buildCourseSite — course home hub", () => {
   it("emits the home, a branded 404, and build metadata (chapter pages are added by the caller)", () => {
     const files = buildCourseSite(course);
@@ -342,7 +346,7 @@ describe("buildCourseSite — rights notice", () => {
     // A "© 2026 Dr. Yu Wang" beside a CC0 mark would assert exactly the right
     // the dedication gives up. This is the regression this test exists for.
     const html = index({ ...course, license: "CC0-1.0", instructor: "Dr. Yu Wang" });
-    expect(html).not.toContain("©");
+    expect(withoutScripts(html)).not.toContain("©");
     expect(html).not.toContain("Licensed under");
     expect(html).toContain("Dedicated to the public domain under");
     expect(html).toContain("CC0 1.0");
@@ -351,7 +355,7 @@ describe("buildCourseSite — rights notice", () => {
 
   it("omits the copyright line, but keeps the license, when no holder is known", () => {
     const html = index({ ...course, license: "CC-BY-SA-4.0" });
-    expect(html).not.toContain("©");
+    expect(withoutScripts(html)).not.toContain("©");
     expect(html).toContain("Licensed under");
     expect(html).toContain("CC BY-SA 4.0");
   });
@@ -400,7 +404,7 @@ describe("buildCourseSite — rights notice", () => {
     // The `.site-license` CSS rule ships unconditionally (a handful of bytes);
     // what must be absent is the notice ELEMENT and any rights claim.
     expect(html).not.toContain('<p class="site-license">');
-    expect(html).not.toContain("©");
+    expect(withoutScripts(html)).not.toContain("©");
     expect(html).not.toContain("Licensed under");
   });
 });

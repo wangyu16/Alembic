@@ -20,8 +20,8 @@
  *     foreign-commit detection stays exact.
  *
  * Deliberately NOT a replacement for `github.ts`: this module reuses
- * `clientForUser` / `recordSyncedSha` from there. Wave 1 migrates callers off
- * the old `syncFilesToGitHub` helpers; this file adds the new door only.
+ * `clientForUser` / `recordSyncedSha` from there. Wave 1 migrated callers off
+ * the old `syncFilesToGitHub` helpers (since removed); this file is the door.
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";

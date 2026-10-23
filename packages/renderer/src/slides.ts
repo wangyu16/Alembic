@@ -10,7 +10,7 @@
  * orz-markdown's `md`. Output is self-contained: inline CSS + JS, no CDN links.
  */
 
-import { md } from "orz-markdown";
+import { renderMarkdown } from "./markdown";
 import { getKind } from "@alembic/carriers";
 import { embedSource, extractSource, detectFormatVersion } from "@alembic/carriers";
 import { escapeHtml } from "./document";
@@ -252,7 +252,7 @@ export interface BuildSlidesInput {
 
 /**
  * Build a self-contained `.slides.html` carrier. Each slide chunk is rendered
- * with `md.render` into a `<section class="slide">`, wrapped in a full themed
+ * with `renderMarkdown` into a `<section class="slide">`, wrapped in a full themed
  * HTML document (dark-elegant theme + deck CSS + nav JS), then the deck
  * `source` is embedded via the carriers codec (kind "slides").
  */
@@ -261,7 +261,7 @@ export function buildSlidesHtml(input: BuildSlidesInput): string {
   const sections = chunks
     .map(
       (chunk) =>
-        `<section class="slide"><div class="markdown-body">\n${md.render(chunk)}\n</div></section>`,
+        `<section class="slide"><div class="markdown-body">\n${renderMarkdown(chunk)}\n</div></section>`,
     )
     .join("\n");
 

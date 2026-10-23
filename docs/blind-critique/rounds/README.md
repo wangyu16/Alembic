@@ -4,11 +4,13 @@ One file per round: `<date>-report.md`, with per-item verdicts + evidence,
 referee decisions (including findings that did NOT reproduce), fixes applied,
 spec amendments, deferred free-roam findings, and the residue.
 
-**No round has been run yet.** See
+**No full round has been run yet.** One partial round covered the public,
+signed-out surfaces only: [2026-08-28-round-1-public.md](2026-08-28-round-1-public.md)
+(everything behind sign-in still needs the staging environment below). See
 [../README.md](../README.md) for the operator procedure and
 [../acceptance-spec.md](../acceptance-spec.md) for the frozen spec.
 
-## Why the first round has not run (2026-08-28)
+## Why the first full round has not run (2026-08-28)
 
 The method's one unacceptable failure is verifiers operating on real data.
 This machine's `apps/web/.env.local` points at the **production** Supabase

@@ -48,9 +48,93 @@ same commit as the work it tracks. Statuses: ✅ done · 🔄 partially shipped 
 > action:** run `0018_verify_ban_backstop.sql` against a non-admin account —
 > block `2b` must fail with *new row violates row-level security*.
 
-**Built framework — Phases 0–7 cores complete.** Phase 7 (research ops & study readiness) core is built — M34 de-identified export, M35 admin/ops module, M36 usage dashboard + centrally-managed credits + FERPA/IRB review (M37 institution-managed mode ⏸ deferred post-pilot). Phase 6 (portal & discovery: LRMI, **cross-owner adapt + suggest-back**, searchable portal, governance) complete; Phases 2–5 cores complete. v0.1 is deployed (not yet *shipped* — 2 of 6 release criteria pending the M8.3 pilot). **Only Phase 8 (hardening & sustainability) remains** — or the pilot-readiness pass (the **scaffolding is now done**: [PilotReadiness.md](PilotReadiness.md) runbook, refreshed [Deployment.md](Deployment.md), worked [DemoContent.md](DemoContent.md), M8.1 ✅). Remaining work is operator/deployed: the **live passes** (need Portkey on Vercel; `SUPABASE_SECRET_KEY` + `is_admin` for `/admin`) — the AI/reconcile/adaptation flows (M18, M9.6, M20, M23, M26–M28, M31) + a structured-data-tester check for M30 — then the M8.3 pilot itself. Heavier deferrals (worker tier: PDF/foreign-import/agent-exec/one-click remediation; studio editing/local projects; M29 Zenodo DOI; M37) remain tracked below. See [LocalSetup.md](LocalSetup.md) + [GitHubAppSetup.md](GitHubAppSetup.md).
+**Built framework — Phases 0–7 cores complete.** Phase 7 (research ops & study readiness) core is built — M34 de-identified export, M35 admin/ops module, M36 usage dashboard + centrally-managed credits + FERPA/IRB review (M37 institution-managed mode ⏸ deferred post-pilot). Phase 6 (portal & discovery: LRMI, **cross-owner adapt + suggest-back**, searchable portal, governance) complete; Phases 2–5 cores complete. v0.1 is deployed (not yet *shipped* — 2 of 6 release criteria pending the M8.3 pilot). **Only Phase 8 (hardening & sustainability) remains** — or the pilot-readiness pass (the **scaffolding is now done**: [PilotReadiness.md](PilotReadiness.md) runbook, refreshed [Deployment.md](Deployment.md), worked [DemoContent.md](DemoContent.md), M8.1 ✅). Remaining work is operator/deployed: the **live passes** (need the AI gateway on Vercel; `SUPABASE_SECRET_KEY` + `is_admin` for `/admin`) — the AI/reconcile/adaptation flows (M18, M9.6, M20, M23, M26–M28, M31) + a structured-data-tester check for M30 — then the M8.3 pilot itself. Heavier deferrals (worker tier: PDF/foreign-import/agent-exec/one-click remediation; studio editing/local projects; M29 Zenodo DOI; M37) remain tracked below. See [LocalSetup.md](LocalSetup.md) + [GitHubAppSetup.md](GitHubAppSetup.md).
 
 > **Current direction — self-contained editing (owner-locked, 2026-07).** Editing and viewing both live *in the files*: the workspace **hosts** the in-file editors of `.md.html` / `.slides.html` / `.paged.html` (orz-family) and **builds no editor of its own**; published pages **are** those self-contained files (thin CDN delivery — study guide ~74 KB, framework from jsDelivr, verified live 2026-07-06); every file gets a permalink. **Committed source of record (revised, 2026-07-08 — "lean-source model"):** a chapter's study guide, slides, and practice questions are each committed as lean markdown (`study-guide/`, `slides/`, `practice/` — `.md`, not `.md.html`); the self-contained `.md.html`/`.slides.html` is generated on demand, purely as the editing/viewing surface, and never itself committed. This supersedes the original plan (below, and in the specs) of `.md.html` as the committed source — the specs haven't all been updated to match yet; this line is authoritative until they are. Authoritative docs: [SteeringNote.md](SteeringNote.md), [self-contained-editing.md](specs/self-contained-editing.md), [workspace-framework.md](specs/workspace-framework.md), and the module-based [Roadmap.md](Roadmap.md) (Modules R/E/P/T/I/S/W — supersedes the phase-based plan). **Code state today:** the classic editor is **retired** (~2.2k lines removed; `/workspace/[id]` redirects to `/edit`); the local **Studio (`/studio`) is removed**, replaced by `/guide`; the workspace three-pane shell now *hosts* the in-file editors (`HostedStudyGuideEditor` for study guide + practice; `HostedSlidesEditor` for authored slide decks). The durable guardrails **G1–G8** (two-repo reference enforcement, block-ID reconcile on import, whole-package fork, single-source course metadata, AI-entitlement seam) that the earlier editor-overhaul design drove all **landed + tested**.
+
+**Phase 5 Track 0 — security and hygiene (2026-10-23, branch `phase5/track0`).** The first track of the
+Phase 5 revision plan (family `docs/PHASE5-ALEMBIC.md`). Committed locally, **not pushed** (a push to `main`
+deploys production; the owner says when).
+- **0.1 D-39 — server-side Markdown can no longer read local files.** `packages/renderer` moved from
+  orz-markdown `^1.6.0` to **`^2.4.0`**. Kit 1.x resolved `{{md path}}` / `{{markdown path}}` /
+  `{{md-include path}}` from `process.cwd()` when no env was given, so a study guide containing
+  `{{md /etc/hosts}}` or `{{md ../.env}}` rendered the server's file into the preview, the export and the
+  published site. Kit 2.x makes file includes opt-in; every renderer render now goes through one function,
+  `renderMarkdown` (`packages/renderer/src/markdown.ts`), with a fresh empty env (no `markdownBasePath`, no
+  `readFile`). URL includes are unchanged: `prepareSources` with `allowedHosts` + the guarded fetcher
+  (`apps/web/src/lib/resolve-includes.ts`). The kit ships its own types, so the ambient `orz.d.ts` is gone.
+  **Themes:** `theme-css.ts` is now *generated* from the installed kit's `themes/*.css` by
+  `scripts/vendor-themes.mjs` (replaces `vendor-light-theme.mjs`), and `theme-css.test.ts` fails when it
+  drifts — the dark-elegant and light-academic looks follow kit 2.4 (D-45: chart/diagram tokens, inline
+  images in links/lists/cells, revised theme CSS). **Worker:** `packages/generators` keeps orz-mdhtml 0.9 /
+  orz-slides 0.8 / orz-paged 0.7 (kit 1.6; the port is Track C.1); both kit versions coexist under pnpm. Its
+  `build*Html` entry points render in the reader's browser, but kit 1.6 is loaded in the worker process, so
+  `no-file-includes.ts` re-registers the three include aliases on kit 1.6's global registry to render
+  nothing (defence in depth; remove with kit 1.x). **Template build:** the public template's standalone
+  site build (`templates/public-repo/.alembic/build/`) had never been committed — the root `.gitignore`'s
+  `build/` swallowed it, so `GitHubAppSetup.md` pointed at a directory that only existed on the owner's
+  machine. It is now committed (a `.gitignore` exception), on `orz-markdown ^2.4.0`, renders with
+  `markdownBasePath` = the file's folder and `markdownIncludeRoot` = the repo (includes stay inside the
+  checkout), and reads `practice/*.md` instead of the v1 `materials/worksheets/` (still listed as a
+  fallback). Tests: renderer `markdown.adversarial.test.ts` (absolute, `../`, `./../` and `/etc/hosts`
+  through every render entry point), generators `no-file-includes.adversarial.test.ts` (fails without the
+  guard), `theme-css.test.ts`. **Operator actions:** redeploy **web and worker** (the worker's lockfile
+  changed — `fly deploy` from the repo root); copy the new `.alembic/build/` into the
+  `alembic-public-template` repo on GitHub (existing package repos keep their old manual-only copy).
+- **0.2 S1 — a trial course's permalinks are owner-only.** `/d/{docId}` served the public-space files of
+  *trial* (unpublished, sandbox) packages to anyone holding the docId, contrary to permalinks spec §3
+  ("private / trial / unpublished … with owner/access checks"). The access decision now lives in one
+  module, `apps/web/src/lib/permalink-access.ts`, used by the route and by server-side includes: published
+  public files → anyone; private-repo files and **every file of a trial package** → the owner's own session
+  only (RLS proves ownership), everyone else the same 404 as a missing doc. Owner-only answers are now sent
+  `private, no-store` without CORS (private files were `public, max-age=60` before — a shared cache could
+  have kept one). **Includes** (`{{md-include https://…/d/…}}`, preview and the hosted editor's include
+  bridge) resolve permalinks in-process through the same check with the educator's session — so an owner's
+  own trial includes keep working — and never resolve a private-repo file, even for its owner (an include
+  can land in a public artifact). **Adapting a shared element** (`adaptElementAction`) refuses a trial
+  package's file unless the educator owns it. Tests: `permalink-access.adversarial.test.ts` (anonymous,
+  signed-in stranger, owner, no service key, includes, tombstone, malformed ids, orphan rows). *Open for the
+  owner:* "Share this" is still offered in a trial course; the file becomes visible to others only once the
+  course is published.
+- **0.3 S2 — Discover's Elements list shows only shared public files of published, active courses.** It
+  listed every `discoverable` row, including files of archived packages and of trial packages (whose
+  permalinks are now owner-only). `apps/web/src/lib/shared-elements.ts` filters in the query (inner join on
+  `packages`: `storage = 'github'`, `archived_at is null`; `repo = 'public'`; spaces `private`/`current`
+  excluded; not tombstoned) and again over the returned rows (`isListableElement`), and reads the package
+  title in the same query (one round trip instead of two). Still capped at 200, still newest first —
+  search, paging and ranking are Track A. Tests: `shared-elements.adversarial.test.ts` (each leak class,
+  a query that forgot its filters, the filters sent, a query error).
+- **0.4 Docs drift (no orz-format changes).** [SteeringNote.md](SteeringNote.md): the "302 to Pages"
+  resolution and the "`.md.html` is the source of record" passages carry dated *superseded* notes (lean
+  `.md` permanent; `/d/{docId}` served by Alembic), and §5 names the real write seam. [DecisionLog.md](DecisionLog.md):
+  deferred item E3 is marked resolved by the 2026-08-28 ruling. **Portkey → LiteLLM** in the operator list
+  above, [Deployment.md](Deployment.md), `.env.example`, [data-handling-review.md](specs/data-handling-review.md)
+  and [ai-architecture.md](specs/ai-architecture.md) (historical log entries keep their wording).
+  [Deployment.md](Deployment.md): the worker is described as what it is (file generation for the in-file
+  editors, §7 new: `fly deploy`, `WORKER_URL`/`WORKER_TOKEN`, redeploy on lockfile changes), the smoke test
+  uses today's words (course, study guide, practice, Discover), and `SUPABASE_SECRET_KEY`'s public reads are
+  named. data-handling-review records that three registry reads use the service role (resolver, Elements,
+  adapt) against its "exclusively admin" invariant — Track A.1 is meant to replace them.
+  [user-governance.md](specs/user-governance.md): stale `file.ts:NN` references replaced by symbol names; the
+  "`orz-host-ai` bridge is not wired" line corrected (wired for study guides and slides, operations offered
+  only to approved accounts). [goal.md](goal.md): the orz-markdown v1.3.1 cite. **D-33 wording:**
+  "self-contained" → "self-editing" where it positions orz files (goal.md, the `/guide/ideas` and
+  `/guide/offline` pages, Quickstart, SteeringNote, the self-contained-editing spec's title and table; the
+  spec keeps its file name; historical log entries, code identifiers and the skills — Track C.6 — are left).
+  D-32: README lists all eleven packages; the blind-critique rounds README acknowledges the partial public
+  round. *Not changed — needs the owner:* `CLAUDE.md` still says Studio is "slated for removal" (it was
+  removed 2026-07-04) and rule 3 names `packageOps(store, packageId)` as the write path (the seam is
+  `writeThrough`/`updateManifest`, storage-and-write-paths.md); a proposed wording is with the owner.
+- **0.5 Stale comments.** `hosted-carrier.ts` said a save persists the `rendered` bytes — the host decides
+  (chapter documents keep only the lean source; collection documents the bytes). `validateProject`'s header
+  lists check 0 (skeleton files) and the v2 `assets/` folder (its check-3 wording had already been fixed,
+  so the 2026-08-28 referral below is closed). `committer.ts` no longer says callers are still being moved
+  off `syncFilesToGitHub`: those helpers are gone (also closing that referral). **Left for the owner** (zero
+  callers outside their own package and tests, but deliberately kept or tied to the longevity promise):
+  `buildSite` (`packages/renderer/src/site.ts`, superseded by `buildCourseSite`), `extractMdHtml` /
+  `extractSlides` (legacy-island readers; Track C.1 retires the island). The `mirrorManifestToSandbox`
+  doc-comment referral stands: four actions still write `packages.manifest` directly, so it needs a
+  write-path look, not a comment edit.
 
 **Wave 4 / T42 — doc coherence pass (2026-08-28).** Docs-only sweep after the storage/write-path waves
 (the CLAUDE.md "after each phase, run a coherence pass" rule). Corrected: the Waves-2–3 test count
@@ -476,10 +560,10 @@ These are the only things blocking full production parity with the code:
 
 1. **Migrations pending: `0020` (required for zip upload), `0019` (required for CF4), `0013` (optional).** `0020_staging_bucket` creates the private `staging` bucket + owner-prefix RLS that the whole-course zip upload writes through — **it needs owner/service-role privileges** (it writes `storage.buckets` and `storage.objects` policies, which the anon/authenticated roles cannot) and **must be applied BEFORE the Wave-3 code is deployed**, or every zip upload fails at the signed-URL step. Supabase Storage has no automatic TTL, so the bucket's 24-hour lifetime also needs an **operator/cron sweep** deleting objects older than 24h (the happy path deletes each object on consumption); see [Deployment.md §1](Deployment.md). `0019_document_tags` adds the per-file `tags` column the Assets collection (CF4.1/4.2) reads/writes — **apply it before relying on asset tags/metadata in production** (CF4 asset writes are otherwise held; see the CF4 entry). `0013_drop_portal_eligible` drops the now-unused `profiles.portal_eligible` column — optional cleanup, apply anytime; no code references it. Applied: 0005–0012, **0014** (documents), **0015** (portal keywords, 2026-07-09), and **0016–0018** (profile column grants + user governance + ban backstop, ✅ **applied 2026-07-10** — see the security/UG banners above). Config notes: 0007's budget stays dormant until `AI_TOKEN_BUDGET` is set; portal listing is now open to all educators (the `portal_eligible` gate + admin toggle were removed); to reach `/admin`, **flag yourself `is_admin=true`** (dashboard) and set **`SUPABASE_SECRET_KEY`** (service-role reads) — optionally `RESEARCH_EXPORT_SALT`.
 2. ✅ **Done** — Vercel build command is `node ../../scripts/fetch-vendor.mjs && next build`; Plotly is vendored and the plot editor (M11b) works live.
-3. **Interactive verification passes** (can't run in CI): slides render (M13), the in-file hosted editors (`.md.html`/`.slides.html`/`.paged.html` save round-trip via the worker tier), and the AI/reconcile live runs (M18 coherence agent, M9.6 draft-from-plan, M20 reconcile, M23 question generation, M26–M28 adapt/pull/suggest-back) once Portkey is on Vercel. Ketcher (M11) and plots (M11b) are verified live.
-4. **Set the Portkey env vars in Vercel** (`AI_GATEWAY_URL=https://api.portkey.ai/v1`, `AI_GATEWAY_API_KEY`, `AI_MODEL_DEFAULT/FAST/STRONG` = `@<provider-slug>/<model>`) to verify the **M18 coherence agent** live. Local dev can't reach Portkey from this machine (the dev Mac's security/firewall blocks the `node` binary's outbound — `curl` works, `node` ETIMEDOUTs — not an app issue); Vercel's egress is clean. See [ai-architecture.md](specs/ai-architecture.md).
+3. **Interactive verification passes** (can't run in CI): slides render (M13), the in-file hosted editors (`.md.html`/`.slides.html`/`.paged.html` save round-trip via the worker tier), and the AI/reconcile live runs (M18 coherence agent, M9.6 draft-from-plan, M20 reconcile, M23 question generation, M26–M28 adapt/pull/suggest-back) once the AI gateway is on Vercel. Ketcher (M11) and plots (M11b) are verified live.
+4. **Set the AI gateway env vars in Vercel** — the self-hosted LiteLLM gateway (decided 2026-08-28, replacing Portkey; [worker-tier.md](specs/worker-tier.md) §1.5): `AI_GATEWAY_URL=https://<litellm-host>/v1`, `AI_GATEWAY_API_KEY=<virtual key>`, `AI_MODEL_DEFAULT/FAST/STRONG` = the gateway's model names — to verify the **M18 coherence agent** live. (Local dev could not reach the earlier hosted gateway from this machine — the dev Mac's firewall blocks the `node` binary's outbound; Vercel's egress is clean.) See [ai-architecture.md](specs/ai-architecture.md).
 
-**Deferred chore:** bump renderer to orz-markdown 1.1.0 (published) — reverted to 1.0.0 temporarily because the npm registry was unreachable during M2 and CI uses `--frozen-lockfile`. Behavior is unaffected (1.0.0 supports the attrs block-ID syntax); redo when the registry is reachable.
+~~**Deferred chore:** bump renderer to orz-markdown 1.1.0~~ — *superseded:* the renderer moved to 1.6 during the 2026-07 work and to **orz-markdown ^2.4.0 on 2026-10-23** (Phase 5 Track 0.1, see the entry above). `packages/generators` stays on the 0.x carriers (kit 1.6) until Track C.1.
 
 ## Phase overview (full project)
 
@@ -517,9 +601,9 @@ unless a dependency is noted.
 
 | Gap | Needed by | Status |
 | --- | --- | --- |
-| 1. TOC vs custom heading IDs ordering bug (one-line fix) | M2 (preview with TOC) | ✅ fixed upstream in 1.1.0 — not yet consumed (renderer pinned at 1.0.0) |
-| 2. Ship Agent Skill in the npm tarball | M3 (AI drafting) | ✅ fixed upstream in 1.1.0 — not yet consumed (renderer pinned at 1.0.0) |
-| 3. Add ID-preservation rules to the Agent Skill | M3 (AI drafting) | ✅ fixed upstream in 1.1.0 — not yet consumed (renderer pinned at 1.0.0) |
+| 1. TOC vs custom heading IDs ordering bug (one-line fix) | M2 (preview with TOC) | ✅ fixed upstream in 1.1.0 — consumed (renderer on orz-markdown ^2.4.0 since 2026-10-23) |
+| 2. Ship Agent Skill in the npm tarball | M3 (AI drafting) | ✅ fixed upstream in 1.1.0 — consumed (renderer on orz-markdown ^2.4.0 since 2026-10-23) |
+| 3. Add ID-preservation rules to the Agent Skill | M3 (AI drafting) | ✅ fixed upstream in 1.1.0 — consumed (renderer on orz-markdown ^2.4.0 since 2026-10-23) |
 | 4. Versioned embed/extract module + format-version marker | M4 (.md.html export) | ⬜ |
 | 5. Attribute pass-through for plugin blocks (equations/structures) | — | ⏸ superseded by the M11.0 carrier registry (assets are addressable carrier files, not attr-tagged plugin blocks) |
 
@@ -624,8 +708,8 @@ hold before calling v0.1 shipped. Current standing:
 - **M8.3 pilot** — run with 1–3 chemistry educators against criteria 1 & 6
   (the last substantive gate); protocol + success bar in
   [PilotReadiness.md](PilotReadiness.md) Part C.
-- **Deferred chore** — bump renderer to orz-markdown 1.1.0 once the npm
-  registry is reachable from the dev machine (CI/Vercel builds already reach it).
+- ~~**Deferred chore** — bump renderer to orz-markdown 1.1.0~~ — done and
+  overtaken: the renderer is on orz-markdown ^2.4.0 (2026-10-23).
 
 Closed recently: no-lock-in build config (criterion #3 — committed to the
 public template); M7 portal (migration 0004 applied).
@@ -809,7 +893,7 @@ Cost/scale via a gateway + per-task model selection. See [specs/ai-architecture.
 
 | # | Sub-module | Verify by | Status |
 | --- | --- | --- | --- |
-| 16.1 | Gateway provider (Portkey/OpenRouter) behind `AIProvider` | provider swap with no workflow-code change | ✅ ai-assist `GatewayProvider` (OpenAI-compatible, native fetch — works with OpenRouter/Portkey/OpenAI); `lib/ai` selects it when `AI_GATEWAY_URL`/`AI_GATEWAY_API_KEY` set, else Gemini. 49 ai-assist tests |
+| 16.1 | Gateway provider (OpenAI-compatible: LiteLLM — chosen 2026-08-28 —, OpenRouter; Portkey originally) behind `AIProvider` | provider swap with no workflow-code change | ✅ ai-assist `GatewayProvider` (OpenAI-compatible, native fetch — works with OpenRouter/Portkey/OpenAI); `lib/ai` selects it when `AI_GATEWAY_URL`/`AI_GATEWAY_API_KEY` set, else Gemini. 49 ai-assist tests |
 | 16.2 | task→model routing map (cheap/fast vs strong) | each task uses its configured model | ✅ ai-assist `modelForTask`/`DEFAULT_ROUTING` (pure); `GovernedProvider` injects the per-task model (`AI_MODEL_DEFAULT` overrides default), unless a call pins one |
 | 16.3 | Budgets / quotas per user + per institution; usage attribution | quota enforced; usage attributable | 🔄 per-user **token budget** (`recent_ai_token_usage` RPC, migration 0007; `AI_TOKEN_BUDGET`/`AI_BUDGET_WINDOW_SECONDS`; `BudgetExceededError` surfaced) on top of the existing rate limit; usage attributable via `ai_invocations` (tokens already logged). Per-institution quotas + dashboards later |
 | 16.4 | Governed logging via the gateway; data-handling review (FERPA/IRB) | prompts/outputs logged under governance; third-party data handling reviewed | 🔄 governed logging in place (`ai_invocations`, owner-insert-only, never in a repo); the third-party data-handling review (FERPA/IRB; what a gateway/provider may retain) is captured as an ops/compliance task in [ai-architecture.md](specs/ai-architecture.md) |
@@ -942,7 +1026,7 @@ worker-side agent — the separate Phase 3.5 infra block.)
 | # | Sub-module | Verify by | Status |
 | --- | --- | --- | --- |
 | 23.1 | Generate items from a template (ai-assist), respecting instructor design + alignment + misconception targets | generated item matches the template's constraints | ✅ ai-assist `generateQuestions(provider,{template,count})` — pairs public stem/choices with the PRIVATE answer/rationale; prompt forbids leaking the answer; `stubGenerateQuestions` for offline; `assessment-item` routed to the strong model. 6 tests (55 total) |
-| 23.2 | Items routed through review (Tier-2 draft / Tier-3 for answer keys) + provenance to the template | each item reviewed; key generation is Tier-3 itemized | ✅ web `generateItemsAction` enqueues each item as a **Tier-3** `assessment-edit` review (with templateId provenance); surfaced in "Changes & review"; Tier-3 excluded from batch-accept (itemized only). **Needs a live pass** (Portkey on Vercel) |
+| 23.2 | Items routed through review (Tier-2 draft / Tier-3 for answer keys) + provenance to the template | each item reviewed; key generation is Tier-3 itemized | ✅ web `generateItemsAction` enqueues each item as a **Tier-3** `assessment-edit` review (with templateId provenance); surfaced in "Changes & review"; Tier-3 excluded from batch-accept (itemized only). **Needs a live pass** (AI gateway on Vercel) |
 
 ### M24 — Private-repo answer keys & embargo *(security-critical; in-process)*
 
@@ -2886,7 +2970,7 @@ parked. Consolidated here so nothing is lost (none is actively in progress):
   fail-closed) + Tier-3 excluded from batch-accept + `AssessmentsPanel` (Generate
   group). The full loop — template → AI generate → Tier-3 itemized review → public
   item + private answer key — works; release gate guards leakage. typecheck + all
-  tests + web build green. **Needs a live pass** (Portkey on Vercel). Confirmed at
+  tests + web build green. **Needs a live pass** (AI gateway on Vercel). Confirmed at
   planning: Phase 4 needs no worker tier. Next: M25 LMS export (QTI + Common
   Cartridge, pure transformer + zip). Follow-up: blueprint/embargo editor UI + early-lift.
 - **Light theme.** Added a light/dark toggle (header ☀/☾) alongside the existing

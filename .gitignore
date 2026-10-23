@@ -33,3 +33,6 @@ apps/web/public/ketcher/
 
 # Vendored Plotly (authoring editor; pnpm fetch:plotly)
 apps/web/public/vendor/
+
+# The template repo's standalone site build is source, not output.
+!templates/public-repo/.alembic/build/

@@ -20,18 +20,18 @@ Core ideas are:
 
 1. Let educators create/maintain OER as developers create/maintain software packages using git/GitHub, but without the need to learn Git/GitHub.
 2. The platform takes care of routine GitHub operations so the educator feels native editing/managing documents.
-3. The educator mainly takes care of the knowledge and high-level structure, while AI agents synthesize high-quality public-facing teaching documents (markdown-based, dual-extension self-contained files).
+3. The educator mainly takes care of the knowledge and high-level structure, while AI agents synthesize high-quality public-facing teaching documents (markdown-based, dual-extension self-editing files).
 4. **Editing lives inside the documents themselves.** The dual-extension files carry their own editors (built at the orz-family level); the platform hosts those in-file editors and plugs them in — it does not build editing surfaces of its own. The platform's own jobs are registration, validation, versioning, publication, provenance, permalinks, and reuse.
 
 ## Requirements
 
 **Requirements:**
 
-- Use orz-markdown (available on the npm registry; currently v1.3.1) as the markdown parser. This markdown parser is developed by myself and deeply customized for scientific/chemistry editing, with a built-in Agent Skill. As of v1.3.1 it also ships the **built-in in-file editor**, **copy-as-source**, and the **theme system** used across the family. When issues are found or improvements are needed, I can update orz-markdown itself. Alembic's stable block-identity syntax (see Package Model) is implemented at the orz-markdown level, with ID-preservation rules carried in its built-in Agent Skill. orz-markdown follows a backward-compatibility policy: existing syntax never silently changes meaning (deprecate rather than remove), and the dual-extension source-embedding/extraction mechanism is versioned and documented so old artifacts remain extractable indefinitely.
-- The self-contained document formats are built by the **sibling orz-family projects** (same mother folder as Alembic) and are the canonical implementations Alembic plugs in:
-  - **orz-mdhtml** → `.md.html` — a self-contained webpage, quietly editable in place;
-  - **orz-slides** → `.slides.html` — a self-contained slide deck with a per-slide in-file editor;
-  - **orz-paged** → `.paged.html` — a self-contained print-paged document (A4/Letter, margins, running headers/footers, page numbers) with an in-browser editor and templates. Printable/PDF output is obtained by printing a `.paged.html` in the browser.
+- Use orz-markdown (available on the npm registry; Alembic's renderer uses the 2.x line, `^2.4` as of 2026-10) as the markdown parser. This markdown parser is developed by myself and deeply customized for scientific/chemistry editing, with a built-in Agent Skill. Since v1.3 it also ships the **built-in in-file editor**, **copy-as-source**, and the **theme system** used across the family. When issues are found or improvements are needed, I can update orz-markdown itself. Alembic's stable block-identity syntax (see Package Model) is implemented at the orz-markdown level, with ID-preservation rules carried in its built-in Agent Skill. orz-markdown follows a backward-compatibility policy: existing syntax never silently changes meaning (deprecate rather than remove), and the dual-extension source-embedding/extraction mechanism is versioned and documented so old artifacts remain extractable indefinitely.
+- The self-editing document formats are built by the **sibling orz-family projects** (same mother folder as Alembic) and are the canonical implementations Alembic plugs in:
+  - **orz-mdhtml** → `.md.html` — a self-editing webpage, quietly editable in place;
+  - **orz-slides** → `.slides.html` — a self-editing slide deck with a per-slide in-file editor;
+  - **orz-paged** → `.paged.html` — a self-editing print-paged document (A4/Letter, margins, running headers/footers, page numbers) with an in-browser editor and templates. Printable/PDF output is obtained by printing a `.paged.html` in the browser.
   (The earlier VS Code extensions — orz-slides-html-vscode, orz-md-pdf-vscode, orz-md-html-vscode — are historical references only; the sibling projects supersede them.)
 - Incorporate https://github.com/epam/ketcher for chemical structure editing.
 - Modularized design so each module can be implemented, tested, and maintained independently. Especially: the workspace must be able to change more often than other parts, and some changes might be fundamental. Make sure the workspace can be revised in the future without breaking other parts; avoid any situation where it cannot be revised due to restrictions from other parts. (The July 2026 editing offload is this principle exercised: the workspace sheds its editing surfaces without touching the durable core.)
@@ -70,7 +70,7 @@ The workspace is where educators create or adapt packages. **It builds no editor
 - educator approval checkpoints;
 - registration, permalinks, provenance, and publication for every document (see Package Model).
 
-The interface should feel closer to a teaching-material studio than a code editor. Advanced users may open the underlying Markdown or GitHub repository, but that should be optional; the platform treats such external edits as first-class events to reconcile, not anomalies (see External edits and reconciliation). The workspace remains a replaceable client of stable package operations; it must never become the hidden owner of the package schema, file layout, Git workflow, renderer behavior, or portal records. (There is no separate local "studio" surface: a self-contained file, opened in any browser, *is* the local anonymous editor.)
+The interface should feel closer to a teaching-material studio than a code editor. Advanced users may open the underlying Markdown or GitHub repository, but that should be optional; the platform treats such external edits as first-class events to reconcile, not anomalies (see External edits and reconciliation). The workspace remains a replaceable client of stable package operations; it must never become the hidden owner of the package schema, file layout, Git workflow, renderer behavior, or portal records. (There is no separate local "studio" surface: a self-editing file, opened in any browser, *is* the local anonymous editor.)
 
 ### 2. AI Orchestration Layer
 
@@ -222,13 +222,13 @@ The app should include a central portal that indexes public-safe metadata rather
 
 The portal is a doorway into a distributed ecosystem, not necessarily the permanent host for every resource.
 
-### 7. Self-Contained Editable Documents
+### 7. Self-Editing Documents
 
-Dual-extension documents — `.md.html`, `.slides.html`, `.paged.html` — are first-class product outputs. They are rendered files that can be shared like normal HTML while also embedding editable Markdown source **and their own editor**: open one in any browser to read/present/print, click the pencil to edit, save your own copy. Nothing to install, no account required. They are built by the sibling orz-family projects (orz-mdhtml, orz-slides, orz-paged) on orz-markdown v1.3.1+.
+Dual-extension documents — `.md.html`, `.slides.html`, `.paged.html` — are first-class product outputs. They are rendered files that can be shared like normal HTML while also embedding editable Markdown source **and their own editor**: open one in any browser to read/present/print, click the pencil to edit, save your own copy. Nothing to install, no account required. They are built by the sibling orz-family projects (orz-mdhtml, orz-slides, orz-paged) on orz-markdown.
 
 These files are **final user-facing views** (see Package Model, permalink classes): shared, cited, found by permalink — never inserted into other documents. Insertable content (images, audio, markdown fragments, structures, plots, data) is the separate object class with `src`-usable permalinks.
 
-Public-facing teaching documents should default to downloadable, editable, self-contained formats derived from public-safe package content: study guides and chapter notes as `.md.html`, slide decks as `.slides.html`, printable handouts/worksheets/readings/exams as `.paged.html` (print to PDF in the browser). These files should be useful outside Alembic: a student can download a public chapter study guide, open the `.md.html` in a browser, and keep a private annotated copy with personal notes — the editor is inside the file.
+Public-facing teaching documents should default to downloadable, editable, self-editing formats derived from public-safe package content: study guides and chapter notes as `.md.html`, slide decks as `.slides.html`, printable handouts/worksheets/readings/exams as `.paged.html` (print to PDF in the browser). These files should be useful outside Alembic: a student can download a public chapter study guide, open the `.md.html` in a browser, and keep a private annotated copy with personal notes — the editor is inside the file.
 
 Private or internal documents do not need this artifact wrapper by default. Instructor notes, answer keys, assessment drafts, private planning notes, raw AI logs, and research-only records may remain raw Markdown or structured package records unless a protected private workflow explicitly requires a different export.
 
@@ -366,4 +366,4 @@ Those directions may inspire later integrations, but the IUSE product should rem
 
 ## Success Definition
 
-The product succeeds if a non-developer educator can start with a teaching idea or messy existing materials, collaborate with AI to shape the knowledge flow, create a study-guide-centered resource package, generate polished and editable self-contained documents, publish/share through open infrastructure with a permalink for every file, adapt others' materials with attribution, and retain control over what is public, private, or research-only. The system should make the open-source-style OER ecosystem feel natural to educators while preserving enough structure, metadata, provenance, and instrumentation for high-quality research and long-term reuse.
+The product succeeds if a non-developer educator can start with a teaching idea or messy existing materials, collaborate with AI to shape the knowledge flow, create a study-guide-centered resource package, generate polished and editable self-editing documents, publish/share through open infrastructure with a permalink for every file, adapt others' materials with attribution, and retain control over what is public, private, or research-only. The system should make the open-source-style OER ecosystem feel natural to educators while preserving enough structure, metadata, provenance, and instrumentation for high-quality research and long-term reuse.
