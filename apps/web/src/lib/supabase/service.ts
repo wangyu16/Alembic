@@ -7,7 +7,8 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
  * append-only `research_events` (no user select policy by design), the
  * operator-only `portal_reports`, and toggling another user's profile flags.
  * Also, narrowly and never for an educator workflow: the public-file reads of
- * `/d` and Discover's Elements list, the report rate-limit counters, and
+ * `/d` and Discover's Elements list, the report rate-limit counters and filing reports
+ * (`file_portal_report`, migration 0024), and
  * anonymous discovery events (data-handling-review.md, "Access model").
  * Returns null when SUPABASE_SECRET_KEY isn't configured.
  */

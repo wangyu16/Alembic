@@ -18,17 +18,20 @@ column dropped in migration `0013`).
 ## Reporting & takedown
 
 - **Report:** anyone (signed-in or anonymous) can report a listed package from
-  the portal (a reason → `portal_reports`, status `open`). RLS allows insert by
-  all and **read by no normal user** — only operators (service role / dashboard)
+  the portal (a reason → `portal_reports`, status `open`). Reports are filed by
+  the server (anonymous visitors included) and **read by no normal user** — only operators (service role / dashboard)
   review reports. (Phase 7's admin module surfaces them in-app.)
   **Rate limited** (Phase 5 Track A.6, 2026-10-23): 5 reports per 10 minutes
   and 20 per day per client address, counted in Postgres (`rate_limit_hit`,
   migration 0023; in-process until it is applied). Keys are an HMAC of the
   address — no address is stored. Each accepted report also logs a
   de-identified `portal.reported` research event (the reason's length, never
-  its text). The in-app limit does not bind a client that inserts into
-  `portal_reports` directly with the public anon key (RLS allows any insert);
-  a database-side cap is an open item.
+  its text). **Database-side cap** (Phase 5 hardening, migration 0024): the
+  direct insert with the public anon key is closed; the only insert path is
+  `file_portal_report()` (service role only), which also caps reports per
+  package (10 / hour, 30 / day) and overall (60 / hour, 300 / day) — limits a
+  client rotating addresses cannot dodge. A flood can at worst pause
+  reporting until the window rolls over.
 - **Review:** an operator reads `portal_reports` (dashboard), assesses, and sets
   `status` to `resolved` / `dismissed`.
 - **Takedown:** to remove a listing, either the **owner unlists** it
@@ -42,5 +45,5 @@ column dropped in migration `0013`).
 - Open registration with moderation (lift the participant-only gate).
 - Named stewardship + handoff; in-app admin/moderation UI (Phase 7).
 - Abuse controls beyond the RLS gates: ~~rate limits on reports~~ ✅ built
-  (Track A.6, above); a database-side cap on direct `portal_reports` inserts
-  and limits on registration remain.
+  (Track A.6, above); ~~a database-side cap on direct `portal_reports`
+  inserts~~ ✅ (migration 0024, above); limits on registration remain.

@@ -6,6 +6,18 @@ design, and what is deferred to the future. Complements [Status.md](Status.md)
 
 ---
 
+## 2026-10-23 — Hardening: paged research export; reports only through a capped database function (Phase 5)
+
+| # | Decision | Why |
+|---|---|---|
+| 1 | **`/admin/export` walks `research_events` by keyset `(occurred_at, id)` in batches of 1000 and streams the de-identified output**, byte-identical to the former one-shot CSV/JSON. Only an empty page ends the walk; a non-advancing page is refused; the first page is read before the response is built, and a later failure errors the stream. | One query held the whole store in memory, and PostgREST's `max-rows` (1000 on Supabase) silently truncated the file. A short page cannot end the walk because the server's row cap may be below the batch size. A failed download is visible; a truncated one is not. Keeping the bytes identical keeps the evaluators' tooling unchanged. |
+| 2 | **Reports are filed only through `file_portal_report()` (security definer, service role only); the direct anon/authenticated insert is revoked** (migration 0024). Not an insert trigger. | The anon key is public, so any cap a browser can reach must sit in the database; but a per-address limit cannot be applied there (Postgres does not see the client address reliably). Routing every insert through the server keeps the per-address limit binding and lets the database add the caps it can apply. A trigger would keep the direct path open and would have to guess the caller. Anonymous reporting (governance) is unchanged: the server files it. |
+| 3 | **Caps: per package 10 / hour and 30 / day; overall 60 / hour and 300 / day**, counted with `rate_limit_hit` (0023); global first, so fresh made-up package ids cannot dodge it. | Reports are rare and human; these numbers are far above real use but bound the table against a client rotating addresses. The price is that a flood can pause reporting until the window rolls over — preferred to unbounded growth of an operator-reviewed queue. |
+| 4 | **The app falls back to the old session insert only when the function is missing** (`PGRST202`/`42883`). Deploy order: code, then 0024. | The code works against a database with or without 0024, and no other error can route around the caps. Older code against 0024 cannot file reports, hence the order. |
+| 5 | **No "is the package listed" check in the function** (deferred). | The listing source is moving to the discovery projection (Track A core, parallel); the global cap already bounds reports against made-up ids. Revisit when the projection lands. |
+
+---
+
 ## 2026-10-23 — `/d` caching by source hash; pins stay on the 32-bit hash for now; rate limits; discovery events (Phase 5 Track A.6–A.7)
 
 | # | Decision | Why |

@@ -24,7 +24,8 @@ In the Supabase SQL editor, run every file in
 `0017_user_governance` → `0018_rls_active_user` → `0019_document_tags` →
 `0020_staging_bucket` → `0021_trackB_documents_hash_idx` (optional index) →
 `0023_trackA_infra` (rate-limit counters + anonymous discovery events;
-optional, additive).
+optional, additive) → `0024_harden_report_cap` (database-side report cap +
+export index; needs `0023`; deploy the code first).
 
 You may use your existing dev project, or create a separate production project
 and run all migrations there (recommended for a real pilot).
@@ -37,6 +38,7 @@ and run all migrations there (recommended for a real pilot).
 | `0017` + `0018` (user governance) | **Apply before deploying the AI gate.** `can_use_ai()` fails *closed*, so shipping the gate against a database without these stops AI for every account, owner included. |
 | `0019_document_tags` | Required before relying on per-file asset tags/metadata in production. |
 | `0023_trackA_infra` | Additive, any order relative to the code (Phase 5 Track A.6–A.7). Makes `research_events.user_id` nullable (an anonymous visitor's discovery event has no participant) and adds `rate_limit_counters` + `rate_limit_hit()` (service role only). Without it: report rate limits count per server instance only, and anonymous discovery events are dropped. |
+| `0024_harden_report_cap` | **Deploy code first; needs `0023`; needs `SUPABASE_SECRET_KEY`.** Closes the direct anon/authenticated insert into `portal_reports` and makes `file_portal_report()` (service role only; per-package 10 / h, 30 / day; all reports 60 / h, 300 / day via `rate_limit_hit`) the only insert path; adds the `(occurred_at, id)` index the paged research export walks. Code from the Phase 5 hardening branch files reports through the function and falls back to the old direct insert only while the function does not exist — older code applied against 0024 cannot file reports. Verify with `supabase/tests/0024_verify_report_cap.sql`. |
 | `0020_staging_bucket` | **Requires owner / service-role privileges** — it inserts a row into `storage.buckets` and creates policies on `storage.objects`, which the ordinary anon/authenticated roles cannot do. Run it as the project owner in the SQL editor (or with the service-role connection), not from an app-side client. **Apply it *before* deploying the code that uses the staging bucket** (the Wave-3 zip-upload path: `api/staging-url`, `lib/staging.ts`, `api/populate-package`); without the bucket every whole-course zip upload fails at the signed-URL step. It is additive — a private `staging` bucket plus four owner-prefix RLS policies namespaced to it; no existing table, policy, or bucket changes. |
 
 #### The `staging` bucket: 24-hour TTL is an operator responsibility

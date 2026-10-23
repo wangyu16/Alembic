@@ -79,6 +79,13 @@ only in the package column, which the export pseudonymizes. Rate-limit keys
 are an HMAC of (bucket, client address) under a server secret and are swept
 after two days; addresses themselves are never stored.)*
 
+*(Phase 5 hardening, 2026-10-23: filing a portal report is a third such use —
+`file_portal_report` (migration 0024, service role only) is now the only
+insert path into `portal_reports`; it stores what the direct insert stored
+(package, reason, the signed-in reporter or null) and adds per-package and
+global caps keyed by an md5 of the package id. The research export is paged
+— same de-identification, same columns, streamed in batches.)*
+
 ## Decision record (per deployment)
 
 | Item | Choice |

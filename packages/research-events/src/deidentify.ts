@@ -57,9 +57,32 @@ export function eventsToJson(events: DeidentifiedEvent[]): string {
   return JSON.stringify(events, null, 2);
 }
 
+/** One event as it appears inside `eventsToJson`'s array (pretty-printed and
+ *  indented one level), so a streamed export is byte-identical to it. */
+function jsonItem(e: DeidentifiedEvent): string {
+  return JSON.stringify(e, null, 2).replace(/\n/g, "\n  ");
+}
+
 /** RFC-4180 CSV field escaping (quote when it contains a comma, quote, or newline). */
 function csvField(value: string): string {
   return /[",\n\r]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
+}
+
+/** The CSV header row. */
+export const EVENTS_CSV_HEADER = ["type", "participant", "package", "durationMs", "occurredAt", "detail"].join(",");
+
+/** One de-identified event as a CSV row (no trailing newline). */
+export function eventToCsvRow(e: DeidentifiedEvent): string {
+  return [
+    e.type,
+    e.participant ?? "",
+    e.package ?? "",
+    e.durationMs == null ? "" : String(e.durationMs),
+    e.occurredAt,
+    JSON.stringify(e.detail),
+  ]
+    .map(csvField)
+    .join(",");
 }
 
 /**
@@ -67,18 +90,32 @@ function csvField(value: string): string {
  * occurredAt, detail (the detail object JSON-encoded into one cell).
  */
 export function eventsToCsv(events: DeidentifiedEvent[]): string {
-  const header = ["type", "participant", "package", "durationMs", "occurredAt", "detail"];
-  const rows = events.map((e) =>
-    [
-      e.type,
-      e.participant ?? "",
-      e.package ?? "",
-      e.durationMs == null ? "" : String(e.durationMs),
-      e.occurredAt,
-      JSON.stringify(e.detail),
-    ]
-      .map(csvField)
-      .join(","),
-  );
-  return [header.join(","), ...rows].join("\n");
+  return [EVENTS_CSV_HEADER, ...events.map(eventToCsvRow)].join("\n");
+}
+
+/**
+ * Streamed serialization for a paged export (Phase 5 hardening): consumes
+ * batches of already de-identified events and yields text chunks whose
+ * concatenation is byte-identical to `eventsToCsv` / `eventsToJson` over all
+ * the events — so the download format does not change, only memory use does.
+ */
+export async function* serializeEventBatches(
+  batches: AsyncIterable<DeidentifiedEvent[]>,
+  format: "csv" | "json",
+): AsyncGenerator<string> {
+  if (format === "csv") {
+    yield EVENTS_CSV_HEADER;
+    for await (const batch of batches) {
+      if (batch.length) yield batch.map((e) => "\n" + eventToCsvRow(e)).join("");
+    }
+    return;
+  }
+  let first = true;
+  for await (const batch of batches) {
+    for (const e of batch) {
+      yield (first ? "[\n  " : ",\n  ") + jsonItem(e);
+      first = false;
+    }
+  }
+  yield first ? "[]" : "\n]";
 }
