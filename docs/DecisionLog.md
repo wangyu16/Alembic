@@ -6,6 +6,17 @@ design, and what is deferred to the future. Complements [Status.md](Status.md)
 
 ---
 
+## 2026-10-23 — Owner rulings on Phase 5 open items
+
+| # | Decision | Why |
+|---|---|---|
+| 1 | **CLAUDE.md corrected**: Studio is removed (2026-07-04, replaced by `/guide`); the one validated write path is `writeThrough` (files) and `updateManifest` (the manifest). | The file described a seam with no callers and a removal that already happened. |
+| 2 | **"Share this" is not offered in a trial course** (it returns once the course is published). | A trial course's shared file is owner-only until publishing (Track 0.2), so the button promised what it could not do. |
+| 3 | **A course repo's first reconcile records the current state as its baseline and absorbs no earlier commits** (kept; documented). | Commits before Alembic first saw the repo were made before it managed the course; absorbing them blindly could pull unreviewed content. A full absorb stays possible through re-import. |
+| 4 | **Discover searches on Search/Enter, not instantly as you type.** | Server search is what lets results scale and work without JavaScript; instant filtering only worked because every listing was loaded into the browser. |
+
+---
+
 ## 2026-10-23 — Discover pages: one cached anonymous read, URL state, adapt with the source preselected (Phase 5 Track A.4)
 
 | # | Decision | Why |

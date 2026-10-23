@@ -49,10 +49,11 @@ adapt, cite, share).
   mirror `validatePackageForImport` (`package-ops`) + `repoForPath`
   (`package-contract`) — keep the three in sync.
 - [docs/specs/self-contained-editing.md](docs/specs/self-contained-editing.md) —
-  **2026-07 design direction:** editing offloads to self-contained files
+  **2026-07 design direction:** editing offloads to self-editing files
   (`.md.html` / `.slides.html` / `.paged.html` from the sibling orz-family
   projects); the workspace plugs in their in-file editors and builds no
-  editors of its own; Studio (`/studio`) is slated for removal; a **document
+  editors of its own; Studio (`/studio`) is removed (2026-07-04, replaced by
+  `/guide`); a **document
   contract** gives origin parity (created in workspace / uploaded / committed
   directly to GitHub all register equally); **every file gets a permalink**
   (cite + insert).
@@ -81,14 +82,15 @@ All three must pass before any push.
 2. **`packages/package-contract` is pure** — no IO, no framework imports. It is
    the single owner of the package schema. Everything else consumes it.
 3. **The editor UI is a replaceable client.** UI code calls package operations
-   via `packageOps(store, packageId)` (`packages/package-ops`); it never touches
-   files, Git, or schema internals directly. Every writer — UI server actions,
-   the agent/worker, plugged-in self-contained editors — goes through
-   `packageOps` (the one validated write path); never add a route around it.
-   (Per the 2026-07 direction, the end-state "editor UI" is the in-file
+   in `packages/package-ops`; it never touches files, Git, or schema internals
+   directly. Every writer — UI server actions, the agent/worker, plugged-in
+   in-file editors — goes through the one validated write path:
+   `writeThrough` (files) and `updateManifest` (the manifest), which validate,
+   commit first for a published package, then update the projection
+   ([storage-and-write-paths.md](docs/specs/storage-and-write-paths.md)).
+   Never add a route around them. (The end-state "editor UI" is the in-file
    editors of `.md.html`/`.slides.html`/`.paged.html`, hosted by the
-   workspace — see self-contained-editing.md; the local studio is being
-   retired.)
+   workspace — see self-contained-editing.md; the local studio is gone.)
 4. **Repos are the source of truth.** App-side DB state must always be a
    rebuildable projection of repository content.
 5. **`packages/github-bridge` is the only code that talks to GitHub.**
