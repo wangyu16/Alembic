@@ -44,6 +44,16 @@ ON TOP of `phase5/loop-r2-sec` (not merged, migrations `0029_loop_r2c_1…3` not
   (it stays visible to reconcile). No persistent "needs reconcile" flag (it would need a column and a writer);
   the refusal message is the visible signal. Residual: Alembic's own commits after an outside one look outside
   too until reconcile runs.
+- **A dormant uid is the last resort, not the first (P5.B.1.s).** Only one of the package's LIVE identities may
+  displace; a uid with no live row (the package's own deleted document, or never registered) is adopted only where
+  a fresh id would be minted. Kept: re-uploading a deleted document to a free location restores its permalink.
+  Accepted: overwriting a plain file with a carrier that brings a new uid keeps the plain file's docId (the
+  permalink in circulation wins over the id in the bytes).
+- **The registry write keeps owner-set fields in the database, not only in the app (P5.B.1.t)**, because the race
+  is between two writers; resurrection is the one case that takes the run's values (a deleted file came back).
+- **Registration chunks of 500 with a binary-split fallback (P5.B.1.u).** A run larger than one chunk is no
+  longer atomic as a whole — each chunk is (with the identities it displaces); a partial run is healed by the next
+  page load like any failed registration.
 
 ## 2026-10-23 — Closed loop r2 (security): server-owned signals, ids never reissued, Supabase-shaped test database
 

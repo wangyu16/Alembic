@@ -26,7 +26,7 @@ import {
   type License,
   type PackageManifest,
 } from "@alembic/package-contract";
-import { extractSource, getKindByExtension } from "@alembic/carriers";
+import { extractSource, getKindByExtension, hasCarrier } from "@alembic/carriers";
 import { remintEmbeddedUid } from "./document-registry";
 import type { PackageFile, PackageStore } from "./store";
 import { loadStudyGuide, prepareStudyGuideSave } from "./study-guide";
@@ -271,6 +271,15 @@ export interface ForkedPackage {
 const STUDY_GUIDE_PREFIX = "study-guide/";
 
 /**
+ * Replace every whole occurrence of a block id (`blk-` + 8 or more base36
+ * characters): `blk-abcdefgh` must not rewrite the head of `blk-abcdefgh1`.
+ */
+function replaceId(text: string, oldId: string, newId: string): string {
+  const re = new RegExp(`${oldId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![a-z0-9])`, "g");
+  return text.replace(re, () => newId);
+}
+
+/**
  * Whole-package fork (guardrail G4): clone a source package's PUBLIC content
  * into a new package the educator can edit directly. Block ids are **re-minted**
  * (never reused — rule 7); references to them in concepts/objectives/etc. are
@@ -294,24 +303,48 @@ export function forkPackage(input: ForkPackageInput): ForkedPackage {
   const idMap = new Map<string, string>();
   const lineage: AdaptedBlockRef[] = [];
   const cloned: PackageFile[] = [];
+  const remintBlock = (b: { id: string | null; title: string; body: string }, path: string): string | null => {
+    if (!b.id) return null;
+    const nid = mint();
+    idMap.set(b.id, nid);
+    lineage.push({
+      targetBlockId: nid,
+      sourcePackageId: input.source.packageId,
+      sourceBlockId: b.id,
+      sourcePath: path,
+      sourceContentHash: hashAdaptedBlock(b),
+      ...(input.snapshot ? { snapshot: input.snapshot } : {}),
+    });
+    return nid;
+  };
   for (const f of input.source.publicFiles) {
     if (f.repo !== "public") continue; // public layers only
     if (f.path === "alembic.json" || f.path === ADAPTATIONS_PROVENANCE_PATH) continue; // regenerated
-    if (f.path.startsWith(STUDY_GUIDE_PREFIX)) {
+    if (f.path.startsWith(STUDY_GUIDE_PREFIX) && hasCarrier(f.content)) {
+      // A self-contained study guide (`.md.html`, v2): its markdown lives in
+      // the carrier island, its rendered HTML carries the block ids as
+      // anchors, and its `#orz-meta` island carries the source's docId. The
+      // copy gets new block ids EVERYWHERE in the file and its own uid
+      // (correctness loop r2, HIGH-A sibling, P5.B.1.s) — before, the markdown
+      // parser below saw HTML, re-minted nothing, and the fork kept both the
+      // source's block ids and its uid.
+      let blocks: ReturnType<typeof parseStudyGuide>["blocks"] = [];
+      try {
+        blocks = parseStudyGuide(extractSource(f.content).source).blocks;
+      } catch {
+        /* no readable island: nothing to re-mint but the uid */
+      }
+      let content = f.content;
+      for (const b of blocks) {
+        const nid = remintBlock(b, f.path);
+        if (nid) content = replaceId(content, b.id!, nid);
+      }
+      cloned.push({ repo: "public", path: f.path, content: remintEmbeddedUid(content) });
+    } else if (f.path.startsWith(STUDY_GUIDE_PREFIX)) {
       const parsed = parseStudyGuide(f.content);
       const reminted = parsed.blocks.map((b) => {
-        if (!b.id) return b;
-        const nid = mint();
-        idMap.set(b.id, nid);
-        lineage.push({
-          targetBlockId: nid,
-          sourcePackageId: input.source.packageId,
-          sourceBlockId: b.id,
-          sourcePath: f.path,
-          sourceContentHash: hashAdaptedBlock(b),
-          ...(input.snapshot ? { snapshot: input.snapshot } : {}),
-        });
-        return { ...b, id: nid };
+        const nid = remintBlock(b, f.path);
+        return nid ? { ...b, id: nid } : b;
       });
       cloned.push({ repo: "public", path: f.path, content: serializeStudyGuide(parsed.preamble, reminted) });
     } else {
@@ -324,7 +357,7 @@ export function forkPackage(input: ForkPackageInput): ForkedPackage {
   // 2. Remap block-id references in non-study-guide files (concepts/objectives).
   const remap = (s: string) => {
     let out = s;
-    for (const [oldId, nid] of idMap) out = out.split(oldId).join(nid);
+    for (const [oldId, nid] of idMap) out = replaceId(out, oldId, nid);
     return out;
   };
   const finalCloned = cloned.map((f) =>

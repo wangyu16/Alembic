@@ -752,12 +752,13 @@ bound_to = []
 
 [[claim]]
 id = "P5.B.1.a"
-claim = "A one-file save on a 333-file package costs ≤ 3 store round-trips (measured 2; was ~668) and reads no file content."
+claim = "A one-file save costs 1 + ⌈live/1000⌉ registry round-trips (one paged read of the live rows + one write), plus 1 when the file carries a uid the package does not hold yet, and reads no file content: ≤ 3 store round-trips on a 333-file package (measured 2; was ~668), 4 (5 with a new uid) on a 3,000-file package."
 oracle = "invariant"
 bound_to = [
   "packages/package-ops/src/document-registry.batch.test.ts :: one-file save: ≤ 3 round-trips and no whole-package read (was ~668)",
+  "packages/package-ops/src/document-registry.r2c.test.ts :: a one-file save on a 3,000-file package costs 1 + ⌈3000/1000⌉ registry round-trips; a new uid one more",
 ]
-note = "Status/DecisionLog record 2 round-trips; the test pins ≤ 3. Tightening to ≤ 2 is a test change, not done in this step."
+note = "Restated in loop r2 correctness (L-2) as the formula, tested at 3,000 live rows; the 333-file test still pins ≤ 3."
 
 [[claim]]
 id = "P5.B.1.b"
@@ -785,19 +786,22 @@ bound_to = [
 
 [[claim]]
 id = "P5.B.1.e"
-claim = "Tombstones stay forever but do not ride the write path: with 1,500 tombstones a one-file save still costs 2 registry round-trips."
+claim = "Tombstones stay forever but do not ride the write path: the paged read counts LIVE rows only (1 + ⌈live/1000⌉), so with 1,500 tombstones a one-file save on a 333-file package still costs 2 registry round-trips."
 oracle = "invariant"
 bound_to = [
   "packages/package-ops/src/document-registry.batch.test.ts :: tombstones do not ride along on the write path",
+  "packages/package-ops/src/document-registry.r2c.test.ts :: a one-file save on a 3,000-file package costs 1 + ⌈3000/1000⌉ registry round-trips; a new uid one more",
 ]
 
 [[claim]]
 id = "P5.B.1.f"
-claim = "Identity resolves in the order embedded uid → content hash → location → new, and an embedded uid displaces (tombstones) a different identity at its location."
+claim = "Identity resolves in the order live embedded uid → content hash → location → dormant uid → new: an embedded uid that is one of this package's LIVE identities outranks hash and location and displaces (tombstones) a different identity at its location; a dormant uid (no live row anywhere, not taken, not retired) is used only where a fresh id would be minted (P5.B.1.s)."
 oracle = "invariant"
 bound_to = [
-  "packages/package-ops/src/document-registry.batch.test.ts :: an embedded uid outranks hash and location, and displaces the location's old identity",
+  "packages/package-ops/src/document-registry.batch.test.ts :: a live embedded uid outranks hash and location, and displaces the location's old identity",
+  "packages/package-ops/src/document-registry.r2c.test.ts :: an unknown uid at an occupied location keeps the occupant",
 ]
+note = "Narrowed in loop r2 correctness (HIGH-A): before, ANY not-foreign uid displaced the location's identity."
 
 [[claim]]
 id = "P5.B.1.g"
@@ -1743,8 +1747,65 @@ claim = "After every migration, the live definitions of the projector, the regis
 oracle = "invariant"
 bound_to = [
   "apps/web/src/lib/loop-r2-cor.sql.test.ts :: discovery_refresh_package carries r1 trust, r1b guards/scope/recency, r2 clamps and r2c bounds/lock",
+  "apps/web/src/lib/loop-r2-cor.sql.test.ts :: the registry functions keep r1b atomicity/scope, r2 ownership/retired ids, r2c owner-set rules",
   "apps/web/src/lib/loop-r2-cor.sql.test.ts :: every trigger of rounds r1b, r2 and r2c is installed",
   "apps/web/src/lib/loop-r2-cor.sql.test.ts :: the internal projector functions stay closed to the API roles",
 ]
 note = "Loop r2 correctness, the composition rule (round 1's 0026 silently reverted 0025_2). A future migration that redefines one of these functions must keep the markers or update this test deliberately."
+
+# HIGH-A — a dormant uid never displaces a live identity
+
+[[claim]]
+id = "P5.B.1.s"
+claim = "An embedded uid that is not one of this package's live identities (its own deleted document, or an id nobody registered) never displaces a live identity: at an occupied location the occupant keeps its docId, a hash-identified move keeps the moved identity, and the uid is adopted only where a fresh id would be minted (a deleted document uploaded again to a free location gets its permalink back); a uid another package holds or that was retired (0028_loop_r2_2) is taken, so a fresh id. forkPackage re-mints the uid and every block id (source island AND rendered HTML) of a study-guide .md.html carrier."
+oracle = "probe"
+bound_to = [
+  "packages/package-ops/src/document-registry.r2c.test.ts :: a copy keeps its own permalink after the original is deleted and the copy is saved (uidflip)",
+  "packages/package-ops/src/document-registry.r2c.test.ts :: an unknown uid at an occupied location keeps the occupant",
+  "packages/package-ops/src/document-registry.r2c.test.ts :: a dormant uid does not override a hash-identified move (rename without a hint)",
+  "packages/package-ops/src/document-registry.r2c.test.ts :: kept: a deleted document uploaded again to a free location gets its permalink back",
+  "packages/package-ops/src/document-registry.r2c.test.ts :: forkPackage re-mints the uid AND every block id of a study-guide .md.html carrier",
+  "apps/web/src/lib/loop-r2-cor.sql.test.ts :: a fork's copy keeps its id after the source course is deleted (its uid is retired → taken) (crossflip)",
+  "apps/web/src/lib/loop-r2-cor.sql.test.ts :: a copy keeps its permalink after the original (same package) is deleted and the copy saved (uidflip, database side)",
+]
+note = "Loop r2 correctness HIGH-A (repros /tmp/p5r2/uidflip.mts, crossflip.mts, forksg.mts). Code only; composes with the r2 retired-id ledger (a uid freed by a deleted package is reported taken)."
+
+# MEDIUM-1 — a registration run keeps what the owner set
+
+[[claim]]
+id = "P5.B.1.t"
+claim = "A registration run never overwrites what the owner set meanwhile: on conflict with a LIVE row, documents_apply (and the in-memory store) keep the stored discoverable, description, tags, alt_text and registered_at, and fill license / adapted_from only when missing; only a run that resurrects a tombstoned row takes its own values."
+oracle = "probe"
+bound_to = [
+  "packages/package-ops/src/document-registry.r2c.test.ts :: an owner's share committed between the run's read and its write survives (sharerace)",
+  "packages/package-ops/src/document-registry.r2c.test.ts :: a resurrected (tombstoned) row takes the run's values; lineage fills only a missing value",
+  "apps/web/src/lib/loop-r2-cor.sql.test.ts :: a share + description committed between the run's read and its documents_apply survive (sharerace, database side)",
+  "apps/web/src/lib/loop-r2-cor.sql.test.ts :: a resurrected (tombstoned) row takes the run's values",
+]
+note = "Loop r2 correctness MEDIUM-1 (repro /tmp/p5r2/sharerace.mts). Migration 0029_loop_r2c_2 (either order with the code)."
+
+# MEDIUM-3 — chunked registration, binary-split fallback
+
+[[claim]]
+id = "P5.B.1.u"
+claim = "A registration writes at most 500 rows per documents_apply (a run of ≤ 500 upserts and ≤ 500 tombstones stays one atomic call), each chunk carrying exactly the identities its rows displaced; a refused chunk is split in halves down to single rows (one bad row among 3,000 costs ≤ 6 + 2·⌈log2 500⌉ + 1 calls, not 3,000) and a row that cannot land leaves the identity it would have displaced live; every statement of a 3,000-file registration stays well under the signed-in 8 s statement timeout."
+oracle = "probe"
+bound_to = [
+  "packages/package-ops/src/document-registry.r2c.test.ts :: the first registration of 3,000 files writes ≤ 500 rows per call (6 calls)",
+  "packages/package-ops/src/document-registry.r2c.test.ts :: one refused row among 3,000 costs a binary split (≤ 6 + 2·⌈log2 500⌉ calls), everything else lands (fallback)",
+  "packages/package-ops/src/document-registry.r2c.test.ts :: a chunk carries exactly the tombstones its rows displaced (no identity retired without its replacement)",
+  "apps/web/src/lib/loop-r2-cor.sql.test.ts :: the first registration of 3,000 shared files: ≤ 500 rows and well under 8 s per statement",
+]
+note = "Loop r2 correctness MEDIUM-3 (repro /tmp/p5r2/fallback.mts: 3,000 serial per-row calls). Code only. Measured under the harness (PGlite): worst statement of a 3,000-file re-registration of shared files ~1.2 s (500 rows + their projector refresh)."
+
+# L-1 — the heal reads in bounded parallel
+
+[[claim]]
+id = "P5.B.1.v"
+claim = "The page-load heal reads the files it re-registers with at most 8 reads in flight (bounded parallelism), never one serial round-trip per file."
+oracle = "probe"
+bound_to = [
+  "packages/package-ops/src/document-registry.r2c.test.ts :: 50 stale files are read with at most 8 reads in flight, not one after another",
+]
+note = "Loop r2 correctness L-1. Code only (registerChangedFiles)."
 

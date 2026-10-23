@@ -131,6 +131,37 @@ export class ForeignDocIdError extends Error {
 }
 
 /**
+ * What a registration run may not overwrite (correctness loop r2, MEDIUM-1,
+ * P5.B.1.t — migration 0029_loop_r2c_2 says the same for `documents_apply`).
+ * A run builds its rows from the registry it read at its start; an owner
+ * action committed in between (share, describe, tag, alt text, licence) must
+ * survive it. On conflict with a LIVE row the stored owner-set values win
+ * (licence and lineage only fill a missing value); a TOMBSTONED row being
+ * resurrected takes the run's values, as a new registration would.
+ */
+export function keepOwnerSet(
+  stored: RegistrationRecord | undefined,
+  incoming: RegistrationRecord,
+): RegistrationRecord {
+  if (!stored || stored.tombstoned) return incoming;
+  const out: RegistrationRecord = {
+    ...incoming,
+    registeredAt: stored.registeredAt,
+    tags: stored.tags,
+    discoverable: stored.discoverable,
+  };
+  const set = <K extends keyof RegistrationRecord>(key: K, value: RegistrationRecord[K] | undefined) => {
+    if (value === undefined) delete (out as Partial<RegistrationRecord>)[key];
+    else out[key] = value;
+  };
+  set("description", stored.description);
+  set("altText", stored.altText);
+  set("license", stored.license ?? incoming.license);
+  set("adaptedFrom", stored.adaptedFrom ?? incoming.adaptedFrom);
+  return out;
+}
+
+/**
  * In-memory DocumentRegistryStore — for tests and local dev. Not for
  * production: no durability, no access control. Mirrors MemoryPackageStore's
  * style.
@@ -164,15 +195,21 @@ export class MemoryDocumentRegistryStore implements DocumentRegistryStore {
     }
   }
 
+  /**
+   * A direct write of one whole record — the owner's own update (share,
+   * describe, tag), which sets exactly what it is given. Registration runs go
+   * through `apply`, which keeps what the owner set (P5.B.1.t).
+   */
   async upsert(record: RegistrationRecord): Promise<void> {
-    await this.apply(record.packageId, { tombstones: [], upserts: [record] });
+    const next = new Map(this.records);
+    next.set(record.docId, record);
+    this.check(next, [record]);
+    this.records = next;
   }
 
   async upsertMany(records: RegistrationRecord[]): Promise<void> {
-    const next = new Map(this.records);
-    for (const record of records) next.set(record.docId, record);
-    this.check(next, records);
-    this.records = next;
+    if (records.length === 0) return;
+    await this.apply(records[0]!.packageId, { tombstones: [], upserts: records });
   }
 
   async tombstone(packageId: string, docId: string): Promise<void> {
@@ -197,7 +234,9 @@ export class MemoryDocumentRegistryStore implements DocumentRegistryStore {
         next.set(docId, { ...existing, tombstoned: true });
       }
     }
-    for (const record of change.upserts) next.set(record.docId, record);
+    for (const record of change.upserts) {
+      next.set(record.docId, keepOwnerSet(next.get(record.docId), record));
+    }
     this.check(next, change.upserts);
     this.records = next; // all or nothing
   }
@@ -665,11 +704,12 @@ async function foreignUids(
  * Resolve one file's identity against the working set:
  *
  *  0. an explicit move hint (`movedFrom`) carries that location's identity;
- *  1. an embedded uid is adopted when it is already this package's (and not
- *     still held by another present file — a byte-copy keeps one owner) or
- *     when NO package has it; a uid another package owns is ignored and the
- *     file falls through to the ladder below (P5.B.1.n: a docId belongs to
- *     exactly one package);
+ *  1. an embedded uid that is one of this package's LIVE identities is
+ *     adopted (unless another present file still holds it — a byte-copy keeps
+ *     one owner); a uid another package owns (or a retired one) is ignored
+ *     (P5.B.1.n: a docId belongs to exactly one package); a DORMANT uid (no
+ *     live row anywhere) is kept for step 3 only — it never displaces a live
+ *     identity at this location or a hash-identified move (P5.B.1.s);
  *  2. the duplicate-content tiebreaker (contract v2 §2):
  *     - a content-hash match AT this location is this file;
  *     - a content-hash match elsewhere is a MOVE only when its old location is
@@ -677,7 +717,7 @@ async function foreignUids(
  *       location still holds a file, the two are byte-identical DUPLICATES and
  *       this file gets its own identity;
  *     - an exact location match wins over a cross-path hash match;
- *  3. else a fresh docId.
+ *  3. else the dormant uid, if any, else a fresh docId.
  */
 async function resolveIdentity(
   ws: RegistryWorkingSet,
@@ -693,6 +733,14 @@ async function resolveIdentity(
     }
   }
   const uid = derived.embeddedUid;
+  // A DORMANT uid — not one of this package's live identities and not taken
+  // by any other package (or retired, 0028_loop_r2_2): this package's own
+  // tombstoned document, or an id nobody registered yet. It never displaces a
+  // live identity (correctness loop r2, HIGH-A, P5.B.1.s): it is adopted only
+  // where the ladder below would otherwise mint a fresh id. Before, a copy
+  // whose original had been deleted re-took the original's uid on its next
+  // save, and the copy's own permalink answered 410.
+  let dormant: string | null = null;
   if (uid) {
     const mine = ws.get(uid);
     if (mine) {
@@ -702,7 +750,7 @@ async function resolveIdentity(
       }
       // Another present file holds this uid: a copy — fall through.
     } else if (!foreign.has(uid)) {
-      return { docId: uid, existing: null };
+      dormant = uid;
     }
   }
   const here = ws.at(input.repo, input.path);
@@ -717,7 +765,7 @@ async function resolveIdentity(
     }
   }
   if (here) return { docId: here.docId, existing: here };
-  return { docId: newDocId(), existing: null };
+  return { docId: dormant ?? newDocId(), existing: null };
 }
 
 async function stageDerived(
@@ -734,17 +782,31 @@ async function stageDerived(
 }
 
 /**
- * Write a run's changes ATOMICALLY (loop r1b): tombstones and upserts in one
- * `apply` — if the database refuses any upsert, nothing is tombstoned (before
- * r1b the tombstones landed first and a refused upsert left a live file's
- * permalink answering 410).
+ * The most rows one `apply` carries (correctness loop r2, MEDIUM-3,
+ * P5.B.1.u). One `documents_apply` call is one statement under the API
+ * role's statement timeout (8 s for signed-in users), and its cost grows with
+ * the rows it writes and re-projects; 500 keeps a 3,000-file registration
+ * well inside it (measured in registry-r2c.sql.test.ts).
+ */
+export const APPLY_CHUNK = 500;
+
+/**
+ * Write a run's changes (loop r1b, chunked in r2c):
  *
- * If the one-shot apply is refused (e.g. two paths swapped within one
- * statement trip the location index mid-statement), fall back to one row at
- * a time — each row together with the identities it displaces, still atomic
- * per row — retrying until no further row lands; a row that still cannot
- * land is left for the next run, and the identity it would have displaced
- * stays live (the registry is rebuildable). Plain deletions are applied last.
+ *  - A run of at most `APPLY_CHUNK` upserts and `APPLY_CHUNK` tombstones is
+ *    ONE atomic `apply`, as before: if the database refuses any upsert,
+ *    nothing is tombstoned (before r1b the tombstones landed first and a
+ *    refused upsert left a live file's permalink answering 410).
+ *  - A larger run is written in chunks of `APPLY_CHUNK` upserts, each carrying
+ *    exactly the tombstones its rows displaced (an identity is never retired
+ *    unless the row that took its location lands in the same statement);
+ *    plain deletions follow, in chunks too.
+ *  - A refused chunk is split in half, and again, down to single rows (a
+ *    binary split: one bad row in 3,000 costs ~2·log2(500) extra calls, not
+ *    3,000); rows that failed are retried in rounds while any lands (two
+ *    paths swapped in one statement can trip the location index); a row that
+ *    still cannot land is left for the next run, and the identity it would
+ *    have displaced stays live (the registry is rebuildable).
  */
 async function flush(
   store: DocumentRegistryStore,
@@ -753,27 +815,39 @@ async function flush(
 ): Promise<void> {
   const { upserts, tombstones, displacedBy } = ws.changes();
   if (upserts.length === 0 && tombstones.length === 0) return;
-  try {
-    await store.apply(packageId, { tombstones, upserts });
-    return;
-  } catch {
-    /* fall back below */
+  if (upserts.length <= APPLY_CHUNK && tombstones.length <= APPLY_CHUNK) {
+    try {
+      await store.apply(packageId, { tombstones, upserts });
+      return;
+    } catch {
+      /* fall back below */
+    }
   }
   const pendingTombstones = new Set(tombstones);
   const tiedTo = (r: RegistrationRecord): string[] =>
     [...(displacedBy.get(r.docId) ?? [])].filter((d) => pendingTombstones.has(d));
+
+  /** Apply `rows` with their displaced identities; returns the rows that could not land. */
+  const land = async (rows: RegistrationRecord[]): Promise<RegistrationRecord[]> => {
+    if (rows.length === 0) return [];
+    const tied = [...new Set(rows.flatMap(tiedTo))];
+    try {
+      await store.apply(packageId, { tombstones: tied, upserts: rows });
+      for (const d of tied) pendingTombstones.delete(d);
+      return [];
+    } catch {
+      if (rows.length === 1) return rows;
+      const mid = Math.ceil(rows.length / 2);
+      return [...(await land(rows.slice(0, mid))), ...(await land(rows.slice(mid)))];
+    }
+  };
+
   const blocked = new Set<string>();
   let pending = upserts;
   while (pending.length > 0) {
     const failed: RegistrationRecord[] = [];
-    for (const record of pending) {
-      const tied = tiedTo(record);
-      try {
-        await store.apply(packageId, { tombstones: tied, upserts: [record] });
-        for (const d of tied) pendingTombstones.delete(d);
-      } catch {
-        failed.push(record);
-      }
+    for (let i = 0; i < pending.length; i += APPLY_CHUNK) {
+      failed.push(...(await land(pending.slice(i, i + APPLY_CHUNK))));
     }
     if (failed.length === pending.length) {
       for (const r of failed) for (const d of tiedTo(r)) blocked.add(d);
@@ -782,13 +856,34 @@ async function flush(
     pending = failed;
   }
   const rest = [...pendingTombstones].filter((d) => !blocked.has(d));
-  if (rest.length > 0) {
+  for (let i = 0; i < rest.length; i += APPLY_CHUNK) {
     try {
-      await store.apply(packageId, { tombstones: rest, upserts: [] });
+      await store.apply(packageId, { tombstones: rest.slice(i, i + APPLY_CHUNK), upserts: [] });
     } catch {
       /* left for the next run */
     }
   }
+}
+
+/** At most this many single-file reads in flight while healing (L-1). */
+const READ_CONCURRENCY = 8;
+
+/** Map `items` through `fn` with at most `limit` calls in flight, in order. */
+async function mapBounded<T, R>(
+  items: ReadonlyArray<T>,
+  limit: number,
+  fn: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const out = new Array<R>(items.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) {
+      const i = next++;
+      out[i] = await fn(items[i]!);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return out;
 }
 
 /** One file a write touched. `content: null` = the write deleted it;
@@ -841,11 +936,16 @@ export async function registerChangedFiles(
 
   const deleted: RegistryChange[] = [];
   const staged: Array<{ input: RegisterFileInput; derived: DerivedFields }> = [];
-  for (const change of changes) {
-    const content =
-      change.content === undefined
-        ? await packageStore.readFile(packageId, change.repo, change.path)
-        : change.content;
+  // Changes without content (the page-load heal) are read with bounded
+  // parallelism, not one serial round-trip after another (correctness loop
+  // r2, L-1, P5.B.1.v): 50 stale files cost ~7 round-trip latencies, not 50.
+  const contents = await mapBounded(changes, READ_CONCURRENCY, (change) =>
+    change.content === undefined
+      ? packageStore.readFile(packageId, change.repo, change.path)
+      : Promise.resolve(change.content),
+  );
+  for (const [i, change] of changes.entries()) {
+    const content = contents[i] ?? null;
     if (content === null) {
       deleted.push(change);
       continue;

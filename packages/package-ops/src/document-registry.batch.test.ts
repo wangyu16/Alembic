@@ -251,19 +251,29 @@ describe("semantics — identity ladder and tiebreaker", () => {
     expect(fresh.docId).not.toBe(gone.docId);
   });
 
-  it("[P5.B.1.f] an embedded uid outranks hash and location, and displaces the location's old identity", async () => {
+  it("[P5.B.1.f] a live embedded uid outranks hash and location, and displaces the location's old identity", async () => {
     const withUid = (uid: string, body: string) =>
       `<script type="application/orz-meta+json" id="orz-meta">${JSON.stringify({ uid })}</script>${body}`;
     const registry = new MemoryDocumentRegistryStore();
     const packageStore = new MemoryPackageStore();
+    // loop r2c (P5.B.1.s): only one of THIS package's live identities may
+    // displace; an unknown (dormant) uid keeps the occupant — see
+    // document-registry.r2c.test.ts.
+    const doc = withUid("doc-uidbatch0001", "<svg>doc</svg>");
     await packageStore.createPackage(RECORD, [
       { repo: "public", path: "assets/a.svg", content: "<svg>plain</svg>" },
+      { repo: "public", path: "assets/doc.svg", content: doc },
     ]);
     await rebuildPackageRegistry(registry, packageStore, PKG);
     const old = (await registry.getByLocation(PKG, "public", "assets/a.svg"))!;
-    const content = withUid("doc-uidbatch0001", "<svg>doc</svg>");
-    await packageStore.putFiles(PKG, [{ repo: "public", path: "assets/a.svg", content }]);
-    await registerChangedFiles(registry, packageStore, PKG, [{ repo: "public", path: "assets/a.svg", content }]);
+    expect((await registry.getByLocation(PKG, "public", "assets/doc.svg"))!.docId).toBe("doc-uidbatch0001");
+    // the document is moved onto a.svg (no hint): its uid travels and wins
+    await packageStore.deleteFiles(PKG, [{ repo: "public", path: "assets/doc.svg" }]);
+    await packageStore.putFiles(PKG, [{ repo: "public", path: "assets/a.svg", content: doc + " " }]);
+    await registerChangedFiles(registry, packageStore, PKG, [
+      { repo: "public", path: "assets/a.svg", content: doc + " " },
+      { repo: "public", path: "assets/doc.svg", content: null },
+    ]);
     const now = (await registry.getByLocation(PKG, "public", "assets/a.svg"))!;
     expect(now.docId).toBe("doc-uidbatch0001");
     const all = await registry.listByPackage(PKG);

@@ -10,11 +10,16 @@
  *   L-D1      P5.A.1.p  concept-map renames re-project; concept-map saves are course-only
  *   L-D2      P5.A.1.q  one refresh per package at a time (advisory lock)
  *   M-D3      P5.A.1.n  a registered_at change is moot (server-owned) — kept
+ *   MEDIUM-1  P5.B.1.t  documents_apply keeps what the owner set
+ *   MEDIUM-3  P5.B.1.u  a 3,000-file registration stays within the statement timeout
+ *   HIGH-A    P5.B.1.s  a dormant uid never displaces (composes with retired ids)
  *   compose   P5.A.1.r  the live definitions still carry every earlier round's rules
  */
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { PGlite } from "@electric-sql/pglite";
+import { MemoryPackageStore, rebuildPackageRegistry, writeThrough } from "@alembic/package-ops";
 import { asRole, freshDatabase, seedDoc, seedPackage, seedUser } from "./discovery-pglite";
+import { PgRegistry } from "./pglite-registry";
 
 // document-registry-store signals Discover (server-only next/cache); not under test here.
 vi.mock("./discovery-cache", () => ({ discoveryChanged: () => {} }));
@@ -288,6 +293,111 @@ describe("M-D3 a registered_at change cannot desynchronise the projection", () =
 });
 
 // ---------------------------------------------------------------------------
+// MEDIUM-1 — documents_apply keeps what the owner set
+// ---------------------------------------------------------------------------
+describe("MEDIUM-1 a registration run never overwrites what the owner set meanwhile", () => {
+  it("[P5.B.1.t] a share + description committed between the run's read and its documents_apply survive (sharerace, database side)", async () => {
+    const id = await seedPackage(db, { owner, storage: "sandbox", title: "Race" });
+    const registry = new PgRegistry(db, owner);
+    const store = new MemoryPackageStore(registry);
+    await store.createPackage({ packageId: id, ownerId: owner, title: "Race", manifest: {} as never, storage: "sandbox" },
+      [{ repo: "public", path: "assets/fig.svg", content: "<svg>1</svg>" }]);
+    await rebuildPackageRegistry(registry, store, id, "created");
+    const r0 = (await registry.listLiveByPackage(id))[0]!;
+    // the owner's "Share this" lands between the save's read and its write
+    registry.beforeNextApply = async () => {
+      await own(() => db.query(`update public.documents set discoverable = true, description = 'Titration curve', tags = '{acid}', alt_text = 'a curve', license = 'CC0-1.0' where doc_id = $1`, [r0.docId]));
+    };
+    await writeThrough(store, null, id, { summary: "s", changes: [{ repo: "public", path: "assets/fig.svg", content: "<svg>2</svg>" }] });
+    const r1 = (await db.query(`select discoverable, description, tags, alt_text, license, source_hash from public.documents where doc_id = $1`, [r0.docId])).rows[0];
+    expect(r1).toMatchObject({ discoverable: true, description: "Titration curve", tags: ["acid"], alt_text: "a curve", license: "CC0-1.0" });
+    expect((r1 as { source_hash: string }).source_hash).not.toBe(r0.sourceHash);
+  });
+
+  it("[P5.B.1.t] a resurrected (tombstoned) row takes the run's values", async () => {
+    const id = await seedPackage(db, { owner, storage: "sandbox", title: "Resurrect" });
+    const doc = await seedDoc(db, { packageId: id, discoverable: true, description: "old words", tombstoned: true });
+    const row = { doc_id: doc, package_id: id, repo: "public", path: "assets/again.svg", space: "assets", kind: "svg",
+      source_hash: "h2", origin: "uploaded", permalink_class: "object", discoverable: false, description: null };
+    await own(() => db.query(`select public.documents_apply($1, '{}', $2::jsonb)`, [id, JSON.stringify([row])]));
+    expect((await db.query(`select tombstoned, discoverable, description from public.documents where doc_id = $1`, [doc])).rows[0])
+      .toEqual({ tombstoned: false, discoverable: false, description: null });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// MEDIUM-3 — a 3,000-file registration, statement by statement
+// ---------------------------------------------------------------------------
+describe("MEDIUM-3 a 3,000-file registration stays within the signed-in statement timeout", () => {
+  it("[P5.B.1.u] the first registration of 3,000 shared files: ≤ 500 rows and well under 8 s per statement", async () => {
+    const id = await seedPackage(db, { owner, listed: true, title: "Upload 3k" });
+    const registry = new PgRegistry(db, owner);
+    const store = new MemoryPackageStore(registry);
+    await store.createPackage({ packageId: id, ownerId: owner, title: "Upload 3k", manifest: {} as never, storage: "github" },
+      Array.from({ length: 3000 }, (_, i) => ({ repo: "public" as const, path: `assets/u${i}.svg`, content: `<svg>${i}</svg>` })));
+    await rebuildPackageRegistry(registry, store, id, "uploaded");
+    expect(registry.applyRows.length).toBe(6);
+    expect(Math.max(...registry.applyRows)).toBeLessThanOrEqual(500);
+    // then every file shared and re-registered with new bytes (the projector runs in each statement)
+    await db.query(`update public.documents set discoverable = true, description = 'shared figure' where package_id = $1`, [id]);
+    registry.applyMs.length = 0;
+    for (const f of await store.listFiles(id)) await store.putFiles(id, [{ ...f, content: f.content + " " }]);
+    await rebuildPackageRegistry(registry, store, id, "external-commit");
+    const worst = Math.max(...registry.applyMs);
+    console.info(`[r2c MEDIUM-3] 3,000 changed shared files: ${registry.applyMs.length} statements, worst ${worst.toFixed(0)} ms`);
+    expect(worst).toBeLessThan(8000);
+    expect((await db.query<{ n: number }>(`select count(*)::int n from public.discovery_elements where package_id = $1`, [id])).rows[0]!.n).toBe(3000);
+  }, 180_000);
+});
+
+// ---------------------------------------------------------------------------
+// HIGH-A — composes with the retired-id ledger (0028_loop_r2_2)
+// ---------------------------------------------------------------------------
+describe("HIGH-A a dormant uid never displaces — with the retired-id ledger", () => {
+  const carrier = (uid: string, body: string) =>
+    `<!doctype html><html><head><script type="application/orz-meta+json" id="orz-meta">{"title":"T","uid":"${uid}"}</script></head><body>${body}</body></html>`;
+
+  it("[P5.B.1.s] a fork's copy keeps its id after the source course is deleted (its uid is retired → taken) (crossflip)", async () => {
+    const S = await seedPackage(db, { owner, storage: "sandbox", title: "Source" });
+    const F = await seedPackage(db, { owner, storage: "sandbox", title: "Fork" });
+    const u = "doc-xflipxflip01";
+    const reg = new PgRegistry(db, owner);
+    const sStore = new MemoryPackageStore(reg);
+    const fStore = new MemoryPackageStore(reg);
+    await sStore.createPackage({ packageId: S, ownerId: owner, title: "S", manifest: {} as never, storage: "sandbox" },
+      [{ repo: "public", path: "practice/a.md.html", content: carrier(u, "src") }]);
+    await rebuildPackageRegistry(reg, sStore, S, "created");
+    await fStore.createPackage({ packageId: F, ownerId: owner, title: "F", manifest: {} as never, storage: "sandbox" },
+      [{ repo: "public", path: "practice/a.md.html", content: carrier(u, "fork") }]);
+    await rebuildPackageRegistry(reg, fStore, F, "created");
+    const forkId = (await reg.listLiveByPackage(F))[0]!.docId;
+    expect(forkId).not.toBe(u);
+    await db.query(`delete from public.packages where id = $1`, [S]); // documents cascade; u is retired
+    await writeThrough(fStore, null, F, { summary: "s", changes: [{ repo: "public", path: "practice/a.md.html", content: carrier(u, "fork edited") }] });
+    const rows = (await db.query<{ doc_id: string; tombstoned: boolean }>(`select doc_id, tombstoned from public.documents where package_id = $1`, [F])).rows;
+    expect(rows).toEqual([{ doc_id: forkId, tombstoned: false }]);
+  });
+
+  it("[P5.B.1.s] a copy keeps its permalink after the original (same package) is deleted and the copy saved (uidflip, database side)", async () => {
+    const P = await seedPackage(db, { owner, storage: "sandbox", title: "Flip" });
+    const U = "doc-uidflipuid01";
+    const reg = new PgRegistry(db, owner);
+    const store = new MemoryPackageStore(reg);
+    await store.createPackage({ packageId: P, ownerId: owner, title: "P", manifest: {} as never, storage: "sandbox" },
+      [{ repo: "public", path: "practice/a.md.html", content: carrier(U, "orig") }]);
+    await rebuildPackageRegistry(reg, store, P, "created");
+    const w = (path: string, content: string | null) =>
+      writeThrough(store, null, P, { summary: "s", changes: [{ repo: "public", path, content }] });
+    await w("practice/b.md.html", carrier(U, "copy"));
+    const copyId = (await reg.getByLocation(P, "public", "practice/b.md.html"))!.docId;
+    await w("practice/a.md.html", null);
+    await w("practice/b.md.html", carrier(U, "copy edited"));
+    expect((await reg.getByLocation(P, "public", "practice/b.md.html"))!.docId).toBe(copyId);
+    expect((await db.query<{ t: boolean }>(`select tombstoned t from public.documents where doc_id = $1`, [copyId])).rows[0]!.t).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Composition — the live definitions keep every earlier round's rules
 // ---------------------------------------------------------------------------
 describe("composition: no migration silently reverted an earlier fix", () => {
@@ -314,6 +424,28 @@ describe("composition: no migration silently reverted an earlier fix", () => {
       "pg_try_advisory_xact_lock", // r2c L-D2
     ]) {
       expect(def!.s, marker).toContain(marker);
+    }
+  });
+
+  it("[P5.A.1.r] the registry functions keep r1b atomicity/scope, r2 ownership/retired ids, r2c owner-set rules", async () => {
+    const [apply] = await src("documents_apply");
+    expect(apply!.definer).toBe(false); // SECURITY INVOKER: the caller's RLS
+    for (const marker of ["discovery_defer_begin", "discovery_defer_end", "package_id = excluded.package_id",
+      "when d.tombstoned then excluded.discoverable else d.discoverable"]) {
+      expect(apply!.s, marker).toContain(marker);
+    }
+    const [foreign] = await src("documents_foreign_doc_ids");
+    for (const marker of ["caller_owns_package", "retired_ids", "[1:500]"]) expect(foreign!.s, marker).toContain(marker);
+    const [adapt] = await src("discovery_course_adaptations");
+    expect(adapt!.s).toContain("ad.repo = 'public' and not ad.tombstoned"); // r2 LOW-4
+    const [pk] = await src("discovery_on_packages");
+    for (const marker of ["new.a11y_status", "new.public_repo", "new.owner_id is distinct from old.owner_id", "discovery_element_key"]) {
+      expect(pk!.s, marker).toContain(marker);
+    }
+    for (const fn of ["discovery_refresh_safe", "discovery_drain_queue"]) {
+      const [d] = await src(fn);
+      expect(d!.s, fn).toContain("when query_canceled");
+      expect(d!.s, fn).toContain("discovery_refresh_bounded");
     }
   });
 

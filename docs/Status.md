@@ -117,6 +117,26 @@ of the class ([DecisionLog](DecisionLog.md) 2026-10-23 "Closed loop r2 (correctn
 - ✅ **Composition (P5.A.1.r).** Every function `0029_*` redefines starts from its latest definition (`0028_1`'s
   projector, `0027`'s `documents_apply`, `0026`'s wrapper/drain, `0025_2`'s package trigger, `0022`'s concept-map
   trigger and rebuild); a test asserts the live definitions still carry r1/r1b/r2/r2c rules and every trigger.
+- ✅ **HIGH-A — a dormant uid displaced a live identity (P5.B.1.s; P5.B.1.f narrowed).** A copy of a document
+  (fresh id, its bytes still carrying the original's uid) re-took the original's uid on its first save after the
+  original was deleted — and the copy's own permalink answered 410 (repro `uidflip`). `resolveIdentity` now adopts
+  a uid that is not one of the package's LIVE identities only where it would otherwise mint a fresh id: the
+  location's occupant and a hash-identified move win. Composes with the r2 retired-id ledger (a uid freed by a
+  deleted package is "taken" → fresh id; `crossflip` under the harness). Sibling: `forkPackage` re-minted nothing in
+  a study-guide `.md.html` carrier (it parsed the HTML as markdown) — it now re-mints the uid and every block id, in
+  the source island and the rendered HTML (whole-id matches only). Code only.
+- ✅ **MEDIUM-1 — a registration run overwrote the owner's share/description (P5.B.1.t).** `documents_apply`'s
+  upsert wrote back the values the run had read: a "Share this" or description saved meanwhile was undone (repro
+  `sharerace`). `0029_loop_r2c_2_registry_apply.sql` (from 0027's definition, everything kept): on conflict with a
+  LIVE row it keeps discoverable / description / tags / alt_text / registered_at and only fills a missing licence or
+  lineage; a resurrected tombstone takes the run's values. The in-memory store mirrors it (`keepOwnerSet`); its
+  `upsert` stays the owner's direct write.
+- ✅ **MEDIUM-3 — one big statement, then N serial calls (P5.B.1.u).** A registration is written in ≤ 500-row
+  `documents_apply` chunks, each with exactly the identities its rows displaced (a run that fits stays one atomic
+  call); a refused chunk is split in halves (one bad row among 3,000: ≤ 25 calls instead of 3,000). Harness: worst
+  statement of a 3,000-file re-registration of shared files ~1.2 s. Code only.
+- ✅ **L-1 — heal reads (P5.B.1.v)** in bounded parallel (8 in flight). **L-2 — round-trip claims restated
+  (P5.B.1.a/e)** as 1 + ⌈live/1000⌉ (+1 for a new uid), tested at 3,000 live rows (4, and 5 with a new uid).
 
 **Phase 5 closed-loop verification — round 2, steps 4–5: security audit probes and class fixes (2026-10-23,
 branch `phase5/loop-r2-sec`, not merged, migrations `0028_loop_r2_*` NOT applied).** Each round-2 security finding
