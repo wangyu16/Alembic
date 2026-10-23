@@ -1,5 +1,7 @@
 # Alembic — Claude Code Instructions
 
+> **orz family:** this repo is one member of the orz family — before changing anything another member depends on, read the family docs via [`../CLAUDE.md`](../CLAUDE.md) (contracts, shared rules, release order, and drift ledger in `../docs/`).
+
 Alembic is an educator-facing OER (open educational resource) authoring and
 publishing platform for STEM: educators organize knowledge and pedagogy; the
 platform handles structure, versioning, GitHub publication, provenance, and
