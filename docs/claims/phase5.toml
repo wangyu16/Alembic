@@ -426,6 +426,17 @@ bound_to = [
 ]
 
 [[claim]]
+id = "P5.A.2.m"
+claim = "Search paging decides \"is there a next page\" and the cursor from the raw rows of the page, not from the rows that survived the fail-closed parse: a dropped row never ends paging, repeats or skips a row."
+oracle = "invariant"
+bound_to = [
+  "apps/web/src/lib/discovery-search.test.ts :: search paging decides next/cursor from the raw row count, not the parsed count (both scopes)",
+  "apps/web/src/lib/discovery-search.test.ts :: a dropped LAST row of the page still anchors the cursor (no repeat, no skip)",
+  "apps/web/src/lib/discovery-search.test.ts :: a page-final row with an unusable key falls back to the last usable key in the page",
+]
+note = "Loop r1b (LOW-7)."
+
+[[claim]]
 id = "P5.A.3.a"
 claim = "Quality is a weighted sum whose weights total 1, so quality ∈ [0, 1]."
 oracle = "invariant"
@@ -880,6 +891,7 @@ id = "P5.B.1.o"
 claim = "One docId shape (doc- + 1–64 lowercase base36) is shared by the registry (uid adoption), /d, the discovery cursor, the permalink builder/classifier and whole-package import; a malformed embedded uid is never an identity and is refused at import."
 oracle = "conformance"
 bound_to = [
+  "apps/web/src/lib/uid-shape.test.ts :: /d accepts exactly the ids the registry can mint or adopt, and so does the cursor",
   "packages/package-ops/src/document-registry.r1b.test.ts :: an embedded uid /d could never serve is not an identity",
   "packages/package-ops/src/document-registry.r1b.test.ts :: the permalink builder, the classifier and the registry agree on the id shape",
   "packages/package-ops/src/import-package.test.ts :: refuses a document whose embedded id the platform could never serve as a link",

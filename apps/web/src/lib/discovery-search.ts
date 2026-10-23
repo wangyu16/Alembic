@@ -9,6 +9,7 @@ import {
   type DiscoveryCourse,
   type DiscoveryElement,
   type DiscoveryScope,
+  DOC_ID_SOURCE,
 } from "@alembic/package-contract";
 
 /**
@@ -80,7 +81,9 @@ function cleanText(v: string, max: number): string {
 }
 
 const SCORE_RE = /^\d{1,6}(\.\d{1,6})?$/;
-const ID_RE = /^(pkg|doc)-[A-Za-z0-9_-]{1,120}$/;
+// A course id, or THE docId shape (P5.B.1.o) — a cursor can only carry an id
+// the registry could have minted or adopted.
+const ID_RE = new RegExp(`^(pkg-[A-Za-z0-9_-]{1,120}|${DOC_ID_SOURCE})$`);
 
 export function encodeCursor(c: Cursor): string {
   return Buffer.from(JSON.stringify({ s: c.score, i: c.id, t: c.asOf, n: c.page }), "utf8").toString(
@@ -273,16 +276,47 @@ export interface SearchPage<T> {
 const CourseHitSchema = DiscoveryCourseSchema.merge(ScoredSchema);
 const ElementHitSchema = DiscoveryElementSchema.merge(ScoredSchema);
 
-function nextCursor<T extends { score: string }>(
-  rows: T[],
+/**
+ * Split what the database returned into this page's rows and the next-page
+ * cursor — from the RAW rows, before the fail-closed parse.
+ *
+ * The query asks for `pageSize + 1` rows; the extra one only says "there is
+ * more". Whether there is a next page, which rows belong to this page and
+ * where the next page starts are all decided on the raw rows: a row that the
+ * parse then drops (malformed, or failing the listing re-check) must neither
+ * end paging early nor pull the look-ahead row onto this page.
+ *
+ * The cursor is the (score, id) of the last raw row of this page — dropped or
+ * not, it is a real position in the database's order, so the next page neither
+ * repeats nor skips a row. If that row's key is unusable as a cursor (it could
+ * not be decoded back), walk back to the last row in the page whose key is: the
+ * rows after it are read again at the top of the next page (and dropped again,
+ * as they were here). Each cursor still lies strictly past the previous one, so
+ * paging always advances. No usable key in the whole page → no next page.
+ */
+function splitPage(
+  raw: unknown,
   pageSize: number,
-  idOf: (r: T) => string,
+  scope: DiscoveryScope,
+  idKey: "package_id" | "doc_id",
   asOf: string,
   page: number,
-): string | null {
-  if (rows.length <= pageSize) return null;
-  const last = rows[pageSize - 1]!;
-  return encodeCursor({ score: last.score, id: idOf(last), asOf, page: page + 1 });
+): { pageRows: unknown[]; next: string | null } {
+  const rows = Array.isArray(raw) ? raw : [];
+  const pageRows = rows.slice(0, pageSize);
+  if (rows.length <= pageSize) return { pageRows, next: null };
+  const prefix = scope === "courses" ? "pkg-" : "doc-";
+  for (let i = pageRows.length - 1; i >= 0; i--) {
+    const r = pageRows[i] as Record<string, unknown> | null;
+    if (!r || typeof r !== "object") continue;
+    const rawScore = r["score"];
+    const score = typeof rawScore === "number" ? String(rawScore) : rawScore;
+    const id = r[idKey];
+    if (typeof score !== "string" || !SCORE_RE.test(score)) continue;
+    if (typeof id !== "string" || !ID_RE.test(id) || !id.startsWith(prefix)) continue;
+    return { pageRows, next: encodeCursor({ score, id, asOf, page: page + 1 }) };
+  }
+  return { pageRows, next: null };
 }
 
 /** The 1-based number of the page a query is on. */
@@ -302,10 +336,10 @@ export async function searchCourses(
     client.rpc("discovery_course_facets", courseFacetArgs(query)),
   ]);
   if (page.error) return { hits: [], next: null, facets: parseFacetRows(null, COURSE_FILTERS), unavailable: true };
-  const rows = parseCourseRows(page.data, CourseHitSchema) as CourseHit[];
+  const { pageRows, next } = splitPage(page.data, size, "courses", "package_id", asOf, pageNumber(query));
   return {
-    hits: rows.slice(0, size),
-    next: nextCursor(rows, size, (r) => r.package_id, asOf, pageNumber(query)),
+    hits: parseCourseRows(pageRows, CourseHitSchema) as CourseHit[],
+    next,
     facets: parseFacetRows(facets.error ? null : facets.data, COURSE_FILTERS),
     unavailable: false,
   };
@@ -330,10 +364,10 @@ export async function searchElements(
       : Promise.resolve({ data: null, error: null }),
   ]);
   if (page.error) return { hits: [], next: null, facets: parseFacetRows(null, ELEMENT_FILTERS), unavailable: true };
-  const rows = parseElementRows(page.data, ElementHitSchema) as ElementHit[];
+  const { pageRows, next } = splitPage(page.data, size, "elements", "doc_id", asOf, pageNumber(query));
   return {
-    hits: rows.slice(0, size),
-    next: nextCursor(rows, size, (r) => r.doc_id, asOf, pageNumber(query)),
+    hits: parseElementRows(pageRows, ElementHitSchema) as ElementHit[],
+    next,
     facets: parseFacetRows(facets.error ? null : facets.data, ELEMENT_FILTERS),
     unavailable: false,
   };

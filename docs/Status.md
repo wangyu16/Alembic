@@ -80,6 +80,7 @@ rows are added as each finding lands.)
 | ✅ MEDIUM-4 publish not idempotent | P5.B.2.a/h | no `builtAt` in `build-info.json`; action-level helpers (`lib/site-publish.ts`); blob uploads ≤ 8 in flight | same course twice → 1 commit, "already up to date"; 150 → 8 concurrent |
 | ✅ MEDIUM-5 rebuild loses recency | P5.A.1.i | `documents.content_changed_at`, `packages.listing_changed_at` (trigger-owned); projector derives `updated_at` | rebuild from empty: `updated_at` and quality identical |
 | ✅ LOW-6 uid shapes disagreed | P5.B.1.o | one `DOC_ID_PATTERN` (`doc-[0-9a-z]{1,64}`) for registry, `/d`, cursor, builder/classifier; import refuses a malformed uid | — |
+| ✅ LOW-7 paging from parsed count | P5.A.2.m | `splitPage`: next/cursor from the raw page | — |
 | ✅ LOW-9 short page ended listings | P5.B.1.p | `pageAll`: exact count or empty page | — |
 
 **Deploy (owner):** apply `0026_loop_r1b_discovery` → `0027_loop_r1b_registry` → deploy the code. 0026 is
