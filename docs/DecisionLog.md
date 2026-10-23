@@ -6,6 +6,14 @@ design, and what is deferred to the future. Complements [Status.md](Status.md)
 
 ---
 
+## 2026-10-23 — Security loop r1: `/d` takedown bound (M3)
+
+| # | Decision | Why |
+|---|---|---|
+| 1 | **No shared cache keeps any `/d` answer longer than 300 s** (`TAKEDOWN_BOUND_SECONDS`, stale windows included). Pinned `@{hash}` answers: `private, max-age=31536000, immutable` for the browser, `CDN-Cache-Control` / `Vercel-CDN-Cache-Control: public, max-age=300` for the CDN. Live answers: `s-maxage=240, stale-while-revalidate=60` (was 300 + one day). Tombstones: `s-maxage=300` (browser keeps an hour). Supersedes the "pinned immutable" and "one-day stale-while-revalidate" parts of the Track A.6 entry below. | The audit (M3) showed a pinned answer of a file later removed, made private or taken back to trial would keep being served by the CDN for a year. The browser's own copy is acceptable (the reader already saw that version); a shared copy is not. CDN headers make the CDN lifetime explicit; a cache that ignores them sees `private` and keeps nothing, so the failure mode is "not cached", never "cached too long". The cost is more origin revalidations, which the ETag/304 path and the bytes cache keep cheap. |
+
+---
+
 ## 2026-10-23 — Security loop r1: the 32-bit pin hash is accepted until R3 (not fixed now)
 
 **Decision.** The audit showed a second preimage for the 32-bit FNV-1a source

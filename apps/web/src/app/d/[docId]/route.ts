@@ -29,9 +29,10 @@ export const dynamic = "force-dynamic";
  *
  * Caching (Phase 5 Track A.6, `lib/permalink-response.ts`): public answers
  * carry an ETag of the registry hash, answer 304 without touching GitHub,
- * pinned ones are immutable, live ones CDN-cached 5 min with
- * stale-while-revalidate; their bytes are cached per (docId, hash) so GitHub
- * is read once per version. Owner-only answers stay `private, no-store`.
+ * pinned ones are immutable in the browser, and no shared cache keeps any
+ * answer longer than the 300 s takedown bound (`TAKEDOWN_BOUND_SECONDS`);
+ * their bytes are cached per (docId, hash) so GitHub is read once per
+ * version. Owner-only answers stay `private, no-store`.
  * Rate limited per client IP (`lib/rate-limit.ts`).
  *
  * Anonymous access to published public files needs the service client

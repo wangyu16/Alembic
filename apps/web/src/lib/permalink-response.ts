@@ -12,8 +12,9 @@
  *     `private, no-store`, no ETag, no 304, no CORS, never in a shared cache;
  *  4. public answers — keyed by the registry's `source_hash`:
  *       ETag `W/"{hash}"`; `If-None-Match` → 304 without reading GitHub;
- *       pinned `@{hash}` → `immutable` for a year;
- *       live → browser 60 s, CDN 5 min + stale-while-revalidate 1 day;
+ *       pinned `@{hash}` → `immutable` for a year in the BROWSER only,
+ *       shared caches (CDN) at most `TAKEDOWN_BOUND_SECONDS` (300 s);
+ *       live → browser 60 s, CDN 240 s + 60 s stale-while-revalidate;
  *       bytes from `DocBytesCache` (GitHub read once per version).
  *     Bytes that do not hash to the registry's hash (the repo moved ahead of
  *     the registry) are served the old way: no ETag, `max-age=60`, uncached.
@@ -79,18 +80,58 @@ export function securityHeaders(path: string): Record<string, string> {
   return h;
 }
 
+/**
+ * The takedown bound (security loop r1, M3): the longest any SHARED cache — the
+ * CDN, or a proxy between a reader and us — may keep serving a `/d` answer,
+ * counting stale-while-revalidate / stale-if-error windows. A file that is
+ * removed (410), made private, or taken back to trial stops being served
+ * everywhere within this many seconds. Every policy below stays within it;
+ * `permalink-response.cache-bound.test.ts` checks every answer kind.
+ */
+export const TAKEDOWN_BOUND_SECONDS = 300;
+
 /** Cache policies, named so tests and docs quote one source. */
 export const CACHE = {
   ownerOnly: "private, no-store",
-  pinned: "public, max-age=31536000, immutable",
-  live: "public, max-age=60, s-maxage=300, stale-while-revalidate=86400",
+  /**
+   * Pinned `@{hash}`: the BROWSER keeps its own copy a year (`private`, so no
+   * shared cache may store it under this header) — a reader's private copy of
+   * a version they already saw is acceptable after a takedown. Shared caches
+   * get `CDN_CACHE.pinned` instead: at most the takedown bound.
+   */
+  pinned: "private, max-age=31536000, immutable",
+  /** Browser 60 s; shared caches 240 s fresh + 60 s stale = the takedown bound. */
+  live: "public, max-age=60, s-maxage=240, stale-while-revalidate=60",
   /** Bytes we could not tie to the registry's hash: the pre-A.6 behaviour. */
   unverified: "public, max-age=60",
   /** Not found / no access: never stored, so an owner never sees a cached 404. */
   none: "no-store",
-  /** Tombstones are permanent (docIds are never reused). */
-  gone: "public, max-age=3600",
+  /** Tombstones are permanent (docIds are never reused): browsers keep them an
+   *  hour, shared caches no longer than the takedown bound. */
+  gone: "public, max-age=3600, s-maxage=300",
 } as const;
+
+/**
+ * CDN-targeted lifetimes (RFC 9213 `CDN-Cache-Control`; Vercel's CDN honours
+ * `Vercel-CDN-Cache-Control` and `CDN-Cache-Control` over `Cache-Control`).
+ * Used where the browser policy is longer than the shared one: a CDN that
+ * reads these keeps the answer for the takedown bound; one that does not sees
+ * `private` and keeps nothing.
+ */
+export const CDN_CACHE = {
+  pinned: `public, max-age=${TAKEDOWN_BOUND_SECONDS}`,
+} as const;
+
+/** The cache headers for a public, hash-labelled answer. */
+function cacheHeaders(pinned: boolean): Record<string, string> {
+  return pinned
+    ? {
+        "cache-control": CACHE.pinned,
+        "cdn-cache-control": CDN_CACHE.pinned,
+        "vercel-cdn-cache-control": CDN_CACHE.pinned,
+      }
+    : { "cache-control": CACHE.live };
+}
 
 function page(status: number, title: string, body: string, cache: string): Response {
   return new Response(
@@ -217,12 +258,12 @@ export async function servePermalink(
     });
   }
 
-  const cacheControl = pinned ? CACHE.pinned : CACHE.live;
+  const cacheControl = cacheHeaders(pinned);
   if (etagMatches(reqHeaders.get("if-none-match"), hash)) {
     deps.onPublicServed?.({ doc, pinned, status: 304 });
     return new Response(null, {
       status: 304,
-      headers: { etag: etagFor(hash), "cache-control": cacheControl, ...shared },
+      headers: { etag: etagFor(hash), ...cacheControl, ...shared },
     });
   }
 
@@ -235,7 +276,7 @@ export async function servePermalink(
     headers: {
       "content-type": mimeFor(doc.path),
       ...(got.verified
-        ? { etag: etagFor(hash), "cache-control": cacheControl }
+        ? { etag: etagFor(hash), ...cacheControl }
         : { "cache-control": CACHE.unverified }),
       ...shared,
     },

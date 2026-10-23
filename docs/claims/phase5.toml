@@ -1180,13 +1180,18 @@ bound_to = [
 id = "P5.S.4.a"
 claim = "A pinned /d/{doc}@{hash} answer carries a shared-cache (CDN) lifetime of at most the documented takedown bound (300 s)."
 oracle = "probe"
-bound_to = []
+bound_to = [
+  "apps/web/src/lib/permalink-response.cache-bound.test.ts :: pinned answers are CDN-bounded",
+]
 
 [[claim]]
 id = "P5.S.4.b"
 claim = "Class: no /d answer of any kind carries a shared-cache lifetime longer than the documented takedown bound."
 oracle = "invariant"
-bound_to = []
+bound_to = [
+  "apps/web/src/lib/permalink-response.cache-bound.test.ts :: no permalink answer of any kind outlives the takedown bound in a shared cache",
+  "apps/web/src/lib/permalink-response.cache-bound.test.ts :: the lifetime reader counts what a shared cache would keep",
+]
 
 # M4 — the report caps cannot be exhausted with junk
 
