@@ -65,6 +65,20 @@ published packages (Phase 5 Track 0.2/0.3); private and trial files are checked
 against the visitor's own session. The public-safe discovery projection
 (Phase 5 Track A.1) is meant to replace these service-role reads.)*
 
+*(Phase 5 Track A.6–A.7, 2026-10-23: two more server-side, non-educator uses,
+both write-only and narrow — the report rate limit's counters
+(`rate_limit_hit`, executable by the service role only) and **anonymous
+visitors' discovery events**. A signed-in visitor's events go through their
+own session; an anonymous visitor has no session, so the server writes the
+event with **no participant** (`user_id` null, migration 0023). Discovery
+events are de-identified by construction (`apps/web/src/lib/discovery-events.ts`):
+a search records the query's length and term count and the NAMES of the
+filters set — never the text or the values; a report records the reason's
+length; no docId, path, IP or fingerprint is ever recorded; the package sits
+only in the package column, which the export pseudonymizes. Rate-limit keys
+are an HMAC of (bucket, client address) under a server secret and are swept
+after two days; addresses themselves are never stored.)*
+
 ## Decision record (per deployment)
 
 | Item | Choice |

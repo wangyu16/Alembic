@@ -62,3 +62,14 @@ describe("serializers", () => {
     expect(csv.split("\n")[1]).toContain('"{""note"":""a, b""}"');
   });
 });
+
+describe("anonymous discovery events (Track A.7)", () => {
+  it("an anonymous row has no participant, never a pseudonym of null", () => {
+    const out = deidentifyEvents(
+      [{ type: "portal.searched", user_id: null, package_id: null, duration_ms: null, detail: { terms: 1 }, occurred_at: "t" }],
+      fakeCode,
+    );
+    expect(out[0]!.participant).toBeNull();
+    expect(eventsToCsv(out).split("\n")[1]).toBe('portal.searched,,,,t,"{""terms"":1}"');
+  });
+});

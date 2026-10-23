@@ -46,4 +46,21 @@ describe("createEventLogger", () => {
     });
     await expect(logger.log(sample)).resolves.toBeUndefined();
   });
+
+  it("drops an invalid event instead of throwing into the workflow (A.7)", async () => {
+    const seen: ResearchEvent[] = [];
+    const logger = createEventLogger({ write: async (e) => void seen.push(e) });
+    await expect(
+      logger.log({ ...sample, type: "made.up" } as unknown as ResearchEvent),
+    ).resolves.toBeUndefined();
+    expect(seen).toHaveLength(0);
+  });
+
+  it("accepts an anonymous discovery event (no participant)", async () => {
+    const seen: ResearchEvent[] = [];
+    const logger = createEventLogger({ write: async (e) => void seen.push(e) });
+    await logger.log({ type: "portal.searched", detail: { terms: 2 }, occurredAt: sample.occurredAt });
+    expect(seen).toHaveLength(1);
+    expect(seen[0]!.userId).toBeUndefined();
+  });
 });
