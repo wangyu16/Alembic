@@ -47,7 +47,9 @@ describe("L4a the anonymously callable discovery functions run under a statement
     // predicates the public read policies call, plus 0026's deferral pair
     // (authenticated only — the registry flush documents_apply calls them;
     // begin sets a transaction-local flag, end drains only the calling
-    // transaction's own queued refreshes). A new one needs review.
+    // transaction's own queued refreshes), plus 0029_loop_r2c_1's owner flush
+    // (authenticated only; a no-op for another owner's package; ≤ ~2 s of
+    // chunked work per call, under the role's 8 s timeout). A new one needs review.
     expect([...new Set(fns.map((f) => f.fn))].sort()).toEqual([
       "discovery_course_facets",
       "discovery_course_listable",
@@ -55,6 +57,7 @@ describe("L4a the anonymously callable discovery functions run under a statement
       "discovery_defer_end",
       "discovery_element_facets",
       "discovery_element_listable",
+      "discovery_flush_package",
       "discovery_search_courses",
       "discovery_search_elements",
     ]);
