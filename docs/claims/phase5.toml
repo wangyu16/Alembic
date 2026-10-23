@@ -1231,7 +1231,10 @@ bound_to = []
 id = "P5.S.9"
 claim = "Every discovery_* function callable by anon or authenticated runs under a statement_timeout."
 oracle = "probe"
-bound_to = []
+note = "Set on the calling ROLES (anon 3 s, authenticated 8 s), not the functions: Postgres arms statement_timeout at statement start, so a function-level SET does not bound a one-statement RPC. PGlite has no timers, so the test checks the configuration, not a cancelled query."
+bound_to = [
+  "apps/web/src/lib/rpc-limits.sql.test.ts :: every role that can execute a discovery function has a statement_timeout of at most 8 s",
+]
 
 [[claim]]
 id = "P5.S.10.a"

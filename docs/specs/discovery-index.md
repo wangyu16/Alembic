@@ -133,6 +133,18 @@ search service; revisit at ~100k elements).
 | `discovery_search_elements(p_q, p_kind, p_type, p_license, p_discipline, p_package_id, p_after_score, p_after_id, p_as_of, p_limit)` | one page of elements with `score` (`p_type` = space, the artifact type; `p_package_id` = one course) |
 | `discovery_element_facets(p_q, p_kind, p_type, p_license, p_discipline, p_package_id)` | `total`, `kind`, `type`, `license`, `discipline` |
 
+**Direct calls** (security loop r1, L4a). The public anon key can call these
+through PostgREST without going through the app, so the app's search limit
+does not apply to them. What bounds such a call: its **work**, in SQL (query
+text ≤ 200 characters, ≤ 8 prefix tokens, ≤ 51 rows a page, keyset paging,
+≤ 50 values per facet); its **time**, the calling role's `statement_timeout`
+(anon 3 s, authenticated 8 s — Supabase's defaults, pinned in migration
+`0025_loop_r1_4_rpc_timeouts.sql`; a function-level `set statement_timeout`
+would not bound a one-statement RPC, because Postgres arms the timeout when
+the statement starts); and Supabase's platform limits (API gateway, PostgREST
+max-rows, the connection pool). Call **volume** from one client is not bounded
+by the database.
+
 **Matching.** A row matches when any of these hold (each GIN-indexed):
 
 1. the weighted `tsvector` matches `websearch_to_tsquery('english', q)` —
