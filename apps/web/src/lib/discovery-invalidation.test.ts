@@ -55,6 +55,12 @@ const LISTABILITY_WRITES: Array<[string, RegExp]> = [
     /\.update\(\{[^}]*\bdiscoverable\b|patch[^=\n]*=\s*\{[^}]*\bdiscoverable\b|\[["']discoverable["']\]\s*=[^=]/,
   ],
   ["documents.tombstoned write", /\.update\(\{[^}]*\btombstoned\s*:\s*true/],
+  // Since security loop r1 M2 the trust columns are written only through
+  // lib/package-trust-writes.ts (service role): archive/restore, publish
+  // (storage + recorded repo) and the accessibility record (badge, facet, rank).
+  ["packages.archived_at write (server)", /\.setArchived\(/],
+  ["packages.storage / public_repo write (server)", /\.recordPublished\(/],
+  ["packages.a11y_status write (server)", /\.recordA11yCheck\(/],
 ];
 
 /**
@@ -92,6 +98,8 @@ describe("discovery cache invalidation", () => {
       "app/workspace/[packageId]/portal-actions.ts#unregisterPackageAction",
       "app/workspace/lifecycle-actions.ts#archivePackageAction",
       "app/workspace/lifecycle-actions.ts#restorePackageAction",
+      "app/workspace/[packageId]/github-actions.ts#publishToGitHubAction",
+      "app/workspace/[packageId]/a11y-actions.ts#recheckA11yAction",
       "app/workspace/[packageId]/share-actions.ts#shareFileAction",
       "app/workspace/[packageId]/share-actions.ts#setAssetMetadataAction",
       "lib/document-registry-store.ts#tombstone",

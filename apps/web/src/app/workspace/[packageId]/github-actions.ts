@@ -12,6 +12,7 @@ import { commitFiles, GitHubError } from "@alembic/github-bridge";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { packageTrustWriter } from "@/lib/package-trust-writes";
+import { discoveryChanged } from "@/lib/discovery-cache";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
 import { supabaseEventLogger } from "@/lib/events";
 import {
@@ -265,6 +266,8 @@ export async function publishToGitHubAction(
     });
 
     revalidatePath(`/workspace/${packageId}`);
+    // Publishing makes the course's shared files listable (P5.S.8).
+    discoveryChanged();
     return { ok: true, publicRepoUrl: `https://github.com/${owner}/${publicName}` };
   } catch (e) {
     await events.log({

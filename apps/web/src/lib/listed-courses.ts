@@ -203,8 +203,13 @@ export function sitemapFiles(totalCourses: number, origin: string): string[] {
   return files;
 }
 
-/** Cache policy for harvest documents: CDN 15 min, then refreshed in the background. */
-export const HARVEST_CACHE = "public, max-age=300, s-maxage=900, stale-while-revalidate=86400";
+/**
+ * Cache policy for harvest documents (feed, sitemaps): a shared cache keeps
+ * them at most 300 s in all (240 s fresh + 60 s stale-while-revalidate) — the
+ * same takedown bound as `/d` (`TAKEDOWN_BOUND_SECONDS`, security loop r1 M3),
+ * so an unlisted or taken-down course leaves the feed within five minutes.
+ */
+export const HARVEST_CACHE = "public, max-age=300, s-maxage=240, stale-while-revalidate=60";
 
 /** The origin absolute URLs are built on: the configured app URL, else the request's. */
 export function harvestOrigin(requestUrl: string, env: Record<string, string | undefined> = process.env): string {

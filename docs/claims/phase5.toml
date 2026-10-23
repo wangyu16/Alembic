@@ -1192,11 +1192,12 @@ bound_to = [
 
 [[claim]]
 id = "P5.S.4.b"
-claim = "Class: no /d answer of any kind carries a shared-cache lifetime longer than the documented takedown bound."
+claim = "Class: no /d answer of any kind, and no harvest document (course feed, sitemaps), carries a shared-cache lifetime longer than the documented takedown bound."
 oracle = "invariant"
 bound_to = [
   "apps/web/src/lib/permalink-response.cache-bound.test.ts :: no permalink answer of any kind outlives the takedown bound in a shared cache",
   "apps/web/src/lib/permalink-response.cache-bound.test.ts :: the lifetime reader counts what a shared cache would keep",
+  "apps/web/src/lib/harvest-cache-bound.test.ts :: the feed and sitemaps live in no shared cache longer than the takedown bound",
 ]
 
 # M4 — the report caps cannot be exhausted with junk
