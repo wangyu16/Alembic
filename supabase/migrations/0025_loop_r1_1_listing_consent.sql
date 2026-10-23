@@ -49,6 +49,14 @@
 --    Runs as the caller: the packages RLS already shows a user only their own
 --    rows (and nothing to a banned account).
 -- ---------------------------------------------------------------------------
+-- Load pg_trgm in this session first: on Supabase a non-superuser may not
+-- SET pg_trgm.word_similarity_threshold on a function while the extension's
+-- library is not loaded yet (the parameter is still an unknown placeholder:
+-- ERROR 42501 permission denied to set parameter). Calling one of its
+-- functions loads it. (0022 did not need this: it created the extension in
+-- the same session.)
+select extensions.similarity('a', 'a');
+
 create or replace function public.caller_owns_package(p_package_id text)
 returns boolean
 language sql

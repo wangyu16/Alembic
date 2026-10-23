@@ -63,6 +63,14 @@
 -- ---------------------------------------------------------------------------
 -- 1. The server-recorded accessibility result, and column privileges.
 -- ---------------------------------------------------------------------------
+-- Load pg_trgm in this session first: on Supabase a non-superuser may not
+-- SET pg_trgm.word_similarity_threshold on a function while the extension's
+-- library is not loaded yet (the parameter is still an unknown placeholder:
+-- ERROR 42501 permission denied to set parameter). Calling one of its
+-- functions loads it. (0022 did not need this: it created the extension in
+-- the same session.)
+select extensions.similarity('a', 'a');
+
 alter table public.packages
   add column if not exists a11y_status text not null default 'unknown'
     check (a11y_status in ('pass', 'warn', 'fail', 'unknown')),
