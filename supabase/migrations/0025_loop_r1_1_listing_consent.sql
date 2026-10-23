@@ -25,7 +25,7 @@
 --   4. package_changes and ai_invocations: a row naming a package requires
 --      owning it. (documents and sandbox_files already required it;
 --      research_events loses its client insert policy in
---      0025_loop_r1_research_events.sql.)
+--      0025_loop_r1_5_research_events.sql.)
 --   5. Clean-up: registration rows whose owner_id is not the package owner are
 --      deleted (the projection drops them through its trigger).
 --

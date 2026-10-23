@@ -1,5 +1,5 @@
 -- Security loop r1, finding M1 (audit L4c, 2026-10-23): research events are
--- written by the server only.
+-- written by the server only. NOT APPLIED anywhere yet.
 --
 -- DEPLOY ORDER: deploy the code FIRST (the server-side writer,
 -- apps/web/src/lib/events.ts — every research_events insert goes through the
