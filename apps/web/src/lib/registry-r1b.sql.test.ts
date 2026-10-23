@@ -26,7 +26,9 @@ let owner: string;
 let stranger: string;
 
 beforeAll(async () => {
-  db = await freshDatabase();
+  // track_functions is server configuration (superuser-only), set by the
+  // harness before the non-superuser owner's session starts.
+  db = await freshDatabase({ serverSettings: { track_functions: "all" } });
   owner = await seedUser(db, "edu");
   stranger = await seedUser(db, "stranger");
 }, 60_000);
@@ -228,8 +230,18 @@ describe("0027 §4 one registration run = one discovery refresh", () => {
     await db.exec(`update public.documents set discoverable = true where package_id = '${id}'`);
     const fresh = { ...b!, docId: "doc-freshfresh001", path: "assets/c.svg", sourceHash: "hc", discoverable: true };
     const changed = { ...b!, sourceHash: "hb2", discoverable: true };
-    await db.exec(`set track_functions = 'all'`);
+    // Pending call counts are per backend until flushed, so measure the delta
+    // inside the flush's own transaction.
+    const refreshCalls = async (tx: { query: PGlite["query"] }) =>
+      Number(
+        (
+          await tx.query<{ c: string | number }>(
+            `select coalesce(sum(calls), 0) as c from pg_stat_xact_user_functions where funcname = 'discovery_refresh_package'`,
+          )
+        ).rows[0]!.c,
+      );
     const calls = await db.transaction(async (tx) => {
+      const c0 = await refreshCalls(tx);
       await tx.query(`set local role authenticated`);
       await tx.query(`select set_config('request.jwt.claim.sub', $1, true)`, [owner]);
       await tx.query(`select public.documents_apply($1, $2, $3::jsonb)`, [
@@ -237,10 +249,7 @@ describe("0027 §4 one registration run = one discovery refresh", () => {
         [a!.docId],
         JSON.stringify([fresh, changed].map(toRow)),
       ]);
-      const { rows } = await tx.query<{ c: string | number }>(
-        `select coalesce(sum(calls), 0) as c from pg_stat_xact_user_functions where funcname = 'discovery_refresh_package'`,
-      );
-      return Number(rows[0]!.c);
+      return (await refreshCalls(tx)) - c0;
     });
     expect(calls).toBe(1);
     const els = await db.query<{ doc_id: string }>(`select doc_id from public.discovery_elements where package_id = $1 order by doc_id`, [id]);

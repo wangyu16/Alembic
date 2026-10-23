@@ -45,8 +45,9 @@ async function refreshCalls(tx: Transaction | PGlite): Promise<number> {
 }
 
 beforeAll(async () => {
-  db = await freshDatabase();
-  await db.exec(`set track_functions = 'all'`);
+  // track_functions is server configuration (superuser-only), set by the
+  // harness before the non-superuser owner's session starts.
+  db = await freshDatabase({ serverSettings: { track_functions: "all" } });
   owner = await seedUser(db);
   pkg = await seedPackage(db, { owner, listed: true, title: "Big Course" });
   await seedShared(pkg, "doc-big-", N);

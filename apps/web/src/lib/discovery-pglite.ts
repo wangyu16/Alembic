@@ -5,12 +5,32 @@
  * `authenticated` / `service_role` roles with Supabase's default grants,
  * `auth.users` + `auth.uid()`, the `extensions` and `storage` schemas).
  *
- * It lets the discovery projection, its triggers, RLS and the search SQL be
- * tested for real (Phase 5 Track A) without a local Supabase. It is NOT
- * Supabase: PGlite runs a newer Postgres and a single connection, so it
- * proves behaviour and SQL shape, not performance. Never imported by app code.
+ * Supabase-shaped privileges (loop r2, claim P5.S.13). Supabase does not run
+ * migrations as a superuser: its `postgres` role is a NON-superuser with
+ * CREATEROLE + BYPASSRLS that owns `public`, and every migration runs in its
+ * own session. So does this harness: the superuser only lays down the stub
+ * (what the platform provides), then every migration file is applied as the
+ * non-superuser owner `supa_postgres` in a FRESH backend session (the data
+ * directory is dumped and reopened between files). A migration that only
+ * works as a superuser, or that leans on session state an earlier file left
+ * behind (round 1's 42501: setting a pg_trgm parameter before the extension's
+ * library is loaded in that session), fails here as it would in production.
+ * Tests then run as that same owner (RLS bypassed for seeding) and switch to
+ * the API roles with `asRole`.
+ *
+ * A full fresh-session replay costs ~30 s, so the migrated data directory is
+ * cached on disk (os.tmpdir(), keyed by a hash of the stub, the PGlite
+ * version and every applied migration's name + bytes) and each
+ * `freshDatabase()` reopens a copy (~1 s). Editing any migration changes the
+ * key, so the cache can never serve a stale schema.
+ *
+ * It is NOT Supabase: PGlite runs a newer Postgres and a single connection, so
+ * it proves behaviour, privileges and SQL shape, not performance. Never
+ * imported by app code.
  */
-import { readdirSync, readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmdirSync, statSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { PGlite } from "@electric-sql/pglite";
@@ -21,32 +41,47 @@ export const MIGRATIONS_DIR = resolve(
   "../../../../supabase/migrations",
 );
 
+/** The non-superuser that owns `public` and applies every migration (Supabase's `postgres`). */
+export const OWNER_ROLE = "supa_postgres";
+
+/** Bump when the harness's replay semantics change (invalidates the disk cache). */
+const HARNESS_VERSION = "r2-nsu-1";
+const PGLITE_VERSION = "0.5.11";
+
+// Laid down by the superuser: only what the Supabase platform itself provides.
 const SUPABASE_STUB = `
-create role anon nologin;
-create role authenticated nologin;
-create role service_role nologin bypassrls;
+create role anon nologin noinherit;
+create role authenticated nologin noinherit;
+create role service_role nologin noinherit bypassrls;
+create role ${OWNER_ROLE} login createrole createdb bypassrls;
+grant anon, authenticated, service_role to ${OWNER_ROLE} with admin option;
 create schema auth;
 create schema extensions;
 create schema storage;
-grant usage on schema public, extensions, auth to anon, authenticated, service_role;
+grant usage on schema public, extensions, auth, storage to anon, authenticated, service_role, ${OWNER_ROLE};
+grant create on schema extensions to ${OWNER_ROLE};
+alter schema public owner to ${OWNER_ROLE};
 create table auth.users (
   id uuid primary key,
   raw_user_meta_data jsonb default '{}',
   banned_until timestamptz
 );
+grant all on auth.users to ${OWNER_ROLE};
 create function auth.uid() returns uuid language sql stable as
   $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
-grant execute on function auth.uid() to anon, authenticated, service_role;
+grant execute on function auth.uid() to anon, authenticated, service_role, ${OWNER_ROLE};
 create table storage.buckets (id text primary key, name text, public boolean,
   file_size_limit bigint, allowed_mime_types text[]);
 create table storage.objects (id uuid, bucket_id text, name text, owner uuid);
 alter table storage.objects enable row level security;
+alter table storage.objects owner to ${OWNER_ROLE};
+alter table storage.buckets owner to ${OWNER_ROLE};
 create function storage.foldername(name text) returns text[] language sql immutable as
   $$ select string_to_array(name, '/') $$;
--- Supabase's defaults: new public objects are granted to the API roles.
-alter default privileges in schema public grant all on tables to anon, authenticated, service_role;
-alter default privileges in schema public grant all on functions to anon, authenticated, service_role;
-alter default privileges in schema public grant all on sequences to anon, authenticated, service_role;
+-- Supabase's defaults: objects the owner creates in public are granted to the API roles.
+alter default privileges for role ${OWNER_ROLE} in schema public grant all on tables to anon, authenticated, service_role;
+alter default privileges for role ${OWNER_ROLE} in schema public grant all on functions to anon, authenticated, service_role;
+alter default privileges for role ${OWNER_ROLE} in schema public grant all on sequences to anon, authenticated, service_role;
 `;
 
 export function migrationFiles(): string[] {
@@ -59,30 +94,152 @@ export function readMigration(name: string): string {
   return readFileSync(join(MIGRATIONS_DIR, name), "utf8");
 }
 
+export interface DatabaseOptions {
+  /** Only the migrations whose file name sorts before this (an upgrade test's starting state). */
+  before?: string;
+  /**
+   * Server configuration (postgresql.conf), set by the platform before the
+   * owner's session starts — e.g. `{ track_functions: "all" }` for a test that
+   * counts function calls. The owner never sets a superuser parameter itself.
+   */
+  serverSettings?: Record<string, string>;
+}
+
+type Dump = File | Blob;
+const memo = new Map<string, Promise<Dump>>();
+
+async function openFresh(dump?: Dump): Promise<PGlite> {
+  return dump
+    ? PGlite.create({ extensions: { pg_trgm }, loadDataDir: dump })
+    : PGlite.create({ extensions: { pg_trgm } });
+}
+
+/** Start a session as the platform: apply server settings, then become the owner. */
+async function ownerSession(db: PGlite, settings: Record<string, string> = {}): Promise<PGlite> {
+  for (const [k, v] of Object.entries(settings)) {
+    if (!/^[a-z_.]+$/.test(k)) throw new Error(`bad setting name ${k}`);
+    await db.query(`select set_config($1, $2, false)`, [k, v]);
+  }
+  await db.exec(`set session authorization ${OWNER_ROLE}`);
+  return db;
+}
+
+/** A brand-new cluster with the platform stub, as a dump (fresh-session start). */
+async function stubDump(): Promise<Dump> {
+  const db = await openFresh();
+  try {
+    await db.exec(SUPABASE_STUB);
+    const dbname = (await db.query<{ d: string }>("select current_database() d")).rows[0]!.d;
+    // Supabase's postgres may create (trusted) extensions in its database.
+    await db.exec(`grant create on database "${dbname}" to ${OWNER_ROLE}`);
+    return await db.dumpDataDir("none");
+  } finally {
+    await db.close();
+  }
+}
+
+/**
+ * Apply `files` (in order) to the cluster in `from`, each in a FRESH session
+ * as the non-superuser owner; returns the resulting data directory. `transform`
+ * lets a probe alter a migration's text (e.g. drop a line) before it runs.
+ */
+export async function replayMigrations(
+  files: string[],
+  opts: { from?: Dump; transform?: (file: string, sql: string) => string } = {},
+): Promise<Dump> {
+  let dump = opts.from ?? (await stubDump());
+  for (const f of files) {
+    const db = await ownerSession(await openFresh(dump));
+    try {
+      const sql = readMigration(f);
+      await db.exec(opts.transform ? opts.transform(f, sql) : sql);
+      dump = await db.dumpDataDir("none");
+    } catch (e) {
+      const err = e as Error & { code?: string };
+      const wrapped = new Error(`${f}: ${err.message}`) as Error & { code?: string };
+      wrapped.code = err.code;
+      throw wrapped;
+    } finally {
+      await db.close();
+    }
+  }
+  return dump;
+}
+
+function cacheKey(files: string[]): string {
+  const h = createHash("sha256").update(HARNESS_VERSION).update(PGLITE_VERSION).update(SUPABASE_STUB);
+  for (const f of files) h.update(`\0${f}\0`).update(readMigration(f));
+  return h.digest("hex").slice(0, 32);
+}
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** The migrated data directory for `files`, built once (fresh sessions) and cached on disk. */
+async function migratedDump(files: string[]): Promise<Dump> {
+  const key = cacheKey(files);
+  let p = memo.get(key);
+  if (!p) {
+    p = (async () => {
+      const dir = join(tmpdir(), "alembic-pglite-cache");
+      mkdirSync(dir, { recursive: true });
+      const file = join(dir, `${key}.tar`);
+      const lock = `${file}.lock`;
+      for (;;) {
+        if (existsSync(file)) return new Blob([readFileSync(file)]);
+        try {
+          mkdirSync(lock);
+        } catch {
+          // Another worker is building it; a lock older than 5 min is stale.
+          try {
+            if (Date.now() - statSync(lock).mtimeMs > 300_000) rmdirSync(lock);
+          } catch {
+            /* gone already */
+          }
+          await sleep(500);
+          continue;
+        }
+        try {
+          if (existsSync(file)) continue;
+          const dump = await replayMigrations(files);
+          const tmp = `${file}.${process.pid}.tmp`;
+          writeFileSync(tmp, Buffer.from(await dump.arrayBuffer()));
+          renameSync(tmp, file);
+          return dump;
+        } finally {
+          rmdirSync(lock);
+        }
+      }
+    })();
+    memo.set(key, p);
+    p.catch(() => memo.delete(key));
+  }
+  return p;
+}
+
 /**
  * A fresh database with every migration applied, in order — or, with
  * `before`, only the migrations whose file name sorts before it (so a test can
  * seed the state an upgrade meets, then `applyMigrationsFrom(db, before)`).
+ * The session is the non-superuser owner.
  */
-export async function freshDatabase(opts: { before?: string } = {}): Promise<PGlite> {
-  const db = await PGlite.create({ extensions: { pg_trgm } });
-  await db.exec(SUPABASE_STUB);
+export async function freshDatabase(opts: DatabaseOptions = {}): Promise<PGlite> {
   const files = migrationFiles().filter((f) => opts.before === undefined || f < opts.before);
-  for (const f of files) await applyMigration(db, f);
-  return db;
+  return ownerSession(await openFresh(await migratedDump(files)), opts.serverSettings);
 }
 
-/** Apply every migration whose file name sorts at or after `from`, in order. */
-export async function applyMigrationsFrom(db: PGlite, from: string): Promise<void> {
-  for (const f of migrationFiles().filter((n) => n >= from)) await applyMigration(db, f);
-}
-
-async function applyMigration(db: PGlite, f: string): Promise<void> {
-  try {
-    await db.exec(readMigration(f));
-  } catch (e) {
-    throw new Error(`${f}: ${(e as Error).message}`);
-  }
+/**
+ * Apply every migration whose file name sorts at or after `from`, in order,
+ * each in a fresh session as the owner. Closes `db` and returns the upgraded
+ * database (a fresh session) — use the returned handle.
+ */
+export async function applyMigrationsFrom(db: PGlite, from: string): Promise<PGlite> {
+  const start = await db.dumpDataDir("none");
+  await db.close();
+  const dump = await replayMigrations(
+    migrationFiles().filter((n) => n >= from),
+    { from: start },
+  );
+  return ownerSession(await openFresh(dump));
 }
 
 // ---------------------------------------------------------------------------

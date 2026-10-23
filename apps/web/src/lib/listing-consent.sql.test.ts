@@ -294,7 +294,7 @@ describe("H1 class: every write policy whose row names a package requires owning
 
 describe("H1 upgrade: 0025 removes registration rows the package owner did not write", () => {
   it("[P5.S.1.b] mismatched rows are deleted, matching rows kept", async () => {
-    const old = await freshDatabase({ before: "0025" });
+    let old = await freshDatabase({ before: "0025" });
     try {
       const v = await seedUser(old, "v");
       const a = await seedUser(old, "a");
@@ -307,7 +307,7 @@ describe("H1 upgrade: 0025 removes registration rows the package owner did not w
            join public.packages p on p.id = r.package_id where r.owner_id <> p.owner_id`,
       );
       expect(before[0]!.n).toBe("1");
-      await applyMigrationsFrom(old, "0025");
+      old = await applyMigrationsFrom(old, "0025");
       const { rows } = await old.query<{ package_id: string }>(
         `select package_id from public.portal_registrations order by package_id`,
       );

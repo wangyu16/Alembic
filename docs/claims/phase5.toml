@@ -1444,3 +1444,20 @@ claim = "A pinned /d/{doc}@{hash} cannot be satisfied by different bytes with th
 oracle = "probe"
 bound_to = []
 note = "ACCEPTED, not fixed (DecisionLog 2026-10-23 security loop r1): the pin is the 32-bit FNV-1a source hash, and a second preimage is cheap (/tmp/alembic-audit/fnv.mts). Stays red until R3 moves pins to a cryptographic hash; owner decision pending."
+
+# ─── Security loop r2 (audit 2026-10-23, round 2): probes and class fixes ─
+# Each claim is bound to the probe that reproduced the finding on d4544cc
+# (on the non-superuser fresh-session harness) and passes after the fix.
+
+# Improvement 1 — the SQL harness applies migrations like Supabase
+
+[[claim]]
+id = "P5.S.13"
+claim = "The SQL test harness applies every migration as a non-superuser owner (CREATEROLE, BYPASSRLS, owns public, Supabase default privileges), each file in a fresh session, so a migration that needs a superuser or an earlier session's state fails in tests."
+oracle = "probe"
+bound_to = [
+  "apps/web/src/lib/pglite-harness.sql.test.ts :: tests run as the non-superuser owner, which owns every migrated object and cannot set superuser parameters",
+  "apps/web/src/lib/pglite-harness.sql.test.ts :: with 0025's pg_trgm preload line removed, the fresh-session replay fails with 42501 (and the real file applies)",
+  "apps/web/src/lib/pglite-harness.sql.test.ts :: the fresh session is load-bearing: the same stripped file passes in a session that already loaded pg_trgm",
+]
+note = "Loop r2 improvement 1. A cold replay costs ~30 s; the migrated data directory is cached in os.tmpdir() keyed by the hash of every applied migration. track_functions is set as server configuration by the harness (serverSettings), never by the owner."
