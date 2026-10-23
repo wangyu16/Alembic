@@ -80,7 +80,7 @@ then a fix for the whole class. Per finding (⬜ open · ✅ fixed on this branc
 
 - ⬜ **M3** pinned `/d` answers cached a year at the CDN (P5.S.4.a–b).
 
-- ⬜ **M4** report caps exhaustible with junk (P5.S.5.a–b).
+- ✅ **M4** report caps exhaustible with junk (P5.S.5.a–b). Migration `0025_loop_r1_3_report_cap.sql`: `file_portal_report_v2` validates that the package exists and is listed (course or a shared element) before charging anything, caps per (package, reporter key) 5 / h and 10 / day — the app passes `reporterKey()`, an HMAC of the signed-in user or of the address — and charges the global 60 / h, 300 / day only for valid reports; the 0024 function now delegates to it. App: `lib/report-submit.ts` calls v2, then the 0024 function while v2 is missing. Probes: `report-cap.sql.test.ts` (also binds P5.H.2.c), `report-submit.test.ts`. **Deploy: either order.** Residual: a client rotating addresses against real listed courses can still use the global hourly cap (as before).
 
 - ⬜ **M5** unauthenticated `/api/preview` fan-out (P5.S.6.a–b).
 

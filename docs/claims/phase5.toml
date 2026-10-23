@@ -995,7 +995,7 @@ bound_to = [
 
 [[claim]]
 id = "P5.H.2.a"
-claim = "The app files reports only through file_portal_report and falls back to the session insert only when the function is missing (PGRST202/42883), never on any other error, including a cap refusal."
+claim = "The app files reports only through file_portal_report_v2 (then file_portal_report while v2 is missing) and falls back to the session insert only when the function is missing (PGRST202/42883), never on any other error, including a cap refusal."
 oracle = "invariant"
 bound_to = [
   "apps/web/src/lib/report-submit.test.ts :: files through the capped function, never the direct insert",
@@ -1021,15 +1021,16 @@ bound_to = [
 id = "P5.H.2.c"
 claim = "With migration 0024, anon and authenticated can neither insert into portal_reports nor execute file_portal_report."
 oracle = "probe"
-bound_to = []
-note = "Checked by an out-of-repo PGlite harness and the operator script supabase/tests/0024_verify_report_cap.sql; no in-repo test."
+bound_to = [
+  "apps/web/src/lib/report-cap.sql.test.ts :: only the service role may file (anon and signed-in callers cannot)",
+]
 
 [[claim]]
 id = "P5.H.2.d"
 claim = "file_portal_report caps reports at 10/hour and 30/day per package and 60/hour and 300/day overall, checking the global cap first."
 oracle = "probe"
 bound_to = []
-note = "Same as P5.H.2.c: no in-repo test."
+note = "SUPERSEDED by security loop r1 M4 (migration 0025_loop_r1_3; claims P5.S.5.a-b): the global-cap-first order was the bug (junk exhausted it). Kept red as the record of the 0024 design; retire it when r1 merges."
 
 # ─── Owner rulings, 2026-10-23 ────────────────────────────────────────────
 
@@ -1180,13 +1181,23 @@ bound_to = []
 id = "P5.S.5.a"
 claim = "file_portal_report validates that the package exists and is listed before charging any cap; a report on an unknown or unlisted package answers invalid and stores nothing."
 oracle = "probe"
-bound_to = []
+bound_to = [
+  "apps/web/src/lib/report-cap.sql.test.ts :: reports on unknown or unlisted packages answer invalid, store nothing and charge nothing",
+  "apps/web/src/lib/report-cap.sql.test.ts :: a course that is not listed but shares an element can be reported",
+  "apps/web/src/lib/report-cap.sql.test.ts :: the old three-argument entry point validates too",
+]
 
 [[claim]]
 id = "P5.S.5.b"
 claim = "The per-package report cap is kept per (package, reporter key), so one source cannot silence other reporters of the same package; anonymous reporting still works."
 oracle = "probe"
-bound_to = []
+bound_to = [
+  "apps/web/src/lib/report-cap.sql.test.ts :: the per-package cap is kept per reporter: a flooder is capped, another reporter is not",
+  "apps/web/src/lib/report-cap.sql.test.ts :: the global cap still bounds the table, charged only by valid reports",
+  "apps/web/src/lib/report-cap.sql.test.ts :: only the service role may file (anon and signed-in callers cannot)",
+  "apps/web/src/lib/report-submit.test.ts :: passes the reporter key and falls back to the 0024 function while v2 is missing",
+  "apps/web/src/lib/report-submit.test.ts :: the reporter key is a one-way MAC: per user when signed in, per address otherwise",
+]
 
 # M5 — no unauthenticated server-side rendering or fetching
 

@@ -3,8 +3,9 @@
 import { headers } from "next/headers";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { checkRateLimit } from "@/lib/rate-limit-server";
+import { clientIp, rateSecret } from "@/lib/rate-limit";
 import { recordDiscoveryEvent } from "@/lib/record-discovery-event";
-import { fileReport } from "@/lib/report-submit";
+import { fileReport, reporterKey } from "@/lib/report-submit";
 import { createServiceClient } from "@/lib/supabase/service";
 
 /**
@@ -24,7 +25,8 @@ export async function reportPackageAction(
 ): Promise<{ ok: boolean; error?: string }> {
   const trimmed = typeof reason === "string" ? reason.trim() : "";
   if (!trimmed) return { ok: false, error: "Add a brief reason for the report." };
-  const gate = await checkRateLimit("report", await headers());
+  const h = await headers();
+  const gate = await checkRateLimit("report", h);
   if (!gate.ok) {
     return {
       ok: false,
@@ -38,7 +40,13 @@ export async function reportPackageAction(
   const outcome = await fileReport(
     createServiceClient(),
     (row) => supabase.from("portal_reports").insert(row),
-    { packageId, reason: trimmed, reporterId: user?.id ?? null },
+    {
+      packageId,
+      reason: trimmed,
+      reporterId: user?.id ?? null,
+      // The database caps each package per reporting source (security loop r1 M4).
+      reporterKey: reporterKey({ userId: user?.id ?? null, ip: clientIp(h) }, rateSecret()),
+    },
   );
   if (outcome === "rate_limited") {
     return { ok: false, error: "Many reports have been sent in a short time. Please try again later." };

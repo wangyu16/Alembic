@@ -31,7 +31,16 @@ column dropped in migration `0013`).
   `file_portal_report()` (service role only), which also caps reports per
   package (10 / hour, 30 / day) and overall (60 / hour, 300 / day) — limits a
   client rotating addresses cannot dodge. A flood can at worst pause
-  reporting until the window rolls over.
+  reporting until the window rolls over. **Revised (security loop r1 M4,
+  migration 0025_loop_r1_3):** those caps were charged before the package was
+  checked, so junk could silence a package or everything. Now
+  `file_portal_report_v2()` first requires the package to exist and be listed
+  (a listed course, or a published course with a shared element) — anything
+  else is `invalid` and charges nothing; then caps per **(package, reporting
+  source)** at 5 / hour and 10 / day, the source being an HMAC of the signed-in
+  user or of the address (`reporterKey()`), so one source cannot silence other
+  reporters; then the overall 60 / hour, 300 / day, charged only by valid
+  reports. Anonymous reporting is unchanged.
 - **Review:** an operator reads `portal_reports` (dashboard), assesses, and sets
   `status` to `resolved` / `dismissed`.
 - **Takedown:** to remove a listing, either the **owner unlists** it

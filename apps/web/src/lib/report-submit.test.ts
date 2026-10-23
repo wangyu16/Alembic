@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fileReport, isMissingFunction, MAX_REASON_LENGTH, type DirectInsert } from "./report-submit";
+import { fileReport, isMissingFunction, MAX_REASON_LENGTH, reporterKey, type DirectInsert } from "./report-submit";
 import type { RpcClient } from "./rate-limit";
 
 type Call = { fn: string; args: Record<string, unknown> };
@@ -32,7 +32,10 @@ describe("fileReport — through file_portal_report (migration 0024 applied)", (
     const direct = directInsert();
     expect(await fileReport(rpc.client, direct.insert, input)).toBe("ok");
     expect(rpc.calls).toEqual([
-      { fn: "file_portal_report", args: { p_package_id: "pkg-1", p_reason: "broken links", p_reporter_id: null } },
+      {
+        fn: "file_portal_report_v2",
+        args: { p_package_id: "pkg-1", p_reason: "broken links", p_reporter_id: null, p_reporter_key: null },
+      },
     ]);
     expect(direct.rows).toHaveLength(0);
   });
@@ -102,6 +105,36 @@ describe("fileReport — before migration 0024 (or without the service key)", ()
     expect(await fileReport(null, directInsert({ code: "42501" }).insert, input)).toBe("error");
     const throwing: DirectInsert = () => Promise.reject(new Error("down"));
     expect(await fileReport(null, throwing, input)).toBe("error");
+  });
+});
+
+describe("fileReport — per-source caps (security loop r1 M4)", () => {
+  it("[P5.S.5.b] passes the reporter key and falls back to the 0024 function while v2 is missing", async () => {
+    const calls: Call[] = [];
+    const client: RpcClient = {
+      rpc(fn, args) {
+        calls.push({ fn, args });
+        return Promise.resolve(
+          fn === "file_portal_report_v2" ? { data: null, error: { code: "PGRST202" } } : { data: "ok", error: null },
+        );
+      },
+    };
+    const direct = directInsert();
+    expect(await fileReport(client, direct.insert, { ...input, reporterKey: "k1" })).toBe("ok");
+    expect(calls.map((c) => c.fn)).toEqual(["file_portal_report_v2", "file_portal_report"]);
+    expect(calls[0]!.args["p_reporter_key"]).toBe("k1");
+    expect(calls[1]!.args).not.toHaveProperty("p_reporter_key");
+    expect(direct.rows).toHaveLength(0);
+  });
+
+  it("[P5.S.5.b] the reporter key is a one-way MAC: per user when signed in, per address otherwise", () => {
+    const a = reporterKey({ userId: null, ip: "203.0.113.7" }, "s");
+    expect(a).toMatch(/^[0-9a-f]{32}$/);
+    expect(a).not.toContain("203.0.113.7");
+    expect(reporterKey({ userId: null, ip: "203.0.113.8" }, "s")).not.toBe(a);
+    expect(reporterKey({ userId: null, ip: "203.0.113.7" }, "other-secret")).not.toBe(a);
+    // A signed-in reporter is one source whatever address they use.
+    expect(reporterKey({ userId: "u1", ip: "1.1.1.1" }, "s")).toBe(reporterKey({ userId: "u1", ip: "2.2.2.2" }, "s"));
   });
 });
 
