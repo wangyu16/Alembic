@@ -6,6 +6,25 @@ design, and what is deferred to the future. Complements [Status.md](Status.md)
 
 ---
 
+## 2026-10-23 — Discover ranking: relevance × bounded quality; keyset pages pinned to an hour (Phase 5 Track A.2–A.3)
+
+**Decision.** `score = relevance × (0.75 + 0.5 × quality)`, rounded to 6
+decimals, ties broken by id; quality = accessibility 0.30 + open licence 0.15
++ completeness 0.20 + recency 0.20 + adaptations 0.15. Paging is keyset on
+`(score, id)`; recency is computed against the hour of the first page, which
+the cursor carries. Typo tolerance uses pg_trgm word similarity ≥ 0.45.
+
+**Why.** "Quality gates prominence, not censorship" (goal.md §6) rules out
+filtering on quality and argues against letting it override relevance; a
+bounded factor lets it decide only between comparable matches. Keyset paging
+needs a stable sort key: a recency term computed against the clock would
+shift scores between page requests (duplicates or gaps at page edges), so
+the time base is fixed per browsing session instead. Rounding makes the score
+an exact URL value. 0.45 (below pg_trgm's 0.6 default) is where one-letter
+slips in course words ("chemstry", 0.58) still match.
+
+---
+
 ## 2026-10-23 — Discovery index: derived in the database, kept fresh by triggers (Phase 5 Track A.1)
 
 **Decision.** The discovery index (`discovery_courses`, `discovery_elements`)

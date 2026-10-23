@@ -1,6 +1,6 @@
 # Discovery index — projection, search, ranking (Phase 5 Track A)
 
-Status: **A.1–A.2 built** (2026-10-23, branch `phase5/trackA-core`, migration
+Status: **A.1–A.3 built** (2026-10-23, branch `phase5/trackA-core`, migration
 `0022_trackA_discovery.sql` not yet applied anywhere). Binding inputs:
 [goal.md](../goal.md) §6 (portal: search facets, quality "gates prominence,
 not censorship", the portal consumes the same standard metadata) and §9
@@ -178,4 +178,54 @@ changing base rows with the triggers disabled).
 
 ## 3. Ranking (A.3)
 
-*Added with A.3.*
+Relevance first, then quality. Quality signals **gate prominence, never
+visibility** (goal.md §6): every match is returned; quality only scales its
+relevance within a bounded band, so it reorders near-ties and never buries
+or hides a match. One formula, in SQL (`discovery_relevance`,
+`discovery_quality`, `discovery_score`) and mirrored in package-contract
+(`qualityScore`, `rankScore`, `RANKING`); an agreement test compares the two
+over > 1000 input combinations.
+
+### 3.1 Relevance (0 … ~1.5)
+
+```
+fts       = max( ts_rank_cd(W, vector, websearch_query, 32),
+                 0.8 × ts_rank_cd(W, vector, prefix_query, 32) )     -- 0 … 1
+relevance = fts + 0.5 × word_similarity(q, search_text)              -- trigram
+W         = {D 0.1, C 0.2, B 0.4, A 1.0}                             -- §2 weights
+```
+
+Normalisation 32 maps each rank into 0 … 1 (`rank / (rank + 1)`). With no
+query, relevance is 1 for every row (browse = quality order).
+
+### 3.2 Quality (0 … 1)
+
+| Signal | Weight | Value |
+|---|---|---|
+| accessibility | 0.30 | course: audit `pass` 1, `warn` 0.5, `fail`/`unknown` 0; element: 1 when it has a description or alt text |
+| open licence | 0.15 | 1 for an open licence (always true for listed courses; elements may carry their own) |
+| completeness | 0.20 | course: share of {description ≥ 15 words, ≥ 3 keywords, level, discipline, concept-map topics or ≥ 2 chapters}; element: share of {description ≥ 3 words, ≥ 1 tag, a licence} |
+| recency | 0.20 | `exp(−days since updated_at / 180)` (≈ 0.5 after four months; future dates count as now) |
+| adaptations | 0.15 | `min(ln(1 + n) / ln(21), 1)` — distinct adapting packages, saturating at 20 |
+
+**Citations** have no data yet (no citation registry); when they do, they
+join as a further signal and the weights are re-balanced to sum to 1.
+
+### 3.3 Score
+
+```
+score = round( relevance × (0.75 + 0.5 × quality), 6 )
+```
+
+So quality moves a match by at most ×0.75 … ×1.25: a match more than 5/3 as
+relevant as another always ranks above it, whatever their qualities. Ties
+are broken by id (descending), which also makes keyset paging exact.
+Recency is computed against the page's `as_of` hour (§2), so a reader's
+pages agree with each other.
+
+**Why multiplicative and bounded.** A lexicographic order (relevance, then
+quality) would let quality matter only on exact relevance ties, which
+almost never happen with continuous ranks; an additive blend would let a
+high-quality course outrank a much better match. A bounded factor keeps
+relevance in charge while letting quality decide between comparable
+matches — "prominence, not censorship".

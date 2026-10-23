@@ -90,6 +90,15 @@ must be applied before this code is deployed** (it back-fills the index itself).
   normalised filters, facet semantics, paging walks every row once, page caps, stale rows never served for
   four course and four element cases, `anon` access, SQL shape: no OFFSET, keyset predicate, clamped limits,
   GIN indexes). Spec §2 notes the linear ranking cost (revisit at ~100k elements).
+- ✅ **A.3 Ranking.** Relevance first (full-word and prefix text rank + trigram similarity), then a bounded quality
+  factor `×(0.75 + 0.5 × quality)`: accessibility 0.30 (course audit; element described), open licence 0.15,
+  completeness 0.20, recency 0.20 (`exp(−days/180)` against the page's hour), adaptations 0.15 (log,
+  saturating at 20). Prominence, never visibility: every match stays listed. Citations: no data yet (spec §3
+  leaves the slot). Formula in [discovery-index.md](specs/discovery-index.md) §3; SQL mirrored by
+  `qualityScore`/`rankScore` in package-contract. **Tests:** 11 pure (weights sum to 1, each signal raises
+  quality, bounds, relevance dominance) + 1 SQL ⇄ TS agreement over 1,152 input combinations + 7 SQL ordering
+  tests (each signal reorders equal matches; a title match beats a much better-quality description match;
+  low quality still listed).
 
 **Phase 5 Track B — GitHub bridge & Pages publishing: keep, strengthen (2026-10-23, branch `phase5/trackB`,
 not yet deployed).** Plan: family `docs/PHASE5-ALEMBIC.md` Track B; B.4–B.6 wait for the orz release wave.

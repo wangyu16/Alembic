@@ -12,6 +12,8 @@ import {
   DISCOVERY_MANIFEST_FIELDS,
   NEVER_LISTED_SPACES,
   OPEN_LICENSES,
+  qualityScore,
+  rankScore,
 } from "@alembic/package-contract";
 import { freshDatabase, readMigration } from "./discovery-pglite";
 
@@ -55,5 +57,28 @@ describe("SQL ⇄ package-contract agreement (discovery)", () => {
     );
     expect(lists.length).toBeGreaterThanOrEqual(5);
     for (const l of lists) expect(l).toEqual([...NEVER_LISTED_SPACES].sort());
+  });
+
+  it("ranking: SQL discovery_quality / discovery_score equal the contract's qualityScore / rankScore", async () => {
+    const asOf = "2026-10-23T10:00:00.000Z";
+    const cases: Array<[string, string, number, number, string, number]> = [];
+    for (const a11y of ["pass", "warn", "fail", "unknown"])
+      for (const license of ["CC-BY-4.0", "ALL-RIGHTS-RESERVED"])
+        for (const completeness of [0, 0.4, 1])
+          for (const adaptations of [0, 1, 7, 500])
+            for (const updatedAt of ["2026-10-23T10:00:00.000Z", "2026-05-01T00:00:00.000Z", "1990-01-01T00:00:00.000Z", "2031-01-01T00:00:00.000Z"])
+              for (const relevance of [0, 0.123456, 1.4])
+                cases.push([a11y, license, completeness, adaptations, updatedAt, relevance]);
+    for (const [a11y, license, completeness, adaptations, updatedAt, relevance] of cases) {
+      const { rows } = await db.query<{ q: number; s: string }>(
+        `select public.discovery_quality($1, $2, $3::real, $4, $5, $6) as q,
+                public.discovery_score($7, public.discovery_quality($1, $2, $3::real, $4, $5, $6))::text as s`,
+        [a11y, license, completeness, adaptations, updatedAt, asOf, relevance],
+      );
+      const q = qualityScore({ a11y, license, completeness, adaptations, updatedAt, asOf });
+      expect(rows[0]!.q).toBeCloseTo(q, 6);
+      expect(Number(rows[0]!.s)).toBeCloseTo(rankScore(relevance, q), 6);
+    }
+    expect(cases.length).toBeGreaterThan(1000);
   });
 });

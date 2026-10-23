@@ -7,7 +7,7 @@
  * registration registry and the listing consent — never written by app code.
  * This module is the contract side of it: what may be listed, the shape of a
  * row the search returns, and which manifest fields feed it. The SQL mirrors
- * the constants here; `discovery.agreement.test.ts` keeps the two in step.
+ * the constants here; `apps/web/src/lib/discovery-agreement.test.ts` keeps the two in step.
  *
  * Pure: no IO, no framework imports.
  */
@@ -202,3 +202,73 @@ export const LEVEL_SUGGESTIONS = [
   "graduate",
   "professional",
 ] as const;
+
+// ---------------------------------------------------------------------------
+// Ranking (A.3; discovery-index.md §3). Mirrors the SQL functions
+// `discovery_quality` and `discovery_score` exactly (agreement-tested).
+// Quality gates PROMINENCE, never visibility (goal.md §6): it only scales a
+// match's relevance, so a low-quality match is still listed.
+// ---------------------------------------------------------------------------
+
+export const RANKING = {
+  /** Weights of the quality signals; they sum to 1. */
+  weights: {
+    accessibility: 0.3,
+    openLicense: 0.15,
+    completeness: 0.2,
+    recency: 0.2,
+    adaptations: 0.15,
+  },
+  /** Recency decays as exp(-days / recencyDays): ~0.5 after four months. */
+  recencyDays: 180,
+  /** Adaptations saturate at this many adapting packages (log scale). */
+  adaptationsSaturateAt: 20,
+  /** score = relevance × (floor + span × quality): ×0.75 … ×1.25. */
+  floor: 0.75,
+  span: 0.5,
+} as const;
+
+export interface QualitySignals {
+  /** Course: the audit status. Element: "pass" when described, else "unknown". */
+  a11y: string;
+  license: string;
+  /** 0 … 1 (projected). */
+  completeness: number;
+  adaptations: number;
+  updatedAt: Date | string;
+  asOf: Date | string;
+}
+
+const clamp01 = (n: number) => Math.min(Math.max(Number.isFinite(n) ? n : 0, 0), 1);
+
+export function a11ySignal(status: string): number {
+  return status === "pass" ? 1 : status === "warn" ? 0.5 : 0;
+}
+
+export function recencySignal(updatedAt: Date | string, asOf: Date | string): number {
+  const days = Math.max((new Date(asOf).getTime() - new Date(updatedAt).getTime()) / 86_400_000, 0);
+  return Math.exp(-Math.min(days / RANKING.recencyDays, 50));
+}
+
+export function adaptationSignal(count: number): number {
+  return Math.min(Math.log(1 + Math.max(count, 0)) / Math.log(1 + RANKING.adaptationsSaturateAt), 1);
+}
+
+/** 0 … 1. */
+export function qualityScore(s: QualitySignals): number {
+  const w = RANKING.weights;
+  return (
+    w.accessibility * a11ySignal(s.a11y) +
+    w.openLicense * (isOpenLicenseId(s.license) ? 1 : 0) +
+    w.completeness * clamp01(s.completeness) +
+    w.recency * recencySignal(s.updatedAt, s.asOf) +
+    w.adaptations * adaptationSignal(s.adaptations)
+  );
+}
+
+/** Relevance first; quality scales it within ×0.75 … ×1.25. Rounded to 6
+ *  decimals (the SQL returns `numeric`, the paging key). */
+export function rankScore(relevance: number, quality: number): number {
+  const raw = (Number.isFinite(relevance) ? relevance : 0) * (RANKING.floor + RANKING.span * clamp01(quality));
+  return Math.round(raw * 1e6) / 1e6;
+}
