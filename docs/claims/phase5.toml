@@ -1223,13 +1223,22 @@ bound_to = [
 id = "P5.S.6.a"
 claim = "/api/preview refuses a request without a signed-in session and caps the includes it resolves per call and their total bytes."
 oracle = "probe"
-bound_to = []
+bound_to = [
+  "apps/web/src/app/api/preview/route.test.ts :: refuses a request without a signed-in session, fetching nothing",
+  "apps/web/src/app/api/preview/route.test.ts :: caps the includes one preview resolves",
+  "apps/web/src/app/api/preview/route.test.ts :: caps the total bytes one preview fetches",
+]
 
 [[claim]]
 id = "P5.S.6.b"
 claim = "Class: no route reachable without a session renders Markdown with remote includes or fetches a caller-chosen URL on the caller's behalf."
 oracle = "invariant"
-bound_to = []
+bound_to = [
+  "apps/web/src/app/include-fetch-entry-points.test.ts :: every entry point reaching an include resolver or server fetch requires a session",
+  "apps/web/src/app/include-fetch-entry-points.test.ts :: the inventory of such entry points is pinned (a new one needs review)",
+  "apps/web/src/app/include-fetch-entry-points.test.ts :: the gate check tells a gated export from an ungated one (self-check)",
+  "apps/web/src/app/include-fetch-entry-points.test.ts :: the scan sees through the import graph (self-check)",
+]
 
 # L1, L3, L4 and the template
 

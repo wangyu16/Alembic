@@ -127,6 +127,16 @@ from the cache. The `element.viewed` research event is written at most once
 per (doc, client address, clock hour) (`apps/web/src/lib/view-dedupe.ts`),
 so such requests cannot grow `research_events`.
 
+**Server-side includes (security loop r1, 2026-10-23).** `{{md-include
+https://{app host}/d/{docId}}}` is resolved on the server only for the app's
+own host (`apps/web/src/lib/resolve-includes.ts`), only for a signed-in
+caller — every entry point that reaches the resolver (preview, publish,
+exports, hosted views, the in-file editors' include bridge) is session-gated,
+pinned by `apps/web/src/app/include-fetch-entry-points.test.ts` — and at most
+**50 include fetches and 2 MB fetched per call** (`INCLUDE_LIMITS`; nested
+includes count). Past the budget the remaining directives stay unresolved,
+like a failed fetch. Public pages (`/d`, `/portal`, `/p`) resolve no includes.
+
 ## 4. Versioning
 
 - **File level:** a plain dated history — the file's states across

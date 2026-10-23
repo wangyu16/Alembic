@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { renderDocument, renderPlainDocument } from "@alembic/renderer";
 import { getRenderTheme } from "@/lib/theme";
 import { resolveWebIncludes } from "@/lib/resolve-includes";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 /**
  * Server-side markdown preview. Returns a full document the client shows in an
@@ -13,8 +14,21 @@ import { resolveWebIncludes } from "@/lib/resolve-includes";
  * Web transclusions (`{{md-include https://host/d/{docId}}}`) are resolved here
  * (server-side, host-allowlisted) so the preview shows included content — the
  * same resolution the publish path applies, so preview matches published output.
+ *
+ * Signed-in only (security loop r1, M5): resolving includes makes the server
+ * fetch on the caller's behalf, so — like `resolveIncludeAction` — an
+ * anonymous caller gets 401 and nothing is fetched or rendered. Each call's
+ * fetches are capped (`INCLUDE_LIMITS` in `lib/resolve-includes.ts`).
  */
 export async function POST(request: Request) {
+  const supabase = await createSupabaseServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return NextResponse.json({ error: "Please sign in to preview." }, { status: 401 });
+  }
+
   let source = "";
   let heading: string | undefined;
   let plain = false;
