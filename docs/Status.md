@@ -98,6 +98,27 @@ itself (A.1–A.4) is a parallel branch (`phase5/trackA-core`) and is not touche
   not known yet and its docId is never logged). **Left for Track A core** (portal page / search / course
   pages, not touched here): `portal.searched` and `course.viewed` — call `recordDiscoveryEvent` (usage in
   its header comment) and `checkRateLimit("search", await headers())`.
+- ✅ **A.7c Harvest without the portal** (goal.md §6). `/feed/courses.jsonld[?page=N]`: every listed course
+  as a schema.org `DataFeed` of the SAME LRMI `LearningResource` records the published pages embed
+  (`learningResource()`), 100 per page, paged by HTTP `Link` (first/prev/next/last), CORS open,
+  CDN-cached 15 min + stale-while-revalidate. `/sitemap.xml` (an index → `/sitemaps/static.xml`, and
+  `/sitemaps/courses-{n}.xml` per 10 000 courses) and `/robots.txt` (public pages, `/d` and the feed
+  crawlable; workspace/admin/api/auth not). Reads through a cookie-less anon client
+  (`lib/supabase/public.ts`), so the answers are the same for everyone. **Seams for Track A core:**
+  `listListedCourses` (`lib/listed-courses.ts`) is the ONE data read — today `portal_registrations`,
+  repoint it at the discovery projection (A.1); course URLs enter the sitemap only when
+  `COURSE_PAGES_LIVE` is flipped in the commit that adds `/p/{packageId}` (A.4) — a sitemap may only list
+  its own host, so until then course records travel in the feed, pointing at each course's Pages site.
+  Tests: 6 (`listed-courses.test.ts`).
+- **Open (A.6/A.7):** *(a)* "cached discover pages, revalidated on listing changes" is the portal page's
+  job (A-core branch) — not done here; *(b)* the report limit binds the app only: `portal_reports` RLS
+  still lets anyone insert directly with the anon key (a database-side cap is open,
+  portal-governance.md); *(c)* the in-process `/d` and search limits are per server instance (soft);
+  *(d)* CDN copies of a public file can outlive its turning private/trial by ≤ 5 min (`s-maxage`),
+  origin answers change at once; *(e)* `/admin/export` reads every research event unpaged — with view
+  events it will grow; page it before the pilot's traffic; *(f)* pins on the 32-bit hash until R3;
+  *(g)* migration 0023 not applied — until then anonymous discovery events are dropped and the report
+  limit is per instance.
 
 **Phase 5 Track B — GitHub bridge & Pages publishing: keep, strengthen (2026-10-23, branch `phase5/trackB`,
 not yet deployed).** Plan: family `docs/PHASE5-ALEMBIC.md` Track B; B.4–B.6 wait for the orz release wave.
