@@ -6,6 +6,19 @@ design, and what is deferred to the future. Complements [Status.md](Status.md)
 
 ---
 
+## 2026-10-23 — Closed loop r1b: registration inside the write path; one package per docId; projection cost and recency
+
+Phase 5 correctness/scale audit, round 1 steps 4–5 (branch `phase5/loop-r1b`). Claims P5.B.1.m–p,
+P5.A.1.m, P5.A.1.i (strengthened), P5.A.2.m, P5.B.2.a/h (action level), P5.B.3.e.
+
+| # | Decision | Why |
+|---|---|---|
+| 8 | **Discovery: fingerprint-guarded upserts, doc-scoped refreshes, one refresh per flush (deferral queue), recency in base tables.** Element recency = the file content's last change (`documents.content_changed_at`); course recency = greatest(listing time, `packages.listing_changed_at`, latest public content change). Both columns are trigger-owned. | 333/333 element rows were rewritten per save and 3 refreshes ran per flush; a rebuild from empty lost `updated_at`. A package rename or a description edit no longer bumps element recency (deliberate). |
+
+Deploy: migration `0026_loop_r1b_discovery` (compatible with the current code).
+
+---
+
 ## 2026-10-23 — Owner rulings on Phase 5 open items
 
 | # | Decision | Why |

@@ -67,6 +67,18 @@ pinned), and **ruling 2, "Share this" not offered in a trial course — not buil
 registry: the one-file save test asserts ≤ 3 round-trips (measured 2), `/d`'s 1200/min and the 64 MB / 1 MB
 cache limits are not asserted as numbers. The round's probes come from the auditors (next step).
 
+**Phase 5 closed-loop verification — round 1, steps 4–5: correctness/scale fixes (2026-10-23, branch
+`phase5/loop-r1b`, not merged, not deployed).** Ten audit findings, each a claim + a probe that failed on
+`ff39af5` + a fix of the whole class ([DecisionLog](DecisionLog.md) 2026-10-23 "Closed loop r1b"). (In progress:
+rows are added as each finding lands.)
+
+| Finding | Claim | Fix | Measured |
+|---|---|---|---|
+| ✅ MEDIUM-3 projection rewrite cost | P5.A.1.m | 0026: fingerprint-guarded upserts, doc-scoped refresh, deferral queue (1 refresh per flush) | 333-element save: rows rewritten 333 → 1, ~230 → ~40 ms; refreshes per flush 3 → 1 |
+| ✅ MEDIUM-5 rebuild loses recency | P5.A.1.i | `documents.content_changed_at`, `packages.listing_changed_at` (trigger-owned); projector derives `updated_at` | rebuild from empty: `updated_at` and quality identical |
+
+**Deploy (owner):** apply `0026_loop_r1b_discovery` before or with this code (compatible with the current code).
+
 **Phase 5 Track A — discovery at scale (2026-10-23, branch `phase5/trackA-core`, not yet deployed).** Plan:
 family `docs/PHASE5-ALEMBIC.md` Track A (A.1–A.4 here; A.6–A.7 on a parallel branch; A.5 after, owner Q1; A.8
 waits for Track C). Spec: [discovery-index.md](specs/discovery-index.md). **Migration `0022_trackA_discovery`

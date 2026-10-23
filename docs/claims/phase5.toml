@@ -251,11 +251,15 @@ bound_to = [
 
 [[claim]]
 id = "P5.A.1.i"
-claim = "discovery_rebuild() from empty tables reproduces every derived column of the projection."
+claim = "discovery_rebuild() from empty tables reproduces every derived column of the projection, including updated_at and listed_at (recency lives in the base tables: documents.content_changed_at, packages.listing_changed_at, both trigger-owned)."
 oracle = "invariant"
 bound_to = [
-  "apps/web/src/lib/discovery-projection.sql.test.ts :: a rebuild from empty reproduces the projection",
+  "apps/web/src/lib/discovery-projection.sql.test.ts :: a rebuild from empty reproduces every derived column of the projection, including updated_at and listed_at",
+  "apps/web/src/lib/discovery-projection.sql.test.ts :: updated_at survives a rebuild from empty: an old listing, a public save, then a rebuild (updated_at and quality unchanged)",
+  "apps/web/src/lib/discovery-projection.sql.test.ts :: content_changed_at and listing_changed_at are trigger-owned: client-supplied values are ignored",
+  "apps/web/src/lib/discovery-projection.sql.test.ts :: element recency is the file's last content change: a course rename does not bump it, a save does",
 ]
+note = "Strengthened in loop r1b (MEDIUM-5): before, a rebuild from empty reset updated_at to the listing time (quality 0.39 → 0.21 in the audit repro). Element recency is now the file content's last change; a package rename or a description/tag edit re-projects the row without bumping it."
 
 [[claim]]
 id = "P5.A.1.j"
@@ -285,6 +289,21 @@ claim = "Every Discover read (search, facets, course and element pages, feed, si
 oracle = "probe"
 bound_to = []
 note = "data-handling-review says two service-role reads remain (/d resolver, adapt); no test pins the Discover side."
+
+[[claim]]
+id = "P5.A.1.m"
+claim = "A one-file save rewrites at most the changed element rows, and one registry flush (or any statement batch inside discovery_defer_begin/end) refreshes each package at most once."
+oracle = "invariant"
+bound_to = [
+  "apps/web/src/lib/discovery-cost.sql.test.ts :: a one-file save on a ${N}-element course rewrites only the changed element row",
+  "apps/web/src/lib/discovery-cost.sql.test.ts :: an unchanged ${N}-row re-registration (bulk upsert) rewrites no projection row",
+  "apps/web/src/lib/discovery-cost.sql.test.ts :: a description edit rewrites that element row only",
+  "apps/web/src/lib/discovery-cost.sql.test.ts :: one registry flush (tombstone + upsert inside discovery_defer_begin/end) refreshes the package once",
+  "apps/web/src/lib/discovery-cost.sql.test.ts :: a deferral left open is still flushed at commit (begin without end)",
+  "apps/web/src/lib/discovery-cost.sql.test.ts :: without deferral each statement still refreshes (no lost update)",
+  "apps/web/src/lib/discovery-cost.sql.test.ts :: deferral control: authenticated and service_role may call begin/end, anon may not; the queue is private",
+]
+note = "Loop r1b (MEDIUM-3), migration 0026. PGlite, 333 shared elements: rows rewritten by a one-file save 333 → 1; its time ~205–255 ms → ~29–51 ms; refreshes per registry flush 3 → 1."
 
 [[claim]]
 id = "P5.A.2.a"
