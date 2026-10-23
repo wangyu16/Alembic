@@ -3,6 +3,8 @@ import {
   deidentifyEvents,
   eventsToCsv,
   eventsToJson,
+  serializeEventBatches,
+  type DeidentifiedEvent,
   type ResearchEventRow,
 } from "./deidentify";
 
@@ -71,5 +73,41 @@ describe("anonymous discovery events (Track A.7)", () => {
     );
     expect(out[0]!.participant).toBeNull();
     expect(eventsToCsv(out).split("\n")[1]).toBe('portal.searched,,,,t,"{""terms"":1}"');
+  });
+});
+
+describe("serializeEventBatches (paged export, Phase 5 hardening)", () => {
+  async function collect(batches: DeidentifiedEvent[][], format: "csv" | "json"): Promise<string> {
+    async function* gen() {
+      for (const b of batches) yield b;
+    }
+    let out = "";
+    for await (const chunk of serializeEventBatches(gen(), format)) out += chunk;
+    return out;
+  }
+  const events = deidentifyEvents(
+    [
+      ...rows,
+      { type: "x", user_id: null, package_id: null, duration_ms: 0, detail: { note: "line\nbreak, \"q\"" }, occurred_at: "t" },
+    ],
+    fakeCode,
+  );
+
+  it("is byte-identical to the one-shot serializers, however the events are batched", async () => {
+    for (const split of [[4], [1, 3], [2, 0, 2], [0, 1, 1, 1, 1]]) {
+      const batches: DeidentifiedEvent[][] = [];
+      let i = 0;
+      for (const n of split) {
+        batches.push(events.slice(i, i + n));
+        i += n;
+      }
+      expect(await collect(batches, "csv")).toBe(eventsToCsv(events));
+      expect(await collect(batches, "json")).toBe(eventsToJson(events));
+    }
+  });
+
+  it("an empty export matches too (header only / empty array)", async () => {
+    expect(await collect([], "csv")).toBe(eventsToCsv([]));
+    expect(await collect([[]], "json")).toBe(eventsToJson([]));
   });
 });

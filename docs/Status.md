@@ -52,6 +52,18 @@ same commit as the work it tracks. Statuses: ✅ done · 🔄 partially shipped 
 
 > **Current direction — self-contained editing (owner-locked, 2026-07).** Editing and viewing both live *in the files*: the workspace **hosts** the in-file editors of `.md.html` / `.slides.html` / `.paged.html` (orz-family) and **builds no editor of its own**; published pages **are** those self-contained files (thin CDN delivery — study guide ~74 KB, framework from jsDelivr, verified live 2026-07-06); every file gets a permalink. **Committed source of record (revised, 2026-07-08 — "lean-source model"):** a chapter's study guide, slides, and practice questions are each committed as lean markdown (`study-guide/`, `slides/`, `practice/` — `.md`, not `.md.html`); the self-contained `.md.html`/`.slides.html` is generated on demand, purely as the editing/viewing surface, and never itself committed. This supersedes the original plan (below, and in the specs) of `.md.html` as the committed source — the specs haven't all been updated to match yet; this line is authoritative until they are. Authoritative docs: [SteeringNote.md](SteeringNote.md), [self-contained-editing.md](specs/self-contained-editing.md), [workspace-framework.md](specs/workspace-framework.md), and the module-based [Roadmap.md](Roadmap.md) (Modules R/E/P/T/I/S/W — supersedes the phase-based plan). **Code state today:** the classic editor is **retired** (~2.2k lines removed; `/workspace/[id]` redirects to `/edit`); the local **Studio (`/studio`) is removed**, replaced by `/guide`; the workspace three-pane shell now *hosts* the in-file editors (`HostedStudyGuideEditor` for study guide + practice; `HostedSlidesEditor` for authored slide decks). The durable guardrails **G1–G8** (two-repo reference enforcement, block-ID reconcile on import, whole-package fork, single-source course metadata, AI-entitlement seam) that the earlier editor-overhaul design drove all **landed + tested**.
 
+**Phase 5 hardening — riskless neat improvements (2026-10-23, branch `phase5/harden`, not yet deployed).**
+Owner-approved small fixes from the Phase 5 surveys (family `docs/PHASE5-ALEMBIC.md`).
+
+- ✅ **H.1 `/admin/export` is paged.** It read every `research_events` row in one query — memory grew with
+  the store, and PostgREST's `max-rows` cap (1000 on Supabase) silently truncated the file. Now keyset
+  `(occurred_at, id)` in batches of 1000 (`lib/research-export.ts`); each batch goes through the same
+  `deidentifyEvents` and is streamed (`serializeEventBatches` in `@alembic/research-events`), byte-identical
+  to the former CSV/JSON. A short page does not end the walk (only an empty one does), a non-advancing page
+  is refused, the first page is read before the response (store down → 500), a later failure errors the
+  stream (no silently truncated file). Tests: 12 (`research-export.test.ts`) + 2
+  (`deidentify.test.ts`).
+
 **Phase 5 Track A (infra) — A.6 scale infrastructure, A.7 events and harvest (2026-10-23, branch
 `phase5/trackA-infra`, not yet deployed).** Plan: family `docs/PHASE5-ALEMBIC.md` Track A; the portal search
 itself (A.1–A.4) is a parallel branch (`phase5/trackA-core`) and is not touched here. DecisionLog 2026-10-23.
@@ -115,8 +127,7 @@ itself (A.1–A.4) is a parallel branch (`phase5/trackA-core`) and is not touche
   still lets anyone insert directly with the anon key (a database-side cap is open,
   portal-governance.md); *(c)* the in-process `/d` and search limits are per server instance (soft);
   *(d)* CDN copies of a public file can outlive its turning private/trial by ≤ 5 min (`s-maxage`),
-  origin answers change at once; *(e)* `/admin/export` reads every research event unpaged — with view
-  events it will grow; page it before the pilot's traffic; *(f)* pins on the 32-bit hash until R3;
+  origin answers change at once; ~~*(e)* `/admin/export` reads every research event unpaged~~ ✅ paged (Phase 5 hardening H.1); *(f)* pins on the 32-bit hash until R3;
   *(g)* migration 0023 not applied — until then anonymous discovery events are dropped and the report
   limit is per instance.
 
