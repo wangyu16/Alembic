@@ -77,6 +77,19 @@ must be applied before this code is deployed** (it back-fills the index itself).
   no writes by `anon`/`authenticated`, freshness per trigger, best-effort, rebuild-from-empty equality — plus
   SQL ⇄ contract agreement tests. PGlite is Postgres 18 in WASM, not Supabase: it proves behaviour and SQL
   shape, not production performance. DecisionLog 2026-10-23.
+- ✅ **A.2 Search in Postgres** (owner Q2). Weighted `tsvector` (A title > B keywords/chapters/topics or tags > C
+  description and the rest, English stemming) + a prefix query ("titr" → Titration) + `pg_trgm` word
+  similarity for typos ("chemstry"), all GIN-indexed; facet counts in SQL (courses: discipline, level,
+  licence, a11y; elements: kind, artifact type = space, licence, discipline; each counted with the other
+  filters applied; ≤ 50 values each); **keyset paging** on `(score, id)` with the ranking hour in the cursor
+  (no OFFSET; ≤ 51 rows per call); every search re-checks listability against the live tables. Four
+  `anon`-callable functions (`discovery_search_courses|elements`, `discovery_course|element_facets`); helpers
+  internal. Web side: `lib/discovery-search.ts` (URL state parse/clamp, cursor codec — tampered cursors fall
+  back to page one — RPC args, fail-closed row parsing). **Tests:** 28 pure (query building, cursor, no
+  offset, clamping, regressed-query rows dropped) + 36 SQL (stemming, weights, prefix, typos, hostile input,
+  normalised filters, facet semantics, paging walks every row once, page caps, stale rows never served for
+  four course and four element cases, `anon` access, SQL shape: no OFFSET, keyset predicate, clamped limits,
+  GIN indexes). Spec §2 notes the linear ranking cost (revisit at ~100k elements).
 
 **Phase 5 Track B — GitHub bridge & Pages publishing: keep, strengthen (2026-10-23, branch `phase5/trackB`,
 not yet deployed).** Plan: family `docs/PHASE5-ALEMBIC.md` Track B; B.4–B.6 wait for the orz release wave.

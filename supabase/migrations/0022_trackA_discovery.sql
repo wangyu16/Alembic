@@ -837,6 +837,379 @@ grant execute on function public.discovery_course_listable(text) to anon, authen
 grant execute on function public.discovery_element_listable(text) to anon, authenticated, service_role;
 
 -- ---------------------------------------------------------------------------
--- 6. Back-fill.
+-- 6. Search (A.2) and ranking (A.3). Spec: discovery-index.md §2–§3.
+--
+-- Matching: a weighted tsvector (A title > B keywords/chapters/topics or tags
+-- > C description and the rest), English stemming; plus a prefix query (each
+-- typed token as a prefix, so "titr" finds "titration"); plus pg_trgm word
+-- similarity on the title/keyword text for typos ("stoichiometery"). All three
+-- are GIN-indexed. Facet values are compared normalised.
+--
+-- Paging is KEYSET on (score desc, id desc): the caller passes the last
+-- row's (score, id) and gets the rows strictly after it — no OFFSET, and at
+-- most 51 rows per call (a page of 50 plus one to know there is more). The
+-- score is rounded to 6 decimals so it round-trips exactly through the URL.
+-- Recency is computed against `p_as_of` (the first page's hour), so the
+-- scores — and therefore the pages — stay stable while someone pages.
+--
+-- Every search re-checks listability against the LIVE tables (published,
+-- not archived, open licence + listing row for courses; shared, live, public,
+-- not private/current for elements): a stale projection row is never served.
+-- ---------------------------------------------------------------------------
+
+-- A prefix tsquery from free text: alphanumeric tokens only (so user input is
+-- never parsed as tsquery syntax), at most 8, each as `token:*`.
+create or replace function public.discovery_prefix_query(p_q text)
+returns tsquery
+language sql
+immutable
+set search_path = ''
+as $$
+  select case when count(*) = 0 then null
+              else to_tsquery('english', string_agg(tok || ':*', ' & ' order by n)) end
+  from (
+    select tok, n
+    from regexp_split_to_table(lower(left(coalesce(p_q, ''), 200)), '[^[:alnum:]]+')
+         with ordinality as t(tok, n)
+    where tok <> ''
+    order by n
+    limit 8
+  ) s
+$$;
+
+-- Relevance (spec §3.1): the better of the full-word and prefix text ranks
+-- (prefix discounted), plus half the trigram word similarity. ~0 … 1.5.
+create or replace function public.discovery_relevance(
+  p_vector tsvector,
+  p_text text,
+  p_web tsquery,
+  p_prefix tsquery,
+  p_q text
+)
+returns double precision
+language sql
+immutable
+set search_path = ''
+as $$
+  select greatest(
+           coalesce(ts_rank_cd('{0.1, 0.2, 0.4, 1.0}'::real[], p_vector, p_web, 32), 0),
+           0.8 * coalesce(ts_rank_cd('{0.1, 0.2, 0.4, 1.0}'::real[], p_vector, p_prefix, 32), 0)
+         )::double precision
+       + 0.5 * coalesce(extensions.word_similarity(p_q, p_text), 0)::double precision
+$$;
+
+-- Quality (spec §3.2): 0 … 1. Mirrored by `qualityScore` in package-contract
+-- (agreement-tested). Signals gate prominence, never visibility.
+create or replace function public.discovery_quality(
+  p_a11y text,
+  p_license text,
+  p_completeness real,
+  p_adaptations integer,
+  p_updated_at timestamptz,
+  p_as_of timestamptz
+)
+returns double precision
+language sql
+immutable
+set search_path = ''
+as $$
+  select 0.30 * (case p_a11y when 'pass' then 1.0 when 'warn' then 0.5 else 0.0 end)
+       + 0.15 * (case when public.discovery_open_license(p_license) then 1.0 else 0.0 end)
+       + 0.20 * least(greatest(coalesce(p_completeness, 0), 0), 1)
+       + 0.20 * exp(-least(greatest(
+                  extract(epoch from (p_as_of - p_updated_at)) / 86400.0, 0) / 180.0, 50))
+       + 0.15 * least(ln(1 + greatest(coalesce(p_adaptations, 0), 0)) / ln(21), 1)
+$$;
+
+-- Score (spec §3.3): relevance first; quality scales it within ×0.75 … ×1.25.
+create or replace function public.discovery_score(p_relevance double precision, p_quality double precision)
+returns numeric
+language sql
+immutable
+set search_path = ''
+as $$
+  select round((coalesce(p_relevance, 0)
+                * (0.75 + 0.5 * least(greatest(coalesce(p_quality, 0), 0), 1)))::numeric, 6)
+$$;
+
+-- The text-matching, LIVE-listable courses with their relevance.
+create or replace function public.discovery_course_matches(p_q text)
+returns table (package_id text, relevance double precision)
+language sql
+stable
+security definer
+set search_path = ''
+set pg_trgm.word_similarity_threshold = 0.45
+as $$
+  with q as (
+    select v.q, v.q <> '' as has_q,
+           case when v.q <> '' then websearch_to_tsquery('english', v.q) end as web,
+           public.discovery_prefix_query(v.q) as prefix
+    from (select left(btrim(coalesce(p_q, '')), 200) as q) v
+  )
+  select c.package_id,
+         case when q.has_q
+              then public.discovery_relevance(c.search_vector, c.search_text, q.web, q.prefix, q.q)
+              else 1.0 end
+  from public.discovery_courses c
+  cross join q
+  join public.packages p on p.id = c.package_id
+  where p.storage = 'github'
+    and p.archived_at is null
+    and public.discovery_open_license(p.manifest ->> 'license')
+    and exists (select 1 from public.portal_registrations r where r.package_id = c.package_id)
+    and (not q.has_q
+         or c.search_vector @@ q.web
+         or c.search_vector @@ q.prefix
+         or q.q operator(extensions.<%) c.search_text)
+$$;
+
+create or replace function public.discovery_element_matches(p_q text)
+returns table (doc_id text, path text, relevance double precision)
+language sql
+stable
+security definer
+set search_path = ''
+set pg_trgm.word_similarity_threshold = 0.45
+as $$
+  with q as (
+    select v.q, v.q <> '' as has_q,
+           case when v.q <> '' then websearch_to_tsquery('english', v.q) end as web,
+           public.discovery_prefix_query(v.q) as prefix
+    from (select left(btrim(coalesce(p_q, '')), 200) as q) v
+  )
+  select e.doc_id, d.path,
+         case when q.has_q
+              then public.discovery_relevance(e.search_vector, e.search_text, q.web, q.prefix, q.q)
+              else 1.0 end
+  from public.discovery_elements e
+  cross join q
+  join public.documents d on d.doc_id = e.doc_id
+  join public.packages p on p.id = d.package_id
+  where d.discoverable
+    and not d.tombstoned
+    and d.repo = 'public'
+    and d.space not in ('private', 'current')
+    and p.storage = 'github'
+    and p.archived_at is null
+    and (not q.has_q
+         or e.search_vector @@ q.web
+         or e.search_vector @@ q.prefix
+         or q.q operator(extensions.<%) e.search_text)
+$$;
+
+-- One page of courses. Filters are exact on normalised values; null = any.
+create or replace function public.discovery_search_courses(
+  p_q text default null,
+  p_discipline text default null,
+  p_level text default null,
+  p_license text default null,
+  p_a11y text default null,
+  p_after_score numeric default null,
+  p_after_id text default null,
+  p_as_of timestamptz default null,
+  p_limit integer default 20
+)
+returns table (
+  package_id text, title text, description text, keywords text[],
+  chapter_titles text[], topics text[], discipline text, level text,
+  course_context jsonb, license text, accessibility_status text,
+  chapter_count integer, element_count integer,
+  adapted_from_package_id text, adapted_from_title text,
+  adapted_from_url text, adapted_from_attribution text, adaptation_count integer,
+  public_repo_url text, site_url text, listed_at timestamptz, updated_at timestamptz,
+  completeness real, score numeric
+)
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  with scored as (
+    select c.*,
+           public.discovery_score(m.relevance, public.discovery_quality(
+             c.accessibility_status, c.license, c.completeness, c.adaptation_count,
+             c.updated_at, coalesce(p_as_of, date_trunc('hour', now())))) as s
+    from public.discovery_course_matches(p_q) m
+    join public.discovery_courses c on c.package_id = m.package_id
+    where (p_discipline is null or c.discipline = public.discovery_facet_value(p_discipline))
+      and (p_level is null or c.level = public.discovery_facet_value(p_level))
+      and (p_license is null or c.license = p_license)
+      and (p_a11y is null or c.accessibility_status = p_a11y)
+  )
+  select x.package_id, x.title, x.description, x.keywords, x.chapter_titles, x.topics,
+         x.discipline, x.level, x.course_context, x.license, x.accessibility_status,
+         x.chapter_count, x.element_count, x.adapted_from_package_id, x.adapted_from_title,
+         x.adapted_from_url, x.adapted_from_attribution, x.adaptation_count,
+         x.public_repo_url, x.site_url, x.listed_at, x.updated_at, x.completeness, x.s
+  from scored x
+  where p_after_score is null
+     or (x.s, x.package_id) < (p_after_score, coalesce(p_after_id, ''))
+  order by x.s desc, x.package_id desc
+  limit least(greatest(coalesce(p_limit, 20), 1), 51)
+$$;
+
+-- Facet counts for the same text query. Each facet is counted with every
+-- OTHER filter applied (so choosing a discipline still shows the other
+-- disciplines' counts); `total` applies them all. ≤ 50 values per facet.
+create or replace function public.discovery_course_facets(
+  p_q text default null,
+  p_discipline text default null,
+  p_level text default null,
+  p_license text default null,
+  p_a11y text default null
+)
+returns table (facet text, value text, n bigint)
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  with m as (
+    select c.discipline, c.level, c.license, c.accessibility_status as a11y
+    from public.discovery_course_matches(p_q) h
+    join public.discovery_courses c on c.package_id = h.package_id
+  ),
+  f as (
+    select m.*,
+           (p_discipline is null or m.discipline = public.discovery_facet_value(p_discipline)) as ok_d,
+           (p_level is null or m.level = public.discovery_facet_value(p_level)) as ok_l,
+           (p_license is null or m.license = p_license) as ok_c,
+           (p_a11y is null or m.a11y = p_a11y) as ok_a
+    from m
+  )
+  (select 'total'::text, null::text, count(*) from f where ok_d and ok_l and ok_c and ok_a)
+  union all
+  (select 'discipline', f.discipline, count(*) from f
+    where f.discipline is not null and ok_l and ok_c and ok_a
+    group by f.discipline order by count(*) desc, f.discipline limit 50)
+  union all
+  (select 'level', f.level, count(*) from f
+    where f.level is not null and ok_d and ok_c and ok_a
+    group by f.level order by count(*) desc, f.level limit 50)
+  union all
+  (select 'license', f.license, count(*) from f
+    where ok_d and ok_l and ok_a
+    group by f.license order by count(*) desc, f.license limit 50)
+  union all
+  (select 'a11y', f.a11y, count(*) from f
+    where ok_d and ok_l and ok_c
+    group by f.a11y order by count(*) desc, f.a11y limit 50)
+$$;
+
+-- One page of shared elements. `p_type` is the space (artifact type);
+-- `p_package_id` narrows to one course (the course page).
+create or replace function public.discovery_search_elements(
+  p_q text default null,
+  p_kind text default null,
+  p_type text default null,
+  p_license text default null,
+  p_discipline text default null,
+  p_package_id text default null,
+  p_after_score numeric default null,
+  p_after_id text default null,
+  p_as_of timestamptz default null,
+  p_limit integer default 20
+)
+returns table (
+  doc_id text, package_id text, repo text, space text, kind text,
+  permalink_class text, path text, title text, description text, alt_text text,
+  tags text[], license text, package_title text, discipline text, level text,
+  course_listed boolean, adapted_from_doc_id text, adaptation_count integer,
+  described boolean, listed_at timestamptz, updated_at timestamptz,
+  completeness real, score numeric
+)
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  with scored as (
+    select e.*, m.path as live_path,
+           public.discovery_score(m.relevance, public.discovery_quality(
+             case when e.described then 'pass' else 'unknown' end, e.license, e.completeness,
+             e.adaptation_count, e.updated_at, coalesce(p_as_of, date_trunc('hour', now())))) as s
+    from public.discovery_element_matches(p_q) m
+    join public.discovery_elements e on e.doc_id = m.doc_id
+    where (p_kind is null or e.kind = public.discovery_facet_value(p_kind))
+      and (p_type is null or e.space = public.discovery_facet_value(p_type))
+      and (p_license is null or e.license = p_license)
+      and (p_discipline is null or e.discipline = public.discovery_facet_value(p_discipline))
+      and (p_package_id is null or e.package_id = p_package_id)
+  )
+  select x.doc_id, x.package_id, x.repo, x.space, x.kind, x.permalink_class, x.live_path,
+         x.title, x.description, x.alt_text, x.tags, x.license, x.package_title,
+         x.discipline, x.level, x.course_listed, x.adapted_from_doc_id, x.adaptation_count,
+         x.described, x.listed_at, x.updated_at, x.completeness, x.s
+  from scored x
+  where p_after_score is null
+     or (x.s, x.doc_id) < (p_after_score, coalesce(p_after_id, ''))
+  order by x.s desc, x.doc_id desc
+  limit least(greatest(coalesce(p_limit, 20), 1), 51)
+$$;
+
+create or replace function public.discovery_element_facets(
+  p_q text default null,
+  p_kind text default null,
+  p_type text default null,
+  p_license text default null,
+  p_discipline text default null,
+  p_package_id text default null
+)
+returns table (facet text, value text, n bigint)
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  with m as (
+    select e.kind, e.space, e.license, e.discipline
+    from public.discovery_element_matches(p_q) h
+    join public.discovery_elements e on e.doc_id = h.doc_id
+    where p_package_id is null or e.package_id = p_package_id
+  ),
+  f as (
+    select m.*,
+           (p_kind is null or m.kind = public.discovery_facet_value(p_kind)) as ok_k,
+           (p_type is null or m.space = public.discovery_facet_value(p_type)) as ok_t,
+           (p_license is null or m.license = p_license) as ok_c,
+           (p_discipline is null or m.discipline = public.discovery_facet_value(p_discipline)) as ok_d
+    from m
+  )
+  (select 'total'::text, null::text, count(*) from f where ok_k and ok_t and ok_c and ok_d)
+  union all
+  (select 'kind', f.kind, count(*) from f where ok_t and ok_c and ok_d
+    group by f.kind order by count(*) desc, f.kind limit 50)
+  union all
+  (select 'type', f.space, count(*) from f where ok_k and ok_c and ok_d
+    group by f.space order by count(*) desc, f.space limit 50)
+  union all
+  (select 'license', f.license, count(*) from f where ok_k and ok_t and ok_d
+    group by f.license order by count(*) desc, f.license limit 50)
+  union all
+  (select 'discipline', f.discipline, count(*) from f
+    where f.discipline is not null and ok_k and ok_t and ok_c
+    group by f.discipline order by count(*) desc, f.discipline limit 50)
+$$;
+
+-- Privileges: the four search entry points are public (they return listed
+-- rows only); the helpers are internal.
+revoke all on function public.discovery_prefix_query(text) from public, anon, authenticated;
+revoke all on function public.discovery_relevance(tsvector, text, tsquery, tsquery, text) from public, anon, authenticated;
+revoke all on function public.discovery_quality(text, text, real, integer, timestamptz, timestamptz) from public, anon, authenticated;
+revoke all on function public.discovery_score(double precision, double precision) from public, anon, authenticated;
+revoke all on function public.discovery_course_matches(text) from public, anon, authenticated;
+revoke all on function public.discovery_element_matches(text) from public, anon, authenticated;
+revoke all on function public.discovery_search_courses(text, text, text, text, text, numeric, text, timestamptz, integer) from public;
+revoke all on function public.discovery_course_facets(text, text, text, text, text) from public;
+revoke all on function public.discovery_search_elements(text, text, text, text, text, text, numeric, text, timestamptz, integer) from public;
+revoke all on function public.discovery_element_facets(text, text, text, text, text, text) from public;
+grant execute on function public.discovery_search_courses(text, text, text, text, text, numeric, text, timestamptz, integer) to anon, authenticated, service_role;
+grant execute on function public.discovery_course_facets(text, text, text, text, text) to anon, authenticated, service_role;
+grant execute on function public.discovery_search_elements(text, text, text, text, text, text, numeric, text, timestamptz, integer) to anon, authenticated, service_role;
+grant execute on function public.discovery_element_facets(text, text, text, text, text, text) to anon, authenticated, service_role;
+
+-- ---------------------------------------------------------------------------
+-- 7. Back-fill.
 -- ---------------------------------------------------------------------------
 select public.discovery_rebuild();

@@ -1,6 +1,6 @@
 # Discovery index — projection, search, ranking (Phase 5 Track A)
 
-Status: **A.1 built** (2026-10-23, branch `phase5/trackA-core`, migration
+Status: **A.1–A.2 built** (2026-10-23, branch `phase5/trackA-core`, migration
 `0022_trackA_discovery.sql` not yet applied anywhere). Binding inputs:
 [goal.md](../goal.md) §6 (portal: search facets, quality "gates prominence,
 not censorship", the portal consumes the same standard metadata) and §9
@@ -118,7 +118,63 @@ derived column.
 
 ## 2. Search (A.2)
 
-*Added with A.2.*
+All in Postgres (owner decision Q2: `tsvector` + `pg_trgm`, no external
+search service; revisit at ~100k elements).
+
+**Entry points** (callable by `anon`; each returns listed rows only):
+
+| Function | Returns |
+|---|---|
+| `discovery_search_courses(p_q, p_discipline, p_level, p_license, p_a11y, p_after_score, p_after_id, p_as_of, p_limit)` | one page of courses with `score` |
+| `discovery_course_facets(p_q, p_discipline, p_level, p_license, p_a11y)` | `(facet, value, n)` rows: `total`, `discipline`, `level`, `license`, `a11y` |
+| `discovery_search_elements(p_q, p_kind, p_type, p_license, p_discipline, p_package_id, p_after_score, p_after_id, p_as_of, p_limit)` | one page of elements with `score` (`p_type` = space, the artifact type; `p_package_id` = one course) |
+| `discovery_element_facets(p_q, p_kind, p_type, p_license, p_discipline, p_package_id)` | `total`, `kind`, `type`, `license`, `discipline` |
+
+**Matching.** A row matches when any of these hold (each GIN-indexed):
+
+1. the weighted `tsvector` matches `websearch_to_tsquery('english', q)` —
+   stemmed full words, quoted phrases, `-exclusions`;
+2. it matches the **prefix query**: every alphanumeric token of `q` as
+   `token:*` (at most 8; user text is never parsed as tsquery syntax), so
+   "titr" finds "Titration";
+3. `q <% search_text` — pg_trgm word similarity ≥ 0.45 against the title /
+   keywords / chapters / topics (courses) or title / tags / file name
+   (elements), so "stoichiometery" and "chemstry" still match.
+
+Weights: **A** title; **B** keywords, chapter titles and concept-map topics
+(courses) or tags (elements); **C** description, discipline, level, course
+identity (courses) or description, alt text, file name, course title,
+discipline, kind (elements). An empty `q` matches every listed row.
+
+**Facets** are counted in SQL over the same matches. Each facet is counted
+with every *other* filter applied (choosing one discipline still shows the
+others' counts); `total` applies all filters. At most 50 values per facet.
+Filters compare normalised values (trimmed, lower-cased) except licence and
+accessibility status, which are closed sets.
+
+**Paging is keyset.** Rows are ordered by `(score desc, id desc)`; the next
+page passes the last row's `(score, id)` and gets the rows strictly after
+it. Scores are rounded to 6 decimals so they round-trip exactly through the
+URL. Recency (§3) is computed against `p_as_of`, which the first page sets to
+the current hour and the cursor carries, so a reader paging through results
+sees one consistent ranking. There is no `OFFSET` anywhere, and a call
+returns at most 51 rows (a page of ≤ 50 plus one to know there is more).
+The web client keeps all state in the URL
+(`/portal?scope=&q=&discipline=…&after=<cursor>`), so results work without
+JavaScript and are linkable; a malformed or tampered cursor is ignored
+(first page), never an error (`lib/discovery-search.ts`).
+
+**Scale notes.** Matching and facet counting are index-backed, but ranking
+needs every match scored, and a query-less browse matches every row: cost
+grows linearly with listed rows. That is fine for thousands of courses and
+tens of thousands of elements (and the discover pages are cached, A.6); at
+~100k elements, precompute the time-independent part of quality into the
+row and order the empty query by it.
+
+**Live re-check.** `discovery_course_matches` / `discovery_element_matches`
+join the live `packages`, `portal_registrations` and `documents` rows, so a
+projection row left stale by a failed refresh is never served (tested by
+changing base rows with the triggers disabled).
 
 ## 3. Ranking (A.3)
 
