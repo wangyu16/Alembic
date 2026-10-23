@@ -120,7 +120,12 @@ invalidated. The ETag is weak: for carrier files the hash covers the embedded
 source, not the rendered bytes. A public file that turns private or trial
 stops being served at once by the origin; a shared-cache copy can outlive the
 change by at most the takedown bound (300 s).
-`/d` is rate limited per client IP (1200/min, in process).
+`/d` is rate limited per client IP (1200/min, in process). The answer ignores the
+query string (`?x=n` changes neither the bytes nor the headers); a busted URL
+is still a separate CDN key, so it reaches the origin — rate limited, bytes
+from the cache. The `element.viewed` research event is written at most once
+per (doc, client address, clock hour) (`apps/web/src/lib/view-dedupe.ts`),
+so such requests cannot grow `research_events`.
 
 ## 4. Versioning
 

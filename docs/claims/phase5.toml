@@ -1261,13 +1261,19 @@ bound_to = [
 id = "P5.S.10.a"
 claim = "/d ignores the query string: ?x=n neither changes the answer nor its cache identity."
 oracle = "probe"
-bound_to = []
+bound_to = [
+  "apps/web/src/app/d/[docId]/route.test.ts :: the query string changes neither the answer nor its cache identity",
+]
 
 [[claim]]
 id = "P5.S.10.b"
 claim = "element.viewed is recorded at most once per (doc, address hash, hour), so cache misses cannot grow research_events."
 oracle = "probe"
-bound_to = []
+bound_to = [
+  "apps/web/src/app/d/[docId]/route.test.ts :: element.viewed is recorded once per (doc, address, hour) however the URL is busted",
+  "apps/web/src/app/d/[docId]/route.test.ts :: the shared counter is used when available, keyed without the address or doc in clear",
+  "apps/web/src/app/d/[docId]/route.test.ts :: without the shared counter the in-process dedupe still bounds writes, and counter trouble never breaks the answer",
+]
 
 [[claim]]
 id = "P5.S.11"

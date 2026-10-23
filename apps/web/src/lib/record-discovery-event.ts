@@ -26,14 +26,18 @@ import { buildDiscoveryEvent, type DiscoveryEventInput } from "@/lib/discovery-e
  *   only used to resolve the signed-in visitor's id. An anonymous visitor's
  *   event has no participant (needs migration 0023). Without the service
  *   key, no discovery event is recorded.
+ * - `gate`, when given, is asked after the response and before anything is
+ *   written; false (or a throw) records nothing. The `/d` route uses it to
+ *   write a view at most once per (doc, address, hour) — `lib/view-dedupe.ts`.
  */
 export function recordDiscoveryEvent(
   input: DiscoveryEventInput,
-  ctx: { userId?: string | null; session?: SupabaseClient } = {},
+  ctx: { userId?: string | null; session?: SupabaseClient; gate?: () => Promise<boolean> } = {},
 ): void {
   try {
     after(async () => {
       try {
+        if (ctx.gate && !(await ctx.gate())) return;
         let userId = ctx.userId ?? null;
         if (ctx.userId === undefined && ctx.session) {
           const { data } = await ctx.session.auth.getUser();

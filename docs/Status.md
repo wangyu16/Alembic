@@ -88,7 +88,7 @@ then a fix for the whole class. Per finding (⬜ open · ✅ fixed on this branc
 
 - ⬜ **L3** discovery cache staleness bound (P5.S.8).
 
-- ⬜ **L4** RPC statement timeouts (P5.S.9 ✅ — migration `0025_loop_r1_4_rpc_timeouts.sql` pins `statement_timeout` for anon (3 s) and authenticated (8 s), the roles that can execute the six anon-callable `discovery_*` functions; a function-level setting would not bound a one-statement RPC; probe `rpc-limits.sql.test.ts`; deploy: either order); `/d` query-string cache busting + view de-duplication (P5.S.10.a–b); worker fails open without a token (P5.S.11).
+- ⬜ **L4** RPC statement timeouts (P5.S.9 ✅ — migration `0025_loop_r1_4_rpc_timeouts.sql` pins `statement_timeout` for anon (3 s) and authenticated (8 s), the roles that can execute the six anon-callable `discovery_*` functions; a function-level setting would not bound a one-statement RPC; probe `rpc-limits.sql.test.ts`; deploy: either order); `/d` query-string cache busting + view de-duplication (P5.S.10.a–b — ✅: the answer ignores the query string, and `element.viewed` is written at most once per (doc, address, hour) via `rate_limit_hit` with an in-process fallback, `lib/view-dedupe.ts`; probe `apps/web/src/app/d/[docId]/route.test.ts`); worker fails open without a token (P5.S.11).
 
 - ⬜ **Template** checkout credentials; `.git/` includes (P5.S.12.a–b).
 
