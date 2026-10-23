@@ -37,6 +37,9 @@ export const RATE_LIMITS = {
   ],
   permalink: [{ limit: 1200, windowMs: 60_000 }],
   search: [{ limit: 120, windowMs: 60_000 }],
+  // Signed-in preview renders (security loop r2, LOW-5): per USER, not per
+  // address — each call renders Markdown and may resolve up to 50 includes.
+  preview: [{ limit: 60, windowMs: 60_000 }],
 } as const satisfies Record<string, readonly RateRule[]>;
 
 export type RateBucket = keyof typeof RATE_LIMITS;
@@ -128,8 +131,36 @@ export class PostgresRateStore implements RateStore {
 export function clientIp(headers: Pick<Headers, "get">): string {
   const xff = headers.get("x-forwarded-for");
   const first = xff?.split(",")[0]?.trim();
-  if (first) return first;
-  return headers.get("x-real-ip")?.trim() || "unknown";
+  if (first) return addressSubject(first);
+  const real = headers.get("x-real-ip")?.trim();
+  return real ? addressSubject(real) : "unknown";
+}
+
+/**
+ * The address as a rate-limit SUBJECT (security loop r2, M4 residual): an
+ * IPv6 client is counted by its /64 — one subscriber is routinely handed a
+ * whole /64, so keying on the full address let one client rotate through
+ * 2^64 fresh buckets. IPv4 (and IPv4-mapped IPv6) keeps the full address.
+ * Anything unparseable is returned as given.
+ */
+export function addressSubject(raw: string): string {
+  const ip = raw.trim().toLowerCase().replace(/^\[|\]$/g, "").replace(/%.*$/, "");
+  if (!ip.includes(":")) return ip;
+  const halves = ip.split("::");
+  if (halves.length > 2) return ip;
+  const head = halves[0] ? halves[0].split(":") : [];
+  const tail = halves.length === 2 && halves[1] ? halves[1].split(":") : [];
+  const quad = /^\d{1,3}(?:\.\d{1,3}){3}$/;
+  const last = tail.length ? tail[tail.length - 1]! : head[head.length - 1] ?? "";
+  // An embedded dotted quad counts as two 16-bit groups.
+  const width = head.length + tail.length + (quad.test(last) ? 1 : 0);
+  if (halves.length === 1 ? width !== 8 : width > 7) return ip;
+  const full = [...head, ...Array<string>(8 - width).fill("0"), ...tail];
+  // IPv4-mapped (::ffff:a.b.c.d): the IPv4 address itself.
+  if (quad.test(last) && full.slice(0, 5).every((g) => /^0{1,4}$/.test(g)) && full[5] === "ffff") return last;
+  const prefix = full.slice(0, 4);
+  if (!prefix.every((g) => /^[0-9a-f]{1,4}$/.test(g))) return ip;
+  return `${prefix.map((g) => parseInt(g, 16).toString(16)).join(":")}::/64`;
 }
 
 /** The one-way key a bucket counts under: HMAC-SHA256(secret, bucket|ip). */

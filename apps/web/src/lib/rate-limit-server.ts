@@ -29,8 +29,11 @@ import {
  */
 const memory = new MemoryRateStore();
 
+/** Buckets counted in Postgres (shared across server instances) when possible. */
+const SHARED: ReadonlySet<RateBucket> = new Set<RateBucket>(["report", "preview"]);
+
 function storeFor(bucket: RateBucket): RateStore {
-  if (bucket !== "report") return memory;
+  if (!SHARED.has(bucket)) return memory;
   const service = createServiceClient();
   return service ? new FallbackRateStore(new PostgresRateStore(service), memory) : memory;
 }
@@ -41,6 +44,20 @@ export async function checkRateLimit(
 ): Promise<RateDecision> {
   try {
     const key = rateKey(bucket, clientIp(headers), rateSecret());
+    return await consumeRateLimit(storeFor(bucket), bucket, key);
+  } catch {
+    return { ok: true };
+  }
+}
+
+/**
+ * Per signed-in USER (security loop r2, LOW-5): for surfaces that need a
+ * session anyway (`/api/preview`), where an address is the wrong subject — a
+ * class behind one NAT shares it, one user can rotate it. Never throws.
+ */
+export async function checkUserRateLimit(bucket: RateBucket, userId: string): Promise<RateDecision> {
+  try {
+    const key = rateKey(bucket, `user:${userId}`, rateSecret());
     return await consumeRateLimit(storeFor(bucket), bucket, key);
   } catch {
     return { ok: true };

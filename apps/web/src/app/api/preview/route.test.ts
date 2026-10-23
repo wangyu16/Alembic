@@ -113,3 +113,17 @@ describe("/api/preview (security loop r1, M5)", () => {
     }
   });
 });
+
+describe("/api/preview per-user rate (security loop r2, LOW-5)", () => {
+  it("[P5.S.6.c] one signed-in user gets 60 previews a minute, then 429 with Retry-After; another user is unaffected", async () => {
+    mocks.user = { id: "rate-user-1" };
+    const statuses: number[] = [];
+    for (let i = 0; i < 62; i++) statuses.push((await post({ source: "# hi" })).status);
+    expect(statuses.slice(0, 60).every((s) => s === 200)).toBe(true);
+    expect(statuses.slice(60)).toEqual([429, 429]);
+    const limited = await post({ source: "# hi" });
+    expect(limited.headers.get("retry-after")).toMatch(/^\d+$/);
+    mocks.user = { id: "rate-user-2" };
+    expect((await post({ source: "# hi" })).status).toBe(200);
+  });
+});

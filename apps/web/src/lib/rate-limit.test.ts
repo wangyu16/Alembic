@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  addressSubject,
   clientIp,
   consumeRateLimit,
   FallbackRateStore,
@@ -98,5 +99,41 @@ describe("rate limits (Track A.6)", () => {
     expect(r.status).toBe(429);
     expect(r.headers.get("cache-control")).toBe("no-store");
     expect(r.headers.get("retry-after")).toBe("42");
+  });
+});
+
+describe("M4 residual (loop r2): an IPv6 client is one subject per /64", () => {
+  const h = (ip: string) => new Headers({ "x-forwarded-for": ip });
+
+  it("[P5.S.5.c] addresses in one /64 share a rate-limit key; another /64 does not", () => {
+    const secret = "s";
+    const a = rateKey("report", clientIp(h("2001:db8:1:2:aaaa:bbbb:cccc:1")), secret);
+    const b = rateKey("report", clientIp(h("2001:db8:1:2::ffff")), secret);
+    const c = rateKey("report", clientIp(h("2001:0db8:0001:0002:0:0:0:9")), secret);
+    const other = rateKey("report", clientIp(h("2001:db8:1:3::1")), secret);
+    expect(b).toBe(a);
+    expect(c).toBe(a);
+    expect(other).not.toBe(a);
+  });
+
+  it("[P5.S.5.c] IPv4 and IPv4-mapped IPv6 keep the full address; junk passes through", () => {
+    expect(addressSubject("198.51.100.7")).toBe("198.51.100.7");
+    expect(addressSubject("::ffff:198.51.100.7")).toBe("198.51.100.7");
+    expect(addressSubject("[2001:db8::1]")).toBe("2001:db8:0:0::/64");
+    expect(addressSubject("fe80::1%eth0")).toBe("fe80:0:0:0::/64");
+    expect(addressSubject("::1")).toBe("0:0:0:0::/64");
+    expect(addressSubject("not-an-ip")).toBe("not-an-ip");
+    expect(addressSubject("1:2:3")).toBe("1:2:3");
+  });
+
+  it("[P5.S.5.c] a client rotating through its /64 is capped like one client", async () => {
+    const store = new MemoryRateStore();
+    const now = Date.UTC(2026, 9, 23, 12, 0, 0);
+    const results: boolean[] = [];
+    for (let i = 1; i <= 7; i++) {
+      const key = rateKey("report", clientIp(h(`2001:db8:1:2::${i.toString(16)}`)), "s");
+      results.push((await consumeRateLimit(store, "report", key, now)).ok);
+    }
+    expect(results).toEqual([true, true, true, true, true, false, false]);
   });
 });

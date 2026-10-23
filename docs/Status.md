@@ -105,6 +105,9 @@ became a claim + a probe that fails on `d4544cc` + a fix of the class ([Decision
 - ✅ **Improvement 2 — writable-column inventory (P5.S.15).** A test enumerates every column `authenticated` can
   insert/update and fails if any listed sensitive column (ranking, listability, recency, `/d` byte source) is
   writable without a named neutraliser, or if an unknown writable column appears.
+- ✅ **LOW-5 — preview rate (P5.S.6.c)** 60 calls/min per signed-in user (`checkUserRateLimit`, shared store) and
+  **M4 residual — IPv6 (P5.S.5.c)**: address-keyed limits count an IPv6 client by its /64 (`addressSubject`).
+  Code only.
 - **Deploy order:** see [Deployment.md](Deployment.md) "Closed loop round 2": pre-checks → r2 code → `0028_1` …
   `_5` in order (`_4` strictly after the code).
 

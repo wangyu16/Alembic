@@ -1608,3 +1608,26 @@ bound_to = [
 ]
 note = "Loop r2 improvement 2. The sensitive list is explicit in the test (SENSITIVE); documents.adapted_from is the one accepted-open entry (LOW-4)."
 
+# LOW-5 — preview rate
+
+[[claim]]
+id = "P5.S.6.c"
+claim = "/api/preview allows one signed-in user at most 60 calls a minute (per user, shared across instances when the service client is configured), then answers 429 with Retry-After."
+oracle = "probe"
+bound_to = [
+  "apps/web/src/app/api/preview/route.test.ts :: one signed-in user gets 60 previews a minute, then 429 with Retry-After; another user is unaffected",
+]
+note = "Loop r2 LOW-5. Code only."
+
+# M4 residual — IPv6 /64
+
+[[claim]]
+id = "P5.S.5.c"
+claim = "Every address-keyed limit (rate limits, report reporter key, view de-duplication) counts an IPv6 client by its /64 prefix; IPv4 and IPv4-mapped addresses by the full address."
+oracle = "probe"
+bound_to = [
+  "apps/web/src/lib/rate-limit.test.ts :: addresses in one /64 share a rate-limit key; another /64 does not",
+  "apps/web/src/lib/rate-limit.test.ts :: IPv4 and IPv4-mapped IPv6 keep the full address; junk passes through",
+  "apps/web/src/lib/rate-limit.test.ts :: a client rotating through its /64 is capped like one client",
+]
+note = "Loop r2 M4 residual. Code only (clientIp → addressSubject)."

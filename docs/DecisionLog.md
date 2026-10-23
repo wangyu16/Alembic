@@ -38,6 +38,8 @@ migrations `0028_loop_r2_1…5` not applied). Decisions:
   content (≥ 1 live public file). OPEN: `documents.adapted_from` / `author` remain owner-asserted — a server-only
   lineage write needs a service-role registry path, disproportionate now; Sybil inflation needs real GitHub
   accounts; per-user quotas are not built.
+- **Rate subjects:** `/api/preview` is limited per USER (60/min, shared store); every address-keyed limit counts
+  an IPv6 client by its /64.
 
 ## 2026-10-23 — Loop r1 + r1b integration: 0026 inherits 0025_2's projector; one deploy window
 

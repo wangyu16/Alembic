@@ -3,6 +3,8 @@ import { renderDocument, renderPlainDocument } from "@alembic/renderer";
 import { getRenderTheme } from "@/lib/theme";
 import { resolveWebIncludes } from "@/lib/resolve-includes";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { checkUserRateLimit } from "@/lib/rate-limit-server";
+import { tooManyRequests } from "@/lib/rate-limit";
 
 /**
  * Server-side markdown preview. Returns a full document the client shows in an
@@ -28,6 +30,10 @@ export async function POST(request: Request) {
   if (!user) {
     return NextResponse.json({ error: "Please sign in to preview." }, { status: 401 });
   }
+  // Per-user rate (security loop r2, LOW-5): each call renders and may
+  // resolve up to 50 includes; 60 a minute is far above an editing session.
+  const gate = await checkUserRateLimit("preview", user.id);
+  if (!gate.ok) return tooManyRequests(gate.retryAfterSeconds);
 
   let source = "";
   let heading: string | undefined;
