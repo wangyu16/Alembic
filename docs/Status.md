@@ -139,6 +139,10 @@ of the class ([DecisionLog](DecisionLog.md) 2026-10-23 "Closed loop r2 (correctn
   statement of a 3,000-file re-registration of shared files ~1.2 s. Code only.
 - ✅ **L-1 — heal reads (P5.B.1.v)** in bounded parallel (8 in flight). **L-2 — round-trip claims restated
   (P5.B.1.a/e)** as 1 + ⌈live/1000⌉ (+1 for a new uid), tested at 3,000 live rows (4, and 5 with a new uid).
+- **Deploy order (round 2 combined):** see [Deployment.md](Deployment.md) "Closed loop round 2 — combined":
+  pre-checks → the combined r2 code → `0028_loop_r2_1…5` → `0029_loop_r2c_1…3` in file order (`0028_4` and
+  `0029_3` strictly after the code). Repro note: `/tmp/p5audit/stale.mts` (round 1) builds its store without a
+  registry, so it documents the round-1 finding only (annotated in the file).
 
 **Phase 5 closed-loop verification — round 2, steps 4–5: security audit probes and class fixes (2026-10-23,
 branch `phase5/loop-r2-sec`, not merged, migrations `0028_loop_r2_*` NOT applied).** Each round-2 security finding
