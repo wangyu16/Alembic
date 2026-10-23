@@ -1296,13 +1296,17 @@ bound_to = [
 id = "P5.S.12.a"
 claim = "The public-repo template's build-site workflow checks out with persist-credentials: false."
 oracle = "conformance"
-bound_to = []
+bound_to = [
+  "packages/renderer/src/template-public-repo.test.ts :: every actions/checkout step in every workflow sets persist-credentials: false",
+]
 
 [[claim]]
 id = "P5.S.12.b"
 claim = "An include never resolves a file inside .git/ under markdownIncludeRoot."
 oracle = "probe"
-bound_to = []
+bound_to = [
+  "packages/renderer/src/template-public-repo.test.ts :: an include never resolves a file inside .git under markdownIncludeRoot",
+]
 
 [[claim]]
 id = "P5.S.L2"

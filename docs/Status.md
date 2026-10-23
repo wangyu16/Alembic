@@ -90,7 +90,7 @@ then a fix for the whole class. Per finding (⬜ open · ✅ fixed on this branc
 
 - ✅ **L4** RPC statement timeouts (P5.S.9 ✅ — migration `0025_loop_r1_4_rpc_timeouts.sql` pins `statement_timeout` for anon (3 s) and authenticated (8 s), the roles that can execute the six anon-callable `discovery_*` functions; a function-level setting would not bound a one-statement RPC; probe `rpc-limits.sql.test.ts`; deploy: either order); `/d` query-string cache busting + view de-duplication (P5.S.10.a–b — ✅: the answer ignores the query string, and `element.viewed` is written at most once per (doc, address, hour) via `rate_limit_hit` with an in-process fallback, `lib/view-dedupe.ts`; probe `apps/web/src/app/d/[docId]/route.test.ts`); worker fails open without a token (P5.S.11 ✅ — the worker now fails closed: no/blank `WORKER_TOKEN` → `/generate` and `/health` answer 503; bearer compared in constant time; sibling fixed: a blank `RESEARCH_EXPORT_SALT` no longer yields an empty export salt).
 
-- ⬜ **Template** checkout credentials; `.git/` includes (P5.S.12.a–b).
+- ✅ **Template** checkout credentials; `.git/` includes (P5.S.12.a–b): every checkout (template + repo CI) sets `persist-credentials: false`, and the template's site build reads includes through `include-guard.mjs`, which refuses any real or lexical path with a `.git` segment (any case, symlinks followed).
 
 - ⏸ **L2** 32-bit FNV pin hash forgeable — accepted until R3, owner decision pending (P5.S.L2, red by design; DecisionLog).
 
