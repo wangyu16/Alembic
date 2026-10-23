@@ -81,6 +81,7 @@ rows are added as each finding lands.)
 | ✅ MEDIUM-5 rebuild loses recency | P5.A.1.i | `documents.content_changed_at`, `packages.listing_changed_at` (trigger-owned); projector derives `updated_at` | rebuild from empty: `updated_at` and quality identical |
 | ✅ LOW-6 uid shapes disagreed | P5.B.1.o | one `DOC_ID_PATTERN` (`doc-[0-9a-z]{1,64}`) for registry, `/d`, cursor, builder/classifier; import refuses a malformed uid | — |
 | ✅ LOW-7 paging from parsed count | P5.A.2.m | `splitPage`: next/cursor from the raw page | — |
+| ✅ LOW-8 reconcile skipped `packages.manifest` | P5.B.3.e | absorbed `alembic.json` → `updateManifest` (no re-commit) → column refresh; invalid/deleted → quarantine | — |
 | ✅ LOW-9 short page ended listings | P5.B.1.p | `pageAll`: exact count or empty page | — |
 
 **Deploy (owner):** apply `0026_loop_r1b_discovery` → `0027_loop_r1b_registry` → deploy the code. 0026 is

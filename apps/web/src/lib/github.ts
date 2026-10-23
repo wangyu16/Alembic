@@ -17,6 +17,7 @@ import {
 } from "@alembic/package-ops";
 import type { PackageManifest } from "@alembic/package-contract";
 import { registerChanges, syncPackageRegistry } from "@/lib/register";
+import { refreshManifestAfterReconcile } from "@/lib/reconcile-manifest";
 
 export interface GithubConfig {
   appId: string;
@@ -203,6 +204,10 @@ export async function reconcilePackage(
   // cleanly absorbed). A quarantine leaves it untouched so the divergence stays
   // visible until resolved.
   if (outcome.status === "up-to-date" || outcome.status === "absorbed") {
+    // A foreign alembic.json was absorbed through updateManifest: refresh the
+    // packages.manifest read cache from it BEFORE the synced pointer moves, so
+    // a failure here is retried by the next reconcile (P5.B.3.e).
+    await refreshManifestAfterReconcile(supabase, packageId, outcome);
     await recordSyncedSha(supabase, packageId, outcome.headSha);
     // Door #3: register the absorbed external-commit files (best-effort).
     // The diff names exactly what changed; a large foreign commit falls back

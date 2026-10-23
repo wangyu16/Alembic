@@ -1045,6 +1045,21 @@ claim = "The whole-package upload never commits a raw.githubusercontent.com URL 
 oracle = "probe"
 bound_to = []
 
+[[claim]]
+id = "P5.B.3.e"
+claim = "A reconcile that absorbs alembic.json updates packages.manifest through the manifest write path (validated, CAS, registered, never re-committed), so the projection sees licence/listing changes; an invalid or deleted foreign alembic.json is quarantined and never reaches the column."
+oracle = "scenario"
+bound_to = [
+  "packages/package-ops/src/reconcile.test.ts :: a reconcile that absorbs alembic.json updates packages.manifest through the manifest write path so the projection sees licence/listing changes",
+  "packages/package-ops/src/reconcile.test.ts :: an invalid foreign alembic.json is quarantined: the stored manifest is kept and the problem reported",
+  "packages/package-ops/src/reconcile.test.ts :: a foreign removal of alembic.json is quarantined, never deleting the course details",
+  "packages/package-ops/src/reconcile.test.ts :: a reconcile that does not touch alembic.json reports no manifest",
+  "apps/web/src/lib/reconcile-manifest.test.ts :: a reconcile that absorbs a licence change on GitHub refreshes packages.manifest from the write path's manifest",
+  "apps/web/src/lib/reconcile-manifest.test.ts :: an invalid foreign alembic.json never reaches packages.manifest",
+  "apps/web/src/lib/reconcile-manifest.test.ts :: the web reconcile refreshes the column through this helper",
+]
+note = "Loop r1b (LOW-8)."
+
 # ─── Hardening ────────────────────────────────────────────────────────────
 
 [[claim]]

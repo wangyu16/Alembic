@@ -19,11 +19,14 @@
 
 import {
   assertPathAllowedInEitherContract,
+  parseManifest,
   parseStudyGuide,
   validateBlockIds,
+  type PackageManifest,
 } from "@alembic/package-contract";
 import { extractSource, hasCarrier } from "@alembic/carriers";
 import type { PackageStore } from "./store";
+import { MANIFEST_PATH, updateManifest } from "./manifest-ops";
 
 export interface RepoReader {
   /** Current commit SHA of the public repo's default branch. */
@@ -39,7 +42,20 @@ export interface RepoReader {
 
 export type ReconcileOutcome =
   | { status: "up-to-date"; headSha: string }
-  | { status: "absorbed"; headSha: string; changedPaths: string[] }
+  | {
+      status: "absorbed";
+      headSha: string;
+      changedPaths: string[];
+      /**
+       * Present when the foreign change included the course details file
+       * (alembic.json): the manifest as it now stands, validated and written
+       * through `updateManifest`. The WEB layer refreshes the
+       * `packages.manifest` read cache from it — exactly as after every other
+       * manifest write — so the discovery projection sees a licence or
+       * listing change made on GitHub (P5.B.3.e).
+       */
+      manifest?: PackageManifest;
+    }
   | { status: "quarantined"; headSha: string; violations: string[] };
 
 /** A study-guide file whose block IDs we must keep intact — v1 `.md` or v2
@@ -83,8 +99,30 @@ export async function reconcilePublicRepo(
   // Foreign commit(s) exist (or we have never synced). Validate before absorbing.
   const changed = await reader.listChangedPaths(lastSyncedSha, head);
   const violations: string[] = [];
+  // The foreign course details file, validated up front (absorbed last).
+  let foreignManifest: PackageManifest | undefined;
 
   for (const change of changed) {
+    // The course details file is the package's identity: a foreign deletion
+    // would leave a course with no manifest. Keep ours and report it.
+    if (change.path === MANIFEST_PATH) {
+      if (change.status === "removed") {
+        violations.push(`${MANIFEST_PATH}: the course details file was deleted outside Alembic`);
+        continue;
+      }
+      const content = await reader.readFileAtRef(change.path, head);
+      try {
+        if (content === null) throw new Error(`expected content at ${head} but file was absent`);
+        foreignManifest = parseManifest(JSON.parse(content));
+      } catch (err) {
+        // Invalid foreign manifest: never let it reach the projection (or the
+        // packages.manifest cache). Keep the old one; quarantine and report.
+        const message = err instanceof Error ? err.message : String(err);
+        violations.push(`${MANIFEST_PATH}: not a valid course details file: ${message}`);
+      }
+      continue;
+    }
+
     if (change.status === "removed") continue;
 
     // Two-repo invariant: a private-space path or disallowed location must
@@ -132,6 +170,7 @@ export async function reconcilePublicRepo(
 
   // Clean: absorb the changeset into the projection.
   for (const change of changed) {
+    if (change.path === MANIFEST_PATH) continue; // through the write path, below
     if (change.status === "removed") {
       await store.deleteFiles(packageId, [
         { repo: "public", path: change.path },
@@ -149,10 +188,20 @@ export async function reconcilePublicRepo(
     ]);
   }
 
+  // The manifest goes through the ONE manifest write path (validate → CAS the
+  // projection → register), with no committer: the change is already on
+  // GitHub, so nothing is committed again.
+  let manifest: PackageManifest | undefined;
+  if (foreignManifest !== undefined) {
+    const next = foreignManifest;
+    manifest = (await updateManifest(store, null, packageId, () => next)).manifest;
+  }
+
   return {
     status: "absorbed",
     headSha: head,
     changedPaths: changed.map((c) => c.path),
+    ...(manifest !== undefined ? { manifest } : {}),
   };
 }
 
