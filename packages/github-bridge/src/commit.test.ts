@@ -25,6 +25,9 @@ function commitMock(): { fetchImpl: FetchLike; calls: Call[] } {
     if (method === "GET" && url.includes("/git/commits/")) {
       return ok({ tree: { sha: "BASETREE" } });
     }
+    if (method === "GET" && url.includes("/git/trees/")) {
+      return ok({ tree: [{ path: "materials/old.md", type: "blob" }], truncated: false });
+    }
     if (method === "POST" && url.endsWith("/git/blobs")) {
       return ok({ sha: "BLOBSHA" });
     }

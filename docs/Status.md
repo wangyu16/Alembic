@@ -72,6 +72,21 @@ not yet deployed).** Plan: family `docs/PHASE5-ALEMBIC.md` Track B; B.4–B.6 wa
   longer reads the whole package. **Migration `0021_trackB_documents_hash_idx`** (optional, additive):
   `(package_id, source_hash) where not tombstoned` for `getByContentHash`; no `adapted_from` index (no query
   uses it). DecisionLog 2026-10-23.
+- ✅ **B.2 Publish robustness.** `github-bridge`: every request retries GitHub **5xx and rate limits** with
+  backoff, honoring `Retry-After` and the primary-limit reset (gives up at once when GitHub asks for more
+  than 60 s); 5xx / dropped connections are replayed **only for idempotent requests** (reads, ref updates
+  to a fixed sha, blob/tree/commit objects) — never repo/ref/tag/Pages creation; a plain 403 (permissions)
+  is never retried. **Installation-token refresh:** `installationTokenSource` reuses the one-hour token,
+  mints a new one 5 min before expiry, and a 401 refreshes once and retries (`clientForInstallation` uses
+  it). **Idempotent publish:** `publishToBranch` compares the new tree with the live one and makes **no
+  commit** when the site is unchanged (`unchanged: true`); `createCommitOnBranch` makes no empty commits;
+  a concurrently created Pages branch (422) is overwritten instead of failing. **Partial-failure report**
+  (`lib/publish-report.ts`): slides and practice questions that could not be built were still silently
+  dropped (only chapters were reported) — now every missing piece is named by chapter, plus figures that
+  could not be copied and "already up to date"; failures say in educator words whether GitHub was busy,
+  unreachable or no longer permitted, and that **the live site has not changed** (it switches over in one
+  step at the end). The Pages-setup hint lost "branch"/"repo". Tests: 17 against a stateful fake GitHub
+  (`robustness.test.ts`), 7 for the wording (no Git words, no GitHub text).
 
 **Wave 4 / T42 — doc coherence pass (2026-08-28).** Docs-only sweep after the storage/write-path waves
 (the CLAUDE.md "after each phase, run a coherence pass" rule). Corrected: the Waves-2–3 test count

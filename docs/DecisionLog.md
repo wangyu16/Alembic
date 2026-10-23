@@ -6,6 +6,21 @@ design, and what is deferred to the future. Complements [Status.md](Status.md)
 
 ---
 
+## 2026-10-23 — Publish robustness: what is retried, and what is never replayed (Phase 5 Track B.2)
+
+| # | Decision | Why |
+|---|---|---|
+| 1 | **Rate-limit refusals are always retried; 5xx and dropped connections only for idempotent requests** (GET, PATCH of a ref to a fixed sha, POST of blobs/trees/commits). Repo creation, ref/tag creation and Pages setup are not replayed on 5xx. | A rate-limited request was not processed; a 5xx one may have been. Replaying a content-addressed object creation is harmless (same object, or an unreferenced commit); replaying "create" is not. |
+| 2 | **Honor GitHub's named wait up to 60 s; beyond that, fail at once** with educator wording ("busy right now… try again in a few minutes"). Backoff 1 s → 2 s → 4 s, three retries. | Publishing runs inside a 300 s function; waiting out an hour-long primary reset would only turn into a timeout with no message. |
+| 3 | **Same tree → no commit**, for both the Pages build and ordinary saves. | The Pages branch is a single root commit per build; republishing an unchanged course used to add a commit and re-deploy Pages for nothing. Content-addressed trees make the check exact and free. |
+| 4 | **Installation tokens come from a refreshing source** (mint ahead of expiry; one retry after 401). | Tokens last an hour and are minted per action today, so expiry mid-publish is unlikely — but a cached or long-lived client must never fail on it, and a 401 is a safe retry. |
+| 5 | **Failure copy states that the live site is unchanged** — true because the branch moves in one ref update at the very end. | It is the question an educator asks first; raw GitHub text stays in the server log (scale audit item 9). |
+
+**Not done here (open):** bounded parallelism of the per-chapter generation loop (scale audit queued item 2)
+— the loop is unchanged; the site build moves to orz-site in B.4.
+
+---
+
 ## 2026-10-23 — Registry: register the change set, not the package (Phase 5 Track B.1)
 
 **Context.** The scale audit (2026-08-28, queued item 1) found every write

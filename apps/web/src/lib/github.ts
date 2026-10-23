@@ -3,7 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   commitFiles,
   getInstallationAccount,
-  getInstallationToken,
+  installationTokenSource,
   GitHubClient,
   type FileChange,
   type RepoCoords,
@@ -82,17 +82,23 @@ export async function installationAccountLogin(
   return account.login;
 }
 
-/** A GitHub client authenticated as a specific installation. */
+/**
+ * A GitHub client authenticated as a specific installation. The token source
+ * refreshes the one-hour installation token ahead of expiry and after a 401,
+ * so a long publish cannot run past it. The first token is minted here, so a
+ * broken installation still fails at this call, as before.
+ */
 export async function clientForInstallation(
   cfg: GithubConfig,
   installationId: number,
 ): Promise<GitHubClient> {
-  const { token } = await getInstallationToken({
+  const tokens = installationTokenSource({
     appId: cfg.appId,
     privateKey: cfg.privateKey,
     installationId,
   });
-  return new GitHubClient(token);
+  await tokens.token();
+  return new GitHubClient(tokens);
 }
 
 /**
