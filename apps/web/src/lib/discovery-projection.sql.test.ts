@@ -404,3 +404,67 @@ describe("A.1 best-effort and rebuild", () => {
     ).toEqual(beforeEl);
   });
 });
+
+describe("A.1 the real write path: an educator's own session (RLS) drives the projection", () => {
+  it("listing, sharing and archiving through the owner's own session refresh the index", async () => {
+    const me = await seedUser(db, "session-owner");
+    const id = await seedPackage(db, { owner: me, title: "Session Course" });
+    const doc = await seedDoc(db, { packageId: id, discoverable: false });
+    await asRole(
+      db,
+      "authenticated",
+      async () => {
+        // "List publicly" (registerPackageAction's upsert, under RLS)
+        await db.query(
+          `insert into public.portal_registrations
+             (package_id, owner_id, title, license, public_repo_url, site_url)
+           values ($1, $2, 'Session Course', 'CC-BY-4.0', 'x', 'y')`,
+          [id, me],
+        );
+        // "Share this" (shareFileAction's update, under RLS)
+        await db.query(`update public.documents set discoverable = true where doc_id = $1`, [doc]);
+      },
+      me,
+    );
+    expect(await courseIds()).toContain(id);
+    expect(await elementIds()).toContain(doc);
+    await asRole(
+      db,
+      "authenticated",
+      () => db.query(`update public.packages set archived_at = now() where id = $1`, [id]),
+      me,
+    );
+    expect(await courseIds()).not.toContain(id);
+    expect(await elementIds()).not.toContain(doc);
+  });
+
+  it("another educator's session can neither list nor share someone else's course", async () => {
+    const victim = await seedUser(db, "victim");
+    const attacker = await seedUser(db, "attacker");
+    const id = await seedPackage(db, { owner: victim });
+    const doc = await seedDoc(db, { packageId: id, discoverable: false });
+    await expect(
+      asRole(
+        db,
+        "authenticated",
+        () =>
+          db.query(
+            `insert into public.portal_registrations
+               (package_id, owner_id, title, license, public_repo_url, site_url)
+             values ($1, $2, 't', 'CC-BY-4.0', 'x', 'y')`,
+            [id, victim],
+          ),
+        attacker,
+      ),
+    ).rejects.toThrow(/row-level security/i);
+    await asRole(
+      db,
+      "authenticated",
+      () => db.query(`update public.documents set discoverable = true where doc_id = $1`, [doc]),
+      attacker,
+    ); // RLS: matches no row
+    expect(await courseIds()).not.toContain(id);
+    expect(await elementIds()).not.toContain(doc);
+  });
+});
+

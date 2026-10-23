@@ -43,6 +43,12 @@
 --
 -- Apply BEFORE deploying the Track A web code (the portal reads only these
 -- functions). The final statement back-fills the projection.
+--
+-- Operator check first: the search functions name `extensions.<%` and
+-- `extensions.gin_trgm_ops`. If pg_trgm is already enabled in another schema
+-- (`select extnamespace::regnamespace from pg_extension where extname =
+-- 'pg_trgm';`), move it before applying: `alter extension pg_trgm set schema
+-- extensions;`.
 
 create extension if not exists pg_trgm with schema extensions;
 

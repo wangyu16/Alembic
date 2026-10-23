@@ -81,7 +81,7 @@ let seq = 0;
 const next = () => (++seq).toString(36).padStart(4, "0");
 
 export async function seedUser(db: PGlite, handle = "educator"): Promise<string> {
-  const id = `00000000-0000-4000-8000-${next().padStart(12, "0")}`;
+  const id = `00000000-0000-4000-8000-${(++seq).toString(16).padStart(12, "0")}`;
   await db.query(`insert into auth.users (id, raw_user_meta_data) values ($1, $2)`, [
     id,
     JSON.stringify({ user_name: handle }),
