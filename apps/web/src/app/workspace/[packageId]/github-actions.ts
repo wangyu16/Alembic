@@ -10,6 +10,9 @@ import {
 } from "@alembic/package-ops";
 import { commitFiles, GitHubError } from "@alembic/github-bridge";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/service";
+import { packageTrustWriter } from "@/lib/package-trust-writes";
+import { discoveryChanged } from "@/lib/discovery-cache";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
 import { supabaseEventLogger } from "@/lib/events";
 import {
@@ -239,15 +242,18 @@ export async function publishToGitHubAction(
       );
     }
 
-    await supabase
-      .from("packages")
-      .update({
-        storage: "github",
-        public_repo: { owner, name: publicName },
-        private_repo: { owner, name: privateName },
-        manifest,
-      })
-      .eq("id", packageId);
+    // storage / public_repo / private_repo are service-role-only columns
+    // (migration 0025, security loop r1 M2): discovery trusts the repository
+    // recorded HERE, after the App created it under this educator's
+    // installation — never the owner-writable manifest field.
+    const recorded = await packageTrustWriter(createServiceClient).recordPublished(packageId, user.id, {
+      publicRepo: { owner, name: publicName },
+      privateRepo: { owner, name: privateName },
+      manifest,
+    });
+    if (!recorded.ok) {
+      throw new Error(`Could not record the published course (${recorded.reason}).`);
+    }
     // Keep the sandbox file mirror in step — see mirrorManifestToSandbox's doc.
     await mirrorManifestToSandbox(store, packageId, manifest);
 
@@ -260,6 +266,8 @@ export async function publishToGitHubAction(
     });
 
     revalidatePath(`/workspace/${packageId}`);
+    // Publishing makes the course's shared files listable (P5.S.8).
+    discoveryChanged();
     return { ok: true, publicRepoUrl: `https://github.com/${owner}/${publicName}` };
   } catch (e) {
     await events.log({

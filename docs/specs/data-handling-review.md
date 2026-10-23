@@ -17,8 +17,9 @@ in the choices for each deployment.
   `kind`, `provider`, `model`, `user_id`. **RLS: owner-insert-only, no user
   select** — readable only by the service role (admin export). Never committed to
   either repo. The de-identified research export (M34, `/admin/export`) reads
-  `research_events` and carries only pseudonymous ids + public-safe
-  `research_events.detail` (**no prompts/outputs, and no AI token/kind data**).
+  `research_events` and carries only pseudonymous ids + the **allow-listed**
+  `research_events.detail` keys (**no prompts/outputs, and no AI token/kind
+  data**; see "Research events" below).
   The AI **token/kind aggregates** are a separate concern: they read
   `ai_invocations` and are shown **in-app** in the admin dashboard (M36, `/admin`)
   — they are never exported.
@@ -96,6 +97,31 @@ insert path into `portal_reports`; it stores what the direct insert stored
 (package, reason, the signed-in reporter or null) and adds per-package and
 global caps keyed by an md5 of the package id. The research export is paged
 — same de-identification, same columns, streamed in batches.)*
+
+*(Security loop r1 M1, 2026-10-23: **research events are written by the
+server only.** Every `research_events` insert — educator workflows and
+discovery alike — goes through one server-side writer
+(`apps/web/src/lib/events.ts`) using the service role, write-only; the
+browser session is no longer used and migration 0025 removes the
+"insert own events" policy and the API roles' insert grant. Deploy the code
+before applying 0025. See "Research events" below.)*
+
+## Research events: what `detail` may hold
+
+`detail` is filtered by a per-event-type allowlist
+(`packages/research-events/src/allowlist.ts`, exhaustive over the event enum)
+at **write** time and again at **export** time. Only these value shapes are
+kept, each only under a key listed for that type: a non-negative count, a
+boolean, a value from a closed vocabulary, a short lower-case token
+`[a-z0-9._-]{1,40}` (kinds, modes, surfaces, licences), or a package/doc id.
+On export every kept id (`source`, `sourcePackageId`, `sourceDocId`,
+`toPackageId`) is pseudonymised with the same salted function as the package
+column. Never kept: URLs (a site URL carries the GitHub login), repository
+names, logins, file paths, filenames, snapshot names, commit SHAs, content
+hashes, chapter slugs, raw error messages or any other free text. An unknown
+event type, an unknown key or a value of the wrong shape is dropped (fail
+closed), which also cleans rows stored before the allowlist existed. A new
+detail key must be added to the allowlist, or it is not recorded.
 
 ## Decision record (per deployment)
 

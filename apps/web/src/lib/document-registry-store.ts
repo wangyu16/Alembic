@@ -5,6 +5,7 @@ import {
   type RepoKind,
 } from "@alembic/package-contract";
 import type { DocumentRegistryStore } from "@alembic/package-ops";
+import { discoveryChanged } from "./discovery-cache";
 
 /**
  * The `documents` registry (R2) over Supabase — the concrete
@@ -117,6 +118,8 @@ export class SupabaseDocumentRegistryStore implements DocumentRegistryStore {
         .in("doc_id", docIds.slice(i, i + CHUNK));
       if (error) throw new Error(`Could not tombstone the documents: ${error.message}`);
     }
+    // A shared element that leaves the registry leaves Discover at once (P5.S.8).
+    if (docIds.length > 0) discoveryChanged();
   }
 
   async tombstone(packageId: string, docId: string): Promise<void> {
@@ -126,6 +129,7 @@ export class SupabaseDocumentRegistryStore implements DocumentRegistryStore {
       .eq("package_id", packageId)
       .eq("doc_id", docId);
     if (error) throw new Error(`Could not tombstone the document: ${error.message}`);
+    discoveryChanged();
   }
 
   async getByLocation(

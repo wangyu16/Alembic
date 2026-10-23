@@ -14,6 +14,8 @@ import {
 } from "@alembic/package-ops";
 import { discoveryChanged } from "@/lib/discovery-cache";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/service";
+import { packageTrustWriter } from "@/lib/package-trust-writes";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
 import { clientForUser } from "@/lib/github";
 import { committerFor } from "@/lib/committer";
@@ -151,11 +153,14 @@ export async function archivePackageAction(
       error: "Only published packages are archived. Trial packages are deleted.",
     };
   }
-  const { error } = await supabase
-    .from("packages")
-    .update({ archived_at: new Date().toISOString() })
-    .eq("id", packageId);
-  if (error) {
+  // archived_at is a service-role-only column (migration 0025, security loop
+  // r1 M2); the write is scoped to this user's package.
+  const archived = await packageTrustWriter(createServiceClient).setArchived(
+    packageId,
+    user.id,
+    new Date().toISOString(),
+  );
+  if (!archived.ok) {
     return { ok: false, error: "Could not archive the package. Please try again." };
   }
   // Unlist from the public index — the owner is no longer managing it here.
@@ -188,11 +193,9 @@ export async function restorePackageAction(
   packageId: string,
 ): Promise<LifecycleResult> {
   const { supabase, user } = await requireUser();
-  const { error } = await supabase
-    .from("packages")
-    .update({ archived_at: null })
-    .eq("id", packageId);
-  if (error) {
+  // Service-role write scoped to this user's package (see archivePackageAction).
+  const restored = await packageTrustWriter(createServiceClient).setArchived(packageId, user.id, null);
+  if (!restored.ok) {
     return { ok: false, error: "Could not restore the package. Please try again." };
   }
   await supabaseEventLogger(supabase).log({

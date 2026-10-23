@@ -116,7 +116,7 @@ describe("commitFiles", () => {
     expect(entry).not.toHaveProperty("content");
   });
 
-  it("REFUSES a private path in a public commit before any network call", async () => {
+  it("[P5.B.2.f] REFUSES a private path in a public commit before any network call", async () => {
     const { fetchImpl, calls } = commitMock();
     const client = new GitHubClient("ghs_x", fetchImpl);
     const plan: CommitPlan = {
@@ -244,7 +244,7 @@ describe("commitFiles — deletions of paths the repo doesn't have", () => {
     expect(entries.map((e) => e.path)).toEqual(["materials/leaked.md"]);
   });
 
-  it("makes no commit at all when every requested change is a no-op deletion", async () => {
+  it("[P5.B.2.b] makes no commit at all when every requested change is a no-op deletion", async () => {
     const { fetchImpl, calls } = repoWithTree(["study-guide/01.md"]);
     const client = new GitHubClient("ghs_x", fetchImpl);
 

@@ -26,6 +26,40 @@ const INCLUDE_TIMEOUT_MS = 5000;
 const MAX_INCLUDE_BYTES = 512 * 1024;
 
 /**
+ * Per-call budget of `resolveWebIncludes` (security loop r1, M5): at most
+ * `maxIncludes` distinct include fetches (nested ones count) and at most
+ * `maxTotalBytes` fetched in total (+ the one fetch that crosses it, itself
+ * capped at `maxIncludeBytes`). Past the budget the remaining directives stay
+ * unresolved, exactly like a failed fetch. Before, one 109 KB preview body
+ * made the server issue 2000 fetches. A real document includes a handful of
+ * fragments; 50 and 2 MB leave room for that and nothing like a fan-out.
+ */
+export const INCLUDE_LIMITS = {
+  maxIncludes: 50,
+  maxTotalBytes: 2 * 1024 * 1024,
+  maxIncludeBytes: MAX_INCLUDE_BYTES,
+} as const;
+
+/** Wrap a fetcher with one call's budget (count and total bytes). */
+export function budgetedFetcher(
+  fetcher: (url: string) => Promise<string | null>,
+  limits: { maxIncludes: number; maxTotalBytes: number } = INCLUDE_LIMITS,
+): (url: string) => Promise<string | null> {
+  let count = 0;
+  let bytes = 0;
+  return async (url) => {
+    // Checked and charged before the fetch starts, so concurrent fetches
+    // cannot overrun the count.
+    if (count >= limits.maxIncludes || bytes >= limits.maxTotalBytes) return null;
+    count++;
+    const text = await fetcher(url);
+    if (text === null) return null;
+    bytes += Buffer.byteLength(text, "utf8");
+    return bytes > limits.maxTotalBytes ? null : text;
+  };
+}
+
+/**
  * Fetch an already-host-validated URL with SSRF-defensive bounds:
  * - `redirect: "manual"` — never follow a 3xx (a redirect could aim at an
  *   internal address even from an allowed host); a redirect response is not
@@ -59,16 +93,21 @@ async function guardedFetch(url: string): Promise<string | null> {
  * previews (so the educator sees included content before publishing). The
  * editable source of record always keeps the directive — this only transforms
  * the copy that gets rendered/built. Best-effort: a failed fetch or unset host
- * leaves the directive in place.
+ * leaves the directive in place. At most `INCLUDE_LIMITS` per call.
+ *
+ * Callers must be session-gated (security loop r1, M5): every entry point
+ * that reaches this is listed and checked by
+ * `app/include-fetch-entry-points.test.ts`.
  */
 export async function resolveWebIncludes(markdown: string): Promise<string> {
   if (!PERMALINK_HOST || !markdown.includes("{{")) return markdown;
   try {
     // Pass the guarded fetcher so nested includes are bounded too; allowedHosts
-    // is the primary SSRF gate, `resolveIncludeUrl` re-checks the host.
+    // is the primary SSRF gate, `resolveIncludeUrl` re-checks the host; the
+    // budget bounds how much one call may fetch (`INCLUDE_LIMITS`).
     return await prepareSources(markdown, {
       allowedHosts: [PERMALINK_HOST],
-      fetcher: resolveIncludeUrl,
+      fetcher: budgetedFetcher(resolveIncludeUrl),
     });
   } catch {
     return markdown;

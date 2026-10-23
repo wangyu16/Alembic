@@ -326,6 +326,10 @@ export async function adaptFromPortalAction(
       return { ok: false, error: "That course isn't listed on Discover any more." };
     }
     const r = { ...listed, license: license.data };
+    // The listing's repository is the one the publish path recorded
+    // (packages.public_repo, service role only — migration 0025, security loop
+    // r1 M2), never the owner-writable manifest.publicRepo: a course cannot
+    // point Adapt at someone else's repository.
     const coords = repoCoordsFromUrl(r.public_repo_url);
     if (!coords) return { ok: false, error: "Couldn't resolve the source repository." };
 

@@ -94,21 +94,48 @@ file the visitor may not read.
 
 | Answer | Cache-Control | Validator |
 |---|---|---|
-| public, live | `public, max-age=60, s-maxage=300, stale-while-revalidate=86400` | `ETag: W/"{source_hash}"`; `If-None-Match` → 304 with no GitHub read |
-| public, pinned to the current hash | `public, max-age=31536000, immutable` | same ETag |
+| public, live | `public, max-age=60, s-maxage=240, stale-while-revalidate=60` | `ETag: W/"{source_hash}"`; `If-None-Match` → 304 with no GitHub read |
+| public, pinned to the current hash | `private, max-age=31536000, immutable`, plus `CDN-Cache-Control` and `Vercel-CDN-Cache-Control: public, max-age=300` | same ETag |
 | public, bytes not matching the registry hash (repo ahead of reconcile) | `public, max-age=60` | none — never labelled with a hash it does not have |
 | owner-only (private repo, trial package) | `private, no-store` | none; never 304, no CORS, never in a shared or server cache |
-| not found / no access / older pin | `no-store` | — |
-| tombstone (410) | `public, max-age=3600` | — |
+| not found / no access / older pin / malformed address (bad `%` escape — same 404, after the rate limit) | `no-store` | — |
+| tombstone (410) | `public, max-age=3600, s-maxage=300` | — |
+
+**Takedown bound: 300 seconds** (`TAKEDOWN_BOUND_SECONDS`, security loop r1,
+2026-10-23). No shared cache — the CDN, or a proxy between a reader and
+Alembic — may keep serving any `/d` answer longer than this, stale windows
+(`stale-while-revalidate`, `stale-if-error`) included. So a file that is
+removed, made private, or taken back to trial disappears everywhere within 5
+minutes. A pinned answer may still be kept a year by the reader's own
+**browser** (`private`): a private copy of a version that reader already saw is
+acceptable; shared caches read the CDN headers (Vercel honours them over
+`Cache-Control`) and a cache that does not read them sees `private` and keeps
+nothing. Every answer kind is checked against the bound by
+`apps/web/src/lib/permalink-response.cache-bound.test.ts` (claims P5.S.4.a–b).
 
 Public bytes are cached server-side per `(docId, source_hash)` (in process,
 plus Next's data cache for files ≤ 1 MB), so GitHub is read once per file
 version, not per view; a new version is a new key, so nothing is
 invalidated. The ETag is weak: for carrier files the hash covers the embedded
 source, not the rendered bytes. A public file that turns private or trial
-stops being served at once by the origin; a CDN copy can outlive the change by
-at most the 5-minute `s-maxage` (plus one stale answer while it revalidates).
-`/d` is rate limited per client IP (1200/min, in process).
+stops being served at once by the origin; a shared-cache copy can outlive the
+change by at most the takedown bound (300 s).
+`/d` is rate limited per client IP (1200/min, in process). The answer ignores the
+query string (`?x=n` changes neither the bytes nor the headers); a busted URL
+is still a separate CDN key, so it reaches the origin — rate limited, bytes
+from the cache. The `element.viewed` research event is written at most once
+per (doc, client address, clock hour) (`apps/web/src/lib/view-dedupe.ts`),
+so such requests cannot grow `research_events`.
+
+**Server-side includes (security loop r1, 2026-10-23).** `{{md-include
+https://{app host}/d/{docId}}}` is resolved on the server only for the app's
+own host (`apps/web/src/lib/resolve-includes.ts`), only for a signed-in
+caller — every entry point that reaches the resolver (preview, publish,
+exports, hosted views, the in-file editors' include bridge) is session-gated,
+pinned by `apps/web/src/app/include-fetch-entry-points.test.ts` — and at most
+**50 include fetches and 2 MB fetched per call** (`INCLUDE_LIMITS`; nested
+includes count). Past the budget the remaining directives stay unresolved,
+like a failed fetch. Public pages (`/d`, `/portal`, `/p`) resolve no includes.
 
 ## 4. Versioning
 

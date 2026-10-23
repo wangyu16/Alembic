@@ -241,6 +241,7 @@ export function StudioShell({
   title,
   unitTerm,
   published,
+  canShare,
   chapters,
   activeSlug,
   activePath,
@@ -267,6 +268,8 @@ export function StudioShell({
   title: string;
   unitTerm: UnitTerm | undefined;
   published: boolean;
+  /** P5.R.2: offer "share on Discover" (published courses only — `canOfferShare`). */
+  canShare: boolean;
   chapters: Chapter[];
   activeSlug: string | null;
   activePath: string | null;
@@ -684,6 +687,7 @@ export function StudioShell({
               tree={assetsTree ?? []}
               chapters={chapters}
               assetMeta={assetMeta}
+              canShare={canShare}
               onDirty={setDirty}
             />
           ) : view.collection === "current" ? (

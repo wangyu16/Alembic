@@ -79,22 +79,22 @@ const status = async (
 ) => (await resolvePermalinkAccess(docId, as(viewer, withService), opts)).status;
 
 describe("S1: trial-package permalinks are owner-only", () => {
-  it("an anonymous reader gets 404 for a trial package's PUBLIC-space file", async () => {
+  it("[P5.0.2.a] an anonymous reader gets 404 for a trial package's PUBLIC-space file", async () => {
     expect(await status("doc-trialpub", null)).toBe("not-found");
   });
 
-  it("a signed-in stranger gets 404 for it too (same answer as a missing doc)", async () => {
+  it("[P5.0.2.a] a signed-in stranger gets 404 for it too (same answer as a missing doc)", async () => {
     expect(await status("doc-trialpub", STRANGER)).toBe("not-found");
     expect(await status("doc-missing1", STRANGER)).toBe("not-found");
   });
 
-  it("the owner can open their own trial file, owner-only (no shared cache, no CORS)", async () => {
+  it("[P5.0.2.a] the owner can open their own trial file, owner-only (no shared cache, no CORS)", async () => {
     const r = await resolvePermalinkAccess("doc-trialpub", as(OWNER));
     expect(r.status).toBe("ok");
     expect(r.status === "ok" && r.ownerOnly).toBe(true);
   });
 
-  it("works without the service client (owner via session; stranger refused)", async () => {
+  it("[P5.0.2.a] works without the service client (owner via session; stranger refused)", async () => {
     expect(await status("doc-trialpub", OWNER, undefined, false)).toBe("ok");
     expect(await status("doc-trialpub", null, undefined, false)).toBe("not-found");
     expect(await status("doc-trialpub", STRANGER, undefined, false)).toBe("not-found");
@@ -108,7 +108,7 @@ describe("published packages and private files (unchanged rules)", () => {
     expect(r.status === "ok" && r.ownerOnly).toBe(false);
   });
 
-  it("private-repo files are owner-only, published or not", async () => {
+  it("[P5.0.2.c] private-repo files are owner-only, published or not", async () => {
     for (const id of ["doc-pubpriv", "doc-trialpriv"]) {
       expect(await status(id, null)).toBe("not-found");
       expect(await status(id, STRANGER)).toBe("not-found");
@@ -116,7 +116,7 @@ describe("published packages and private files (unchanged rules)", () => {
     }
   });
 
-  it("as an INCLUDE, a private file never resolves — not even for its owner", async () => {
+  it("[P5.0.2.c] as an INCLUDE, a private file never resolves — not even for its owner", async () => {
     for (const id of ["doc-pubpriv", "doc-trialpriv"]) {
       expect(await status(id, OWNER, { allowPrivate: false })).toBe("not-found");
     }
@@ -124,14 +124,14 @@ describe("published packages and private files (unchanged rules)", () => {
     expect(await status("doc-trialpub", STRANGER, { allowPrivate: false })).toBe("not-found");
   });
 
-  it("a tombstone answers 'removed'; malformed ids never reach the database", async () => {
+  it("[P5.0.2.e] a tombstone answers 'removed'; malformed ids never reach the database", async () => {
     expect(await status("doc-gone", null)).toBe("gone");
     for (const bad of ["", "doc-", "DOC-ABC", "doc-abc/../x", "doc-abc'or'1"]) {
       expect(await status(bad, OWNER)).toBe("not-found");
     }
   });
 
-  it("a doc whose package row is unreadable is not served", async () => {
+  it("[P5.0.2.e] a doc whose package row is unreadable is not served", async () => {
     const orphan: World = { packages: [], documents: [doc("doc-orphan", "pkg-x", "public")] };
     const r = await resolvePermalinkAccess("doc-orphan", {
       session: client(orphan, null),

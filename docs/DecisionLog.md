@@ -6,6 +6,86 @@ design, and what is deferred to the future. Complements [Status.md](Status.md)
 
 ---
 
+## 2026-10-23 — Security loop r1: report caps per reporting source; RPC time bound on the roles (M4, L4a)
+
+| # | Decision | Why |
+|---|---|---|
+| 1 | `file_portal_report_v2` **validates before it counts**: the package must exist and be listed (a listed course, or a published course with a shared element), else `invalid` and no counter moves. The per-package cap becomes per **(package, reporting source)** — 5 / hour, 10 / day — where the source is an HMAC of the signed-in user or the address (never the address itself); the global 60 / hour, 300 / day is charged only by valid reports. The 0024 function delegates to it. | Junk ids exhausted the global cap and an infringer could pre-fill its own package's cap. A rotating client naming real listed courses can still use the global hour — the same bound as before, now paid in valid, stored reports. |
+| 2 | **No foreign key** on `portal_reports.package_id`. | Reports are operator records; they must outlive a purged package row. Validation at the door gives what the FK would. |
+| 3 | The discovery RPCs' time bound is the **role's** `statement_timeout` (anon 3 s, authenticated 8 s, pinned in 0025_loop_r1_4), **not** a function-level `set statement_timeout`. | Postgres arms the timeout when a statement starts, so a function's own setting does not bound the one-statement PostgREST call; PostgREST applies the role's settings per request. Per-call work is already bounded in SQL; call volume is not bounded by the database (documented in discovery-index.md). |
+
+---
+
+## 2026-10-23 — Security loop r1: `/d` takedown bound, view de-duplication, include budget (M3, L4b, M5)
+
+| # | Decision | Why |
+|---|---|---|
+| 1 | **No shared cache keeps any `/d` answer longer than 300 s** (`TAKEDOWN_BOUND_SECONDS`, stale windows included). Pinned `@{hash}` answers: `private, max-age=31536000, immutable` for the browser, `CDN-Cache-Control` / `Vercel-CDN-Cache-Control: public, max-age=300` for the CDN. Live answers: `s-maxage=240, stale-while-revalidate=60` (was 300 + one day). Tombstones: `s-maxage=300` (browser keeps an hour). Supersedes the "pinned immutable" and "one-day stale-while-revalidate" parts of the Track A.6 entry below. | The audit (M3) showed a pinned answer of a file later removed, made private or taken back to trial would keep being served by the CDN for a year. The browser's own copy is acceptable (the reader already saw that version); a shared copy is not. CDN headers make the CDN lifetime explicit; a cache that ignores them sees `private` and keeps nothing, so the failure mode is "not cached", never "cached too long". The cost is more origin revalidations, which the ETag/304 path and the bytes cache keep cheap. |
+| 2 | **`element.viewed` is written at most once per (doc, client address, clock hour)**, counted with `rate_limit_hit` (0023) under the key `view:` + HMAC(doc, address), with the bounded in-process counter as fallback; any other counter failure records nothing. The `/d` answer ignores the query string; busted URLs (`?x=n`) are not redirected. | The audit (L4b) showed `?x=n` makes every request an origin answer and so a research event. A view per hour per address is what research needs; counters are pruned after two days, events are kept. Losing a view event is acceptable, unbounded writes are not. HMAC over the doc and the address together keeps both out of the counter table and unlinkable across docs. A redirect to the bare URL would also protect the CDN but changes the answer for links that already carry a query; the origin path for a busted URL is cheap (rate limited, bytes from the cache, no event). |
+| 3 | **`/api/preview` requires a signed-in session, and every `resolveWebIncludes` call is budgeted: 50 include fetches and 2 MB fetched** (`INCLUDE_LIMITS`, nested includes count; the excess stays unresolved). All entry points that reach a server-side fetcher are inventoried and must gate every exported handler on the session (`include-fetch-entry-points.test.ts`). | The audit (M5) showed one anonymous 109 KB preview body made the server issue 2000 fetches. The preview is an editing tool used only from the workspace, like `resolveIncludeAction`, which was already gated. The budget sits in the resolver rather than the route so publish and export paths get it too; a real document includes a handful of fragments. |
+
+---
+
+## 2026-10-23 — Security loop r1: the 32-bit pin hash is accepted until R3 (not fixed now)
+
+**Decision.** The audit showed a second preimage for the 32-bit FNV-1a source
+hash that `/d/{doc}@{hash}` pins on is cheap to compute
+(`/tmp/alembic-audit/fnv.mts`: different bytes, same pin). It is **not changed
+in this round**: changing the hash changes every pin already cited, and the
+move to a cryptographic hash is planned with R3. Until then a pin proves
+"the bytes the server holds now hash to this", not "these are the cited bytes".
+Recorded as claim P5.S.L2, deliberately red. **Owner decision pending.**
+
+---
+
+## 2026-10-23 — Security loop r1: consent and trust columns belong to the owner and the server (H1, M2)
+
+| # | Decision | Why |
+|---|---|---|
+| 1 | A `portal_registrations` row counts as the "List publicly" consent only when its `owner_id` is the package owner; the API roles can write one only for a package they own, and cannot read `owner_id` at all (column grants; it defaults to `auth.uid()`). The same rule — a row that names a package needs its owner — now covers suggestions (sender owns `from_package_id`; the inbox follows the package owner), `package_changes` and `ai_invocations`. | Any signed-in user could list someone else's course under their own snapshot, keep it listed against the owner's will, and read the owner's suggestion inbox. |
+| 2 | `storage`, `archived_at`, `public_repo`, `private_repo`, `default_branch` and the accessibility record are **service-role-only columns**, written through one module (`lib/package-trust-writes.ts`) that always filters on the signed-in owner. Publishing, archiving and restoring therefore require `SUPABASE_SECRET_KEY`. | Column privileges are what Postgres has for "this row is yours but this column is not" (the 0016 pattern); a server-gated RPC callable by the owner would have been the same hole. |
+| 3 | Discovery and Adapt use the **publish-recorded repository**, never `manifest.publicRepo`. | The manifest is the owner's text (it can also arrive by a direct GitHub commit); the repo the GitHub App created under the educator's installation is a fact. |
+| 4 | The accessibility status Discover shows and ranks is the **server's record of its own check run**, with **no back-fill** from manifests: listed courses read "not checked" until the owner re-runs the check. | A back-fill would carry any forged "pass" forward. Residual: the check reads the course's `sandbox_files` mirror, which the owner can still write; the record proves the server ran the check on what it held then. |
+| 5 | Adaptations count **distinct other educators whose adapting course is published and not archived**. | Trial "sock" packages cost nothing; a published course needs a GitHub account and the publish path. |
+
+---
+
+## 2026-10-23 — Security loop r1 M1: research events are allow-listed per type and written by the server only
+
+**Decision.** `research_events.detail` is no longer free-form. A per-event-type
+allowlist (`packages/research-events/src/allowlist.ts`, a `Record` over the
+event enum so a new type cannot be forgotten) names every key a caller may
+log and the shape its value must have: a count, a boolean, a closed
+vocabulary, a short lower-case token (kinds, modes, surfaces, licences), or a
+package/doc id. Anything else — an unknown type, an unknown key, a value of
+the wrong shape — is dropped (fail closed). It runs twice: at **export**
+(`deidentifyEvents`; kept ids are pseudonymised with the same salted function
+as the package column, so a `sourcePackageId` joins to `package`), which also
+cleans rows stored before the allowlist; and at **write** time, so the store
+never holds identifying text (ids stay raw there, like the `package_id`
+column). Dropped on purpose: `siteUrl` (carries the GitHub login),
+`publicRepo`/`privateRepo`, `publish.failed`/`agent.run.failed` raw error text,
+file `path`s, import `filename`, snapshot `tag` (from an educator-typed name),
+`fromCommit`, `sourceHash`, `chapter` slug, `changeId`, `targetBlockId`,
+`attestedAt`. A future key must be added to the allowlist or it is silently
+not recorded — the safe default.
+
+**Server-only writes.** Any signed-in user could insert arbitrary events for
+themselves ("insert own events", audit L4c). All inserts now go through one
+server-side writer (`apps/web/src/lib/events.ts`) using the service client;
+`supabaseEventLogger(session)` keeps its call-site signature but ignores the
+session, trusting the `userId` the server action took from `auth.getUser()`.
+Every failure (no service key, refused insert, throw) is swallowed — logging
+never breaks a workflow. Migration 0025 drops the policy and revokes insert
+from `anon`/`authenticated`. **Deploy the code first, then 0025**: before the
+migration, client inserts keep working; applied first, it would silently drop
+signed-in users' events until the code shipped. Trade-off: the service role
+bypasses 0018's `is_active_user()` backstop on this table; acceptable because
+a banned user has no session and middleware refuses their `/workspace/*`
+server actions (user-governance.md §2.1), so no event is produced.
+
+---
+
 ## 2026-10-23 — Owner rulings on Phase 5 open items
 
 | # | Decision | Why |
@@ -21,7 +101,7 @@ design, and what is deferred to the future. Complements [Status.md](Status.md)
 
 | # | Decision | Why |
 |---|---|---|
-| 1 | Every Discover read (search, facets, course and element pages) goes through the **cookie-less anonymous client** and is cached in Next's data cache under one tag, `discovery`, for ≤ 120 s; educator actions that change a listing call `updateTag("discovery")`. The visitor's session is read only for the adapt pickers. | Answers are identical for everyone, so they can be shared; the anonymous client also proves that nothing on these pages needs more than the public read policy. Tag invalidation gives the educator read-your-own-writes; the short window bounds everything else (operator takedowns, reconciled edits) — and stale *unlisted* content is still never served, because the search re-checks listability live. |
+| 1 | Every Discover read (search, facets, course and element pages) goes through the **cookie-less anonymous client** and is cached in Next's data cache under one tag, `discovery`, for ≤ 120 s; educator actions that change a listing call `updateTag("discovery")`. The visitor's session is read only for the adapt pickers. | Answers are identical for everyone, so they can be shared; the anonymous client also proves that nothing on these pages needs more than the public read policy. Tag invalidation gives the educator read-your-own-writes; the short window bounds everything else (operator takedowns, reconciled edits). *(Corrected 2026-10-23, security loop r1, P5.S.8: this row first said stale unlisted content is never served; it can be, for up to 120 s — listability is re-checked only on a cache miss. Every owner action that changes listability now invalidates the tag, enforced by a source scan.)* |
 | 2 | **All portal state in the URL**, plain GET form and links; keyset cursor (opaque, validated, ignored if tampered). No client-side filtering. | Works without JavaScript, is linkable and shareable, and scales: the old page loaded every listing into the browser. |
 | 3 | Course **Adapt** on `/p/{packageId}`: the course is the preselected source; the educator picks one of its chapters and one of their own chapters; the existing `adaptFromPortalAction` copies the sections (now also checking the source is listed *now* and the target chapter is theirs). | It was a link to `/workspace` that preselected nothing. Chapter-to-chapter is what the block-level adaptation primitive does today; a cross-owner whole-course fork is a separate feature (open item). |
 | 4 | Element detail at **`/portal/element/{docId}`**, not a new top-level form. | `/d/{docId}` is the file itself and must stay the permalink (permalinks §2); the detail page is a Discover page about it. |

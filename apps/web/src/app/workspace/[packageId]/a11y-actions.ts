@@ -14,6 +14,8 @@ import {
 import type { AccessibilityStatus } from "@alembic/package-contract";
 import { discoveryChanged } from "@/lib/discovery-cache";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/service";
+import { packageTrustWriter } from "@/lib/package-trust-writes";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
 import { supabaseEventLogger } from "@/lib/events";
 import { committerFor } from "@/lib/committer";
@@ -95,6 +97,13 @@ export async function recheckA11yAction(packageId: string): Promise<RecheckResul
     // Refresh the derived `packages.manifest` read cache from what the write
     // path returned — never by re-deriving it.
     await supabase.from("packages").update({ manifest }).eq("id", packageId);
+    // The result Discover trusts is the server's own record of THIS run
+    // (service-role column, migration 0025, security loop r1 M2), not the
+    // owner-writable manifest field. Best-effort: the check above is saved.
+    await packageTrustWriter(createServiceClient).recordA11yCheck(packageId, user.id, {
+      status: status.status,
+      checkedAt: status.checkedAt,
+    });
 
     await supabaseEventLogger(supabase).log({
       type: "a11y.checked",

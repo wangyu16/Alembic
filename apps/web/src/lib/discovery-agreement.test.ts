@@ -28,20 +28,25 @@ afterAll(async () => {
 });
 
 describe("SQL ⇄ package-contract agreement (discovery)", () => {
-  it("the projector reads exactly the contract's manifest fields", () => {
+  it("[P5.A.1.j] [P5.S.3.b] the projector reads exactly the contract's manifest fields", async () => {
+    // The projector as the migrations leave it (0025 redefines 0022's).
+    const { rows } = await db.query<{ src: string }>(
+      `select prosrc as src from pg_proc where proname = 'discovery_refresh_package'`,
+    );
+    expect(rows).toHaveLength(1);
     const read = new Set(
-      [...SQL.matchAll(/v_m\s*->>?\s*'([A-Za-z]+)'/g)].map((m) => m[1]!),
+      [...rows[0]!.src.matchAll(/v_m\s*->>?\s*'([A-Za-z]+)'/g)].map((m) => m[1]!),
     );
     expect([...read].sort()).toEqual([...DISCOVERY_MANIFEST_FIELDS].sort());
   });
 
-  it("projects exactly the contract's public courseContext keys", () => {
+  it("[P5.A.1.j] projects exactly the contract's public courseContext keys", () => {
     const m = SQL.match(/where k in \(([^)]*)\)/);
     const keys = [...(m?.[1] ?? "").matchAll(/'([A-Za-z]+)'/g)].map((x) => x[1]);
     expect(keys.sort()).toEqual([...DISCOVERY_COURSE_CONTEXT_KEYS].sort());
   });
 
-  it("lists exactly the open licences", async () => {
+  it("[P5.A.1.j] lists exactly the open licences", async () => {
     for (const l of [...OPEN_LICENSES, ALL_RIGHTS_RESERVED, "", "cc-by-4.0"]) {
       const { rows } = await db.query<{ ok: boolean }>(
         `select public.discovery_open_license($1) as ok`,
@@ -51,7 +56,7 @@ describe("SQL ⇄ package-contract agreement (discovery)", () => {
     }
   });
 
-  it("every space exclusion in the SQL is the contract's never-listed set", () => {
+  it("[P5.A.1.j] every space exclusion in the SQL is the contract's never-listed set", () => {
     const lists = [...SQL.matchAll(/space not in \(([^)]*)\)/g)].map((m) =>
       [...m[1]!.matchAll(/'([a-z-]+)'/g)].map((x) => x[1]).sort(),
     );
@@ -59,7 +64,7 @@ describe("SQL ⇄ package-contract agreement (discovery)", () => {
     for (const l of lists) expect(l).toEqual([...NEVER_LISTED_SPACES].sort());
   });
 
-  it("ranking: SQL discovery_quality / discovery_score equal the contract's qualityScore / rankScore", async () => {
+  it("[P5.A.3.e] ranking: SQL discovery_quality / discovery_score equal the contract's qualityScore / rankScore", async () => {
     const asOf = "2026-10-23T10:00:00.000Z";
     const cases: Array<[string, string, number, number, string, number]> = [];
     for (const a11y of ["pass", "warn", "fail", "unknown"])

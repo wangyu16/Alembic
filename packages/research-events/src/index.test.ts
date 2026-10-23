@@ -38,7 +38,7 @@ describe("createEventLogger", () => {
     expect(seen).toHaveLength(1);
   });
 
-  it("swallows sink failures (logging never breaks authoring)", async () => {
+  it("[P5.A.7.d] swallows sink failures (logging never breaks authoring)", async () => {
     const logger = createEventLogger({
       write: async () => {
         throw new Error("db down");
@@ -47,7 +47,7 @@ describe("createEventLogger", () => {
     await expect(logger.log(sample)).resolves.toBeUndefined();
   });
 
-  it("drops an invalid event instead of throwing into the workflow (A.7)", async () => {
+  it("[P5.A.7.d] drops an invalid event instead of throwing into the workflow (A.7)", async () => {
     const seen: ResearchEvent[] = [];
     const logger = createEventLogger({ write: async (e) => void seen.push(e) });
     await expect(
@@ -56,7 +56,7 @@ describe("createEventLogger", () => {
     expect(seen).toHaveLength(0);
   });
 
-  it("accepts an anonymous discovery event (no participant)", async () => {
+  it("[P5.A.7.c] accepts an anonymous discovery event (no participant)", async () => {
     const seen: ResearchEvent[] = [];
     const logger = createEventLogger({ write: async (e) => void seen.push(e) });
     await logger.log({ type: "portal.searched", detail: { terms: 2 }, occurredAt: sample.occurredAt });

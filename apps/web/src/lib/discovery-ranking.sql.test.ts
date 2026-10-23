@@ -36,7 +36,7 @@ async function age(id: string, iso: string) {
 }
 
 describe("A.3 ranking", () => {
-  it("browsing: an accessible, complete, recently updated course comes first; a bare one is still listed", async () => {
+  it("[P5.A.3.c] browsing: an accessible, complete, recently updated course comes first; a bare one is still listed", async () => {
     const bare = await seedPackage(db, { owner, title: "Bare Course", listed: true });
     const good = await seedPackage(db, {
       owner,
@@ -69,7 +69,7 @@ describe("A.3 ranking", () => {
     expect(ids.indexOf(b)).toBeLessThan(ids.indexOf(a));
   });
 
-  it("all else equal, the more recently updated ranks higher", async () => {
+  it("[P5.A.3.d] all else equal, the more recently updated ranks higher", async () => {
     const a = await seedPackage(db, { owner, title: "Equal Eta", listed: true });
     const b = await seedPackage(db, { owner, title: "Equal Eta", listed: true });
     await age(a, "2025-01-01T00:00:00Z");
@@ -78,7 +78,7 @@ describe("A.3 ranking", () => {
     expect(ids.indexOf(b)).toBeLessThan(ids.indexOf(a));
   });
 
-  it("all else equal, a course others adapted ranks higher", async () => {
+  it("[P5.A.3.d] all else equal, a course others adapted ranks higher", async () => {
     const a = await seedPackage(db, { owner, title: "Equal Theta", listed: true });
     const b = await seedPackage(db, { owner, title: "Equal Theta", listed: true });
     const other = await seedUser(db, "adapter");
@@ -95,7 +95,7 @@ describe("A.3 ranking", () => {
     expect(ids.indexOf(b)).toBeLessThan(ids.indexOf(a));
   });
 
-  it("relevance first: a title match beats a description-only match of much higher quality", async () => {
+  it("[P5.A.3.b] relevance first: a title match beats a description-only match of much higher quality", async () => {
     const title = await seedPackage(db, { owner, title: "Kinetics", listed: true });
     const desc = await seedPackage(db, {
       owner,
@@ -114,7 +114,7 @@ describe("A.3 ranking", () => {
     expect(ids.indexOf(title)).toBeLessThan(ids.indexOf(desc));
   });
 
-  it("elements: a described element ranks above an undescribed one with the same match", async () => {
+  it("[P5.A.3.d] elements: a described element ranks above an undescribed one with the same match", async () => {
     const pkg = await seedPackage(db, { owner, title: "Omega Figures" });
     const bare = await seedDoc(db, { packageId: pkg, description: null, path: "assets/omega-plot.svg" });
     const described = await seedDoc(db, { packageId: pkg, description: null, altText: "omega plot", path: "assets/omega-plot-2.svg" });

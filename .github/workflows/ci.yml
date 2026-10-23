@@ -10,6 +10,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          # No token left in .git/config for later steps (or an include) to read.
+          persist-credentials: false
 
       - uses: pnpm/action-setup@v4
 

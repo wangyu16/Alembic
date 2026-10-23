@@ -19,8 +19,9 @@ store. No app code writes them; they are derived in the database by
 
 | Source | What it gives |
 |---|---|
-| `portal_registrations` | the Tier-3 **List publicly** consent (row existence) and when it was given |
-| `packages.manifest` (the manifest read cache) | title, description, keywords, discipline, `courseContext` (level and public identity fields), licence, accessibility status, chapters, public repo, `adaptedFrom` — exactly `DISCOVERY_MANIFEST_FIELDS` in package-contract |
+| `portal_registrations` | the Tier-3 **List publicly** consent (a row **written by the package's owner**: `owner_id` = `packages.owner_id`) and when it was given |
+| `packages.manifest` (the manifest read cache) | title, description, keywords, discipline, `courseContext` (level and public identity fields), licence, chapters, `adaptedFrom` — exactly `DISCOVERY_MANIFEST_FIELDS` in package-contract. All owner-asserted descriptions of the course; nothing discovery uses to decide *whether* or *where* something is public comes from here |
+| `packages` server columns (service role only since 0025, security loop r1 M2) | `storage`, `archived_at`, the publish-recorded repository `public_repo` (listability, repo and site URLs — never `manifest.publicRepo`), and the server's accessibility check record `a11y_status` (never `manifest.accessibility`) |
 | `documents` (the registry) | shared files: kind, space, path, description, alt text, tags, per-file licence, lineage (`adapted_from`), content hash |
 | `sandbox_files` (public `concepts/course.md`, legacy `metadata/course.md`) | concept-map headings → **topics** |
 
@@ -43,9 +44,11 @@ and the search columns.
 
 ### 1.1 What may be listed (one predicate each)
 
-- **Course:** a `portal_registrations` row **and** a published package
+- **Course:** a `portal_registrations` row whose `owner_id` is the package
+  owner (security loop r1, H1: the database refuses a registration for a
+  package the caller does not own, and a stray row lists nothing) **and** a published package
   (`storage = 'github'`) **and** not archived **and** an open licence **and**
-  a public repo in the manifest (`discovery_course_listable`).
+  a publish-recorded repository (`packages.public_repo`) (`discovery_course_listable`).
 - **Element:** `discoverable` ("share this") **and** not tombstoned **and**
   `repo = 'public'` **and** space not `private`/`current` **and** a published,
   non-archived package (`discovery_element_listable`). Per-file consent: it
@@ -130,6 +133,18 @@ search service; revisit at ~100k elements).
 | `discovery_search_elements(p_q, p_kind, p_type, p_license, p_discipline, p_package_id, p_after_score, p_after_id, p_as_of, p_limit)` | one page of elements with `score` (`p_type` = space, the artifact type; `p_package_id` = one course) |
 | `discovery_element_facets(p_q, p_kind, p_type, p_license, p_discipline, p_package_id)` | `total`, `kind`, `type`, `license`, `discipline` |
 
+**Direct calls** (security loop r1, L4a). The public anon key can call these
+through PostgREST without going through the app, so the app's search limit
+does not apply to them. What bounds such a call: its **work**, in SQL (query
+text ≤ 200 characters, ≤ 8 prefix tokens, ≤ 51 rows a page, keyset paging,
+≤ 50 values per facet); its **time**, the calling role's `statement_timeout`
+(anon 3 s, authenticated 8 s — Supabase's defaults, pinned in migration
+`0025_loop_r1_4_rpc_timeouts.sql`; a function-level `set statement_timeout`
+would not bound a one-statement RPC, because Postgres arms the timeout when
+the statement starts); and Supabase's platform limits (API gateway, PostgREST
+max-rows, the connection pool). Call **volume** from one client is not bounded
+by the database.
+
 **Matching.** A row matches when any of these hold (each GIN-indexed):
 
 1. the weighted `tsvector` matches `websearch_to_tsquery('english', q)` —
@@ -202,11 +217,11 @@ query, relevance is 1 for every row (browse = quality order).
 
 | Signal | Weight | Value |
 |---|---|---|
-| accessibility | 0.30 | course: audit `pass` 1, `warn` 0.5, `fail`/`unknown` 0; element: 1 when it has a description or alt text |
+| accessibility | 0.30 | course: the server-recorded audit (`packages.a11y_status`, written only by the accessibility-check action) `pass` 1, `warn` 0.5, `fail`/`unknown` 0; element: 1 when it has a description or alt text |
 | open licence | 0.15 | 1 for an open licence (always true for listed courses; elements may carry their own) |
 | completeness | 0.20 | course: share of {description ≥ 15 words, ≥ 3 keywords, level, discipline, concept-map topics or ≥ 2 chapters}; element: share of {description ≥ 3 words, ≥ 1 tag, a licence} |
 | recency | 0.20 | `exp(−days since updated_at / 180)` (≈ 0.5 after four months; future dates count as now) |
-| adaptations | 0.15 | `min(ln(1 + n) / ln(21), 1)` — distinct adapting packages, saturating at 20 |
+| adaptations | 0.15 | `min(ln(1 + n) / ln(21), 1)` — distinct **other educators** whose adapting course (fork or element copy) is published and not archived, saturating at 20 (security loop r1 M2: trial packages and the owner's own packages never count) |
 
 **Citations** have no data yet (no citation registry); when they do, they
 join as a further signal and the weights are re-balanced to sum to 1.
@@ -245,12 +260,18 @@ Unlisted, private, trial and archived content is a plain 404 on every page
 item): every Discover read uses the cookie-less anonymous client, so results
 are the same for everyone and are kept in Next's data cache under the
 `discovery` tag for at most 120 s (search entries are keyed by the query and
-the ranking hour). Educator actions that change what Discover shows (list /
-unlist, archive / restore, rename, course details, concept map, share /
-asset metadata, accessibility check) call `updateTag("discovery")`, so the
-educator sees the change at once; other changes (an operator takedown, a
-reconciled outside edit) show within 120 s — and are never *served* stale
-for unlisted content, since the search re-checks listability live. A search
+the ranking hour). Listability is re-checked against the live tables (the
+read policy) only when a read actually runs, i.e. on a cache miss; a cached
+answer is served unchanged until it expires. **Staleness bound: 120 s** — a
+cached answer can show content for up to 120 s after it was unlisted,
+archived, unshared or taken down, unless the cache was invalidated. Owner
+actions that change what Discover may show (list / unlist, archive /
+restore, share / unshare and asset metadata, a shared file leaving the
+registry, rename, course details, concept map, accessibility check) call
+`updateTag("discovery")`, which drops every cached answer at once (claim
+P5.S.8, enforced by a source scan of every listability write). Changes made
+outside the app — an operator delete or takedown in the database dashboard,
+a reconciled outside edit — are bounded by the 120 s window only. A search
 that cannot run is not cached.
 
 **Rate limit and events** (A.6/A.7 seams): a search (text, filters or a later

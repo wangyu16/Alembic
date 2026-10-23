@@ -125,5 +125,6 @@ export function createEventLogger(sink: EventSink) {
   };
 }
 
+export * from "./allowlist";
 export * from "./deidentify";
 export * from "./usage";

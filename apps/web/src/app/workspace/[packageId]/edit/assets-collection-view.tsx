@@ -30,6 +30,7 @@ import {
   renameCollectionFileAction,
 } from "../collection-actions";
 import { setAssetMetadataAction } from "../share-actions";
+import { SHARE_NEEDS_PUBLISH } from "@/lib/share-policy";
 import { adaptElementAction } from "../adapt-actions";
 import { CollectionEditorPane } from "./collection-editor-pane";
 import { ReplaceFileButton } from "./replace-file-button";
@@ -125,6 +126,7 @@ export function AssetsCollectionView({
   tree,
   chapters,
   assetMeta,
+  canShare,
   onDirty,
 }: {
   packageId: string;
@@ -133,6 +135,8 @@ export function AssetsCollectionView({
   tree: CollectionScopeTree[];
   chapters: Chapter[];
   assetMeta: Record<string, AssetMeta>;
+  /** P5.R.2: the share control is offered only for a published course. */
+  canShare: boolean;
   onDirty?: (d: boolean) => void;
 }): React.JSX.Element {
   // Reads (the `tree`) and writes must use the SAME dir this package uses.
@@ -307,6 +311,7 @@ export function AssetsCollectionView({
             packageId={packageId}
             leaf={leaf}
             meta={assetMeta[leaf.path]}
+            canShare={canShare}
             depth={depth}
             pending={pending}
             onRename={() => onRename(leaf)}
@@ -463,6 +468,7 @@ function FileRow({
   packageId,
   leaf,
   meta,
+  canShare,
   depth,
   pending,
   onRename,
@@ -476,6 +482,7 @@ function FileRow({
   packageId: string;
   leaf: FileLeaf;
   meta: AssetMeta | undefined;
+  canShare: boolean;
   depth: number;
   pending: boolean;
   onRename: () => void;
@@ -584,6 +591,7 @@ function FileRow({
           leaf={leaf}
           cls={cls}
           meta={meta}
+          canShare={canShare}
           onRefresh={onRefresh}
           onDirty={onDirty}
         />
@@ -602,6 +610,7 @@ function MetadataPanel({
   leaf,
   cls,
   meta,
+  canShare,
   onRefresh,
   onDirty,
 }: {
@@ -609,6 +618,7 @@ function MetadataPanel({
   leaf: FileLeaf;
   cls: HandlingClass;
   meta: AssetMeta | undefined;
+  canShare: boolean;
   onRefresh: () => void;
   onDirty?: (d: boolean) => void;
 }) {
@@ -653,7 +663,8 @@ function MetadataPanel({
         description: description.trim() || undefined,
         tags,
         license: license.trim(),
-        discoverable,
+        // No share control in a trial course: leave sharing as it is.
+        ...(canShare ? { discoverable } : {}),
       });
       if (!r.ok) {
         setError(r.error ?? "That didn't save.");
@@ -720,17 +731,21 @@ function MetadataPanel({
           />
         </label>
       </div>
-      <label className="flex items-center gap-2 text-xs text-muted">
-        <input
-          type="checkbox"
-          checked={discoverable}
-          onChange={(e) => {
-            setDiscoverable(e.target.checked);
-            markDirty();
-          }}
-        />
-        Discoverable — others can find and reuse this on Discover
-      </label>
+      {canShare ? (
+        <label className="flex items-center gap-2 text-xs text-muted">
+          <input
+            type="checkbox"
+            checked={discoverable}
+            onChange={(e) => {
+              setDiscoverable(e.target.checked);
+              markDirty();
+            }}
+          />
+          Discoverable — others can find and reuse this on Discover
+        </label>
+      ) : (
+        <p className="text-xs text-faint">{SHARE_NEEDS_PUBLISH}</p>
+      )}
       <div className="flex flex-wrap items-center gap-2">
         <button
           onClick={save}

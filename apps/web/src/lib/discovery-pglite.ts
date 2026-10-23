@@ -59,18 +59,30 @@ export function readMigration(name: string): string {
   return readFileSync(join(MIGRATIONS_DIR, name), "utf8");
 }
 
-/** A fresh database with every migration applied, in order. */
-export async function freshDatabase(): Promise<PGlite> {
+/**
+ * A fresh database with every migration applied, in order — or, with
+ * `before`, only the migrations whose file name sorts before it (so a test can
+ * seed the state an upgrade meets, then `applyMigrationsFrom(db, before)`).
+ */
+export async function freshDatabase(opts: { before?: string } = {}): Promise<PGlite> {
   const db = await PGlite.create({ extensions: { pg_trgm } });
   await db.exec(SUPABASE_STUB);
-  for (const f of migrationFiles()) {
-    try {
-      await db.exec(readMigration(f));
-    } catch (e) {
-      throw new Error(`${f}: ${(e as Error).message}`);
-    }
-  }
+  const files = migrationFiles().filter((f) => opts.before === undefined || f < opts.before);
+  for (const f of files) await applyMigration(db, f);
   return db;
+}
+
+/** Apply every migration whose file name sorts at or after `from`, in order. */
+export async function applyMigrationsFrom(db: PGlite, from: string): Promise<void> {
+  for (const f of migrationFiles().filter((n) => n >= from)) await applyMigration(db, f);
+}
+
+async function applyMigration(db: PGlite, f: string): Promise<void> {
+  try {
+    await db.exec(readMigration(f));
+  } catch (e) {
+    throw new Error(`${f}: ${(e as Error).message}`);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -99,6 +111,14 @@ export interface PackageSeed {
   manifest?: Record<string, unknown>;
   /** Insert the "List publicly" consent row. */
   listed?: boolean;
+  /**
+   * The repository the publish path recorded (`packages.public_repo`, service
+   * role only since migration 0025). Default for a published package: the
+   * manifest's `publicRepo`; `null` = none recorded.
+   */
+  recordedRepo?: { owner: string; name: string } | null;
+  /** The server-recorded accessibility result (`packages.a11y_status`, 0025). */
+  a11y?: "pass" | "warn" | "fail" | "unknown";
 }
 
 export function manifestFor(id: string, title: string, over: Record<string, unknown> = {}) {
@@ -127,11 +147,31 @@ export async function seedPackage(db: PGlite, seed: PackageSeed): Promise<string
     delete (manifest as Record<string, unknown>)["publicRepo"];
     delete (manifest as Record<string, unknown>)["privateRepo"];
   }
+  const recorded =
+    seed.recordedRepo !== undefined
+      ? seed.recordedRepo
+      : storage === "github"
+        ? ((manifest as Record<string, unknown>)["publicRepo"] ?? null)
+        : null;
   await db.query(
-    `insert into public.packages (id, owner_id, title, manifest, storage, archived_at)
-     values ($1, $2, $3, $4, $5, $6)`,
-    [id, seed.owner, title, JSON.stringify(manifest), storage, seed.archived ? new Date().toISOString() : null],
+    `insert into public.packages (id, owner_id, title, manifest, storage, archived_at, public_repo)
+     values ($1, $2, $3, $4, $5, $6, $7)`,
+    [
+      id,
+      seed.owner,
+      title,
+      JSON.stringify(manifest),
+      storage,
+      seed.archived ? new Date().toISOString() : null,
+      recorded === null ? null : JSON.stringify(recorded),
+    ],
   );
+  if (seed.a11y) {
+    await db.query(`update public.packages set a11y_status = $2, a11y_checked_at = now() where id = $1`, [
+      id,
+      seed.a11y,
+    ]);
+  }
   if (seed.listed) await listPackage(db, id, seed.owner);
   return id;
 }

@@ -74,9 +74,12 @@ export async function registerPackageAction(
     };
   }
 
+  // `owner_id` is NOT sent: it defaults to the caller (auth.uid()) and the
+  // database refuses a row for a package the caller does not own (migration
+  // 0025, security loop r1 H1). Sending it would make the upsert SET it, which
+  // needs read access to owner_id — a column no API role may read.
   const { error } = await supabase.from("portal_registrations").upsert({
     package_id: packageId,
-    owner_id: user.id,
     title: record!.title,
     description: record!.manifest.description ?? "",
     keywords: record!.manifest.keywords ?? [],

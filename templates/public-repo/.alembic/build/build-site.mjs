@@ -18,8 +18,9 @@
  * worksheets in `materials/worksheets/*.md`; those are listed too.
  *
  * File includes (`{{md part.md}}`) resolve relative to the including file and
- * only inside this repository (orz-markdown ≥ 2.0 `markdownIncludeRoot`), so
- * a build never reads a file outside the checkout.
+ * only inside this repository (orz-markdown ≥ 2.0 `markdownIncludeRoot`), and
+ * never into `.git/` (`include-guard.mjs`), so a build never reads a file
+ * outside the checkout nor the checkout's own Git data.
  */
 import {
   readFileSync, writeFileSync, mkdirSync, readdirSync, existsSync, rmSync,
@@ -27,6 +28,7 @@ import {
 import { join, basename, dirname } from "node:path";
 import { createRequire } from "node:module";
 import { md } from "orz-markdown";
+import { includeEnv } from "./include-guard.mjs";
 
 const require = createRequire(import.meta.url);
 const ROOT = process.cwd();
@@ -60,9 +62,8 @@ ${bodyHtml}
 }
 
 const read = (p) => (existsSync(p) ? readFileSync(p, "utf8") : "");
-// File includes stay inside the repository; a fresh env per render.
-const render = (path) =>
-  md.render(read(path), { markdownBasePath: dirname(path), markdownIncludeRoot: ROOT });
+// File includes stay inside the repository and out of .git; a fresh env per render.
+const render = (path) => md.render(read(path), includeEnv(ROOT, dirname(path)));
 function listMd(dir) {
   const d = join(ROOT, dir);
   if (!existsSync(d)) return [];

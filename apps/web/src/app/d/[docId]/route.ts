@@ -7,6 +7,14 @@ import { servePermalink } from "@/lib/permalink-response";
 import { DocBytesCache } from "@/lib/doc-bytes-cache";
 import { nextDocBytesLayer } from "@/lib/next-doc-bytes-layer";
 import { checkRateLimit } from "@/lib/rate-limit-server";
+import {
+  clientIp,
+  FallbackRateStore,
+  MemoryRateStore,
+  PostgresRateStore,
+  rateSecret,
+} from "@/lib/rate-limit";
+import { isFirstView } from "@/lib/view-dedupe";
 import { recordDiscoveryEvent } from "@/lib/record-discovery-event";
 
 export const dynamic = "force-dynamic";
@@ -29,9 +37,10 @@ export const dynamic = "force-dynamic";
  *
  * Caching (Phase 5 Track A.6, `lib/permalink-response.ts`): public answers
  * carry an ETag of the registry hash, answer 304 without touching GitHub,
- * pinned ones are immutable, live ones CDN-cached 5 min with
- * stale-while-revalidate; their bytes are cached per (docId, hash) so GitHub
- * is read once per version. Owner-only answers stay `private, no-store`.
+ * pinned ones are immutable in the browser, and no shared cache keeps any
+ * answer longer than the 300 s takedown bound (`TAKEDOWN_BOUND_SECONDS`);
+ * their bytes are cached per (docId, hash) so GitHub is read once per
+ * version. Owner-only answers stay `private, no-store`.
  * Rate limited per client IP (`lib/rate-limit.ts`).
  *
  * Anonymous access to published public files needs the service client
@@ -44,11 +53,23 @@ const VIEWED_DOCUMENT = /\.(md\.html|slides\.html|paged\.html|html|md)$/i;
 /** One per server instance: GitHub bytes per (docId, source hash). */
 const bytesCache = new DocBytesCache({ shared: nextDocBytesLayer });
 
+/** In-process fallback of the view de-duplication counter (bounded). */
+const viewMemory = new MemoryRateStore(20_000);
+
+/** First view of this doc from this address this hour? (`lib/view-dedupe.ts`) */
+function firstViewThisHour(docId: string, headers: Pick<Headers, "get">): Promise<boolean> {
+  const service = createServiceClient();
+  const store = service ? new FallbackRateStore(new PostgresRateStore(service), viewMemory) : viewMemory;
+  return isFirstView(store, docId, clientIp(headers), rateSecret());
+}
+
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ docId: string }> },
 ) {
-  const raw = decodeURIComponent((await params).docId);
+  // Decoded inside `servePermalink`, after the rate limit: a malformed
+  // escape answers like a missing doc (security loop r1, L1).
+  const raw = (await params).docId;
   const session = await createSupabaseServerClient();
 
   return servePermalink(raw, req.headers, {
@@ -59,7 +80,10 @@ export async function GET(
     cache: bytesCache,
     // A view event per DOCUMENT opened (not per embedded figure, which
     // would multiply one reading by its image count). CDN-served views never
-    // reach here, so these count origin answers, not readers.
+    // reach here, so these count origin answers, not readers — and at most
+    // one per (doc, address, hour), so busting the CDN with `?x=n` cannot
+    // grow research_events (security loop r1, L4b). The query string plays
+    // no part in the answer: nothing here reads it.
     onPublicServed: ({ doc, pinned, status }) => {
       if (!VIEWED_DOCUMENT.test(doc.path)) return;
       recordDiscoveryEvent(
@@ -71,7 +95,7 @@ export async function GET(
           pinned,
           revalidated: status === 304,
         },
-        { session },
+        { session, gate: () => firstViewThisHour(doc.doc_id, req.headers) },
       );
     },
   });
