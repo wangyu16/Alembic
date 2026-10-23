@@ -86,6 +86,37 @@ of the class ([DecisionLog](DecisionLog.md) 2026-10-23 "Closed loop r2 (correctn
   file). Now `pageAllKeyset`: the registry walks by `doc_id`, the trial store by `path` within each repo (private,
   then public — the old `(repo, path)` order); the walk ends on an empty page or when the remaining count is read.
   Cost: ⌈N/1000⌉ round-trips (the trial store: per repo, so 2 for a small package). Code only.
+- ✅ **H-D1 — unbounded text in the projector (P5.A.1.o).** One 912 KB file description (or a course description,
+  chapter list or course context) raised "string is too long for tsvector": the write survived, but every
+  `discovery_rebuild()` aborted on that package. `0029_loop_r2c_1` caps every projected/indexed text (element
+  description 4,000, alt text 2,000, 64 tags × 100, course title 300, description 8,000, 200 chapter titles, context
+  values 200, concept map read 500 k), and the rebuild isolates each package (`discovery_rebuild_report()` lists
+  failures; the rest rebuild). At the source: `0029_loop_r2c_3` CHECK constraints on `documents.description` /
+  `alt_text` / `tags` (rows beyond are cut first — pre-check in the header), `REGISTRY_TEXT_LIMITS`
+  (package-contract) enforced with plain wording in `setAssetMetadataAction`, and a character cap on the course
+  description.
+- ✅ **M-D1 — a slow projector could fail the educator's write (P5.A.1.h, strengthened).** `exception when others`
+  does not catch `query_canceled`, and a package-level change re-projected every element inside the write (3,000
+  elements: 3.4 s, mostly a quadratic nested-loop anti-join chosen over unanalysed rows). `0029_loop_r2c_1`: the
+  stale-row delete probes the documents key per row, unchanged rows skip their tsvectors, doc-id scoping uses a
+  hashed set; a change that touches no element input refreshes the course row only; a whole-package refresh of a
+  live course with > 1,000 candidates refreshes the course row and queues the elements in `discovery_pending`,
+  drained by `discovery_flush_package` (the owner, after the write, ≤ 1,000-element chunks, ~2 s per call) — the app
+  calls it (`lib/discovery-flush.ts`) after every manifest-cache write, listing, publish, restore, rename and on the
+  edit page; `query_canceled` is caught by name, queued, and turns every later refresh of that transaction into a
+  queue entry. Measured (PGlite, 3,000 elements, unanalysed): rename in the write 3,597 → 49 ms (+ flush 2,118 +
+  37 ms after it), description edit 2,739 → 45 ms, no-change refresh 2,929 → 256 ms, rebuild 4,055 → 572 ms,
+  insert of 3,000 shared rows in one statement 2,481 → 2,387 ms.
+- ✅ **L-D1 — concept map (P5.A.1.p).** A rename away by UPDATE now re-projects (the trigger watches old and new
+  path); concept-map changes refresh the course row only.
+- ✅ **L-D2 — concurrent refreshes (P5.A.1.q).** Per-package `pg_try_advisory_xact_lock`; the loser queues itself
+  (never waits, never deadlocks); a rebuild takes none (lock-table exhaustion). Residual: the queued refresh lands
+  at the next flush, not at once.
+- ✅ **M-D3 — `registered_at` and the update-trigger filter: moot (P5.A.1.n).** Since `0028_loop_r2_1` the column
+  cannot change on UPDATE for any role; a test proves an attempted change leaves the projection equal to a rebuild.
+- ✅ **Composition (P5.A.1.r).** Every function `0029_*` redefines starts from its latest definition (`0028_1`'s
+  projector, `0027`'s `documents_apply`, `0026`'s wrapper/drain, `0025_2`'s package trigger, `0022`'s concept-map
+  trigger and rebuild); a test asserts the live definitions still carry r1/r1b/r2/r2c rules and every trigger.
 
 **Phase 5 closed-loop verification — round 2, steps 4–5: security audit probes and class fixes (2026-10-23,
 branch `phase5/loop-r2-sec`, not merged, migrations `0028_loop_r2_*` NOT applied).** Each round-2 security finding

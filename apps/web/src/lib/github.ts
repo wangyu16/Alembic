@@ -19,6 +19,7 @@ import { registerChanges, syncPackageRegistry } from "@/lib/register";
 import { refreshManifestAfterReconcile } from "@/lib/reconcile-manifest";
 import { recordedPublicRepo } from "@/lib/recorded-repo";
 import { recordSyncedSha, syncedShaFor } from "./synced-sha";
+import { flushDiscovery } from "@/lib/discovery-flush";
 
 export interface GithubConfig {
   appId: string;
@@ -167,6 +168,7 @@ export async function reconcilePackage(
     // packages.manifest read cache from it BEFORE the synced pointer moves, so
     // a failure here is retried by the next reconcile (P5.B.3.e).
     await refreshManifestAfterReconcile(supabase, packageId, outcome);
+    await flushDiscovery(supabase, packageId);
     await recordSyncedSha(supabase, packageId, outcome.headSha);
     // Door #3: register the absorbed external-commit files (best-effort).
     // The diff names exactly what changed; a large foreign commit falls back

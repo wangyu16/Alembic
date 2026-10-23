@@ -22,6 +22,7 @@ import { recordChange } from "@/lib/changes";
 import type { FixableRule } from "@/lib/a11y";
 import { a11yAuditSource, auditPackageA11y } from "@/lib/a11y-audit";
 import { clientForUser } from "@/lib/github";
+import { flushDiscovery } from "@/lib/discovery-flush";
 
 async function requireUser() {
   const supabase = await createSupabaseServerClient();
@@ -95,6 +96,7 @@ export async function recheckA11yAction(packageId: string): Promise<RecheckResul
     // Refresh the derived `packages.manifest` read cache from what the write
     // path returned — never by re-deriving it.
     await supabase.from("packages").update({ manifest }).eq("id", packageId);
+    await flushDiscovery(supabase, packageId);
     // The result Discover trusts is the server's own record of THIS run
     // (service-role column, migration 0025, security loop r1 M2), not the
     // owner-writable manifest field — and only a run over the PUBLISHED bytes

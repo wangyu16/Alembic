@@ -21,6 +21,7 @@ import { clientForUser } from "@/lib/github";
 import { committerFor } from "@/lib/committer";
 import { supabaseEventLogger } from "@/lib/events";
 import { recordDiscoveryEvent } from "@/lib/record-discovery-event";
+import { flushDiscovery } from "@/lib/discovery-flush";
 
 export interface LifecycleResult {
   ok: boolean;
@@ -75,6 +76,7 @@ export async function renamePackageAction(
     if (error) {
       return { ok: false, error: "Could not save the new name. Please try again." };
     }
+    await flushDiscovery(supabase, packageId);
     await supabaseEventLogger(supabase).log({
       type: "package.renamed",
       userId: user.id,
@@ -198,6 +200,7 @@ export async function restorePackageAction(
   if (!restored.ok) {
     return { ok: false, error: "Could not restore the package. Please try again." };
   }
+  await flushDiscovery(supabase, packageId);
   await supabaseEventLogger(supabase).log({
     type: "package.restored",
     userId: user.id,

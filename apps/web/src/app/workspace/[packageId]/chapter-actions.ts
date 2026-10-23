@@ -21,6 +21,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
 import { committerFor } from "@/lib/committer";
 import { readManifestFromStore } from "@/lib/manifest-read";
+import { flushDiscovery } from "@/lib/discovery-flush";
 
 /**
  * Chapter operations, on the one write path
@@ -95,6 +96,8 @@ async function refreshManifestColumn(
   manifest: PackageManifest,
 ): Promise<void> {
   await supabase.from("packages").update({ manifest }).eq("id", packageId);
+  // A large course's element rows are re-projected after the write (M-D1).
+  await flushDiscovery(supabase, packageId);
 }
 
 /** The manifest as it now stands, read from the authoritative file copy. Used

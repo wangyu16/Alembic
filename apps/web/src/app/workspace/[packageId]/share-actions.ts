@@ -5,6 +5,7 @@ import { discoveryChanged } from "@/lib/discovery-cache";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { recordDiscoveryEvent } from "@/lib/record-discovery-event";
 import { canOfferShare, SHARE_NEEDS_PUBLISH } from "@/lib/share-policy";
+import { REGISTRY_TEXT_LIMITS } from "@alembic/package-contract";
 
 /**
  * P2 — "share this": the per-file discoverability toggle (document-model.md
@@ -149,6 +150,14 @@ export async function setAssetMetadataAction(
     return { ok: false, error: SHARE_NEEDS_PUBLISH };
   }
   const description = input.description?.trim() || row.description || null;
+  // Bounded at the source (loop r2, P5.A.1.o; the database refuses more).
+  if (description && description.length > REGISTRY_TEXT_LIMITS.description) {
+    return { ok: false, error: `Keep the description to ${REGISTRY_TEXT_LIMITS.description.toLocaleString("en-US")} characters or fewer.` };
+  }
+  const tags = input.tags?.map((t) => t.trim()).filter(Boolean);
+  if (tags && (tags.length > REGISTRY_TEXT_LIMITS.tags || tags.some((t) => t.length > REGISTRY_TEXT_LIMITS.tagLength))) {
+    return { ok: false, error: `Use at most ${REGISTRY_TEXT_LIMITS.tags} tags of up to ${REGISTRY_TEXT_LIMITS.tagLength} characters each.` };
+  }
   if (discoverable && row.permalink_class === "object" && !description) {
     return { ok: false, error: "Add a short description first — it's what others will find it by." };
   }
@@ -156,7 +165,7 @@ export async function setAssetMetadataAction(
   const patch: Record<string, unknown> = {};
   if (input.discoverable !== undefined) patch["discoverable"] = input.discoverable;
   patch["description"] = description;
-  if (input.tags) patch["tags"] = input.tags.map((t) => t.trim()).filter(Boolean);
+  if (tags) patch["tags"] = tags;
   if (input.license !== undefined) patch["license"] = input.license.trim() || null;
 
   const { error } = await supabase

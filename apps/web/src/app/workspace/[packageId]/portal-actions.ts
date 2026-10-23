@@ -12,6 +12,7 @@ import { recordDiscoveryEvent } from "@/lib/record-discovery-event";
 import { recordedPublicRepo, repoUrl } from "@/lib/recorded-repo";
 import { packageTrustWriter } from "@/lib/package-trust-writes";
 import { createServiceClient } from "@/lib/supabase/service";
+import { flushDiscovery } from "@/lib/discovery-flush";
 
 export interface RegisterResult {
   ok: boolean;
@@ -94,6 +95,7 @@ export async function registerPackageAction(
   if (!listed.ok) {
     return { ok: false, error: "Could not list the package. Please try again." };
   }
+  await flushDiscovery(supabase, packageId);
 
   const attestedAt = new Date().toISOString();
   await supabaseEventLogger(supabase).log({

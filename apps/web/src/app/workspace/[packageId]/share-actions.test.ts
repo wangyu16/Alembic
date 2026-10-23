@@ -115,3 +115,17 @@ describe("sharing in a trial course", () => {
     expect(view).toMatch(/\.\.\.\(canShare \? \{ discoverable \} : \{\}\)/);
   });
 });
+
+describe("bounded at the source (loop r2 correctness, H-D1)", () => {
+  it("[P5.A.1.o] an over-long description or tag list is refused with plain wording, and nothing is written", async () => {
+    const long = await setAssetMetadataAction("pkg-1", "doc-1", { description: "x".repeat(4001) });
+    expect(long).toMatchObject({ ok: false, error: "Keep the description to 4,000 characters or fewer." });
+    const many = await setAssetMetadataAction("pkg-1", "doc-1", { tags: Array.from({ length: 65 }, (_, i) => `t${i}`) });
+    expect(many.ok).toBe(false);
+    const wide = await setAssetMetadataAction("pkg-1", "doc-1", { tags: ["y".repeat(101)] });
+    expect(wide.ok).toBe(false);
+    expect(state.updates).toHaveLength(0);
+    const ok = await setAssetMetadataAction("pkg-1", "doc-1", { description: "x".repeat(4000), tags: Array.from({ length: 64 }, (_, i) => `t${i}`) });
+    expect(ok.ok).toBe(true);
+  });
+});

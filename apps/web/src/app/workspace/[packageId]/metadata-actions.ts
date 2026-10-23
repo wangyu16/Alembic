@@ -18,6 +18,8 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
 import { committerFor } from "@/lib/committer";
 import { readManifestFromStore } from "@/lib/manifest-read";
+import { flushDiscovery } from "@/lib/discovery-flush";
+import { REGISTRY_TEXT_LIMITS } from "@alembic/package-contract";
 
 /**
  * Course-level details on the one write path
@@ -75,6 +77,8 @@ async function refreshManifestColumn(
   manifest: PackageManifest,
 ): Promise<void> {
   await supabase.from("packages").update({ manifest }).eq("id", packageId);
+  // A large course's element rows are re-projected after the write (M-D1).
+  await flushDiscovery(supabase, packageId);
 }
 
 export interface DescriptionResult {
@@ -180,7 +184,11 @@ export async function setCourseInfoAction(
       return t ? t : undefined;
     };
     const description = (info.description ?? "").trim();
-    if (wordCount(description) > COURSE_DESCRIPTION_MAX_WORDS) {
+    if (
+      wordCount(description) > COURSE_DESCRIPTION_MAX_WORDS ||
+      // and in characters (loop r2, P5.A.1.o): 200 "words" can be megabytes
+      description.length > REGISTRY_TEXT_LIMITS.courseDescription
+    ) {
       return {
         ok: false,
         error: `Keep the course description to ${COURSE_DESCRIPTION_MAX_WORDS} words or fewer.`,

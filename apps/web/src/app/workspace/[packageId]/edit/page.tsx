@@ -20,6 +20,7 @@ import { syncPackageRegistry } from "@/lib/register";
 import { SupabaseDocumentRegistryStore } from "@/lib/document-registry-store";
 import { canOfferShare } from "@/lib/share-policy";
 import { recordedPublicRepo } from "@/lib/recorded-repo";
+import { flushDiscovery } from "@/lib/discovery-flush";
 
 /**
  * Server actions invoked from this page inherit its time budget, and publishing
@@ -79,6 +80,8 @@ export default async function EditShellPage({
   await syncPackageRegistry(supabase, packageId, "created", {
     onlyIfPathsChanged: true,
   });
+  // Drain any discovery refresh still queued for this course (M-D1).
+  await flushDiscovery(supabase, packageId);
 
   // A published package that hasn't been written in yet can be filled in one
   // shot by uploading an offline-authored .zip (images and all). Same predicate

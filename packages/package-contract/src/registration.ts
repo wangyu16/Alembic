@@ -154,3 +154,25 @@ export function assertRegistrationInvariants(record: RegistrationRecord): void {
     );
   }
 }
+
+/**
+ * Bounds on the owner-written text of a registered file and of the course
+ * listing (correctness loop r2, H-D1, P5.A.1.o). The registry columns carry
+ * the same limits as CHECK constraints (migration 0029_loop_r2c_3); the
+ * discovery projector caps what it indexes at or above them, so no stored
+ * value can break a rebuild. Deliberately NOT in the schemas above: a record
+ * or manifest written before the bound must still parse.
+ */
+export const REGISTRY_TEXT_LIMITS = {
+  /** documents.description, characters. */
+  description: 4000,
+  /** documents.alt_text, characters. */
+  altText: 2000,
+  /** documents.tags, entries. */
+  tags: 64,
+  /** One tag, characters. */
+  tagLength: 100,
+  /** manifest.description (the course listing), characters. */
+  courseDescription: 4000,
+} as const;
+

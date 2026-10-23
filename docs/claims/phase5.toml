@@ -243,11 +243,18 @@ bound_to = [
 
 [[claim]]
 id = "P5.A.1.h"
-claim = "A failing projector never fails the educator's write (best-effort: a WARNING, not an error)."
+claim = "A failing, slow or cancelled projector never fails the educator's write: an error is a WARNING; a statement-timeout cancel (query_canceled, which `others` does not catch) is caught by name, the refresh queued, and every later refresh of that transaction queued instead of run; inside the write, a package-level change that touches no element input refreshes the course row only, and a whole-package refresh of a live course with more than 1,000 candidate elements refreshes the course row and queues the elements, which the owner's discovery_flush_package (its own statement, after the write) drains in ≤ 1,000-element chunks of ≤ ~2 s; every manifest-cache writer drains after itself."
 oracle = "invariant"
 bound_to = [
   "apps/web/src/lib/discovery-projection.sql.test.ts :: a failing projector never fails the educator's write",
+  "apps/web/src/lib/loop-r2-cor.sql.test.ts :: a projector cancelled by the statement timeout (57014) is queued, the write commits, later refreshes queue too",
+  "apps/web/src/lib/loop-r2-cor.sql.test.ts :: a course-only edit of a 3,000-element course rewrites no element row",
+  "apps/web/src/lib/loop-r2-cor.sql.test.ts :: a rename of a 3,000-element course updates the course row in the write and queues the elements; the owner's flush drains them in chunks",
+  "apps/web/src/lib/loop-r2-cor.sql.test.ts :: the queue and the service flush are not the API's: anon cannot flush, authenticated cannot read the queue or drain others",
+  "apps/web/src/lib/discovery-flush.test.ts :: asks the database to drain this package's queue, and never throws",
+  "apps/web/src/lib/discovery-flush.test.ts :: every writer of the packages.manifest read cache drains the discovery queue after it",
 ]
+note = "Strengthened in loop r2 correctness (M-D1, migration 0029_loop_r2c_1). Measured under the harness at 3,000 elements, unanalysed tables (PGlite): course rename in the write 3,597 ms → 49 ms (+ flush 2,118 + 37 ms after it); course description edit 2,739 → 45 ms; whole refresh, nothing changed 2,929 → 256 ms; discovery_rebuild 4,055 → 572 ms. Residual: a refresh that loses the per-package lock (L-D2) is queued and drained at the next flush (manifest write, listing, publish, restore, edit-page visit) or rebuild — not immediately."
 
 [[claim]]
 id = "P5.A.1.i"
@@ -1510,6 +1517,7 @@ bound_to = [
   "apps/web/src/lib/loop-r2-sec.sql.test.ts :: documents.registered_at ignores a client value (direct insert, update, documents_apply)",
   "apps/web/src/lib/loop-r2-sec.sql.test.ts :: the projector never projects a future timestamp, whatever a base row holds",
   "apps/web/src/lib/loop-r2-sec.sql.test.ts :: future registered_at values already stored are brought back to now",
+  "apps/web/src/lib/loop-r2-cor.sql.test.ts :: kept: an UPDATE of documents.registered_at (owner or service) changes nothing, so the update trigger needs no such filter",
 ]
 note = "Loop r2 NEW-2, migration 0028_loop_r2_1 (either order with the code; header has the read-only pre-check)."
 
@@ -1689,4 +1697,54 @@ bound_to = [
   "apps/web/src/lib/manifest-writers.scan.test.ts :: the scan recognises a direct write and ignores comments",
 ]
 note = "Loop r2 correctness L-3 (mirrorManifestToSandbox removed). Code only."
+
+# H-D1 — the projector bounds every text; a rebuild survives a bad package
+
+[[claim]]
+id = "P5.A.1.o"
+claim = "The projector bounds every text it projects or indexes (element description ≤ 4,000 chars, alt text ≤ 2,000, ≤ 64 tags of ≤ 100, course title ≤ 300, course description ≤ 8,000, ≤ 200 chapter titles, context values ≤ 200), so no stored value can raise 'string is too long for tsvector'; discovery_rebuild() isolates each package (a failure is reported by discovery_rebuild_report() and the rest rebuild); the registry refuses an over-long description / alt text / tag list at the source (CHECK constraints; the app says so in plain words)."
+oracle = "probe"
+bound_to = [
+  "apps/web/src/lib/loop-r2-cor.sql.test.ts :: a 1.3 MB file description (stored before the bound) projects capped, and the rebuild succeeds",
+  "apps/web/src/lib/loop-r2-cor.sql.test.ts :: a course with a 2 MB description and 5,000 chapter titles projects bounded and rebuilds",
+  "apps/web/src/lib/loop-r2-cor.sql.test.ts :: discovery_rebuild isolates a failing package: it is reported, every other package is rebuilt",
+  "apps/web/src/lib/loop-r2-cor.sql.test.ts :: the registry refuses an over-long description, alt text or tag list — from the owner's session and documents_apply",
+  "apps/web/src/app/workspace/[packageId]/share-actions.test.ts :: an over-long description or tag list is refused with plain wording, and nothing is written",
+]
+note = "Loop r2 correctness H-D1 (repro /tmp/p5r2disc/tsv.mts: one 912 KB description aborted every rebuild). Migrations 0029_loop_r2c_1 (caps, isolation) and 0029_loop_r2c_3 (CHECK constraints; rows beyond a bound are cut first — pre-check in the header)."
+
+# L-D1 — concept map
+
+[[claim]]
+id = "P5.A.1.p"
+claim = "A concept-map change re-projects the course row only (topics are course-level), and renaming concepts/course.md away by UPDATE drops its topics like a delete would (the update trigger watches the old path as well as the new)."
+oracle = "probe"
+bound_to = [
+  "apps/web/src/lib/loop-r2-cor.sql.test.ts :: renaming concepts/course.md away by UPDATE drops its topics (incremental = rebuild)",
+]
+note = "Loop r2 correctness L-D1 (repro /tmp/p5r2disc/probes.mts P2). 0029_loop_r2c_1 §8."
+
+# L-D2 — one refresh per package at a time
+
+[[claim]]
+id = "P5.A.1.q"
+claim = "A package is projected by one transaction at a time: the projector takes a per-package transaction advisory lock without waiting, and a refresh that cannot take it is queued (discovery_pending) instead of interleaving; a rebuild takes no such locks (thousands would exhaust the shared lock table)."
+oracle = "probe"
+bound_to = [
+  "apps/web/src/lib/loop-r2-cor.sql.test.ts :: a refresh holds the package's advisory lock to the end of its transaction; a rebuild holds none",
+]
+note = "Loop r2 correctness L-D2. PGlite is single-connection: the contended path itself (discovery_pend) is exercised through the cancelled-projector probe, not by two live transactions."
+
+# Composition — no migration silently reverted an earlier fix
+
+[[claim]]
+id = "P5.A.1.r"
+claim = "After every migration, the live definitions of the projector, the registry functions and the triggers still carry every earlier round's rules (r1 trust, r1b guards/scope/recency/atomicity, r2 clamps/retired ids/scoping, r2c bounds/lock/owner-set rules), and the internal projector functions stay closed to the API roles."
+oracle = "invariant"
+bound_to = [
+  "apps/web/src/lib/loop-r2-cor.sql.test.ts :: discovery_refresh_package carries r1 trust, r1b guards/scope/recency, r2 clamps and r2c bounds/lock",
+  "apps/web/src/lib/loop-r2-cor.sql.test.ts :: every trigger of rounds r1b, r2 and r2c is installed",
+  "apps/web/src/lib/loop-r2-cor.sql.test.ts :: the internal projector functions stay closed to the API roles",
+]
+note = "Loop r2 correctness, the composition rule (round 1's 0026 silently reverted 0025_2). A future migration that redefines one of these functions must keep the markers or update this test deliberately."
 

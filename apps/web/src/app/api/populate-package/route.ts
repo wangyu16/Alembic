@@ -35,6 +35,7 @@ import { syncPackageRegistry } from "@/lib/register";
 import { rewriteMarkdownRefs } from "@/lib/rewrite-md-refs";
 import { commitInRounds } from "@/lib/populate-rounds";
 import { recordedPrivateRepo, recordedPublicRepo } from "@/lib/recorded-repo";
+import { flushDiscovery } from "@/lib/discovery-flush";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -359,6 +360,7 @@ export async function POST(req: NextRequest) {
     // The manifest file copy is the authoritative one and was just committed;
     // the column is a derived read cache, refreshed from the same value.
     await supabase.from("packages").update({ manifest: plan.manifest }).eq("id", packageId);
+    await flushDiscovery(supabase, packageId);
 
     if (linkIssues.length > 0) {
       // Everything that could be committed was. Keep the staged file so the

@@ -28,6 +28,7 @@ import {
 import { slugForFile } from "@/lib/export";
 import { manifestFromFiles } from "@/lib/manifest-read";
 import { recordedPublicRepo, repoUrl } from "@/lib/recorded-repo";
+import { flushDiscovery } from "@/lib/discovery-flush";
 
 /**
  * Create a repo from a template, but tolerate a re-run after a partial publish:
@@ -285,6 +286,7 @@ export async function publishToGitHubAction(
 
     revalidatePath(`/workspace/${packageId}`);
     // Publishing makes the course's shared files listable (P5.S.8).
+    await flushDiscovery(supabase, packageId);
     discoveryChanged();
     return { ok: true, publicRepoUrl: `https://github.com/${owner}/${publicName}` };
   } catch (e) {

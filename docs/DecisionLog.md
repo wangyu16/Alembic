@@ -6,6 +6,45 @@ design, and what is deferred to the future. Complements [Status.md](Status.md)
 
 ---
 
+## 2026-10-23 — Closed loop r2 (correctness): bounded projector, dormant uids, owner-set fields, outside changes
+
+Round-2 correctness audit (probes in `/tmp/p5r2/`, `/tmp/p5r2disc/`), fixed on branch `phase5/loop-r2-cor`, built
+ON TOP of `phase5/loop-r2-sec` (not merged, migrations `0029_loop_r2c_1…3` not applied). Decisions:
+
+- **Composition rule.** Every function a 0029 migration redefines starts from its LATEST definition and keeps
+  every earlier rule; `loop-r2-cor.sql.test.ts` asserts the live definitions carry them (P5.A.1.r). Round 1 lost
+  0025_2's trust rules to 0026 exactly this way.
+- **The write path refreshes at most what it can afford (P5.A.1.h).** Inside a write: the touched element rows,
+  or the course row only when no element input changed, or — for a whole-package refresh of a live course above
+  1,000 candidate elements — the course row now and the elements queued. The queue is drained by the OWNER after
+  the write (`discovery_flush_package`, its own statement, ≤ 1,000-element chunks, ~2 s budget), so a timeout there
+  can never undo the write. Chosen over a cron (none exists) and over draining in Discover reads (anonymous reads
+  must not do write work). Residual accepted: a big course's elements show the old course title for a few seconds;
+  search re-checks listability live, so nothing unlisted is ever served.
+- **`query_canceled` is caught by name in the best-effort wrapper and the drain** (Postgres: "possible, but often
+  unwise"). Made safe by the transaction-local flag `alembic.discovery_cancelled`: after a cancel every later
+  refresh of that transaction is queued, not run, so no projector work runs on without a timeout; the write
+  (AFTER triggers: already done) commits. A client's own cancel of such a statement also lets the write through —
+  accepted, the alternative being a failed save.
+- **Per-package advisory lock, try-only (P5.A.1.q)**: a loser queues itself rather than waiting (no stall behind a
+  projector, no deadlock); the rebuild skips the lock (one transaction over thousands of packages would fill the
+  shared lock table).
+- **Text bounds (P5.A.1.o)**: the projector caps what it indexes (it must never fail on stored data); the registry
+  columns get CHECK constraints (4,000 / 2,000 / 64 × 100), cutting the few stored values beyond them first — a
+  NOT VALID constraint would make every later registration of such a row fail. The schemas in package-contract
+  stay unbounded on purpose (an old record or manifest must still parse); the limits live in
+  `REGISTRY_TEXT_LIMITS` and are enforced at the write gates.
+- **`/d` (P5.A.6.o)**: an unpinned answer re-verifies within 60 s (cost: one origin read per document per window
+  per instance — accepted for freshness); a pinned answer does not (its bytes are content-addressed). A stale row
+  triggers a one-file re-registration from the bytes just read (service client, once per doc per window). Known
+  interplay: for a published course with an unreconciled outside commit, `/d` registers GitHub's bytes while the
+  edit page's heal registers the trial mirror's — they alternate until "Check for outside changes" runs.
+- **Outside changes (P5.B.3.f)**: the save is refused only when the outside change touched a file the save writes
+  (CAS by path, fail closed); other saves go through but never advance the synced pointer past the outside commit
+  (it stays visible to reconcile). No persistent "needs reconcile" flag (it would need a column and a writer);
+  the refusal message is the visible signal. Residual: Alembic's own commits after an outside one look outside
+  too until reconcile runs.
+
 ## 2026-10-23 — Closed loop r2 (security): server-owned signals, ids never reissued, Supabase-shaped test database
 
 Round-2 security audit (probes in `/tmp/alembic-r2/`), fixed on branch `phase5/loop-r2-sec` (not merged,

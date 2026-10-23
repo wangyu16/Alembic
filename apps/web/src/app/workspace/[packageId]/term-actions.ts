@@ -24,6 +24,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
 import { readManifestFromStore } from "@/lib/manifest-read";
 import { committerFor } from "@/lib/committer";
+import { flushDiscovery } from "@/lib/discovery-flush";
 
 /**
  * Term operations for the Current collection (CF5.3), the thin server layer
@@ -83,6 +84,8 @@ async function refreshManifestColumn(
   manifest: PackageManifest,
 ): Promise<void> {
   await supabase.from("packages").update({ manifest }).eq("id", packageId);
+  // A large course's element rows are re-projected after the write (M-D1).
+  await flushDiscovery(supabase, packageId);
 }
 
 /** Every term in the package (current first). Drives the term switcher. */
