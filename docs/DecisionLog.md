@@ -6,6 +6,16 @@ design, and what is deferred to the future. Complements [Status.md](Status.md)
 
 ---
 
+## 2026-10-23 — Security loop r1: report caps per reporting source; RPC time bound on the roles (M4, L4a)
+
+| # | Decision | Why |
+|---|---|---|
+| 1 | `file_portal_report_v2` **validates before it counts**: the package must exist and be listed (a listed course, or a published course with a shared element), else `invalid` and no counter moves. The per-package cap becomes per **(package, reporting source)** — 5 / hour, 10 / day — where the source is an HMAC of the signed-in user or the address (never the address itself); the global 60 / hour, 300 / day is charged only by valid reports. The 0024 function delegates to it. | Junk ids exhausted the global cap and an infringer could pre-fill its own package's cap. A rotating client naming real listed courses can still use the global hour — the same bound as before, now paid in valid, stored reports. |
+| 2 | **No foreign key** on `portal_reports.package_id`. | Reports are operator records; they must outlive a purged package row. Validation at the door gives what the FK would. |
+| 3 | The discovery RPCs' time bound is the **role's** `statement_timeout` (anon 3 s, authenticated 8 s, pinned in 0025_loop_r1_4), **not** a function-level `set statement_timeout`. | Postgres arms the timeout when a statement starts, so a function's own setting does not bound the one-statement PostgREST call; PostgREST applies the role's settings per request. Per-call work is already bounded in SQL; call volume is not bounded by the database (documented in discovery-index.md). |
+
+---
+
 ## 2026-10-23 — Security loop r1: `/d` takedown bound, view de-duplication, include budget (M3, L4b, M5)
 
 | # | Decision | Why |

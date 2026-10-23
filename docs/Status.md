@@ -92,6 +92,13 @@ then a fix for the whole class. Per finding (⬜ open · ✅ fixed on this branc
 
 - ✅ **Template** checkout credentials; `.git/` includes (P5.S.12.a–b): every checkout (template + repo CI) sets `persist-credentials: false`, and the template's site build reads includes through `include-guard.mjs`, which refuses any real or lexical path with a `.git` segment (any case, symlinks followed).
 
+**Deploy order for the round (nothing applied; code and migrations are on this branch only):** (1) deploy the
+loop-r1 web code with `SUPABASE_SECRET_KEY` set (publish/archive/restore and every research event now need it) and
+the worker with `WORKER_TOKEN` set (it refuses requests without one); (2) run the operator pre-check queries in the
+headers of `0025_loop_r1_1` and `0025_loop_r1_2`; (3) apply `0025_loop_r1_1_listing_consent` → `_2_package_trust` →
+`_3_report_cap` → `_4_rpc_timeouts` → `_5_research_events`, in that order (`_3` and `_4` would also work before the
+code; `_1`, `_2` and `_5` must come after it). The template change reaches each course repo on its next template update.
+
 - ⏸ **L2** 32-bit FNV pin hash forgeable — accepted until R3, owner decision pending (P5.S.L2, red by design; DecisionLog).
 
 - ✅ **Ruling 2** "Share this" hidden in a trial course (P5.R.2): the asset panel shows "Sharing is available once the course is published." instead of the Discoverable control (`canOfferShare(storage)`), and both share actions refuse to share a trial course's file.
