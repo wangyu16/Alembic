@@ -125,6 +125,16 @@ deploys production; the owner says when).
   round. *Not changed — needs the owner:* `CLAUDE.md` still says Studio is "slated for removal" (it was
   removed 2026-07-04) and rule 3 names `packageOps(store, packageId)` as the write path (the seam is
   `writeThrough`/`updateManifest`, storage-and-write-paths.md); a proposed wording is with the owner.
+- **0.5 Stale comments.** `hosted-carrier.ts` said a save persists the `rendered` bytes — the host decides
+  (chapter documents keep only the lean source; collection documents the bytes). `validateProject`'s header
+  lists check 0 (skeleton files) and the v2 `assets/` folder (its check-3 wording had already been fixed,
+  so the 2026-08-28 referral below is closed). `committer.ts` no longer says callers are still being moved
+  off `syncFilesToGitHub`: those helpers are gone (also closing that referral). **Left for the owner** (zero
+  callers outside their own package and tests, but deliberately kept or tied to the longevity promise):
+  `buildSite` (`packages/renderer/src/site.ts`, superseded by `buildCourseSite`), `extractMdHtml` /
+  `extractSlides` (legacy-island readers; Track C.1 retires the island). The `mirrorManifestToSandbox`
+  doc-comment referral stands: four actions still write `packages.manifest` directly, so it needs a
+  write-path look, not a comment edit.
 
 **Wave 4 / T42 — doc coherence pass (2026-08-28).** Docs-only sweep after the storage/write-path waves
 (the CLAUDE.md "after each phase, run a coherence pass" rule). Corrected: the Waves-2–3 test count
