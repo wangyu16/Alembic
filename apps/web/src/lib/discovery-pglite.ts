@@ -59,18 +59,30 @@ export function readMigration(name: string): string {
   return readFileSync(join(MIGRATIONS_DIR, name), "utf8");
 }
 
-/** A fresh database with every migration applied, in order. */
-export async function freshDatabase(): Promise<PGlite> {
+/**
+ * A fresh database with every migration applied, in order — or, with
+ * `before`, only the migrations whose file name sorts before it (so a test can
+ * seed the state an upgrade meets, then `applyMigrationsFrom(db, before)`).
+ */
+export async function freshDatabase(opts: { before?: string } = {}): Promise<PGlite> {
   const db = await PGlite.create({ extensions: { pg_trgm } });
   await db.exec(SUPABASE_STUB);
-  for (const f of migrationFiles()) {
-    try {
-      await db.exec(readMigration(f));
-    } catch (e) {
-      throw new Error(`${f}: ${(e as Error).message}`);
-    }
-  }
+  const files = migrationFiles().filter((f) => opts.before === undefined || f < opts.before);
+  for (const f of files) await applyMigration(db, f);
   return db;
+}
+
+/** Apply every migration whose file name sorts at or after `from`, in order. */
+export async function applyMigrationsFrom(db: PGlite, from: string): Promise<void> {
+  for (const f of migrationFiles().filter((n) => n >= from)) await applyMigration(db, f);
+}
+
+async function applyMigration(db: PGlite, f: string): Promise<void> {
+  try {
+    await db.exec(readMigration(f));
+  } catch (e) {
+    throw new Error(`${f}: ${(e as Error).message}`);
+  }
 }
 
 // ---------------------------------------------------------------------------

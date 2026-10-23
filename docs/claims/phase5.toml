@@ -1072,25 +1072,38 @@ bound_to = []
 id = "P5.S.1.a"
 claim = "Through the API roles a signed-in user can insert or update a portal_registrations row only for a package they own, as its owner_id; a row for another educator's package is refused."
 oracle = "probe"
-bound_to = []
+bound_to = [
+  "apps/web/src/lib/listing-consent.sql.test.ts :: a signed-in user cannot list another educator's package",
+  "apps/web/src/lib/listing-consent.sql.test.ts :: nor rewrite or take over an existing listing",
+  "apps/web/src/lib/listing-consent.sql.test.ts :: the owner still lists, re-lists (upsert) and unlists their own course",
+]
 
 [[claim]]
 id = "P5.S.1.b"
 claim = "A course is listable (projection, public read policy, search and facets) only when its registration's owner_id is the package owner; migration 0025 removes the mismatched rows that existed before it."
 oracle = "probe"
-bound_to = []
+bound_to = [
+  "apps/web/src/lib/listing-consent.sql.test.ts :: a registration row whose owner is not the package owner lists nothing",
+  "apps/web/src/lib/listing-consent.sql.test.ts :: mismatched rows are deleted, matching rows kept",
+]
 
 [[claim]]
 id = "P5.S.1.c"
 claim = "No API role (anon or authenticated) can read portal_registrations.owner_id."
 oracle = "probe"
-bound_to = []
+bound_to = [
+  "apps/web/src/lib/listing-consent.sql.test.ts :: neither anon nor a signed-in user can read a registration's owner_id",
+]
 
 [[claim]]
 id = "P5.S.1.d"
 claim = "Class: every API-role insert/update policy whose row names a package (documents, sandbox_files, package_changes, suggestions, ai_invocations) refuses a package the caller does not own, and a suggestion inbox is read and resolved by the package owner, not by whoever holds a registration row."
 oracle = "probe"
-bound_to = []
+bound_to = [
+  "apps/web/src/lib/listing-consent.sql.test.ts :: documents, sandbox files, review items and AI logs for another's package are refused",
+  "apps/web/src/lib/listing-consent.sql.test.ts :: a suggestion must come from the sender's own package",
+  "apps/web/src/lib/listing-consent.sql.test.ts :: a stray registration row does not open the owner's suggestion inbox",
+]
 
 # M1 — the research export is de-identified; events are written by the server
 

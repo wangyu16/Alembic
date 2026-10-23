@@ -19,7 +19,7 @@ store. No app code writes them; they are derived in the database by
 
 | Source | What it gives |
 |---|---|
-| `portal_registrations` | the Tier-3 **List publicly** consent (row existence) and when it was given |
+| `portal_registrations` | the Tier-3 **List publicly** consent (a row **written by the package's owner**: `owner_id` = `packages.owner_id`) and when it was given |
 | `packages.manifest` (the manifest read cache) | title, description, keywords, discipline, `courseContext` (level and public identity fields), licence, accessibility status, chapters, public repo, `adaptedFrom` — exactly `DISCOVERY_MANIFEST_FIELDS` in package-contract |
 | `documents` (the registry) | shared files: kind, space, path, description, alt text, tags, per-file licence, lineage (`adapted_from`), content hash |
 | `sandbox_files` (public `concepts/course.md`, legacy `metadata/course.md`) | concept-map headings → **topics** |
@@ -43,7 +43,9 @@ and the search columns.
 
 ### 1.1 What may be listed (one predicate each)
 
-- **Course:** a `portal_registrations` row **and** a published package
+- **Course:** a `portal_registrations` row whose `owner_id` is the package
+  owner (security loop r1, H1: the database refuses a registration for a
+  package the caller does not own, and a stray row lists nothing) **and** a published package
   (`storage = 'github'`) **and** not archived **and** an open licence **and**
   a public repo in the manifest (`discovery_course_listable`).
 - **Element:** `discoverable` ("share this") **and** not tombstoned **and**

@@ -72,7 +72,7 @@ branch `phase5/loop-r1`, not merged, migrations NOT applied).** Each audit findi
 (`P5.S.*` in [claims/phase5.toml](claims/phase5.toml)) and an in-repo probe that failed on the audited code,
 then a fix for the whole class. Per finding (⬜ open · ✅ fixed on this branch):
 
-- ⬜ **H1** listing consent from a non-owner (P5.S.1.a–d).
+- ✅ **H1** listing consent from a non-owner (P5.S.1.a–d). Migration `0025_loop_r1_1_listing_consent.sql`: registration insert/update require owning the package (`caller_owns_package`), the package owner may delete any row on it, listability/search require `r.owner_id = p.owner_id`, `owner_id` is no longer readable by anon/authenticated (column grants; it defaults to `auth.uid()` and `registerPackageAction` stops sending it), and mismatched rows are deleted (pre-check query in the header). Siblings fixed: suggestions (sender must own `from_package_id`; the inbox follows the package owner, not a registration row), `package_changes` and `ai_invocations` now require owning the named package. Probe: `apps/web/src/lib/listing-consent.sql.test.ts`. **Deploy: code first, then the migration.**
 
 - ⬜ **M1** research export not de-identified; client-inserted events (P5.S.2.a–b).
 
