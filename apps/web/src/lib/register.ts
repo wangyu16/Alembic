@@ -1,22 +1,62 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { rebuildPackageRegistry, registerFile } from "@alembic/package-ops";
+import {
+  isRegistrableLocation,
+  rebuildPackageRegistry,
+  registerChangedFiles,
+  registerFile,
+  type RegistryChange,
+} from "@alembic/package-ops";
 import type { RegistrationRecord } from "@alembic/package-contract";
 import { SupabaseSandboxStore } from "./sandbox-store";
 import { SupabaseDocumentRegistryStore } from "./document-registry-store";
 
+/** Log, never surface: the registry is a rebuildable projection, and a
+ *  registry hiccup must never break an educator workflow (same rule as
+ *  research events). A fully silent guard hid the v1-path bug once already. */
+function warn(packageId: string, what: string, err: unknown): void {
+  console.warn(
+    `[registry] ${what} failed for ${packageId}:`,
+    err instanceof Error ? err.message : err,
+  );
+}
+
 /**
- * Rebuild a package's `documents` registry from its current files (R2). The
- * registry is a rebuildable projection of repo content, so this is idempotent
- * and always-correct: it re-registers present files (identity-keyed, so docIds
- * are stable) and tombstones records whose path is gone. Best-effort — a
- * registry hiccup must never break an educator workflow (same rule as research
- * events), so failures are swallowed.
+ * Register the files ONE write touched (Track B.1). Every workspace write
+ * path knows its change set — pass it straight through (deletions as
+ * `content: null`). Costs a couple of round-trips instead of a whole-package
+ * read plus two or three per file (scale audit 2026-08-28). Call it after the
+ * write has landed; best-effort, like every registry call.
+ */
+export async function registerChanges(
+  supabase: SupabaseClient,
+  packageId: string,
+  changes: ReadonlyArray<RegistryChange>,
+  origin: RegistrationRecord["origin"] = "created",
+): Promise<void> {
+  try {
+    await registerChangedFiles(
+      new SupabaseDocumentRegistryStore(supabase),
+      new SupabaseSandboxStore(supabase),
+      packageId,
+      changes,
+      origin,
+    );
+  } catch (err) {
+    warn(packageId, "register", err);
+  }
+}
+
+/**
+ * Bring a package's `documents` registry in line with its current files (R2).
  *
- * Called at all three doors: package open / save (`origin: "created"`) and
- * external-commit reconcile (`origin: "external-commit"`). `rebuildPackageRegistry`
- * has the full file list, so it resolves the duplicate-content identity
- * tiebreaker (package-contract-v2.md §2).
+ * - Default: a FULL rebuild — every file read, identity resolved in memory,
+ *   only changed rows written in bulk. For the genuine bulk doors: populate
+ *   (an upload of a whole course) and external-commit reconcile.
+ * - `onlyIfPathsChanged` (page loads): a read registers nothing new; the only
+ *   thing it can discover is that the SET OF PATHS moved underneath it (a
+ *   file committed straight to GitHub, say). Compare paths — two cheap,
+ *   content-free queries — and register just the difference.
  */
 export async function syncPackageRegistry(
   supabase: SupabaseClient,
@@ -28,41 +68,35 @@ export async function syncPackageRegistry(
     const packageStore = new SupabaseSandboxStore(supabase);
     const registry = new SupabaseDocumentRegistryStore(supabase);
 
-    // A full rebuild reads every file's CONTENT and then does one database
-    // round-trip PER FILE. On a real course (hundreds of files) that is
-    // seconds of work, and it used to run on every workspace page load —
-    // every chapter switch, every document opened — which is what made a
-    // large package feel broken.
-    //
-    // A read has nothing to register: content changes arrive through the
-    // write paths (which sync afterwards) and through reconcile. The only
-    // thing a page load can legitimately discover is that the SET OF PATHS
-    // moved underneath it (a file committed straight to GitHub, say). So on
-    // reads, compare paths — two cheap, content-free queries — and do the
-    // expensive rebuild only when they actually disagree.
     if (opts.onlyIfPathsChanged) {
       const [paths, records] = await Promise.all([
         packageStore.listPaths(packageId),
-        registry.listByPackage(packageId),
+        registry.listLiveByPackage(packageId),
       ]);
-      const live = new Set(paths.map((f) => `${f.repo} ${f.path}`));
-      const known = new Set(
-        records.filter((r) => !r.tombstoned).map((r) => `${r.repo} ${r.path}`),
+      // Files no registration path accepts (unknown locations) never get a
+      // row; leave them out or this comparison never settles.
+      const live = new Map(
+        paths
+          .filter((f) => isRegistrableLocation(f.repo, f.path))
+          .map((f) => [`${f.repo} ${f.path}`, f] as const),
       );
-      const same =
-        live.size === known.size && [...live].every((loc) => known.has(loc));
-      if (same) return;
+      const known = new Map(records.map((r) => [`${r.repo} ${r.path}`, r] as const));
+      const added = [...live].filter(([loc]) => !known.has(loc)).map(([, f]) => f);
+      const removed = [...known]
+        .filter(([loc]) => !live.has(loc))
+        .map(([, r]) => ({ repo: r.repo, path: r.path, content: null }));
+      if (added.length === 0 && removed.length === 0) return;
+      // A handful of new files: read just those. Many (a large external
+      // commit): one whole read beats hundreds of single-row reads.
+      if (added.length <= 50) {
+        await registerChangedFiles(registry, packageStore, packageId, [...added, ...removed], origin);
+        return;
+      }
     }
 
     await rebuildPackageRegistry(registry, packageStore, packageId, origin);
   } catch (err) {
-    // Rebuildable projection — never surface a registry error to the educator,
-    // but DO leave a trace in the server logs (a fully silent guard hid the
-    // v1-path registration bug once already).
-    console.warn(
-      `[registry] sync failed for ${packageId}:`,
-      err instanceof Error ? err.message : err,
-    );
+    warn(packageId, "sync", err);
   }
 }
 
@@ -92,10 +126,7 @@ export async function registerAdaptedFile(
     });
     return record.docId;
   } catch (err) {
-    console.warn(
-      `[registry] adapt-register failed for ${packageId} ${input.path}:`,
-      err instanceof Error ? err.message : err,
-    );
+    warn(packageId, `adapt-register ${input.path}`, err);
     return null;
   }
 }

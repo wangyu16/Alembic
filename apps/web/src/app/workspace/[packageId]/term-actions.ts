@@ -24,7 +24,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
 import { readManifestFromStore } from "@/lib/manifest-read";
 import { committerFor } from "@/lib/committer";
-import { syncPackageRegistry } from "@/lib/register";
+import { registerChanges } from "@/lib/register";
 
 /**
  * Term operations for the Current collection (CF5.3), the thin server layer
@@ -161,15 +161,16 @@ export async function startTermAction(
     try {
       const plan = await planCarryOver(store, packageId, fromTerm, termId);
       if (plan.length > 0) {
+        const changes = plan.map((e) => ({
+          repo: "public" as const,
+          path: e.toPath,
+          content: e.content,
+        }));
         await writeThrough(store, writePath.committer, packageId, {
-          changes: plan.map((e) => ({
-            repo: "public" as const,
-            path: e.toPath,
-            content: e.content,
-          })),
+          changes,
           summary: `Carry materials into ${termId} (Alembic)`,
         });
-        await syncPackageRegistry(supabase, packageId);
+        await registerChanges(supabase, packageId, changes);
       }
     } catch (e) {
       return {
@@ -359,9 +360,10 @@ export async function postAnnouncementAction(
   if ("error" in writePath) return { ok: false, error: writePath.error };
 
   const content = `# ${title}\n\n${body}\n`;
+  const changes = [{ repo: "public" as const, path: target, content }];
   try {
     await writeThrough(store, writePath.committer, packageId, {
-      changes: [{ repo: "public", path: target, content }],
+      changes,
       summary: "Post announcement (Alembic)",
     });
   } catch (e) {
@@ -370,7 +372,7 @@ export async function postAnnouncementAction(
       error: writeError(e, "Couldn't post the announcement. Please try again."),
     };
   }
-  await syncPackageRegistry(supabase, packageId);
+  await registerChanges(supabase, packageId, changes);
   revalidatePath(`/workspace/${packageId}`);
   return { ok: true, path: target };
 }

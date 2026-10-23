@@ -6,6 +6,25 @@ design, and what is deferred to the future. Complements [Status.md](Status.md)
 
 ---
 
+## 2026-10-23 — Registry: register the change set, not the package (Phase 5 Track B.1)
+
+**Context.** The scale audit (2026-08-28, queued item 1) found every write
+re-registering the whole package: a whole-content read plus two or three
+round-trips per file — 668 on the 333-file course even when nothing else
+changed.
+
+| # | Decision | Why |
+|---|---|---|
+| 1 | **Writes register only their change set** (`registerChangedFiles`). Every write path already holds it; deletions travel as `content: null`. | The registry is a projection of what the write just did; re-deriving the other 332 files proved nothing. |
+| 2 | **One identity resolver for both paths**, in memory against one read of the live rows, including the rows staged earlier in the same run. Order unchanged: embedded uid → content hash → location → new. | The audit named the ladder "highest-risk": order-sensitive and dependent on in-run staging. One resolver means incremental and rebuild cannot disagree (a test asserts they agree). |
+| 3 | **Duplicate-content tiebreaker, as contract v2 §2 specified**: a cross-path hash match is a *move* only when its old location is gone and nothing is registered here; an exact location match wins over a cross-path hash match. | The spec claimed the rebuild did this; it did not, so byte-identical files stole one docId and flapped. |
+| 4 | **An embedded uid displaces (tombstones) a different identity at its location.** | One location holds one live identity (the DB's partial unique index says so); before, this case hit the index and the file silently stayed unregistered. |
+| 5 | **Full rebuilds stay for populate and large reconciles; their read stays full.** Only changed rows are written, in bulk; a refused bulk write falls back to per-row writes. | Hashes and uids come from bytes (audit, "confirmed correct"); the round-trips were the bug. |
+| 6 | **Tombstones are not pruned; they are kept out of the hot path** (`listLiveByPackage`, served by the existing partial location index). | A pruned tombstone would turn a 410 "no longer available, with provenance" into a 404 — the permalink promise. Live-only reads cost the same whatever the churn. |
+| 7 | **Indexes: add `(package_id, source_hash)` live-only (`0021`); not `adapted_from`.** | Add an index with the query that uses it; no query filters on lineage yet (Track A will). |
+
+---
+
 ## 2026-08-28 — Storage & write-path implementation: four rulings made during execution
 
 **Context.** Implementing [specs/storage-and-write-paths.md](specs/storage-and-write-paths.md)

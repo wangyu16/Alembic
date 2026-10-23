@@ -125,10 +125,16 @@ from a *duplicate* (mint a new docId). The authoritative resolution is a
 **same-location tiebreaker** available only with the full package file list:
 prefer an exact `(repo, path)` match; treat a cross-path hash match as a move
 **only when the matched record's old path is no longer present** (else it is a
-distinct duplicate → new docId). `rebuildPackageRegistry` has the file list and
-implements this; the Supabase-backed store wired into the three doors applies
-the same rule. The pure `registerFile` (memory-tested) favors move-continuity
-in isolation — correct for the common flows, refined by rebuild.
+distinct duplicate → new docId). *(Corrected 2026-10-23, Track B.1: until
+then this sentence claimed the rebuild implemented the tiebreaker; it did not —
+a second byte-identical file took the first one's docId and the two flapped on
+every rebuild.)* Both `rebuildPackageRegistry` (full file list) and
+`registerChangedFiles` (a write's change set, plus a content-free path listing
+when a hash match elsewhere must be told apart from a duplicate) now implement
+it, resolving against the rows staged earlier in the same run. An embedded uid
+still outranks everything and displaces (tombstones) a different identity at
+its location. The single-file `registerFile` favors move-continuity in
+isolation and is used only for targeted registrations (adaptation).
 
 **Mutable vs immutable.** Immutable: `docId`. Mutable on re-registration:
 `path`, `sourceHash`, `description`, `altText`, `discoverable`, `license`.

@@ -16,7 +16,7 @@ import {
   type RepoReader,
 } from "@alembic/package-ops";
 import type { PackageManifest } from "@alembic/package-contract";
-import { syncPackageRegistry } from "@/lib/register";
+import { registerChanges, syncPackageRegistry } from "@/lib/register";
 
 export interface GithubConfig {
   appId: string;
@@ -199,8 +199,19 @@ export async function reconcilePackage(
   if (outcome.status === "up-to-date" || outcome.status === "absorbed") {
     await recordSyncedSha(supabase, packageId, outcome.headSha);
     // Door #3: register the absorbed external-commit files (best-effort).
+    // The diff names exactly what changed; a large foreign commit falls back
+    // to one full rebuild rather than hundreds of single-row reads.
     if (outcome.status === "absorbed") {
-      await syncPackageRegistry(supabase, packageId, "external-commit");
+      if (outcome.changedPaths.length <= 50) {
+        await registerChanges(
+          supabase,
+          packageId,
+          outcome.changedPaths.map((path) => ({ repo: "public" as const, path })),
+          "external-commit",
+        );
+      } else {
+        await syncPackageRegistry(supabase, packageId, "external-commit");
+      }
     }
   }
   return outcome;

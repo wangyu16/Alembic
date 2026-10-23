@@ -95,6 +95,30 @@ export class SupabaseDocumentRegistryStore implements DocumentRegistryStore {
     if (error) throw new Error(`Could not register the document: ${error.message}`);
   }
 
+  /** One statement per 500 rows (PostgREST body stays well under its limit). */
+  async upsertMany(records: RegistrationRecord[]): Promise<void> {
+    const CHUNK = 500;
+    for (let i = 0; i < records.length; i += CHUNK) {
+      const { error } = await this.supabase
+        .from("documents")
+        .upsert(records.slice(i, i + CHUNK).map(toRow), { onConflict: "doc_id" });
+      if (error) throw new Error(`Could not register the documents: ${error.message}`);
+    }
+  }
+
+  /** One statement per 200 ids (they travel in the query string). */
+  async tombstoneMany(packageId: string, docIds: string[]): Promise<void> {
+    const CHUNK = 200;
+    for (let i = 0; i < docIds.length; i += CHUNK) {
+      const { error } = await this.supabase
+        .from("documents")
+        .update({ tombstoned: true })
+        .eq("package_id", packageId)
+        .in("doc_id", docIds.slice(i, i + CHUNK));
+      if (error) throw new Error(`Could not tombstone the documents: ${error.message}`);
+    }
+  }
+
   async tombstone(packageId: string, docId: string): Promise<void> {
     const { error } = await this.supabase
       .from("documents")
@@ -154,25 +178,41 @@ export class SupabaseDocumentRegistryStore implements DocumentRegistryStore {
 
   /**
    * PostgREST caps a result set (1000 rows by default), so this MUST page — and
-   * the consequence of not paging is worse than a short list. Tombstones are
-   * kept forever by design, so a package that has churned a few hundred files
-   * eventually exceeds the cap; the truncated result then makes
-   * `syncPackageRegistry`'s "have the paths changed?" comparison
-   * (`lib/register.ts`) never match, which silently reinstates a full 30 MB +
-   * ~1000-round-trip registry rebuild on every workspace page load — exactly
-   * the problem that fast path exists to prevent. Deterministic ordering keeps
-   * the paging stable.
+   * the consequence of not paging is worse than a short list: a truncated
+   * result makes `syncPackageRegistry`'s "have the paths changed?" comparison
+   * (`lib/register.ts`) never match, which reinstates a registry rebuild on
+   * every workspace page load. Deterministic ordering keeps the paging stable.
    */
   async listByPackage(packageId: string): Promise<RegistrationRecord[]> {
+    return this.pageThrough(packageId, false);
+  }
+
+  /**
+   * Live rows only — the registration working set. Tombstones are kept
+   * forever (their permalinks answer 410) and must not ride along on every
+   * write. `package_id = ? and not tombstoned order by repo, path` is exactly
+   * the partial unique index `documents_location_idx`.
+   */
+  async listLiveByPackage(packageId: string): Promise<RegistrationRecord[]> {
+    return this.pageThrough(packageId, true);
+  }
+
+  private async pageThrough(
+    packageId: string,
+    liveOnly: boolean,
+  ): Promise<RegistrationRecord[]> {
     const PAGE = 1000;
     const out: RegistrationRecord[] = [];
     for (let offset = 0; ; offset += PAGE) {
-      const { data, error } = await this.supabase
+      let query = this.supabase
         .from("documents")
         .select("*")
-        .eq("package_id", packageId)
+        .eq("package_id", packageId);
+      if (liveOnly) query = query.eq("tombstoned", false);
+      const { data, error } = await query
         .order("repo")
         .order("path")
+        .order("doc_id")
         .range(offset, offset + PAGE - 1);
       if (error) throw new Error(`Registry read failed: ${error.message}`);
       const rows = (data as DocumentRow[] | null) ?? [];
