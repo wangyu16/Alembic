@@ -67,6 +67,35 @@ pinned), and **ruling 2, "Share this" not offered in a trial course — not buil
 registry: the one-file save test asserts ≤ 3 round-trips (measured 2), `/d`'s 1200/min and the 64 MB / 1 MB
 cache limits are not asserted as numbers. The round's probes come from the auditors (next step).
 
+**Phase 5 closed-loop verification — round 1, steps 4–5: security audit probes and class fixes (2026-10-23,
+branch `phase5/loop-r1`, not merged, migrations NOT applied).** Each audit finding became a claim
+(`P5.S.*` in [claims/phase5.toml](claims/phase5.toml)) and an in-repo probe that failed on the audited code,
+then a fix for the whole class. Per finding (⬜ open · ✅ fixed on this branch):
+
+- ⬜ **H1** listing consent from a non-owner (P5.S.1.a–d).
+
+- ⬜ **M1** research export not de-identified; client-inserted events (P5.S.2.a–b).
+
+- ⬜ **M2** owner-writable storage / archived_at / repo / signals (P5.S.3.a–d).
+
+- ⬜ **M3** pinned `/d` answers cached a year at the CDN (P5.S.4.a–b).
+
+- ⬜ **M4** report caps exhaustible with junk (P5.S.5.a–b).
+
+- ⬜ **M5** unauthenticated `/api/preview` fan-out (P5.S.6.a–b).
+
+- ⬜ **L1** `/d` malformed escape → 500 (P5.S.7).
+
+- ⬜ **L3** discovery cache staleness bound (P5.S.8).
+
+- ⬜ **L4** RPC statement timeouts (P5.S.9); `/d` query-string cache busting + view de-duplication (P5.S.10.a–b); worker fails open without a token (P5.S.11).
+
+- ⬜ **Template** checkout credentials; `.git/` includes (P5.S.12.a–b).
+
+- ⏸ **L2** 32-bit FNV pin hash forgeable — accepted until R3, owner decision pending (P5.S.L2, red by design; DecisionLog).
+
+- ⬜ **Ruling 2** "Share this" hidden in a trial course (P5.R.2).
+
 **Phase 5 Track A — discovery at scale (2026-10-23, branch `phase5/trackA-core`, not yet deployed).** Plan:
 family `docs/PHASE5-ALEMBIC.md` Track A (A.1–A.4 here; A.6–A.7 on a parallel branch; A.5 after, owner Q1; A.8
 waits for Track C). Spec: [discovery-index.md](specs/discovery-index.md). **Migration `0022_trackA_discovery`

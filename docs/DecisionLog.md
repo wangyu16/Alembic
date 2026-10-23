@@ -6,6 +6,18 @@ design, and what is deferred to the future. Complements [Status.md](Status.md)
 
 ---
 
+## 2026-10-23 — Security loop r1: the 32-bit pin hash is accepted until R3 (not fixed now)
+
+**Decision.** The audit showed a second preimage for the 32-bit FNV-1a source
+hash that `/d/{doc}@{hash}` pins on is cheap to compute
+(`/tmp/alembic-audit/fnv.mts`: different bytes, same pin). It is **not changed
+in this round**: changing the hash changes every pin already cited, and the
+move to a cryptographic hash is planned with R3. Until then a pin proves
+"the bytes the server holds now hash to this", not "these are the cited bytes".
+Recorded as claim P5.S.L2, deliberately red. **Owner decision pending.**
+
+---
+
 ## 2026-10-23 — Owner rulings on Phase 5 open items
 
 | # | Decision | Why |

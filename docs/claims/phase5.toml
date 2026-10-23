@@ -1060,3 +1060,173 @@ id = "P5.R.4"
 claim = "Discover searches on Search/Enter through a plain GET form that works without JavaScript; there is no client-side instant filter."
 oracle = "human"
 bound_to = []
+
+# ─── Security loop r1 (audit 2026-10-23): probes and class fixes ─────────
+# One block per audit finding (H1, M1–M5, L1–L4, template). Each claim is
+# bound to the probe that reproduced the finding on ff39af5 (it failed there)
+# and passes after the fix in the same commit.
+
+# H1 — listing consent must come from the package owner
+
+[[claim]]
+id = "P5.S.1.a"
+claim = "Through the API roles a signed-in user can insert or update a portal_registrations row only for a package they own, as its owner_id; a row for another educator's package is refused."
+oracle = "probe"
+bound_to = []
+
+[[claim]]
+id = "P5.S.1.b"
+claim = "A course is listable (projection, public read policy, search and facets) only when its registration's owner_id is the package owner; migration 0025 removes the mismatched rows that existed before it."
+oracle = "probe"
+bound_to = []
+
+[[claim]]
+id = "P5.S.1.c"
+claim = "No API role (anon or authenticated) can read portal_registrations.owner_id."
+oracle = "probe"
+bound_to = []
+
+[[claim]]
+id = "P5.S.1.d"
+claim = "Class: every API-role insert/update policy whose row names a package (documents, sandbox_files, package_changes, suggestions, ai_invocations) refuses a package the caller does not own, and a suggestion inbox is read and resolved by the package owner, not by whoever holds a registration row."
+oracle = "probe"
+bound_to = []
+
+# M1 — the research export is de-identified; events are written by the server
+
+[[claim]]
+id = "P5.S.2.a"
+claim = "The research export keeps only allow-listed detail keys per event type, pseudonymises every kept package or doc id, and never emits a URL, repository name, GitHub login or free-text error message."
+oracle = "probe"
+bound_to = []
+
+[[claim]]
+id = "P5.S.2.b"
+claim = "No API role can insert into research_events; events are written by the server (service role) through the same allowlist, and a failed write never breaks the educator's action."
+oracle = "probe"
+bound_to = []
+
+# M2 — owners cannot self-publish, re-point the repo or inflate signals
+
+[[claim]]
+id = "P5.S.3.a"
+claim = "Through the API roles an owner cannot set packages.storage, archived_at, public_repo or private_repo; a package row an owner creates is always a trial (sandbox, not archived)."
+oracle = "probe"
+bound_to = []
+
+[[claim]]
+id = "P5.S.3.b"
+claim = "Discovery (listability, public_repo_url, site_url) and adaptFromPortalAction use the repository recorded by the publish path (packages.public_repo), never manifest.publicRepo."
+oracle = "probe"
+bound_to = []
+
+[[claim]]
+id = "P5.S.3.c"
+claim = "A course's adaptation_count counts distinct other educators whose adapting package is published and not archived; trial packages and the owner's own packages add nothing."
+oracle = "probe"
+bound_to = []
+
+[[claim]]
+id = "P5.S.3.d"
+claim = "The accessibility status Discover shows, filters and ranks on is the server-recorded check result, not the owner-writable manifest field."
+oracle = "probe"
+bound_to = []
+
+# M3 — takedowns reach the CDN
+
+[[claim]]
+id = "P5.S.4.a"
+claim = "A pinned /d/{doc}@{hash} answer carries a shared-cache (CDN) lifetime of at most the documented takedown bound (300 s)."
+oracle = "probe"
+bound_to = []
+
+[[claim]]
+id = "P5.S.4.b"
+claim = "Class: no /d answer of any kind carries a shared-cache lifetime longer than the documented takedown bound."
+oracle = "invariant"
+bound_to = []
+
+# M4 — the report caps cannot be exhausted with junk
+
+[[claim]]
+id = "P5.S.5.a"
+claim = "file_portal_report validates that the package exists and is listed before charging any cap; a report on an unknown or unlisted package answers invalid and stores nothing."
+oracle = "probe"
+bound_to = []
+
+[[claim]]
+id = "P5.S.5.b"
+claim = "The per-package report cap is kept per (package, reporter key), so one source cannot silence other reporters of the same package; anonymous reporting still works."
+oracle = "probe"
+bound_to = []
+
+# M5 — no unauthenticated server-side rendering or fetching
+
+[[claim]]
+id = "P5.S.6.a"
+claim = "/api/preview refuses a request without a signed-in session and caps the includes it resolves per call and their total bytes."
+oracle = "probe"
+bound_to = []
+
+[[claim]]
+id = "P5.S.6.b"
+claim = "Class: no route reachable without a session renders Markdown with remote includes or fetches a caller-chosen URL on the caller's behalf."
+oracle = "invariant"
+bound_to = []
+
+# L1, L3, L4 and the template
+
+[[claim]]
+id = "P5.S.7"
+claim = "/d with a malformed percent escape answers like a missing doc (no 500), after the rate limiter."
+oracle = "probe"
+bound_to = []
+
+[[claim]]
+id = "P5.S.8"
+claim = "Discover answers are stale for at most 120 s (documented), and an owner unlisting or archiving a course invalidates the discovery cache at once."
+oracle = "invariant"
+bound_to = []
+
+[[claim]]
+id = "P5.S.9"
+claim = "Every discovery_* function callable by anon or authenticated runs under a statement_timeout."
+oracle = "probe"
+bound_to = []
+
+[[claim]]
+id = "P5.S.10.a"
+claim = "/d ignores the query string: ?x=n neither changes the answer nor its cache identity."
+oracle = "probe"
+bound_to = []
+
+[[claim]]
+id = "P5.S.10.b"
+claim = "element.viewed is recorded at most once per (doc, address hash, hour), so cache misses cannot grow research_events."
+oracle = "probe"
+bound_to = []
+
+[[claim]]
+id = "P5.S.11"
+claim = "The worker fails closed when WORKER_TOKEN is unset: it refuses every request rather than serving them unauthenticated."
+oracle = "probe"
+bound_to = []
+
+[[claim]]
+id = "P5.S.12.a"
+claim = "The public-repo template's build-site workflow checks out with persist-credentials: false."
+oracle = "conformance"
+bound_to = []
+
+[[claim]]
+id = "P5.S.12.b"
+claim = "An include never resolves a file inside .git/ under markdownIncludeRoot."
+oracle = "probe"
+bound_to = []
+
+[[claim]]
+id = "P5.S.L2"
+claim = "A pinned /d/{doc}@{hash} cannot be satisfied by different bytes with the same pin."
+oracle = "probe"
+bound_to = []
+note = "ACCEPTED, not fixed (DecisionLog 2026-10-23 security loop r1): the pin is the 32-bit FNV-1a source hash, and a second preimage is cheap (/tmp/alembic-audit/fnv.mts). Stays red until R3 moves pins to a cryptographic hash; owner decision pending."
