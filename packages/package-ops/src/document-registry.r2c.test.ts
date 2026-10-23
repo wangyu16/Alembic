@@ -286,3 +286,32 @@ describe("L-2 round-trips are 1 + ⌈live/1000⌉ (+1 for a new uid)", () => {
     expect(registry.trips).toBe(1 + Math.ceil(3000 / 1000) + 1); // live rows before the save: 3,000
   });
 });
+
+describe("HIGH-A sibling: every forked study guide is its own document", () => {
+  it("[P5.B.1.s] a study guide the carrier reader does not recognise still gets a fresh uid, and cross-chapter block references follow the new ids (forksg)", () => {
+    const uid = "doc-abcdefabcdef";
+    const b1 = "blk-chapterone01";
+    const ch1 = `<!doctype html><html><head><script type="application/orz-meta+json" id="orz-meta">{"title":"T","uid":"${uid}"}</script></head><body><script type="text/markdown" id="orz-source">\n## Intro${formatBlockMarker(b1)}\n\ntext</script></body></html>`;
+    const ch2 = `## See also${formatBlockMarker("blk-chaptertwo02")}\n\nCompare [the intro](#${b1}).`;
+    const forked = forkPackage({
+      source: {
+        packageId: "pkg-src-aaaaaaaa",
+        manifest: { schemaVersion: 2, packageId: "pkg-src-aaaaaaaa", title: "Src", license: "CC-BY-4.0" } as never,
+        publicFiles: [
+          { repo: "public", path: "study-guide/ch1.md.html", content: ch1 },
+          { repo: "public", path: "study-guide/ch2.md", content: ch2 },
+        ],
+      },
+      target: { ownerId: "b", license: "CC-BY-4.0" },
+      attribution: "x",
+    });
+    const c1 = forked.files.find((f) => f.path === "study-guide/ch1.md.html")!.content;
+    const c2 = forked.files.find((f) => f.path === "study-guide/ch2.md")!.content;
+    expect(extractEmbeddedUid(c1)).not.toBe(uid);
+    expect(extractEmbeddedUid(c1)).not.toBeNull();
+    const fresh = forked.lineage.find((l) => l.sourceBlockId === b1)!.targetBlockId;
+    expect(c1).toContain(fresh);
+    expect(c2).toContain(`(#${fresh})`);
+    expect(c1 + c2).not.toMatch(new RegExp(`${b1}(?![a-z0-9])`));
+  });
+});

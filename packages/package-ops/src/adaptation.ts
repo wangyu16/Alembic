@@ -346,7 +346,13 @@ export function forkPackage(input: ForkPackageInput): ForkedPackage {
         const nid = remintBlock(b, f.path);
         return nid ? { ...b, id: nid } : b;
       });
-      cloned.push({ repo: "public", path: f.path, content: serializeStudyGuide(parsed.preamble, reminted) });
+      // A copy is its own document: re-mint an embedded uid here too (a
+      // carrier whose island this reader does not recognise still carries one).
+      cloned.push({
+        repo: "public",
+        path: f.path,
+        content: remintEmbeddedUid(serializeStudyGuide(parsed.preamble, reminted)),
+      });
     } else {
       // A copy is its own document: re-mint the carrier's embedded uid so the
       // fork never claims the source's docId (loop r1b, P5.B.1.n).
@@ -360,9 +366,9 @@ export function forkPackage(input: ForkPackageInput): ForkedPackage {
     for (const [oldId, nid] of idMap) out = replaceId(out, oldId, nid);
     return out;
   };
-  const finalCloned = cloned.map((f) =>
-    f.path.startsWith(STUDY_GUIDE_PREFIX) ? f : { ...f, content: remap(f.content) },
-  );
+  // Study guides too (loop r2 correctness): a chapter may reference another
+  // chapter's block, and a carrier's rendered HTML repeats its ids.
+  const finalCloned = cloned.map((f) => ({ ...f, content: remap(f.content) }));
 
   // 3. New manifest — drop the source's repo bindings; set lineage.
   const { publicRepo: _pub, privateRepo: _priv, ...base } = input.source.manifest;

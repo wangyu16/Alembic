@@ -1757,7 +1757,7 @@ note = "Loop r2 correctness, the composition rule (round 1's 0026 silently rever
 
 [[claim]]
 id = "P5.B.1.s"
-claim = "An embedded uid that is not one of this package's live identities (its own deleted document, or an id nobody registered) never displaces a live identity: at an occupied location the occupant keeps its docId, a hash-identified move keeps the moved identity, and the uid is adopted only where a fresh id would be minted (a deleted document uploaded again to a free location gets its permalink back); a uid another package holds or that was retired (0028_loop_r2_2) is taken, so a fresh id. forkPackage re-mints the uid and every block id (source island AND rendered HTML) of a study-guide .md.html carrier."
+claim = "An embedded uid that is not one of this package's live identities (its own deleted document, or an id nobody registered) never displaces a live identity: at an occupied location the occupant keeps its docId, a hash-identified move keeps the moved identity, and the uid is adopted only where a fresh id would be minted (a deleted document uploaded again to a free location gets its permalink back); a uid another package holds or that was retired (0028_loop_r2_2) is taken, so a fresh id. forkPackage re-mints the uid of every study guide (carrier island recognised or not) and every block id (source island AND rendered HTML), and a chapter's reference to another chapter's block follows the new id."
 oracle = "probe"
 bound_to = [
   "packages/package-ops/src/document-registry.r2c.test.ts :: a copy keeps its own permalink after the original is deleted and the copy is saved (uidflip)",
@@ -1765,6 +1765,7 @@ bound_to = [
   "packages/package-ops/src/document-registry.r2c.test.ts :: a dormant uid does not override a hash-identified move (rename without a hint)",
   "packages/package-ops/src/document-registry.r2c.test.ts :: kept: a deleted document uploaded again to a free location gets its permalink back",
   "packages/package-ops/src/document-registry.r2c.test.ts :: forkPackage re-mints the uid AND every block id of a study-guide .md.html carrier",
+  "packages/package-ops/src/document-registry.r2c.test.ts :: a study guide the carrier reader does not recognise still gets a fresh uid, and cross-chapter block references follow the new ids (forksg)",
   "apps/web/src/lib/loop-r2-cor.sql.test.ts :: a fork's copy keeps its id after the source course is deleted (its uid is retired → taken) (crossflip)",
   "apps/web/src/lib/loop-r2-cor.sql.test.ts :: a copy keeps its permalink after the original (same package) is deleted and the copy saved (uidflip, database side)",
 ]

@@ -124,7 +124,9 @@ of the class ([DecisionLog](DecisionLog.md) 2026-10-23 "Closed loop r2 (correctn
   location's occupant and a hash-identified move win. Composes with the r2 retired-id ledger (a uid freed by a
   deleted package is "taken" → fresh id; `crossflip` under the harness). Sibling: `forkPackage` re-minted nothing in
   a study-guide `.md.html` carrier (it parsed the HTML as markdown) — it now re-mints the uid and every block id, in
-  the source island and the rendered HTML (whole-id matches only). Code only.
+  the source island and the rendered HTML (whole-id matches only); a study guide whose island the reader does not
+  recognise (repro `forksg`) gets a fresh uid too, and cross-chapter block references now follow the new ids. Code
+  only.
 - ✅ **MEDIUM-1 — a registration run overwrote the owner's share/description (P5.B.1.t).** `documents_apply`'s
   upsert wrote back the values the run had read: a "Share this" or description saved meanwhile was undone (repro
   `sharerace`). `0029_loop_r2c_2_registry_apply.sql` (from 0027's definition, everything kept): on conflict with a
