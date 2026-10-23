@@ -1255,7 +1255,10 @@ bound_to = [
 id = "P5.S.8"
 claim = "Discover answers are stale for at most 120 s (documented), and an owner unlisting or archiving a course invalidates the discovery cache at once."
 oracle = "invariant"
-bound_to = []
+bound_to = [
+  "apps/web/src/lib/discovery-invalidation.test.ts :: every action that changes listability invalidates the discovery tag",
+  "apps/web/src/lib/discovery-invalidation.test.ts :: the documented staleness bound is 120 s",
+]
 
 [[claim]]
 id = "P5.S.9"

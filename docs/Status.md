@@ -86,7 +86,7 @@ then a fix for the whole class. Per finding (⬜ open · ✅ fixed on this branc
 
 - ✅ **L1** `/d` malformed escape → 500 (P5.S.7). The route no longer decodes the address itself; `servePermalink` decodes it after the rate limit and answers a malformed escape with the missing-doc 404. Probe: `apps/web/src/app/d/[docId]/route.test.ts` (route-level, real permalink response).
 
-- ⬜ **L3** discovery cache staleness bound (P5.S.8).
+- ✅ **L3** discovery cache staleness bound (P5.S.8): comment, spec and DecisionLog now state the 120 s bound (listability re-checked only on a cache miss), and a source scan requires every listability write to call `discoveryChanged()`, which found and fixed the one gap (tombstoning a shared file did not invalidate).
 
 - ✅ **L4** RPC statement timeouts (P5.S.9 ✅ — migration `0025_loop_r1_4_rpc_timeouts.sql` pins `statement_timeout` for anon (3 s) and authenticated (8 s), the roles that can execute the six anon-callable `discovery_*` functions; a function-level setting would not bound a one-statement RPC; probe `rpc-limits.sql.test.ts`; deploy: either order); `/d` query-string cache busting + view de-duplication (P5.S.10.a–b — ✅: the answer ignores the query string, and `element.viewed` is written at most once per (doc, address, hour) via `rate_limit_hit` with an in-process fallback, `lib/view-dedupe.ts`; probe `apps/web/src/app/d/[docId]/route.test.ts`); worker fails open without a token (P5.S.11 ✅ — the worker now fails closed: no/blank `WORKER_TOKEN` → `/generate` and `/health` answer 503; bearer compared in constant time; sibling fixed: a blank `RESEARCH_EXPORT_SALT` no longer yields an empty export salt).
 

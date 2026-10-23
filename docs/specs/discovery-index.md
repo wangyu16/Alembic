@@ -260,12 +260,18 @@ Unlisted, private, trial and archived content is a plain 404 on every page
 item): every Discover read uses the cookie-less anonymous client, so results
 are the same for everyone and are kept in Next's data cache under the
 `discovery` tag for at most 120 s (search entries are keyed by the query and
-the ranking hour). Educator actions that change what Discover shows (list /
-unlist, archive / restore, rename, course details, concept map, share /
-asset metadata, accessibility check) call `updateTag("discovery")`, so the
-educator sees the change at once; other changes (an operator takedown, a
-reconciled outside edit) show within 120 s — and are never *served* stale
-for unlisted content, since the search re-checks listability live. A search
+the ranking hour). Listability is re-checked against the live tables (the
+read policy) only when a read actually runs, i.e. on a cache miss; a cached
+answer is served unchanged until it expires. **Staleness bound: 120 s** — a
+cached answer can show content for up to 120 s after it was unlisted,
+archived, unshared or taken down, unless the cache was invalidated. Owner
+actions that change what Discover may show (list / unlist, archive /
+restore, share / unshare and asset metadata, a shared file leaving the
+registry, rename, course details, concept map, accessibility check) call
+`updateTag("discovery")`, which drops every cached answer at once (claim
+P5.S.8, enforced by a source scan of every listability write). Changes made
+outside the app — an operator delete or takedown in the database dashboard,
+a reconciled outside edit — are bounded by the 120 s window only. A search
 that cannot run is not cached.
 
 **Rate limit and events** (A.6/A.7 seams): a search (text, filters or a later

@@ -26,14 +26,19 @@ import {
  * be shared in Next's data cache; the visitor's own session is used only for
  * the parts of a page that are about them (the adapt pickers).
  *
- * Freshness: entries carry the `discovery` tag and live at most
- * `DISCOVERY_REVALIDATE_SECONDS`. Educator actions that change what Discover
- * shows (list/unlist, archive/restore, share, course details, rename,
- * accessibility check) call `discoveryChanged()` so their own next view is
- * fresh at once; anything else (an operator takedown in the dashboard, a
- * direct GitHub change absorbed by reconcile) shows within the revalidate
- * window — and is still never *served* stale for unlisted content, because
- * the search re-checks listability live in the database (spec §1.1).
+ * Freshness — the bound is 120 s, not zero: entries carry the `discovery`
+ * tag and live at most `DISCOVERY_REVALIDATE_SECONDS` (120 s). The reads
+ * re-check listability against the live tables (the index's read policy,
+ * spec §1.1) only when they run, i.e. on a cache miss; a cached answer is
+ * served as-is until it expires, so it can be up to 120 s stale — including
+ * for content that has since been unlisted, archived, unshared or taken down.
+ * Owner actions that change what Discover may show (list/unlist,
+ * archive/restore, share/unshare, a shared file leaving the registry, course
+ * details, rename, accessibility check) call `discoveryChanged()`, which
+ * drops every entry at once (P5.S.8, `discovery-invalidation.test.ts`);
+ * changes made outside the app — an operator delete in the database
+ * dashboard, a direct GitHub change absorbed by reconcile — are bounded by
+ * the 120 s window.
  *
  * A search that could not run (unavailable) is not cached.
  */
