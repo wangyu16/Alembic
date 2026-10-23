@@ -18,6 +18,7 @@ import {
 import type { PackageManifest } from "@alembic/package-contract";
 import { registerChanges, syncPackageRegistry } from "@/lib/register";
 import { refreshManifestAfterReconcile } from "@/lib/reconcile-manifest";
+import { recordedPublicRepo } from "@/lib/recorded-repo";
 
 export interface GithubConfig {
   appId: string;
@@ -190,7 +191,7 @@ export async function reconcilePackage(
   packageId: string,
 ): Promise<ReconcileOutcome | null> {
   const record = await store.getPackage(packageId);
-  const repo = record?.storage === "github" ? record.manifest.publicRepo : null;
+  const repo = recordedPublicRepo(record);
   if (!repo) return null;
   const gh = await clientForUser(supabase, userId);
   if (!gh) return null;
@@ -243,7 +244,7 @@ export async function scanPublicRepoForLeaks(
   packageId: string,
 ): Promise<{ leaked: string[]; truncated: boolean } | null> {
   const record = await store.getPackage(packageId);
-  const repo = record?.storage === "github" ? record.manifest.publicRepo : null;
+  const repo = recordedPublicRepo(record);
   if (!repo) return null;
   const gh = await clientForUser(supabase, userId);
   if (!gh) return null;

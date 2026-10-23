@@ -64,6 +64,18 @@ became a claim + a probe that fails on `d4544cc` + a fix of the class ([Decision
   the same file passes in a reused session (the fresh session is load-bearing). The replayed data directory is cached
   in `os.tmpdir()` by content hash (cold ~30 s, warm ~1 s). `track_functions` (superuser-only) is now server
   configuration set by the harness (`serverSettings`); call counts are measured as deltas inside the transaction.
+- ✅ **NEW-1 — repository reads from the owner-writable manifest (P5.S.3.e).** `/d` (and so includes and element
+  adaptation) fetched a published file's bytes from `manifest.publicRepo`, which the owner can PATCH: a course could
+  serve another educator's repository under its own docIds and licence. `PackageRecord.repos` now carries the
+  publish-recorded `public_repo` / `private_repo` (`SupabaseSandboxStore.getPackage`), and every server read/write
+  goes through `lib/recorded-repo.ts`: `fetchDocBytes`, the committer (public + private), reconcile, the leak scan,
+  snapshots, restore, the website, listing (`public_repo_url`/`site_url`), whole-package upload, hosted-file metadata
+  and the editor header. Probes: `doc-content.recorded-repo.test.ts`, `committer.test.ts`; class:
+  `recorded-repo.scan.test.ts` refuses any `publicRepo`/`privateRepo` read outside five listed files. Code only.
+- ✅ **M2 residual — the a11y check audited the owner-writable mirror (P5.S.3.g).** `recheckA11yAction` now audits a
+  published course's recorded public repository at its head (`lib/a11y-audit.ts`, through the educator's own GitHub
+  connection; unreadable → refused, never the mirror), and only that audit is recorded as the trusted
+  `a11y_status`; a trial's check updates its own manifest only. Probe `a11y-audit.test.ts`. Code only.
 
 **Phase 5 closed-loop verification — round 1 integration: loops r1 + r1b merged (2026-10-23, branch
 `phase5/loop-r1-integrate`, not pushed, migrations NOT applied).** `main` already carried loop r1 (security);

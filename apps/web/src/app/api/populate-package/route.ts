@@ -34,6 +34,7 @@ import {
 import { syncPackageRegistry } from "@/lib/register";
 import { rewriteMarkdownRefs } from "@/lib/rewrite-md-refs";
 import { commitInRounds } from "@/lib/populate-rounds";
+import { recordedPrivateRepo, recordedPublicRepo } from "@/lib/recorded-repo";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -141,8 +142,9 @@ export async function POST(req: NextRequest) {
 
   // The target must be published: a package holds images, and images can only
   // live in a repository (the trial store is text-only, permanently).
-  const publicRepo = record.manifest.publicRepo;
-  const privateRepo = record.manifest.privateRepo;
+  // The publish-recorded repos (security loop r2, P5.S.3.e).
+  const publicRepo = recordedPublicRepo(record);
+  const privateRepo = recordedPrivateRepo(record);
   if (record.storage !== "github" || !publicRepo || !privateRepo) {
     return fail(
       "Publish this course to GitHub first, then upload your package into it.",

@@ -8,6 +8,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
 import { supabaseEventLogger } from "@/lib/events";
 import { clientForUser, recordSyncedSha } from "@/lib/github";
+import { recordedPublicRepo } from "@/lib/recorded-repo";
 
 async function requireUser() {
   const supabase = await createSupabaseServerClient();
@@ -32,7 +33,7 @@ function tagFromName(name: string): string {
 async function publicRepo(supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>, packageId: string) {
   const store = new SupabaseSandboxStore(supabase);
   const record = await store.getPackage(packageId);
-  const repo = record?.storage === "github" ? record.manifest.publicRepo : null;
+  const repo = recordedPublicRepo(record);
   return { record, repo };
 }
 

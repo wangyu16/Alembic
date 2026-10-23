@@ -56,15 +56,21 @@ function store(record: PackageRecord | null): PackageStore {
 }
 
 function record(over: Partial<PackageRecord> = {}): PackageRecord {
+  const m =
+    over.manifest ??
+    manifest({
+      publicRepo: { owner: "prof", name: "thermo" },
+      privateRepo: { owner: "prof", name: "thermo-private" },
+    });
   return {
     packageId: "pkg-1",
     ownerId: "user-1",
     title: "Thermochemistry",
     storage: "github",
-    manifest: manifest({
-      publicRepo: { owner: "prof", name: "thermo" },
-      privateRepo: { owner: "prof", name: "thermo-private" },
-    }),
+    manifest: m,
+    // What the publish path recorded (packages.public_repo / private_repo);
+    // by default the same pair the manifest names.
+    repos: { public: m.publicRepo ?? null, private: m.privateRepo ?? null },
     ...over,
   };
 }
@@ -191,6 +197,34 @@ describe("the committer itself", () => {
     // The synced pointer tracks the PUBLIC repo only (that is what reconcile
     // compares against); a private commit must not move it.
     expect(mocks.recordSyncedSha).not.toHaveBeenCalled();
+  });
+
+  it("[P5.S.3.e] commits go to the recorded repos, never to the repos a re-pointed manifest names", async () => {
+    const rec = record({
+      manifest: manifest({
+        publicRepo: { owner: "victim", name: "victim-oer" },
+        privateRepo: { owner: "victim", name: "victim-private" },
+      }),
+      repos: { public: { owner: "prof", name: "thermo" }, private: { owner: "prof", name: "thermo-private" } },
+    });
+    const { committer, createCommitOnBranch } = await connected(undefined, rec);
+    await committer.commit({ repo: "public", summary: "Save", changes: [{ path: PUBLIC_PATH, content: "x" }] });
+    await committer.commit({ repo: "private", summary: "Save", changes: [{ path: PRIVATE_PATH, content: "y" }] });
+    expect(createCommitOnBranch.mock.calls.map((c) => c[0].coords)).toEqual([
+      { owner: "prof", repo: "thermo" },
+      { owner: "prof", repo: "thermo-private" },
+    ]);
+  });
+
+  it("[P5.S.3.e] a published package with a manifest repo but none recorded is refused, not committed", async () => {
+    const result = await committerFor(
+      supabase,
+      store(record({ repos: { public: null, private: null } })),
+      "user-1",
+      "pkg-1",
+    );
+    expect(result.kind).toBe("unavailable");
+    expect(mocks.clientForUser).not.toHaveBeenCalled();
   });
 
   it("passes binary changes through with their encoding", async () => {

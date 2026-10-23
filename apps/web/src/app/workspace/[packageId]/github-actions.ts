@@ -24,6 +24,7 @@ import {
 } from "@/lib/github";
 import { slugForFile } from "@/lib/export";
 import { manifestFromFiles } from "@/lib/manifest-read";
+import { recordedPublicRepo, repoUrl } from "@/lib/recorded-repo";
 
 /**
  * Create a repo from a template, but tolerate a re-run after a partial publish:
@@ -153,9 +154,9 @@ export async function publishToGitHubAction(
   const store = new SupabaseSandboxStore(supabase);
   const record = await store.getPackage(packageId);
   if (!record) return { ok: false, error: "Package not found." };
-  if (record.storage === "github" && record.manifest.publicRepo) {
-    const r = record.manifest.publicRepo;
-    return { ok: true, publicRepoUrl: `https://github.com/${r.owner}/${r.name}` };
+  const already = recordedPublicRepo(record);
+  if (already) {
+    return { ok: true, publicRepoUrl: repoUrl(already) };
   }
 
   const events = supabaseEventLogger(supabase);
@@ -306,7 +307,7 @@ export async function restoreStudyGuideAction(
 
   const store = new SupabaseSandboxStore(supabase);
   const record = await store.getPackage(packageId);
-  const repo = record?.storage === "github" ? record.manifest.publicRepo : null;
+  const repo = recordedPublicRepo(record);
   if (!repo) return { ok: false, error: "This package isn't published to GitHub." };
 
   const gh = await clientForUser(supabase, user.id);

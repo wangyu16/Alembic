@@ -7,7 +7,7 @@
  * store call, so a store never receives an invalid placement.
  */
 
-import type { PackageManifest, RepoKind } from "@alembic/package-contract";
+import type { PackageManifest, RepoKind, RepoRef } from "@alembic/package-contract";
 import type { DocumentRegistryStore } from "./document-registry";
 
 /** One entry of a content-free listing. `contentSha256` = SHA-256 (hex) of
@@ -33,6 +33,15 @@ export interface PackageRecord {
   title: string;
   manifest: PackageManifest;
   storage: "sandbox" | "github";
+  /**
+   * The repositories the PUBLISH PATH recorded (`packages.public_repo` /
+   * `private_repo`, written by the service role only since migration 0025).
+   * Every server read or write of a published package's repositories uses
+   * these, never `manifest.publicRepo` / `privateRepo`, which the owner can
+   * rewrite at will (security loop r2, P5.S.3.e). Absent when the store does
+   * not track them (the in-memory test store): then there is no recorded repo.
+   */
+  repos?: { public: RepoRef | null; private: RepoRef | null };
 }
 
 export interface PackageStore {

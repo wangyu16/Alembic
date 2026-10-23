@@ -9,6 +9,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
 import { supabaseEventLogger } from "@/lib/events";
 import { recordDiscoveryEvent } from "@/lib/record-discovery-event";
+import { recordedPublicRepo } from "@/lib/recorded-repo";
 
 export interface RegisterResult {
   ok: boolean;
@@ -41,7 +42,7 @@ export async function registerPackageAction(
   // Listing on the public index is open to every signed-in educator.
   const store = new SupabaseSandboxStore(supabase);
   const record = await store.getPackage(packageId);
-  const repo = record?.storage === "github" ? record.manifest.publicRepo : null;
+  const repo = recordedPublicRepo(record);
   if (!repo) {
     return { ok: false, error: "Publish to GitHub before listing on the index." };
   }

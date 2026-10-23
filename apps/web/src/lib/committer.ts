@@ -39,6 +39,7 @@ import {
 } from "@alembic/package-ops";
 import type { GitHubClient } from "@alembic/github-bridge";
 import { clientForUser, recordSyncedSha } from "./github";
+import { recordedPrivateRepo, recordedPublicRepo } from "./recorded-repo";
 
 /**
  * Which write path this package is on. Callers branch on `kind` and never
@@ -87,8 +88,10 @@ export async function committerFor(
   if (!record) return { kind: "unavailable", reason: MISSING_PACKAGE };
   if (record.storage !== "github") return { kind: "trial" };
 
-  const publicRepo = record.manifest.publicRepo;
-  const privateRepo = record.manifest.privateRepo;
+  // The publish-recorded repos, never the owner-writable manifest fields
+  // (security loop r2, P5.S.3.e).
+  const publicRepo = recordedPublicRepo(record);
+  const privateRepo = recordedPrivateRepo(record);
   if (!publicRepo) return { kind: "unavailable", reason: MISSING_HOME };
 
   const gh = await clientForUser(supabase, userId);

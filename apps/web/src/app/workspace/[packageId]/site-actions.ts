@@ -38,6 +38,7 @@ import { generateSelfContainedFile } from "@/lib/worker-client";
 import { docMetaForPackage } from "@/lib/doc-metadata";
 import { emptyOutcome, publishErrorMessage, publishNotes, type PublishOutcome } from "@/lib/publish-report";
 import { courseSiteFiles, PAGES_BRANCH, pushCourseSite } from "@/lib/site-publish";
+import { recordedPublicRepo } from "@/lib/recorded-repo";
 
 /** Deterministic UTC date formatter for announcement stamps ("July 11, 2026"). */
 const ANNOUNCEMENT_DATE_FMT = new Intl.DateTimeFormat("en-US", {
@@ -192,7 +193,7 @@ export async function publishSiteAction(
 
   const store = new SupabaseSandboxStore(supabase);
   const record = await store.getPackage(packageId);
-  const repo = record?.storage === "github" ? record.manifest.publicRepo : null;
+  const repo = recordedPublicRepo(record);
   if (!repo) {
     return { ok: false, error: "Publish to GitHub first, then publish the website." };
   }

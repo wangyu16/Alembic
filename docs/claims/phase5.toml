@@ -1461,3 +1461,33 @@ bound_to = [
   "apps/web/src/lib/pglite-harness.sql.test.ts :: the fresh session is load-bearing: the same stripped file passes in a session that already loaded pg_trgm",
 ]
 note = "Loop r2 improvement 1. A cold replay costs ~30 s; the migrated data directory is cached in os.tmpdir() keyed by the hash of every applied migration. track_functions is set as server configuration by the harness (serverSettings), never by the owner."
+
+# NEW-1 — every server read of a published package's repository uses the recorded repo
+
+[[claim]]
+id = "P5.S.3.e"
+claim = "Every server read or write of a published package's repository (the /d byte source and therefore includes and element adaptation, commits, reconcile, the leak scan, snapshots, restore, the website, listing, upload) uses the repository the publish path recorded (packages.public_repo / private_repo), never manifest.publicRepo / privateRepo."
+oracle = "probe"
+bound_to = [
+  "apps/web/src/lib/doc-content.recorded-repo.test.ts :: a manifest re-pointed at another educator's repo does not change where /d reads",
+  "apps/web/src/lib/doc-content.recorded-repo.test.ts :: a published package with no recorded repo reads no repository at all (only its own stored copy)",
+  "apps/web/src/lib/committer.test.ts :: commits go to the recorded repos, never to the repos a re-pointed manifest names",
+  "apps/web/src/lib/committer.test.ts :: a published package with a manifest repo but none recorded is refused, not committed",
+  "apps/web/src/lib/recorded-repo.scan.test.ts :: every publicRepo/privateRepo read outside the allowed files is refused",
+  "apps/web/src/lib/recorded-repo.scan.test.ts :: the allowed files exist and still need their exemption",
+  "apps/web/src/lib/recorded-repo.scan.test.ts :: the scan sees every read shape (self-check)",
+]
+note = "Loop r2 NEW-1. Code only (no migration). Allowed reads (none is a stored manifest's field): package-trust-writes (records the App-created pair), populate-package (input.target built from the recorded pair), committer (its own args), adaptation (strips the pair from a copy), the PGlite harness."
+
+# M2 residual — the trusted a11y result audits the published bytes
+
+[[claim]]
+id = "P5.S.3.g"
+claim = "The accessibility result Discover trusts (packages.a11y_status) is recorded only from an audit of a published course's recorded public repository at its head, never from the owner-writable sandbox_files mirror; a trial course's check is not recorded as the trusted result."
+oracle = "probe"
+bound_to = [
+  "apps/web/src/lib/a11y-audit.test.ts :: a published course is audited from its recorded repository at head, not the clean mirror",
+  "apps/web/src/lib/a11y-audit.test.ts :: a published course whose repository cannot be read is refused, never audited from the mirror",
+  "apps/web/src/lib/a11y-audit.test.ts :: the check action audits through that source and records only a published audit",
+]
+note = "Loop r2 M2 residual (closes the r1 M2 open item for the a11y check; concept-map topics still read the mirror — listing text the owner writes anyway)."

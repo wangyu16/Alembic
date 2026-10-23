@@ -12,6 +12,7 @@ import type {
 } from "@alembic/package-ops";
 import { SupabaseDocumentRegistryStore } from "./document-registry-store";
 import { pageAll } from "./page-all";
+import { asRepoRef } from "./recorded-repo";
 
 /**
  * Trial-sandbox PackageStore over Supabase. Paths reaching this store have
@@ -57,7 +58,7 @@ export class SupabaseSandboxStore implements PackageStore {
   async getPackage(packageId: string): Promise<PackageRecord | null> {
     const { data, error } = await this.supabase
       .from("packages")
-      .select("id, owner_id, title, manifest, storage")
+      .select("id, owner_id, title, manifest, storage, public_repo, private_repo")
       .eq("id", packageId)
       .maybeSingle();
     if (error) throw new Error(`Could not load the package: ${error.message}`);
@@ -68,6 +69,9 @@ export class SupabaseSandboxStore implements PackageStore {
       title: data.title,
       manifest: parseManifest(data.manifest) as PackageManifest,
       storage: data.storage,
+      // The publish-recorded repos (service-role columns, 0025) — what every
+      // server read/write of a published package uses (loop r2, P5.S.3.e).
+      repos: { public: asRepoRef(data.public_repo), private: asRepoRef(data.private_repo) },
     };
   }
 

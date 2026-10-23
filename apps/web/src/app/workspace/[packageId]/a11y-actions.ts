@@ -7,8 +7,6 @@ import {
   CommitFailedError,
   CommitUnavailableError,
   ManifestConflictError,
-  listChapters,
-  loadStudyGuide,
   updateManifest,
 } from "@alembic/package-ops";
 import type { AccessibilityStatus } from "@alembic/package-contract";
@@ -21,7 +19,9 @@ import { supabaseEventLogger } from "@/lib/events";
 import { committerFor } from "@/lib/committer";
 import { governedProvider, RateLimitError, BudgetExceededError } from "@/lib/ai";
 import { recordChange } from "@/lib/changes";
-import { auditDoc, type FixableRule } from "@/lib/a11y";
+import type { FixableRule } from "@/lib/a11y";
+import { a11yAuditSource, auditPackageA11y } from "@/lib/a11y-audit";
+import { clientForUser } from "@/lib/github";
 
 async function requireUser() {
   const supabase = await createSupabaseServerClient();
@@ -60,17 +60,15 @@ export async function recheckA11yAction(packageId: string): Promise<RecheckResul
   const { supabase, user } = await requireUser();
   const store = new SupabaseSandboxStore(supabase);
   try {
-    const chapters = await listChapters(store, packageId);
-    let errorCount = 0;
-    let warningCount = 0;
-    // Empty packages have one implicit chapter; loadStudyGuide handles absence.
-    const paths = chapters.length ? chapters.map((c) => c.path) : [undefined];
-    for (const path of paths) {
-      const doc = await loadStudyGuide(store, packageId, path);
-      const report = auditDoc(doc);
-      errorCount += report.errorCount;
-      warningCount += report.warningCount;
-    }
+    // Audit what readers get: a published course's recorded public repository
+    // at its head, never the owner-writable mirror (security loop r2, M2
+    // residual, P5.S.3.g); a trial course's stored copy otherwise.
+    const source = await a11yAuditSource(store, await store.getPackage(packageId), async () => {
+      const gh = await clientForUser(supabase, user.id);
+      return gh ? gh.client : null;
+    });
+    if (!source.ok) return { ok: false, error: source.error };
+    const { errorCount, warningCount } = await auditPackageA11y(source.store, packageId);
     const status: AccessibilityStatus = {
       status: errorCount > 0 ? "fail" : warningCount > 0 ? "warn" : "pass",
       errorCount,
@@ -99,11 +97,14 @@ export async function recheckA11yAction(packageId: string): Promise<RecheckResul
     await supabase.from("packages").update({ manifest }).eq("id", packageId);
     // The result Discover trusts is the server's own record of THIS run
     // (service-role column, migration 0025, security loop r1 M2), not the
-    // owner-writable manifest field. Best-effort: the check above is saved.
-    await packageTrustWriter(createServiceClient).recordA11yCheck(packageId, user.id, {
-      status: status.status,
-      checkedAt: status.checkedAt,
-    });
+    // owner-writable manifest field — and only a run over the PUBLISHED bytes
+    // is recorded (loop r2, P5.S.3.g). Best-effort: the check above is saved.
+    if (source.published) {
+      await packageTrustWriter(createServiceClient).recordA11yCheck(packageId, user.id, {
+        status: status.status,
+        checkedAt: status.checkedAt,
+      });
+    }
 
     await supabaseEventLogger(supabase).log({
       type: "a11y.checked",

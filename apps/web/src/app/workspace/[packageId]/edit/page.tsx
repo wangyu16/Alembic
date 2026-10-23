@@ -19,6 +19,7 @@ import { chapterDocPath, parseWorkspaceView } from "./nav";
 import { syncPackageRegistry } from "@/lib/register";
 import { SupabaseDocumentRegistryStore } from "@/lib/document-registry-store";
 import { canOfferShare } from "@/lib/share-policy";
+import { recordedPublicRepo } from "@/lib/recorded-repo";
 
 /**
  * Server actions invoked from this page inherit its time budget, and publishing
@@ -88,7 +89,7 @@ export default async function EditShellPage({
   // only from the confirmation the upload shows; it isn't advertised here.
   const showUploadEmptyState =
     record.storage === "github" &&
-    Boolean(record.manifest.publicRepo) &&
+    Boolean(recordedPublicRepo(record)) &&
     packageAwaitsUpload(await store.listPaths(packageId));
 
   const chapters = await listChapters(store, packageId);
@@ -250,7 +251,7 @@ export default async function EditShellPage({
   const aiAccess: AiAccess =
     canAi === true ? "approved" : profile?.ai_status === "requested" ? "requested" : "none";
   const cfg = githubConfig();
-  const pub = record.manifest.publicRepo;
+  const pub = recordedPublicRepo(record);
 
   let siteUrl: string | null = null;
   if (record.storage === "github" && pub) {

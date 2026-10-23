@@ -2,6 +2,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { fetchPublicRepoBytes } from "@alembic/github-bridge";
 import { isBinaryPath } from "@/lib/collection-upload";
+import { loadRecordedPublicRepo } from "@/lib/recorded-repo";
 
 /**
  * Fetch a registered file's stored BYTES, wherever they live — the shared
@@ -20,20 +21,15 @@ export async function fetchDocBytes(
   db: SupabaseClient,
   doc: { package_id: string; repo: "public" | "private"; path: string },
 ): Promise<Buffer | null> {
-  const { data: pkg } = await db
-    .from("packages")
-    .select("storage, manifest")
-    .eq("id", doc.package_id)
-    .maybeSingle();
-  if (!pkg) return null;
+  // The repository the publish path recorded (service-role column), never
+  // the owner-writable manifest.publicRepo (security loop r2, P5.S.3.e).
+  const pkg = await loadRecordedPublicRepo(db, doc.package_id);
+  if (!pkg.found) return null;
 
-  const publicRepo = (pkg.manifest as { publicRepo?: { owner: string; name: string } })
-    ?.publicRepo;
-
-  if (pkg.storage === "github" && doc.repo === "public" && publicRepo) {
+  if (pkg.published && doc.repo === "public" && pkg.repo) {
     // Raw bytes from the public repo — correct for both text and binary.
     const bytes = await fetchPublicRepoBytes(
-      { owner: publicRepo.owner, repo: publicRepo.name },
+      { owner: pkg.repo.owner, repo: pkg.repo.name },
       doc.path,
     ).catch(() => null);
     if (bytes) return Buffer.from(bytes);

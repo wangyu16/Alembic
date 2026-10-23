@@ -17,6 +17,8 @@ import {
 } from "@/lib/editor-save";
 import { supabaseEventLogger } from "@/lib/events";
 import { setCourseThemeAction } from "./metadata-actions";
+import { recordedPublicRepo, repoUrl } from "@/lib/recorded-repo";
+import type { PackageRecord } from "@alembic/package-ops";
 
 /**
  * E3 — hosted study-guide editing. The chapter's committed source of record
@@ -62,9 +64,9 @@ export interface ChapterHtmlResult {
 
 /** The public repo URL for a package's canonical `source`, or undefined for a
  *  sandbox package that has not been published yet. */
-function repoUrlOf(record: { manifest: { publicRepo?: { owner: string; name: string } } }): string | undefined {
-  const r = record.manifest.publicRepo;
-  return r ? `https://github.com/${r.owner}/${r.name}` : undefined;
+function repoUrlOf(record: PackageRecord): string | undefined {
+  const r = recordedPublicRepo(record);
+  return r ? repoUrl(r) : undefined;
 }
 
 /**
