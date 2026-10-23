@@ -13,6 +13,7 @@ import {
   type Committer,
 } from "@alembic/package-ops";
 import type { PackageManifest } from "@alembic/package-contract";
+import { discoveryChanged } from "@/lib/discovery-cache";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
 import { committerFor } from "@/lib/committer";
@@ -150,6 +151,10 @@ export interface CourseInfo {
   description?: string;
   /** Discovery tags/keywords. */
   keywords?: string[];
+  /** Subject (manifest.discipline) — a Discover filter. Absent = unchanged. */
+  discipline?: string;
+  /** Course level (manifest.courseContext.level) — a Discover filter. Absent = unchanged. */
+  level?: string;
 }
 
 /**
@@ -189,12 +194,17 @@ export async function setCourseInfoAction(
       instructor: clean(info.instructor),
       courseNumber: clean(info.courseNumber),
       department: clean(info.department),
+      level: info.level === undefined ? base.courseContext.level : clean(info.level),
     };
+    const discipline =
+      info.discipline === undefined ? base.discipline : (info.discipline.trim().slice(0, 80));
     const currentContext = base.courseContext;
     const unchanged =
       currentContext.instructor === nextContext.instructor &&
       currentContext.courseNumber === nextContext.courseNumber &&
       currentContext.department === nextContext.department &&
+      currentContext.level === nextContext.level &&
+      base.discipline === discipline &&
       base.description === description &&
       JSON.stringify(base.keywords ?? []) === JSON.stringify(keywords);
     if (unchanged) return { ok: true };
@@ -215,7 +225,9 @@ export async function setCourseInfoAction(
           instructor: nextContext.instructor,
           courseNumber: nextContext.courseNumber,
           department: nextContext.department,
+          level: nextContext.level,
         },
+        discipline,
         description,
         keywords,
       }),
@@ -224,6 +236,7 @@ export async function setCourseInfoAction(
     await refreshManifestColumn(supabase, packageId, manifest);
     revalidatePath(`/workspace/${packageId}`);
     revalidatePath("/portal");
+    discoveryChanged();
     return { ok: true };
   } catch (e) {
     return {
@@ -264,6 +277,7 @@ export async function saveCourseConceptMapAction(
       summary: "Update course concept map (Alembic)",
     });
     revalidatePath(`/workspace/${packageId}`);
+    discoveryChanged();
     return { ok: true, markdown };
   } catch (e) {
     return {

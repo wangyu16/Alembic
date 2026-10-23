@@ -12,6 +12,7 @@ import {
   ManifestConflictError,
   ManifestNotFoundError,
 } from "@alembic/package-ops";
+import { discoveryChanged } from "@/lib/discovery-cache";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
 import { clientForUser } from "@/lib/github";
@@ -82,6 +83,7 @@ export async function renamePackageAction(
     });
     revalidatePath("/workspace");
     revalidatePath(`/workspace/${packageId}`);
+    discoveryChanged();
     return { ok: true };
   } catch (e) {
     if (e instanceof PackageRenameError) return { ok: false, error: e.message };
@@ -177,6 +179,7 @@ export async function archivePackageAction(
   });
   revalidatePath("/workspace");
   revalidatePath("/portal");
+  discoveryChanged();
   return { ok: true };
 }
 
@@ -200,6 +203,7 @@ export async function restorePackageAction(
     occurredAt: new Date().toISOString(),
   });
   revalidatePath("/workspace");
+  discoveryChanged();
   return { ok: true };
 }
 

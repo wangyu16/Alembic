@@ -12,6 +12,7 @@ import {
   updateManifest,
 } from "@alembic/package-ops";
 import type { AccessibilityStatus } from "@alembic/package-contract";
+import { discoveryChanged } from "@/lib/discovery-cache";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
 import { supabaseEventLogger } from "@/lib/events";
@@ -103,6 +104,7 @@ export async function recheckA11yAction(packageId: string): Promise<RecheckResul
       occurredAt: new Date().toISOString(),
     });
     revalidatePath(`/workspace/${packageId}`);
+    discoveryChanged();
     return { ok: true, status };
   } catch (e) {
     return {

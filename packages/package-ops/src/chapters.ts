@@ -148,7 +148,12 @@ export async function listChapters(
   store: PackageStore,
   packageId: string,
 ): Promise<ChapterInfo[]> {
-  const manifest = await readManifest(store, packageId);
+  return chaptersOfManifest(await readManifest(store, packageId));
+}
+
+/** The chapters a manifest declares (or its one implicit chapter), with their
+ *  study-guide paths. Pure — for callers that already hold the manifest. */
+export function chaptersOfManifest(manifest: PackageManifest): ChapterInfo[] {
   return effectiveChapters(manifest).map((c) => ({
     slug: c.slug,
     title: c.title,

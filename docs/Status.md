@@ -52,6 +52,76 @@ same commit as the work it tracks. Statuses: ✅ done · 🔄 partially shipped 
 
 > **Current direction — self-contained editing (owner-locked, 2026-07).** Editing and viewing both live *in the files*: the workspace **hosts** the in-file editors of `.md.html` / `.slides.html` / `.paged.html` (orz-family) and **builds no editor of its own**; published pages **are** those self-contained files (thin CDN delivery — study guide ~74 KB, framework from jsDelivr, verified live 2026-07-06); every file gets a permalink. **Committed source of record (revised, 2026-07-08 — "lean-source model"):** a chapter's study guide, slides, and practice questions are each committed as lean markdown (`study-guide/`, `slides/`, `practice/` — `.md`, not `.md.html`); the self-contained `.md.html`/`.slides.html` is generated on demand, purely as the editing/viewing surface, and never itself committed. This supersedes the original plan (below, and in the specs) of `.md.html` as the committed source — the specs haven't all been updated to match yet; this line is authoritative until they are. Authoritative docs: [SteeringNote.md](SteeringNote.md), [self-contained-editing.md](specs/self-contained-editing.md), [workspace-framework.md](specs/workspace-framework.md), and the module-based [Roadmap.md](Roadmap.md) (Modules R/E/P/T/I/S/W — supersedes the phase-based plan). **Code state today:** the classic editor is **retired** (~2.2k lines removed; `/workspace/[id]` redirects to `/edit`); the local **Studio (`/studio`) is removed**, replaced by `/guide`; the workspace three-pane shell now *hosts* the in-file editors (`HostedStudyGuideEditor` for study guide + practice; `HostedSlidesEditor` for authored slide decks). The durable guardrails **G1–G8** (two-repo reference enforcement, block-ID reconcile on import, whole-package fork, single-source course metadata, AI-entitlement seam) that the earlier editor-overhaul design drove all **landed + tested**.
 
+**Phase 5 Track A — discovery at scale (2026-10-23, branch `phase5/trackA-core`, not yet deployed).** Plan:
+family `docs/PHASE5-ALEMBIC.md` Track A (A.1–A.4 here; A.6–A.7 on a parallel branch; A.5 after, owner Q1; A.8
+waits for Track C). Spec: [discovery-index.md](specs/discovery-index.md). **Migration `0022_trackA_discovery`
+must be applied before this code is deployed** (it back-fills the index itself).
+
+- ✅ **A.1 Discovery projection.** `discovery_courses` (one row per listed course) and `discovery_elements` (one
+  per shared element), derived **in the database** from the listing consent (`portal_registrations`), the
+  manifest read cache, the registry and the public concept map — a rebuildable projection, never written by
+  app code (Roadmap rule 3). Fields: title, description, keywords, chapter titles, concept-map topics,
+  discipline/level (normalised), public course identity, licence, a11y status, chapter/element counts,
+  `updated_at`, lineage (adapted from; adaptation count), plus search columns. **Fresh by triggers** on
+  `portal_registrations`, `packages`, `documents` (statement-level) and the concept-map rows of
+  `sandbox_files`: listing/unlisting (incl. an operator takedown), every manifest write, publish,
+  archive/restore, share/unshare, asset metadata, deletes, saves, forks and element copies (the source's
+  adaptation count). Best-effort: a projector error is a WARNING, never a failed save. `discovery_rebuild()`
+  re-derives everything (the migration ends with it). **Boundary:** one listability predicate per scope,
+  enforced by the projector, the search functions (live joins), the public read policy and CHECK
+  constraints; `documents` stays owner-only. Contract side: `package-contract/src/discovery.ts` (row
+  schemas, `NEVER_LISTED_SPACES`, `DISCOVERY_MANIFEST_FIELDS`, fail-closed row parsing). **Tests:** real
+  Postgres via PGlite (new web devDependency `@electric-sql/pglite`; every migration applied over a Supabase
+  stub): 35 projection tests (incl. the real write path: an `authenticated` owner's own RLS-scoped list/share/
+  archive drives the triggers; another educator's session cannot) — each leak class (trial, archived, ARR licence, no public repo, unlisted,
+  private repo, private/current space, unshared, tombstoned, trial-package share), takedown, stale-row RLS,
+  no writes by `anon`/`authenticated`, freshness per trigger, best-effort, rebuild-from-empty equality — plus
+  SQL ⇄ contract agreement tests. PGlite is Postgres 18 in WASM, not Supabase: it proves behaviour and SQL
+  shape, not production performance. DecisionLog 2026-10-23.
+- ✅ **A.2 Search in Postgres** (owner Q2). Weighted `tsvector` (A title > B keywords/chapters/topics or tags > C
+  description and the rest, English stemming) + a prefix query ("titr" → Titration) + `pg_trgm` word
+  similarity for typos ("chemstry"), all GIN-indexed; facet counts in SQL (courses: discipline, level,
+  licence, a11y; elements: kind, artifact type = space, licence, discipline; each counted with the other
+  filters applied; ≤ 50 values each); **keyset paging** on `(score, id)` with the ranking hour in the cursor
+  (no OFFSET; ≤ 51 rows per call); every search re-checks listability against the live tables. Four
+  `anon`-callable functions (`discovery_search_courses|elements`, `discovery_course|element_facets`); helpers
+  internal. Web side: `lib/discovery-search.ts` (URL state parse/clamp, cursor codec — tampered cursors fall
+  back to page one — RPC args, fail-closed row parsing). **Tests:** 28 pure (query building, cursor, no
+  offset, clamping, regressed-query rows dropped) + 36 SQL (stemming, weights, prefix, typos, hostile input,
+  normalised filters, facet semantics, paging walks every row once, page caps, stale rows never served for
+  four course and four element cases, `anon` access, SQL shape: no OFFSET, keyset predicate, clamped limits,
+  GIN indexes). Spec §2 notes the linear ranking cost (revisit at ~100k elements).
+- ✅ **A.3 Ranking.** Relevance first (full-word and prefix text rank + trigram similarity), then a bounded quality
+  factor `×(0.75 + 0.5 × quality)`: accessibility 0.30 (course audit; element described), open licence 0.15,
+  completeness 0.20, recency 0.20 (`exp(−days/180)` against the page's hour), adaptations 0.15 (log,
+  saturating at 20). Prominence, never visibility: every match stays listed. Citations: no data yet (spec §3
+  leaves the slot). Formula in [discovery-index.md](specs/discovery-index.md) §3; SQL mirrored by
+  `qualityScore`/`rankScore` in package-contract. **Tests:** 11 pure (weights sum to 1, each signal raises
+  quality, bounds, relevance dominance) + 1 SQL ⇄ TS agreement over 1,152 input combinations + 7 SQL ordering
+  tests (each signal reorders equal matches; a title match beats a much better-quality description match;
+  low quality still listed).
+- ✅ **A.4 Course and element pages; Discover on server search.** `/portal` is server-rendered over the index
+  (`lib/discovery-search.ts` + cached reads in `lib/discovery-cache.ts`): GET search form with facet counts,
+  URL state, keyset "Next page" links, works without JavaScript; cookie-less anonymous reads cached 120 s under
+  the `discovery` tag, refreshed at once by `updateTag` from the educator actions that change listings
+  (list/unlist, archive/restore, rename, course details, concept map, share/asset metadata, a11y check).
+  **`/p/{packageId}`** (permalinks §2, now shipped): preview (outline, topics, keywords, shared elements), how
+  to cite, licence, lineage (adapted from / adapted by), **Adapt with the source preselected** (pick its
+  chapter and yours; `adaptFromPortalAction` now checks the source is listed *now* in the index — not the
+  listing-time snapshot — and that the target chapter is the educator's own). **`/portal/element/{docId}`**:
+  preview, permalink, cite, licence, lineage, "Use it in your course". Unlisted/private/trial/archived = plain
+  404. **Course details** gained Subject and Level (the facets no longer rest on the "chemistry" default).
+  A.6/A.7 seams used: search rate limit, `portal.searched` / `course.viewed` / `adaptation.started` (`entry`)
+  events, `listListedCourses` repointed at `discovery_courses`, `COURSE_PAGES_LIVE` on (feed `@id` = course
+  page, `dateModified`; sitemaps list course pages). **Removed:** `lib/shared-elements.ts` (Track 0.3's
+  service-role Elements read — its leak cases are now SQL tests on the index) and the client-side
+  `PortalBrowser`. Tests: citation (2), `chaptersOfManifest` (1), labels (3), feed `@id` (1), cursor page (1).
+  **Open (owner):** *(a)* course adaptation still copies one chapter's sections at a time (whole-course
+  fork across owners is a follow-up — `forkOwnPackageAction` is same-owner only); *(b)* the portal no longer
+  has a client-side instant filter — results update on "Search" (or Enter); *(c)* a listing's
+  `portal_registrations` snapshot columns are no longer read for discovery (kept, additive-only); *(d)*
+  no blind-critique round has been run on the new pages yet (Track A's closing step).
+
 **Phase 5 hardening — riskless neat improvements (2026-10-23, branch `phase5/harden`, not yet deployed).**
 Owner-approved small fixes from the Phase 5 surveys (family `docs/PHASE5-ALEMBIC.md`).
 
@@ -703,6 +773,8 @@ theme-in-save).
 ### Pending operator actions (human-in-the-loop)
 
 These are the only things blocking full production parity with the code:
+
+1. **Migrations pending: `0020` (required for zip upload), `0019` (required for CF4), `0013` (optional), `0021_trackB_documents_hash_idx` (optional index, Phase 5 Track B.1 — apply anytime), `0023_trackA_infra` (optional, additive, Phase 5 Track A.6–A.7 — nullable `research_events.user_id` for anonymous discovery events, shared report rate-limit counters; apply anytime), `0022_trackA_discovery` (Phase 5 Track A.1–A.4 — discovery index; apply BEFORE deploying the Track A core code — `/portal`, `/p/…` and the feed read only it; it back-fills itself, and `select public.discovery_rebuild();` re-derives it any time; first check pg_trgm is not already enabled outside the `extensions` schema — see the migration header).** `0020_staging_bucket` creates the private `staging` bucket + owner-prefix RLS that the whole-course zip upload writes through — **it needs owner/service-role privileges** (it writes `storage.buckets` and `storage.objects` policies, which the anon/authenticated roles cannot) and **must be applied BEFORE the Wave-3 code is deployed**, or every zip upload fails at the signed-URL step. Supabase Storage has no automatic TTL, so the bucket's 24-hour lifetime also needs an **operator/cron sweep** deleting objects older than 24h (the happy path deletes each object on consumption); see [Deployment.md §1](Deployment.md). `0019_document_tags` adds the per-file `tags` column the Assets collection (CF4.1/4.2) reads/writes — **apply it before relying on asset tags/metadata in production** (CF4 asset writes are otherwise held; see the CF4 entry). `0013_drop_portal_eligible` drops the now-unused `profiles.portal_eligible` column — optional cleanup, apply anytime; no code references it. Applied: 0005–0012, **0014** (documents), **0015** (portal keywords, 2026-07-09), and **0016–0018** (profile column grants + user governance + ban backstop, ✅ **applied 2026-07-10** — see the security/UG banners above). Config notes: 0007's budget stays dormant until `AI_TOKEN_BUDGET` is set; portal listing is now open to all educators (the `portal_eligible` gate + admin toggle were removed); to reach `/admin`, **flag yourself `is_admin=true`** (dashboard) and set **`SUPABASE_SECRET_KEY`** (service-role reads) — optionally `RESEARCH_EXPORT_SALT`.
 
 1. **Migrations pending: `0020` (required for zip upload), `0019` (required for CF4), `0013` (optional), `0021_trackB_documents_hash_idx` (optional index, Phase 5 Track B.1 — apply anytime), `0023_trackA_infra` (optional, additive, Phase 5 Track A.6–A.7 — nullable `research_events.user_id` for anonymous discovery events, shared report rate-limit counters; apply anytime), `0024_harden_report_cap` (Phase 5 hardening — closes direct report inserts behind a capped service-role function + export index; **after** `0023` and **after** the hardening code is deployed).** `0020_staging_bucket` creates the private `staging` bucket + owner-prefix RLS that the whole-course zip upload writes through — **it needs owner/service-role privileges** (it writes `storage.buckets` and `storage.objects` policies, which the anon/authenticated roles cannot) and **must be applied BEFORE the Wave-3 code is deployed**, or every zip upload fails at the signed-URL step. Supabase Storage has no automatic TTL, so the bucket's 24-hour lifetime also needs an **operator/cron sweep** deleting objects older than 24h (the happy path deletes each object on consumption); see [Deployment.md §1](Deployment.md). `0019_document_tags` adds the per-file `tags` column the Assets collection (CF4.1/4.2) reads/writes — **apply it before relying on asset tags/metadata in production** (CF4 asset writes are otherwise held; see the CF4 entry). `0013_drop_portal_eligible` drops the now-unused `profiles.portal_eligible` column — optional cleanup, apply anytime; no code references it. Applied: 0005–0012, **0014** (documents), **0015** (portal keywords, 2026-07-09), and **0016–0018** (profile column grants + user governance + ban backstop, ✅ **applied 2026-07-10** — see the security/UG banners above). Config notes: 0007's budget stays dormant until `AI_TOKEN_BUDGET` is set; portal listing is now open to all educators (the `portal_eligible` gate + admin toggle were removed); to reach `/admin`, **flag yourself `is_admin=true`** (dashboard) and set **`SUPABASE_SECRET_KEY`** (service-role reads) — optionally `RESEARCH_EXPORT_SALT`.
 2. ✅ **Done** — Vercel build command is `node ../../scripts/fetch-vendor.mjs && next build`; Plotly is vendored and the plot editor (M11b) works live.

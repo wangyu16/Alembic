@@ -34,7 +34,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ file: st
     const { items } = await listListedCourses(db, { offset: (n - 1) * SITEMAP_PAGE_SIZE, limit: SITEMAP_PAGE_SIZE });
     if (items.length === 0) return notFound();
     return xml(
-      urlset(items.map((c) => ({ loc: `${origin}${coursePagePath(c.packageId)}`, lastmod: c.registeredAt.slice(0, 10) }))),
+      urlset(items.map((c) => ({ loc: `${origin}${coursePagePath(c.packageId)}`, lastmod: (c.updatedAt ?? c.registeredAt).slice(0, 10) }))),
     );
   } catch {
     return new Response("Temporarily unavailable.", { status: 503, headers: { "cache-control": "no-store" } });

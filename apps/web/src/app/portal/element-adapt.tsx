@@ -75,7 +75,7 @@ export function ElementAdapt({
       <select
         value={target}
         onChange={(e) => setTarget(e.target.value)}
-        aria-label="Adapt into which package"
+        aria-label="Adapt into which course"
         className="field max-w-[10rem] text-xs"
       >
         {packages.map((p) => (

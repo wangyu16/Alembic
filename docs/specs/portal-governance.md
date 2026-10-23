@@ -36,7 +36,9 @@ column dropped in migration `0013`).
   `status` to `resolved` / `dismissed`.
 - **Takedown:** to remove a listing, either the **owner unlists** it
   (`unregisterPackageAction`) or an **operator removes** the `portal_registrations`
-  row (dashboard). Removing the listing takes it off discovery; it does not
+  row (dashboard). Removing the listing takes it off discovery **at once** — the discovery index
+  ([discovery-index.md](discovery-index.md)) drops the course in the same
+  transaction, by trigger, and search re-checks the listing live; it does not
   delete the owner's repos (repos are the source of truth and remain the owner's
   — account-lifecycle/transfer is Phase 8).
 

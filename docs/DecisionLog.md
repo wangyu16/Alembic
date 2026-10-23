@@ -6,6 +6,70 @@ design, and what is deferred to the future. Complements [Status.md](Status.md)
 
 ---
 
+## 2026-10-23 — Discover pages: one cached anonymous read, URL state, adapt with the source preselected (Phase 5 Track A.4)
+
+| # | Decision | Why |
+|---|---|---|
+| 1 | Every Discover read (search, facets, course and element pages) goes through the **cookie-less anonymous client** and is cached in Next's data cache under one tag, `discovery`, for ≤ 120 s; educator actions that change a listing call `updateTag("discovery")`. The visitor's session is read only for the adapt pickers. | Answers are identical for everyone, so they can be shared; the anonymous client also proves that nothing on these pages needs more than the public read policy. Tag invalidation gives the educator read-your-own-writes; the short window bounds everything else (operator takedowns, reconciled edits) — and stale *unlisted* content is still never served, because the search re-checks listability live. |
+| 2 | **All portal state in the URL**, plain GET form and links; keyset cursor (opaque, validated, ignored if tampered). No client-side filtering. | Works without JavaScript, is linkable and shareable, and scales: the old page loaded every listing into the browser. |
+| 3 | Course **Adapt** on `/p/{packageId}`: the course is the preselected source; the educator picks one of its chapters and one of their own chapters; the existing `adaptFromPortalAction` copies the sections (now also checking the source is listed *now* and the target chapter is theirs). | It was a link to `/workspace` that preselected nothing. Chapter-to-chapter is what the block-level adaptation primitive does today; a cross-owner whole-course fork is a separate feature (open item). |
+| 4 | Element detail at **`/portal/element/{docId}`**, not a new top-level form. | `/d/{docId}` is the file itself and must stay the permalink (permalinks §2); the detail page is a Discover page about it. |
+| 5 | **Subject and Level** become editable in Course details (free text + suggestions). | The discipline facet otherwise shows the manifest default for everyone and the level facet is empty; free text keeps old manifests valid (no schema change), and facets compare lower-cased. |
+| 6 | `lib/shared-elements.ts` (Track 0.3) and the client `PortalBrowser` are **removed**, not kept beside the index. | Two ways to list elements would be a second index (Roadmap rule 3). Track 0's leak cases live on as SQL tests against the index and the search. |
+
+---
+
+## 2026-10-23 — Discover ranking: relevance × bounded quality; keyset pages pinned to an hour (Phase 5 Track A.2–A.3)
+
+**Decision.** `score = relevance × (0.75 + 0.5 × quality)`, rounded to 6
+decimals, ties broken by id; quality = accessibility 0.30 + open licence 0.15
++ completeness 0.20 + recency 0.20 + adaptations 0.15. Paging is keyset on
+`(score, id)`; recency is computed against the hour of the first page, which
+the cursor carries. Typo tolerance uses pg_trgm word similarity ≥ 0.45.
+
+**Why.** "Quality gates prominence, not censorship" (goal.md §6) rules out
+filtering on quality and argues against letting it override relevance; a
+bounded factor lets it decide only between comparable matches. Keyset paging
+needs a stable sort key: a recency term computed against the clock would
+shift scores between page requests (duplicates or gaps at page edges), so
+the time base is fixed per browsing session instead. Rounding makes the score
+an exact URL value. 0.45 (below pg_trgm's 0.6 default) is where one-letter
+slips in course words ("chemstry", 0.58) still match.
+
+---
+
+## 2026-10-23 — Discovery index: derived in the database, kept fresh by triggers (Phase 5 Track A.1)
+
+**Decision.** The discovery index (`discovery_courses`, `discovery_elements`)
+is derived **in SQL** by `discovery_refresh_package`, called from triggers on
+the tables it reads (`portal_registrations`, `packages`, `documents`, the
+concept-map rows of `sandbox_files`), each wrapped so an error is only a
+warning. The app writes nothing to it. The listing consent stays in
+`portal_registrations` (its snapshot columns are no longer read for
+discovery; they are kept, additive-only). Spec:
+[discovery-index.md](specs/discovery-index.md).
+
+**Why.** Refresh points in app code would have to be added at every place
+that writes a manifest, the registry or a listing — about fifteen today,
+plus operator takedowns in the dashboard, which no app hook sees; one missed
+call site is a stale or leaking listing. Triggers see every write path,
+present and future. Deriving in SQL also lets the migration back-fill the
+index and lets an operator rebuild it with one statement, with no service
+key in the loop. The cost — the SQL reads manifest fields the contract owns —
+is held by `DISCOVERY_MANIFEST_FIELDS` and agreement tests that fail if the
+two drift.
+
+**Also decided.** Elements are listed on per-file consent alone (no course
+listing needed, document-model.md §4); a listed element of an unlisted
+course simply has no course page. Adaptation counts include trial and
+private adaptations (only the number is shown). `updated_at` survives
+re-projection but not a rebuild of an emptied table (it then restarts at the
+listing time) — acceptable for a ranking signal. Tests run against PGlite (a
+new web devDependency) because no local Supabase/Postgres exists on the
+build machines; it proves behaviour, not production performance.
+
+---
+
 ## 2026-10-23 — Hardening: paged research export; reports only through a capped database function (Phase 5)
 
 | # | Decision | Why |
