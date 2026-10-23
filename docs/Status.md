@@ -69,8 +69,8 @@ cache limits are not asserted as numbers. The round's probes come from the audit
 
 **Phase 5 closed-loop verification — round 1, steps 4–5: correctness/scale fixes (2026-10-23, branch
 `phase5/loop-r1b`, not merged, not deployed).** Ten audit findings, each a claim + a probe that failed on
-`ff39af5` + a fix of the whole class ([DecisionLog](DecisionLog.md) 2026-10-23 "Closed loop r1b"). (In progress:
-rows are added as each finding lands.)
+`ff39af5` + a fix of the whole class ([DecisionLog](DecisionLog.md) 2026-10-23 "Closed loop r1b"). `pnpm claims`:
+121 claims, 98 bound, 23 UNBOUND (all pre-existing or the security branch's), 0 missing.
 
 | Finding | Claim | Fix | Measured |
 |---|---|---|---|
@@ -83,6 +83,7 @@ rows are added as each finding lands.)
 | ✅ LOW-7 paging from parsed count | P5.A.2.m | `splitPage`: next/cursor from the raw page | — |
 | ✅ LOW-8 reconcile skipped `packages.manifest` | P5.B.3.e | absorbed `alembic.json` → `updateManifest` (no re-commit) → column refresh; invalid/deleted → quarantine | — |
 | ✅ LOW-9 short page ended listings | P5.B.1.p | `pageAll`: exact count or empty page | — |
+| ⏸ LOW-10 upload rounds | P5.B.3.b | **documented limit** (rounds = chain length, O(n²) resolves, a prev/next pair never commits) — pre-minting needs an owner decision (identity carrier for lean `.md`, or registry-before-repo) | 30-chain: 30 commits / 465 resolves; ring: 0 committed |
 
 **Deploy (owner):** apply `0026_loop_r1b_discovery` → `0027_loop_r1b_registry` → deploy the code. 0026 is
 compatible with the current code; the r1b code needs 0027. 0027 adds a stored generated column to

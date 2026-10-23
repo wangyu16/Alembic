@@ -100,4 +100,32 @@ describe("commitInRounds", () => {
     );
     expect(r).toEqual({ kind: "partial", remaining: 2 });
   });
+
+  it("[P5.B.3.b] cost limit: a forward chain of N documents commits in N rounds (N(N+1)/2 resolves); a prev+next ring commits nothing", async () => {
+    const N = 30;
+    const run = async (links: (i: number) => number[]) => {
+      const registered = new Set<string>();
+      let resolves = 0;
+      let commits = 0;
+      const r = await commitInRounds(
+        Array.from({ length: N }, (_, i) => ({ name: `d${i}`, links: links(i).map((j) => `d${j}`) })),
+        {
+          resolve: async (d) => (resolves++, d.links.every((l) => registered.has(l)) ? d : null),
+          commit: async () => (commits++, { done: true, remaining: 0 }),
+          register: async (ds) => ds.forEach((d) => registered.add(d.name)),
+          outOfTime: () => false,
+        },
+      );
+      return { r, resolves, commits };
+    };
+
+    const chain = await run((i) => (i < N - 1 ? [i + 1] : []));
+    expect(chain.commits).toBe(N);
+    expect(chain.resolves).toBe((N * (N + 1)) / 2); // 465 for N = 30
+    expect(chain.r).toMatchObject({ kind: "done", unresolved: [] });
+
+    const ring = await run((i) => [i - 1, i + 1].filter((j) => j >= 0 && j < N));
+    expect(ring.commits).toBe(0);
+    expect(ring.r.kind === "done" && ring.r.unresolved).toHaveLength(N);
+  });
 });

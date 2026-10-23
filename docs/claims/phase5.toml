@@ -1026,6 +1026,7 @@ bound_to = [
   "apps/web/src/lib/populate-rounds.test.ts :: a broken link or a cycle is reported, never committed, and the loop ends",
   "apps/web/src/lib/populate-rounds.test.ts :: out of time: nothing of the unfinished round is lost, all of it is handed on",
   "apps/web/src/lib/populate-rounds.test.ts :: a commit that runs out of time reports its remainder plus the held documents",
+  "apps/web/src/lib/populate-rounds.test.ts :: cost limit: a forward chain of N documents commits in N rounds (N(N+1)/2 resolves); a prev+next ring commits nothing",
 ]
 
 [[claim]]
