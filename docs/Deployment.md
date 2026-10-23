@@ -212,9 +212,10 @@ Deploy from the **repo root** (the Docker build context is the monorepo):
 fly deploy --config apps/worker/fly.toml
 ```
 
-Then set on Vercel `WORKER_URL=https://alembic-worker.fly.dev` and, if the
-worker has a `WORKER_TOKEN` secret (`fly secrets set WORKER_TOKEN=…`), the same
-`WORKER_TOKEN`. **Redeploy the worker whenever `pnpm-lock.yaml` or a package it
+Then set on Vercel `WORKER_URL=https://alembic-worker.fly.dev` and the same
+`WORKER_TOKEN` as the worker's secret (`fly secrets set WORKER_TOKEN=…`). The
+token is required: without it the worker fails closed (every request, `/health`
+included, answers 503). **Redeploy the worker whenever `pnpm-lock.yaml` or a package it
 uses changes** (`apps/worker`, `packages/generators`, `packages/renderer`,
 `packages/package-contract`): it installs with `--frozen-lockfile` from the
 committed lockfile, independently of the Vercel deploy.

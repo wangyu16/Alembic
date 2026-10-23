@@ -9,10 +9,14 @@
  *
  * Generation is fast (sub-second), so it is served synchronously here rather
  * than through the async job queue (which stays for long jobs: site builds,
- * agent runs). An optional shared secret (`WORKER_TOKEN`) gates writes.
+ * agent runs). A shared secret (`WORKER_TOKEN`) gates every write and fails
+ * CLOSED: with the token unset the worker refuses `/generate` (503) and
+ * reports itself unhealthy, rather than serving anyone unauthenticated
+ * (P5.S.11). Local dev sets any token on both sides (`.env.example`).
  */
 
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { createHash, timingSafeEqual } from "node:crypto";
 import { rendererVersion } from "@alembic/renderer";
 import { handleGenerateFile, type GenerateFileJob } from "./jobs";
 
@@ -106,10 +110,18 @@ function parseGenerateJob(raw: string): GenerateFileJob | null {
   };
 }
 
-function authorized(req: IncomingMessage): boolean {
-  const token = process.env["WORKER_TOKEN"];
-  if (!token) return true; // no secret configured → open (dev)
-  return req.headers["authorization"] === `Bearer ${token}`;
+/** The configured shared secret, or null when unset/blank (→ fail closed). */
+function workerToken(): string | null {
+  const token = process.env["WORKER_TOKEN"]?.trim();
+  return token ? token : null;
+}
+
+/** Constant-time comparison of the bearer header against the secret. */
+function authorized(req: IncomingMessage, token: string): boolean {
+  const header = req.headers["authorization"];
+  if (typeof header !== "string") return false;
+  const digest = (s: string) => createHash("sha256").update(s).digest();
+  return timingSafeEqual(digest(header), digest(`Bearer ${token}`));
 }
 
 export function createWorkerServer() {
@@ -117,13 +129,23 @@ export function createWorkerServer() {
     void (async () => {
       const url = req.url ?? "/";
 
+      const token = workerToken();
+
       if (req.method === "GET" && url === "/health") {
+        if (!token) {
+          json(res, 503, { ok: false, message: "Worker not configured." });
+          return;
+        }
         json(res, 200, { ok: true, rendererVersion: rendererVersion() });
         return;
       }
 
       if (req.method === "POST" && url === "/generate") {
-        if (!authorized(req)) {
+        if (!token) {
+          json(res, 503, { ok: false, message: "Worker not configured." });
+          return;
+        }
+        if (!authorized(req, token)) {
           json(res, 401, { ok: false, message: "Unauthorized." });
           return;
         }

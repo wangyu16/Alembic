@@ -1288,7 +1288,9 @@ bound_to = [
 id = "P5.S.11"
 claim = "The worker fails closed when WORKER_TOKEN is unset: it refuses every request rather than serving them unauthenticated."
 oracle = "probe"
-bound_to = []
+bound_to = [
+  "apps/worker/src/server.test.ts :: refuses every request when WORKER_TOKEN is unset",
+]
 
 [[claim]]
 id = "P5.S.12.a"

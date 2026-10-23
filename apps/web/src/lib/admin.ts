@@ -36,7 +36,9 @@ export async function requireAdmin(): Promise<{
  * string in a configured deployment).
  */
 export function exportPseudonymizer(): (id: string) => string {
-  const salt = process.env["RESEARCH_EXPORT_SALT"] ?? process.env["SUPABASE_SECRET_KEY"] ?? "alembic";
+  // `||`, not `??`: a set-but-blank variable must not become an empty salt.
+  const salt =
+    process.env["RESEARCH_EXPORT_SALT"]?.trim() || process.env["SUPABASE_SECRET_KEY"]?.trim() || "alembic";
   return (id: string) =>
     "P-" + createHash("sha256").update(`${salt}:${id}`).digest("hex").slice(0, 12);
 }
