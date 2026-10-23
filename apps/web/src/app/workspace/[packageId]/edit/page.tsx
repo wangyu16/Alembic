@@ -18,6 +18,7 @@ import { PopulatePackageBanner } from "../_components/populate-package";
 import { chapterDocPath, parseWorkspaceView } from "./nav";
 import { syncPackageRegistry } from "@/lib/register";
 import { SupabaseDocumentRegistryStore } from "@/lib/document-registry-store";
+import { canOfferShare } from "@/lib/share-policy";
 
 /**
  * Server actions invoked from this page inherit its time budget, and publishing
@@ -297,6 +298,7 @@ export default async function EditShellPage({
       title={record.title}
       unitTerm={record.manifest.unitTerm}
       published={record.storage === "github"}
+      canShare={canOfferShare(record.storage)}
       chapters={chapters.map((c) => ({ slug: c.slug, title: c.title }))}
       activeSlug={activeChapter?.slug ?? null}
       activePath={activeChapter?.path ?? null}

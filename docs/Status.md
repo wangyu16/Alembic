@@ -94,7 +94,7 @@ then a fix for the whole class. Per finding (⬜ open · ✅ fixed on this branc
 
 - ⏸ **L2** 32-bit FNV pin hash forgeable — accepted until R3, owner decision pending (P5.S.L2, red by design; DecisionLog).
 
-- ⬜ **Ruling 2** "Share this" hidden in a trial course (P5.R.2).
+- ✅ **Ruling 2** "Share this" hidden in a trial course (P5.R.2): the asset panel shows "Sharing is available once the course is published." instead of the Discoverable control (`canOfferShare(storage)`), and both share actions refuse to share a trial course's file.
 
 **Phase 5 Track A — discovery at scale (2026-10-23, branch `phase5/trackA-core`, not yet deployed).** Plan:
 family `docs/PHASE5-ALEMBIC.md` Track A (A.1–A.4 here; A.6–A.7 on a parallel branch; A.5 after, owner Q1; A.8

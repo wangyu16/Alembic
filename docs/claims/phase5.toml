@@ -1044,8 +1044,14 @@ bound_to = []
 id = "P5.R.2"
 claim = "\"Share this\" is not offered for any file of a trial course, and returns once the course is published."
 oracle = "scenario"
-bound_to = []
-note = "Ruled 2026-10-23; NOT BUILT yet — stays red."
+bound_to = [
+  "apps/web/src/app/workspace/[packageId]/share-actions.test.ts :: the server actions refuse to share a file of a trial course",
+  "apps/web/src/app/workspace/[packageId]/share-actions.test.ts :: a trial course can still save metadata (and unshare) without the share control",
+  "apps/web/src/app/workspace/[packageId]/share-actions.test.ts :: sharing returns once the course is published",
+  "apps/web/src/app/workspace/[packageId]/share-actions.test.ts :: the share control is offered only for a published course",
+  "apps/web/src/app/workspace/[packageId]/share-actions.test.ts :: the workspace shows the share control only when canOfferShare allows it",
+]
+note = "Ruled 2026-10-23; built in security loop r1: canOfferShare(storage) gates the Discoverable control (trial shows \"Sharing is available once the course is published.\") and both share actions refuse discoverable=true for a trial course."
 
 [[claim]]
 id = "P5.R.3"

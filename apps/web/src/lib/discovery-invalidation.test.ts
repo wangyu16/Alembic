@@ -50,7 +50,10 @@ function functions(source: string): Array<{ name: string; body: string }> {
 const LISTABILITY_WRITES: Array<[string, RegExp]> = [
   ["portal_registrations write", /from\("portal_registrations"\)\s*\.(?:upsert|insert|update|delete)\(/],
   ["packages.archived_at write", /\.update\(\{[^}]*\barchived_at\s*:/],
-  ["documents.discoverable write", /\.update\(\{[^}]*\bdiscoverable\b|patch[^=\n]*=\s*\{[^}]*\bdiscoverable\b/],
+  [
+    "documents.discoverable write",
+    /\.update\(\{[^}]*\bdiscoverable\b|patch[^=\n]*=\s*\{[^}]*\bdiscoverable\b|\[["']discoverable["']\]\s*=[^=]/,
+  ],
   ["documents.tombstoned write", /\.update\(\{[^}]*\btombstoned\s*:\s*true/],
 ];
 

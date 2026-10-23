@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { discoveryChanged } from "@/lib/discovery-cache";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { recordDiscoveryEvent } from "@/lib/record-discovery-event";
+import { canOfferShare, SHARE_NEEDS_PUBLISH } from "@/lib/share-policy";
 
 /**
  * P2 — "share this": the per-file discoverability toggle (document-model.md
@@ -11,6 +12,8 @@ import { recordDiscoveryEvent } from "@/lib/record-discovery-event";
  * Objects need a short description before they can be shared (it becomes the
  * element-search text and the a11y alt text — package-layout.md §6). The
  * `private` and `current` spaces can never be discoverable (contract v2 §2).
+ * A trial course cannot share at all — the UI hides the control and these
+ * actions refuse (owner ruling 2026-10-23, P5.R.2); unsharing always works.
  */
 
 export interface ShareResult {
@@ -22,12 +25,20 @@ export interface ShareResult {
 
 const NEVER_DISCOVERABLE = new Set(["private", "current"]);
 
+type Session = Awaited<ReturnType<typeof createSupabaseServerClient>>;
+
+/** P5.R.2: may this package's files be made discoverable? (Owner read via RLS.) */
+async function packageCanShare(supabase: Session, packageId: string): Promise<boolean> {
+  const { data } = await supabase.from("packages").select("storage").eq("id", packageId).maybeSingle();
+  return canOfferShare((data as { storage?: string } | null)?.storage);
+}
+
 /** A.7: a de-identified share/unshare event, only when the flag really flips. */
 function logShareChange(
   row: { package_id: string; kind?: string | null; space?: string | null; discoverable?: boolean | null },
   next: boolean,
   userId: string,
-  session: Awaited<ReturnType<typeof createSupabaseServerClient>>,
+  session: Session,
 ): void {
   if (Boolean(row.discoverable) === next) return;
   recordDiscoveryEvent(
@@ -66,6 +77,9 @@ export async function shareFileAction(
 
   if (share && NEVER_DISCOVERABLE.has(row.space)) {
     return { ok: false, error: "Files in this space can't be shared." };
+  }
+  if (share && !(await packageCanShare(supabase, packageId))) {
+    return { ok: false, error: SHARE_NEEDS_PUBLISH };
   }
 
   const nextDescription = description?.trim() || row.description || null;
@@ -125,16 +139,22 @@ export async function setAssetMetadataAction(
     return { ok: false, error: "That file isn't registered (open the package once, then retry)." };
   }
 
-  const discoverable = input.discoverable ?? false;
-  if (discoverable && NEVER_DISCOVERABLE.has(row.space)) {
+  // `discoverable` omitted → leave sharing as it is (the trial UI has no
+  // share control, so it saves metadata without it).
+  const discoverable = input.discoverable ?? Boolean(row.discoverable);
+  if (input.discoverable && NEVER_DISCOVERABLE.has(row.space)) {
     return { ok: false, error: "Files in this space can't be shared." };
+  }
+  if (input.discoverable && !(await packageCanShare(supabase, packageId))) {
+    return { ok: false, error: SHARE_NEEDS_PUBLISH };
   }
   const description = input.description?.trim() || row.description || null;
   if (discoverable && row.permalink_class === "object" && !description) {
     return { ok: false, error: "Add a short description first — it's what others will find it by." };
   }
 
-  const patch: Record<string, unknown> = { discoverable };
+  const patch: Record<string, unknown> = {};
+  if (input.discoverable !== undefined) patch["discoverable"] = input.discoverable;
   patch["description"] = description;
   if (input.tags) patch["tags"] = input.tags.map((t) => t.trim()).filter(Boolean);
   if (input.license !== undefined) patch["license"] = input.license.trim() || null;
