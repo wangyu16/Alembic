@@ -18,7 +18,7 @@ const rows: ResearchEventRow[] = [
 ];
 
 describe("deidentifyEvents", () => {
-  it("replaces raw identities with stable pseudonyms (no user_id leaks)", () => {
+  it("[P5.H.1.c] replaces raw identities with stable pseudonyms (no user_id leaks)", () => {
     const out = deidentifyEvents(rows, fakeCode);
     // same user → same code
     expect(out[0]!.participant).toBe(out[1]!.participant);
@@ -66,7 +66,7 @@ describe("serializers", () => {
 });
 
 describe("anonymous discovery events (Track A.7)", () => {
-  it("an anonymous row has no participant, never a pseudonym of null", () => {
+  it("[P5.A.7.c] an anonymous row has no participant, never a pseudonym of null", () => {
     const out = deidentifyEvents(
       [{ type: "portal.searched", user_id: null, package_id: null, duration_ms: null, detail: { terms: 1 }, occurred_at: "t" }],
       fakeCode,
@@ -93,7 +93,7 @@ describe("serializeEventBatches (paged export, Phase 5 hardening)", () => {
     fakeCode,
   );
 
-  it("is byte-identical to the one-shot serializers, however the events are batched", async () => {
+  it("[P5.H.1.b] is byte-identical to the one-shot serializers, however the events are batched", async () => {
     for (const split of [[4], [1, 3], [2, 0, 2], [0, 1, 1, 1, 1]]) {
       const batches: DeidentifiedEvent[][] = [];
       let i = 0;
@@ -106,7 +106,7 @@ describe("serializeEventBatches (paged export, Phase 5 hardening)", () => {
     }
   });
 
-  it("an empty export matches too (header only / empty array)", async () => {
+  it("[P5.H.1.b] an empty export matches too (header only / empty array)", async () => {
     expect(await collect([], "csv")).toBe(eventsToCsv([]));
     expect(await collect([[]], "json")).toBe(eventsToJson([]));
   });

@@ -162,12 +162,12 @@ describe("classifyReference", () => {
 });
 
 describe("classifyReference — platform permalinks", () => {
-  it("a root-relative /d/{docId} is live, /d/{docId}@{version} is pinned", () => {
+  it("[P5.B.3.a] a root-relative /d/{docId} is live, /d/{docId}@{version} is pinned", () => {
     expect(classifyReference("/d/doc-abc123")).toBe("live");
     expect(classifyReference("/d/doc-abc123@9f86d081")).toBe("pinned");
   });
 
-  it("an absolute /d/ link counts only on the platform's own origin", () => {
+  it("[P5.B.3.a] an absolute /d/ link counts only on the platform's own origin", () => {
     const appOrigin = "https://alembic.orz.how";
     expect(classifyReference("https://alembic.orz.how/d/doc-abc123", { appOrigin })).toBe("live");
     expect(classifyReference("https://alembic.orz.how/d/doc-abc123@1a2b3c4d", { appOrigin })).toBe("pinned");
@@ -177,31 +177,31 @@ describe("classifyReference — platform permalinks", () => {
 });
 
 describe("permalink builders — platform permalinks, never raw GitHub (permalinks §7)", () => {
-  it("builds a live /d/{docId} permalink", () => {
+  it("[P5.B.3.a] builds a live /d/{docId} permalink", () => {
     expect(livePermalink("doc-abc123")).toBe("/d/doc-abc123");
     expect(livePermalink("doc-abc123", "https://alembic.orz.how/")).toBe(
       "https://alembic.orz.how/d/doc-abc123",
     );
   });
 
-  it("builds a pinned /d/{docId}@{version} permalink", () => {
+  it("[P5.B.3.a] builds a pinned /d/{docId}@{version} permalink", () => {
     expect(pinnedPermalink("doc-abc123", "9f86d081", "https://alembic.orz.how")).toBe(
       "https://alembic.orz.how/d/doc-abc123@9f86d081",
     );
   });
 
-  it("never emits a raw GitHub URL", () => {
+  it("[P5.B.3.a] never emits a raw GitHub URL", () => {
     expect(livePermalink("doc-x1", "https://alembic.orz.how")).not.toContain("githubusercontent");
     expect(pinnedPermalink("doc-x1", "abc")).not.toContain("githubusercontent");
   });
 
-  it("refuses a path where a document id belongs (the old signature), fail-closed", () => {
+  it("[P5.B.3.a] refuses a path where a document id belongs (the old signature), fail-closed", () => {
     expect(() => livePermalink("materials/structures/benzene.ketcher.svg")).toThrow();
     expect(() => livePermalink("doc-x/../../private/notes.md")).toThrow();
     expect(() => pinnedPermalink("doc-x1", "../x")).toThrow();
   });
 
-  it("built permalinks classify back (round-trip)", () => {
+  it("[P5.B.3.a] built permalinks classify back (round-trip)", () => {
     const appOrigin = "https://alembic.orz.how";
     expect(classifyReference(livePermalink("doc-r1", appOrigin), { appOrigin })).toBe("live");
     expect(classifyReference(pinnedPermalink("doc-r1", "c0ffee00", appOrigin), { appOrigin })).toBe("pinned");

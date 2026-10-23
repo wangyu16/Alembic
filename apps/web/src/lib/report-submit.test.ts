@@ -27,7 +27,7 @@ function directInsert(error: unknown = null) {
 const input = { packageId: "pkg-1", reason: "  broken links  ", reporterId: null };
 
 describe("fileReport — through file_portal_report (migration 0024 applied)", () => {
-  it("files through the capped function, never the direct insert", async () => {
+  it("[P5.H.2.a] files through the capped function, never the direct insert", async () => {
     const rpc = rpcReturning({ data: "ok", error: null });
     const direct = directInsert();
     expect(await fileReport(rpc.client, direct.insert, input)).toBe("ok");
@@ -37,7 +37,7 @@ describe("fileReport — through file_portal_report (migration 0024 applied)", (
     expect(direct.rows).toHaveLength(0);
   });
 
-  it("passes the signed-in reporter and caps the reason", async () => {
+  it("[P5.H.2.b] passes the signed-in reporter and caps the reason", async () => {
     const rpc = rpcReturning({ data: "ok", error: null });
     await fileReport(rpc.client, directInsert().insert, {
       packageId: "pkg-1",
@@ -48,26 +48,26 @@ describe("fileReport — through file_portal_report (migration 0024 applied)", (
     expect((rpc.calls[0]!.args["p_reason"] as string).length).toBe(MAX_REASON_LENGTH);
   });
 
-  it("a database cap answer is reported as rate_limited, without falling back", async () => {
+  it("[P5.H.2.a] a database cap answer is reported as rate_limited, without falling back", async () => {
     const rpc = rpcReturning({ data: "rate_limited", error: null });
     const direct = directInsert();
     expect(await fileReport(rpc.client, direct.insert, input)).toBe("rate_limited");
     expect(direct.rows).toHaveLength(0);
   });
 
-  it("passes the function's invalid answer through", async () => {
+  it("[P5.H.2.b] passes the function's invalid answer through", async () => {
     expect(await fileReport(rpcReturning({ data: "invalid", error: null }).client, directInsert().insert, input)).toBe(
       "invalid",
     );
   });
 
-  it("an unexpected answer is an error, not success", async () => {
+  it("[P5.H.2.b] an unexpected answer is an error, not success", async () => {
     for (const data of [null, "OK", 1, { s: "ok" }]) {
       expect(await fileReport(rpcReturning({ data, error: null }).client, directInsert().insert, input)).toBe("error");
     }
   });
 
-  it("adversarial: any error other than 'function missing' never falls back to the direct insert", async () => {
+  it("[P5.H.2.a] adversarial: any error other than 'function missing' never falls back to the direct insert", async () => {
     for (const error of [
       { code: "42501", message: "permission denied" },
       { code: "PGRST301", message: "JWT expired" },
@@ -85,7 +85,7 @@ describe("fileReport — through file_portal_report (migration 0024 applied)", (
 });
 
 describe("fileReport — before migration 0024 (or without the service key)", () => {
-  it("falls back to the session insert when the function does not exist yet", async () => {
+  it("[P5.H.2.a] falls back to the session insert when the function does not exist yet", async () => {
     for (const code of ["PGRST202", "42883"]) {
       const direct = directInsert();
       const rpc = rpcReturning({ data: null, error: { code } });
@@ -94,7 +94,7 @@ describe("fileReport — before migration 0024 (or without the service key)", ()
     }
   });
 
-  it("without a service client, uses the session insert (and reports its failure)", async () => {
+  it("[P5.H.2.b] without a service client, uses the session insert (and reports its failure)", async () => {
     const ok = directInsert();
     expect(await fileReport(null, ok.insert, input)).toBe("ok");
     expect(ok.rows).toHaveLength(1);
@@ -106,7 +106,7 @@ describe("fileReport — before migration 0024 (or without the service key)", ()
 });
 
 describe("fileReport — client-controlled arguments", () => {
-  it("refuses a malformed package id or blank reason before calling anything", async () => {
+  it("[P5.H.2.b] refuses a malformed package id or blank reason before calling anything", async () => {
     const bad: Array<{ packageId: unknown; reason: unknown }> = [
       { packageId: "", reason: "x" },
       { packageId: "p".repeat(201), reason: "x" },
@@ -128,7 +128,7 @@ describe("fileReport — client-controlled arguments", () => {
 });
 
 describe("isMissingFunction", () => {
-  it("only matches PostgREST/Postgres 'function not found' codes", () => {
+  it("[P5.H.2.a] only matches PostgREST/Postgres 'function not found' codes", () => {
     expect(isMissingFunction({ code: "PGRST202" })).toBe(true);
     expect(isMissingFunction({ code: "42883" })).toBe(true);
     expect(isMissingFunction({ code: "42501" })).toBe(false);

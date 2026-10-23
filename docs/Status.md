@@ -52,6 +52,21 @@ same commit as the work it tracks. Statuses: ✅ done · 🔄 partially shipped 
 
 > **Current direction — self-contained editing (owner-locked, 2026-07).** Editing and viewing both live *in the files*: the workspace **hosts** the in-file editors of `.md.html` / `.slides.html` / `.paged.html` (orz-family) and **builds no editor of its own**; published pages **are** those self-contained files (thin CDN delivery — study guide ~74 KB, framework from jsDelivr, verified live 2026-07-06); every file gets a permalink. **Committed source of record (revised, 2026-07-08 — "lean-source model"):** a chapter's study guide, slides, and practice questions are each committed as lean markdown (`study-guide/`, `slides/`, `practice/` — `.md`, not `.md.html`); the self-contained `.md.html`/`.slides.html` is generated on demand, purely as the editing/viewing surface, and never itself committed. This supersedes the original plan (below, and in the specs) of `.md.html` as the committed source — the specs haven't all been updated to match yet; this line is authoritative until they are. Authoritative docs: [SteeringNote.md](SteeringNote.md), [self-contained-editing.md](specs/self-contained-editing.md), [workspace-framework.md](specs/workspace-framework.md), and the module-based [Roadmap.md](Roadmap.md) (Modules R/E/P/T/I/S/W — supersedes the phase-based plan). **Code state today:** the classic editor is **retired** (~2.2k lines removed; `/workspace/[id]` redirects to `/edit`); the local **Studio (`/studio`) is removed**, replaced by `/guide`; the workspace three-pane shell now *hosts* the in-file editors (`HostedStudyGuideEditor` for study guide + practice; `HostedSlidesEditor` for authored slide decks). The durable guardrails **G1–G8** (two-repo reference enforcement, block-ID reconcile on import, whole-package fork, single-source course metadata, AI-entitlement seam) that the earlier editor-overhaul design drove all **landed + tested**.
 
+**Phase 5 closed-loop verification — round 1, step 1: claims registry (2026-10-23, branch `phase5/loop-r1`,
+not merged).** The deployed Phase 5 revision (Track 0, A.1–A.4, A.6–A.7, B.1–B.3, H.1–H.2, and the owner
+rulings of 2026-10-23) stated as **114 falsifiable claims** in [claims/phase5.toml](claims/phase5.toml)
+(oracle per claim: invariant / conformance / scenario / probe / human). Existing tests that prove a claim
+carry its id in their title (`it("[P5.A.1.b] …")` — titles only, no behaviour change; 31 test files, all
+green). `pnpm claims` (`scripts/claims-check.mjs`, no deps) prints bound / UNBOUND / bound-but-missing and
+exits 1 while anything is red. **Now: 90 bound, 24 UNBOUND, 0 missing (exit 1, expected).** Red by design in
+this step (no new tests): the docs-drift items (0.4/0.5, ruling 1 — human/conformance), the Discover pages and
+caching (A.4 404s and Adapt checks, A.6 tag cache, search rate limit), event wiring outside the helpers
+(A.7f), robots.txt, the write call sites (B.1l), the upload's no-raw-URL rule (B.3d), the database report caps
+(H.2c/d — tested only outside the repo), a trial file's byte-identical 404 (0.2b — only the private case is
+pinned), and **ruling 2, "Share this" not offered in a trial course — not built yet**. Weak pins noted in the
+registry: the one-file save test asserts ≤ 3 round-trips (measured 2), `/d`'s 1200/min and the 64 MB / 1 MB
+cache limits are not asserted as numbers. The round's probes come from the auditors (next step).
+
 **Phase 5 Track A — discovery at scale (2026-10-23, branch `phase5/trackA-core`, not yet deployed).** Plan:
 family `docs/PHASE5-ALEMBIC.md` Track A (A.1–A.4 here; A.6–A.7 on a parallel branch; A.5 after, owner Q1; A.8
 waits for Track C). Spec: [discovery-index.md](specs/discovery-index.md). **Migration `0022_trackA_discovery`

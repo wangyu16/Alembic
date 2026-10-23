@@ -33,17 +33,17 @@ const directives = () => [
 ];
 
 describe("D-39 (worker): generators resolve no file include", () => {
-  it("the probe is real: the file exists and the relative path climbs with ../", () => {
+  it("[P5.0.1.b] the probe is real: the file exists and the relative path climbs with ../", () => {
     expect(existsSync(abs)).toBe(true);
     expect(rel.startsWith("..")).toBe(true);
   });
 
-  it("the shared kit-1.x md renders file includes as nothing", () => {
+  it("[P5.0.1.b] the shared kit-1.x md renders file includes as nothing", () => {
     for (const d of directives()) expect(md.render(d)).not.toContain(MARKER);
   });
 
   for (const kind of ["md", "slides", "paged"] as SelfContainedKind[]) {
-    it(`${kind}: the generated file never contains the file's content`, async () => {
+    it(`[P5.0.1.b] ${kind}: the generated file never contains the file's content`, async () => {
       for (const d of directives()) {
         const markdown = kind === "slides" ? `# Slide\n\n${d}\n` : `# Title\n\n${d}\n`;
         const html = await generateSelfContained({ kind, markdown, title: "T" });
@@ -52,7 +52,7 @@ describe("D-39 (worker): generators resolve no file include", () => {
     });
   }
 
-  it("does not read /etc/hosts either", () => {
+  it("[P5.0.1.b] does not read /etc/hosts either", () => {
     if (!existsSync("/etc/hosts")) return;
     expect(md.render("{{md /etc/hosts}}")).not.toMatch(/localhost/i);
   });

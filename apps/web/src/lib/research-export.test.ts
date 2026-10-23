@@ -56,7 +56,7 @@ async function readAll(stream: ReadableStream<Uint8Array>): Promise<string> {
 }
 
 describe("pageEvents (keyset paging)", () => {
-  it("visits every row exactly once in (occurred_at, id) order, in bounded pages", async () => {
+  it("[P5.H.1.a] visits every row exactly once in (occurred_at, id) order, in bounded pages", async () => {
     const store = fakeStore(makeRows(53));
     const seen: KeyedEventRow[] = [];
     for await (const page of pageEvents(store.fetch, 10)) {
@@ -68,14 +68,14 @@ describe("pageEvents (keyset paging)", () => {
     expect(store.calls).toHaveLength(7); // 6 pages + the empty one that ends the walk
   });
 
-  it("does not stop at a short page (a server row cap below the batch size)", async () => {
+  it("[P5.H.1.a] does not stop at a short page (a server row cap below the batch size)", async () => {
     const store = fakeStore(makeRows(25), 4);
     let n = 0;
     for await (const page of pageEvents(store.fetch, 10)) n += page.length;
     expect(n).toBe(25);
   });
 
-  it("refuses a store that does not advance (no infinite loop)", async () => {
+  it("[P5.H.1.a] refuses a store that does not advance (no infinite loop)", async () => {
     const rows = sorted(makeRows(3));
     const stuck: FetchEventPage = async () => rows;
     await expect(async () => {
@@ -83,7 +83,7 @@ describe("pageEvents (keyset paging)", () => {
     }).rejects.toThrow(/did not advance/);
   });
 
-  it("refuses a page larger than requested and a bad batch size", async () => {
+  it("[P5.H.1.a] refuses a page larger than requested and a bad batch size", async () => {
     const big: FetchEventPage = async () => makeRows(5);
     await expect(async () => {
       for await (const _ of pageEvents(big, 2)) void _;
@@ -95,20 +95,20 @@ describe("pageEvents (keyset paging)", () => {
 });
 
 describe("exportStream", () => {
-  it("streams exactly what the one-shot export produced (CSV and JSON)", async () => {
+  it("[P5.H.1.b] streams exactly what the one-shot export produced (CSV and JSON)", async () => {
     const store = fakeStore(makeRows(37));
     const expected = deidentifyEvents(store.all, fakeCode);
     expect(await readAll(await exportStream(store.fetch, fakeCode, "csv", 8))).toBe(eventsToCsv(expected));
     expect(await readAll(await exportStream(store.fetch, fakeCode, "json", 8))).toBe(eventsToJson(expected));
   });
 
-  it("empty store → header-only CSV / empty JSON array", async () => {
+  it("[P5.H.1.b] empty store → header-only CSV / empty JSON array", async () => {
     const store = fakeStore([]);
     expect(await readAll(await exportStream(store.fetch, fakeCode, "csv"))).toBe(eventsToCsv([]));
     expect(await readAll(await exportStream(store.fetch, fakeCode, "json"))).toBe("[]");
   });
 
-  it("never leaks raw identities or the row id", async () => {
+  it("[P5.H.1.c] never leaks raw identities or the row id", async () => {
     const store = fakeStore(makeRows(12));
     const json = await readAll(await exportStream(store.fetch, fakeCode, "json", 5));
     expect(json).not.toMatch(/user-\d/);
@@ -120,14 +120,14 @@ describe("exportStream", () => {
     }
   });
 
-  it("a failing first page rejects before any response is built", async () => {
+  it("[P5.H.1.d] a failing first page rejects before any response is built", async () => {
     const failing: FetchEventPage = async () => {
       throw new Error("down");
     };
     await expect(exportStream(failing, fakeCode, "csv")).rejects.toThrow("down");
   });
 
-  it("a failure mid-export errors the stream (no silently truncated file)", async () => {
+  it("[P5.H.1.d] a failure mid-export errors the stream (no silently truncated file)", async () => {
     const store = fakeStore(makeRows(30));
     let calls = 0;
     const flaky: FetchEventPage = async (c, l) => {
@@ -138,7 +138,7 @@ describe("exportStream", () => {
     await expect(readAll(stream)).rejects.toThrow();
   });
 
-  it("reads lazily: a cancelled download stops fetching pages", async () => {
+  it("[P5.H.1.d] reads lazily: a cancelled download stops fetching pages", async () => {
     const store = fakeStore(makeRows(100));
     const stream = await exportStream(store.fetch, fakeCode, "csv", 10);
     const reader = stream.getReader();
@@ -150,13 +150,13 @@ describe("exportStream", () => {
 });
 
 describe("afterCursorFilter", () => {
-  it("builds the strict keyset predicate with quoted time", () => {
+  it("[P5.H.1.e] builds the strict keyset predicate with quoted time", () => {
     expect(afterCursorFilter({ occurredAt: "2026-10-01T00:00:00.5+00:00", id: 42 })).toBe(
       'occurred_at.gt."2026-10-01T00:00:00.5+00:00",and(occurred_at.eq."2026-10-01T00:00:00.5+00:00",id.gt.42)',
     );
   });
 
-  it("rejects values that could break out of the filter syntax", () => {
+  it("[P5.H.1.e] rejects values that could break out of the filter syntax", () => {
     expect(() => afterCursorFilter({ occurredAt: 'x",id.gt.0', id: 1 })).toThrow();
     expect(() => afterCursorFilter({ occurredAt: "x),or(id.gt.0", id: 1 })).toThrow();
     expect(() => afterCursorFilter({ occurredAt: "t", id: 1.5 })).toThrow();

@@ -36,7 +36,7 @@ describe("generateCitationCff", () => {
 });
 
 describe("formatCourseCitation / formatElementCitation (Discover, Track A.4)", () => {
-  it("cites a course by author, year, title, stable URL and licence", async () => {
+  it("[P5.A.4.c] cites a course by author, year, title, stable URL and licence", async () => {
     const { formatCourseCitation } = await import("./citation");
     expect(
       formatCourseCitation({
@@ -51,7 +51,7 @@ describe("formatCourseCitation / formatElementCitation (Discover, Track A.4)", (
     );
   });
 
-  it("an element names its course; a blank author or licence degrades gracefully", async () => {
+  it("[P5.A.4.c] an element names its course; a blank author or licence degrades gracefully", async () => {
     const { formatElementCitation } = await import("./citation");
     expect(
       formatElementCitation({

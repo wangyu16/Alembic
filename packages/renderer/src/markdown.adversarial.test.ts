@@ -44,25 +44,25 @@ const directives = () => [
 ];
 
 describe("D-39: no server-side file includes", () => {
-  it("the probe is real: the target file exists and the relative path climbs out with ../", () => {
+  it("[P5.0.1.a] the probe is real: the target file exists and the relative path climbs out with ../", () => {
     expect(existsSync(abs)).toBe(true);
     expect(rel.startsWith("..")).toBe(true);
   });
 
-  it("renderMarkdown resolves no absolute or ../ file include", () => {
+  it("[P5.0.1.a] renderMarkdown resolves no absolute or ../ file include", () => {
     for (const d of directives()) {
       expect(renderMarkdown(`Before\n\n${d}\n\nAfter`)).not.toContain(MARKER);
     }
   });
 
-  it("renderDocument / renderPlainDocument resolve none", () => {
+  it("[P5.0.1.a] renderDocument / renderPlainDocument resolve none", () => {
     for (const d of directives()) {
       expect(renderDocument("t", d)).not.toContain(MARKER);
       expect(renderPlainDocument("t", d)).not.toContain(MARKER);
     }
   });
 
-  it("buildMdHtml / buildSlidesHtml / buildSite resolve none", () => {
+  it("[P5.0.1.a] buildMdHtml / buildSlidesHtml / buildSite resolve none", () => {
     for (const d of directives()) {
       expect(buildMdHtml({ title: "t", markdown: d })).not.toContain(MARKER);
       expect(buildSlidesHtml({ title: "t", source: `# Slide\n\n${d}` })).not.toContain(MARKER);
@@ -76,7 +76,7 @@ describe("D-39: no server-side file includes", () => {
     }
   });
 
-  it("does not read /etc/hosts either", () => {
+  it("[P5.0.1.a] does not read /etc/hosts either", () => {
     if (!existsSync("/etc/hosts")) return;
     const html = renderMarkdown("{{md /etc/hosts}}\n\n{{md-include /etc/hosts}}");
     expect(html).not.toMatch(/localhost/i);

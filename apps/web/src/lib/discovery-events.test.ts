@@ -5,7 +5,7 @@ import { buildDiscoveryEvent, token, type DiscoveryEventInput } from "./discover
 const now = new Date("2026-10-23T12:00:00Z");
 
 describe("discovery events are de-identified by construction (Track A.7)", () => {
-  it("a search keeps the query's shape, never its text or filter values", () => {
+  it("[P5.A.7.a] a search keeps the query's shape, never its text or filter values", () => {
     const e = buildDiscoveryEvent(
       {
         type: "portal.searched",
@@ -35,7 +35,7 @@ describe("discovery events are de-identified by construction (Track A.7)", () =>
     expect(ResearchEventSchema.safeParse(e).success).toBe(true);
   });
 
-  it("free text cannot ride in through a sort or filter name", () => {
+  it("[P5.A.7.a] free text cannot ride in through a sort or filter name", () => {
     const e = buildDiscoveryEvent({
       type: "portal.searched",
       scope: "elements",
@@ -47,13 +47,13 @@ describe("discovery events are de-identified by construction (Track A.7)", () =>
     expect(e.detail["filters"]).toBe("other");
   });
 
-  it("a report logs the reason's length, not the reason", () => {
+  it("[P5.A.7.a] a report logs the reason's length, not the reason", () => {
     const e = buildDiscoveryEvent({ type: "portal.reported", packageId: "pkg-1", reasonLength: 40 });
     expect(e.detail).toEqual({ reasonChars: 40 });
     expect(e.packageId).toBe("pkg-1");
   });
 
-  it("no docId, path or IP ever appears in detail", () => {
+  it("[P5.A.7.a] no docId, path or IP ever appears in detail", () => {
     const inputs: DiscoveryEventInput[] = [
       { type: "element.viewed", packageId: "pkg-1", kind: "md", permalinkClass: "document", pinned: true, revalidated: false },
       { type: "element.shared", packageId: "pkg-1", kind: "plot", space: "assets" },
@@ -70,7 +70,7 @@ describe("discovery events are de-identified by construction (Track A.7)", () =>
     }
   });
 
-  it("every discovery type is in the shared EVENT_TYPES", () => {
+  it("[P5.A.7.b] every discovery type is in the shared EVENT_TYPES", () => {
     const types: DiscoveryEventInput["type"][] = [
       "portal.searched", "course.viewed", "element.viewed", "adaptation.started",
       "element.shared", "element.unshared", "portal.unregistered", "portal.reported",
@@ -81,7 +81,7 @@ describe("discovery events are de-identified by construction (Track A.7)", () =>
     }
   });
 
-  it("token(): closed vocabulary only", () => {
+  it("[P5.A.7.a] token(): closed vocabulary only", () => {
     expect(token("Course-Page")).toBe("course-page");
     expect(token("a b")).toBe("other");
     expect(token(undefined)).toBe("other");

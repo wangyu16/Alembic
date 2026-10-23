@@ -20,7 +20,7 @@ const read = (f: string) => readFileSync(join(themesDir, f), "utf8");
 const IMPORT = /^@import[^\n]*\n/gm;
 
 describe("vendored orz-markdown themes", () => {
-  it("were generated from the installed orz-markdown version", () => {
+  it("[P5.0.1.c] were generated from the installed orz-markdown version", () => {
     const kit = JSON.parse(read("../package.json")) as { version: string };
     expect(VENDORED_THEMES_VERSION).toBe(kit.version);
   });

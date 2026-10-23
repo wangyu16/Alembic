@@ -183,7 +183,7 @@ function setup() {
 }
 
 describe("publishToBranch — idempotent", () => {
-  it("publishing the same site twice makes no second commit and leaves the branch alone", async () => {
+  it("[P5.B.2.a] publishing the same site twice makes no second commit and leaves the branch alone", async () => {
     const { gh, client } = setup();
     const first = await client.publishToBranch({ coords, branch: "gh-pages", message: "Build site", files: site("A") });
     expect(first.unchanged).toBe(false);
@@ -196,7 +196,7 @@ describe("publishToBranch — idempotent", () => {
     expect(gh.calls.filter((c) => c.method === "PATCH")).toHaveLength(0);
   });
 
-  it("a changed site is a new root commit replacing the whole tree", async () => {
+  it("[P5.B.2.a] a changed site is a new root commit replacing the whole tree", async () => {
     const { gh, client } = setup();
     await client.publishToBranch({ coords, branch: "gh-pages", message: "m", files: site("A") });
     const r = await client.publishToBranch({
@@ -206,7 +206,7 @@ describe("publishToBranch — idempotent", () => {
     expect([...gh.treeOf("heads/gh-pages").keys()]).toEqual(["index.html"]);
   });
 
-  it("a branch created concurrently (422 on create) is overwritten, not an error", async () => {
+  it("[P5.B.2.a] a branch created concurrently (422 on create) is overwritten, not an error", async () => {
     const { gh, client } = setup();
     // Another publish creates the branch between our read and our write.
     const original = gh.fetch;
@@ -225,7 +225,7 @@ describe("publishToBranch — idempotent", () => {
 });
 
 describe("commits — no empty commits", () => {
-  it("a write that changes nothing returns the current head and commits nothing", async () => {
+  it("[P5.B.2.b] a write that changes nothing returns the current head and commits nothing", async () => {
     const { gh, client } = setup();
     const first = await commitFiles(client, coords, {
       repo: "public", summary: "Edit", changes: [{ path: "study-guide/ch1.md", content: "# One" }],
@@ -240,7 +240,7 @@ describe("commits — no empty commits", () => {
 });
 
 describe("retries", () => {
-  it("retries GitHub 5xx with growing backoff and then succeeds", async () => {
+  it("[P5.B.2.c] retries GitHub 5xx with growing backoff and then succeeds", async () => {
     const { gh, client, sleeps } = setup();
     gh.faults.push({ route: "POST /git/trees", status: 502 }, { route: "POST /git/trees", status: 503 });
     const r = await client.publishToBranch({ coords, branch: "gh-pages", message: "m", files: site("A") });
@@ -248,7 +248,7 @@ describe("retries", () => {
     expect(sleeps).toEqual([1000, 2000]);
   });
 
-  it("gives up after the retry budget and leaves the live branch untouched", async () => {
+  it("[P5.B.2.c] gives up after the retry budget and leaves the live branch untouched", async () => {
     const { gh, client } = setup();
     await client.publishToBranch({ coords, branch: "gh-pages", message: "m", files: site("A") });
     const live = gh.refs.get("heads/gh-pages");
@@ -261,7 +261,7 @@ describe("retries", () => {
     expect(gh.refs.get("heads/gh-pages")).toBe(live);
   });
 
-  it("honors Retry-After on a secondary rate limit", async () => {
+  it("[P5.B.2.d] honors Retry-After on a secondary rate limit", async () => {
     const { gh, client, sleeps } = setup();
     gh.faults.push({
       route: "POST /git/commits", status: 403, headers: { "Retry-After": "7" },
@@ -271,7 +271,7 @@ describe("retries", () => {
     expect(sleeps).toEqual([7000]);
   });
 
-  it("retries a rate-limited NON-replayable request (it was not processed)", async () => {
+  it("[P5.B.2.d] retries a rate-limited NON-replayable request (it was not processed)", async () => {
     const { gh, client, sleeps } = setup();
     gh.faults.push({ route: "POST /git/refs", status: 429, headers: { "Retry-After": "2" } });
     await client.publishToBranch({ coords, branch: "gh-pages", message: "m", files: site("A") });
@@ -279,7 +279,7 @@ describe("retries", () => {
     expect(gh.refs.has("heads/gh-pages")).toBe(true);
   });
 
-  it("waits for a near primary rate-limit reset, gives up on a far one", async () => {
+  it("[P5.B.2.d] waits for a near primary rate-limit reset, gives up on a far one", async () => {
     const { gh, client, sleeps } = setup();
     const soon = Math.floor(Date.now() / 1000) + 10;
     gh.faults.push({
@@ -305,7 +305,7 @@ describe("retries", () => {
     expect(sleeps).toHaveLength(1);
   });
 
-  it("does not retry a plain 403 (a permission problem, not a rate limit)", async () => {
+  it("[P5.B.2.e] does not retry a plain 403 (a permission problem, not a rate limit)", async () => {
     const { gh, client, sleeps } = setup();
     gh.faults.push({ route: "POST /git/trees", status: 403, body: '{"message":"Resource not accessible by integration"}' });
     const err = await failure(
@@ -316,7 +316,7 @@ describe("retries", () => {
     expect(sleeps).toEqual([]);
   });
 
-  it("never replays a non-idempotent request after a 5xx or a dropped connection", async () => {
+  it("[P5.B.2.e] never replays a non-idempotent request after a 5xx or a dropped connection", async () => {
     const { gh, client } = setup();
     gh.faults.push({ route: "POST /git/refs", status: 502, afterEffect: true });
     await expect(
@@ -331,7 +331,7 @@ describe("retries", () => {
     ).rejects.toThrow(/fetch failed/);
   });
 
-  it("retries a dropped connection on a replayable request", async () => {
+  it("[P5.B.2.e] retries a dropped connection on a replayable request", async () => {
     const { gh, client, sleeps } = setup();
     gh.faults.push({ route: "GET /git/ref/heads/main", network: true });
     await commitFiles(client, coords, {
@@ -340,7 +340,7 @@ describe("retries", () => {
     expect(sleeps).toEqual([1000]);
   });
 
-  it("a ref update that landed before a 502 is safely replayed", async () => {
+  it("[P5.B.2.e] a ref update that landed before a 502 is safely replayed", async () => {
     const { gh, client } = setup();
     gh.faults.push({ route: "PATCH /git/refs/heads/main", status: 502, afterEffect: true });
     const r = await commitFiles(client, coords, {
@@ -349,7 +349,7 @@ describe("retries", () => {
     expect(gh.refs.get("heads/main")).toBe(r.commitSha);
   });
 
-  it("the two-repo invariant is checked before any retry machinery runs", async () => {
+  it("[P5.B.2.f] the two-repo invariant is checked before any retry machinery runs", async () => {
     const { gh, client } = setup();
     await expect(
       commitFiles(client, coords, {
@@ -364,7 +364,7 @@ describe("installation token refresh", () => {
   const { privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
   const pem = privateKey.export({ type: "pkcs8", format: "pem" }).toString();
 
-  it("a 401 mid-publish refreshes the installation token once and carries on", async () => {
+  it("[P5.B.2.g] a 401 mid-publish refreshes the installation token once and carries on", async () => {
     const gh = new FakeGitHub();
     const tokens = installationTokenSource({ appId: "1", privateKey: pem, installationId: 9, fetchImpl: gh.fetch });
     const client = new GitHubClient(tokens, gh.fetch, { retry: { sleep: async () => {} } });
@@ -377,7 +377,7 @@ describe("installation token refresh", () => {
     expect(gh.minted).toBe(2);
   });
 
-  it("a static token is not 'refreshed': the 401 surfaces", async () => {
+  it("[P5.B.2.g] a static token is not 'refreshed': the 401 surfaces", async () => {
     const { gh, client } = setup();
     gh.validTokens.clear();
     const err = await failure(
@@ -386,7 +386,7 @@ describe("installation token refresh", () => {
     expect(err.status).toBe(401);
   });
 
-  it("reuses a token until 5 minutes before expiry, then mints ahead of time", async () => {
+  it("[P5.B.2.g] reuses a token until 5 minutes before expiry, then mints ahead of time", async () => {
     let now = Date.parse("2026-10-23T12:00:00Z");
     let minted = 0;
     const fetchImpl: FetchLike = async () => {
