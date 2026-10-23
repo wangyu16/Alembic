@@ -62,7 +62,26 @@ Owner-approved small fixes from the Phase 5 surveys (family `docs/PHASE5-ALEMBIC
   to the former CSV/JSON. A short page does not end the walk (only an empty one does), a non-advancing page
   is refused, the first page is read before the response (store down → 500), a later failure errors the
   stream (no silently truncated file). Tests: 12 (`research-export.test.ts`) + 2
-  (`deidentify.test.ts`).
+  (`deidentify.test.ts`). The `(occurred_at, id)` index the walk uses ships in migration 0024 (below);
+  without it each page is a top-N sort — correct, just slower.
+- ✅ **H.2 Database-side report cap** (migration `0024_harden_report_cap`, **not applied**). The public anon
+  key could insert into `portal_reports` directly, past the app's per-address limit. 0024 drops the
+  "anyone can report" policy, revokes INSERT from anon/authenticated, and adds
+  `file_portal_report(package, reason, reporter)` — security definer, service role only, the one insert
+  path — with per-package (10 / h, 30 / day) and global (60 / h, 300 / day) caps through `rate_limit_hit`
+  (0023). `reportPackageAction` keeps its per-address limit and now files through the function
+  (`lib/report-submit.ts`), falling back to the session insert only on "function not found" (pre-0024);
+  anonymous reporting still works (the server files it). Tests: 10 unit (`report-submit.test.ts`, incl.
+  adversarial no-fallback-on-other-errors and client-controlled arguments) + 28 SQL checks in PGlite
+  (migrations 0001–0024: the hole before 0024, refused direct insert/execute for anon and authenticated,
+  caps, validation, idempotent re-apply, keyset predicate). Operator check:
+  `supabase/tests/0024_verify_report_cap.sql`. **Deploy order:** code first, then 0024 (needs 0023 and
+  `SUPABASE_SECRET_KEY`). DecisionLog 2026-10-23 (hardening).
+- **Open (hardening):** *(a)* the function does not check that the package is listed (the listing source is
+  moving to the discovery projection in Track A core) — the global cap bounds reports against made-up ids;
+  *(b)* a flood can pause reporting for up to an hour/day (the global cap) — chosen over unbounded growth;
+  *(c)* the PGlite harness lives outside the repo (no new dev dependency); the SQL checks are described above
+  and the operator script covers the grants.
 
 **Phase 5 Track A (infra) — A.6 scale infrastructure, A.7 events and harvest (2026-10-23, branch
 `phase5/trackA-infra`, not yet deployed).** Plan: family `docs/PHASE5-ALEMBIC.md` Track A; the portal search
@@ -123,9 +142,8 @@ itself (A.1–A.4) is a parallel branch (`phase5/trackA-core`) and is not touche
   its own host, so until then course records travel in the feed, pointing at each course's Pages site.
   Tests: 6 (`listed-courses.test.ts`).
 - **Open (A.6/A.7):** *(a)* "cached discover pages, revalidated on listing changes" is the portal page's
-  job (A-core branch) — not done here; *(b)* the report limit binds the app only: `portal_reports` RLS
-  still lets anyone insert directly with the anon key (a database-side cap is open,
-  portal-governance.md); *(c)* the in-process `/d` and search limits are per server instance (soft);
+  job (A-core branch) — not done here; ~~*(b)* the report limit binds the app only~~ ✅ database-side cap,
+  migration 0024 (Phase 5 hardening H.2, not applied yet); *(c)* the in-process `/d` and search limits are per server instance (soft);
   *(d)* CDN copies of a public file can outlive its turning private/trial by ≤ 5 min (`s-maxage`),
   origin answers change at once; ~~*(e)* `/admin/export` reads every research event unpaged~~ ✅ paged (Phase 5 hardening H.1); *(f)* pins on the 32-bit hash until R3;
   *(g)* migration 0023 not applied — until then anonymous discovery events are dropped and the report
@@ -686,7 +704,7 @@ theme-in-save).
 
 These are the only things blocking full production parity with the code:
 
-1. **Migrations pending: `0020` (required for zip upload), `0019` (required for CF4), `0013` (optional), `0021_trackB_documents_hash_idx` (optional index, Phase 5 Track B.1 — apply anytime), `0023_trackA_infra` (optional, additive, Phase 5 Track A.6–A.7 — nullable `research_events.user_id` for anonymous discovery events, shared report rate-limit counters; apply anytime).** `0020_staging_bucket` creates the private `staging` bucket + owner-prefix RLS that the whole-course zip upload writes through — **it needs owner/service-role privileges** (it writes `storage.buckets` and `storage.objects` policies, which the anon/authenticated roles cannot) and **must be applied BEFORE the Wave-3 code is deployed**, or every zip upload fails at the signed-URL step. Supabase Storage has no automatic TTL, so the bucket's 24-hour lifetime also needs an **operator/cron sweep** deleting objects older than 24h (the happy path deletes each object on consumption); see [Deployment.md §1](Deployment.md). `0019_document_tags` adds the per-file `tags` column the Assets collection (CF4.1/4.2) reads/writes — **apply it before relying on asset tags/metadata in production** (CF4 asset writes are otherwise held; see the CF4 entry). `0013_drop_portal_eligible` drops the now-unused `profiles.portal_eligible` column — optional cleanup, apply anytime; no code references it. Applied: 0005–0012, **0014** (documents), **0015** (portal keywords, 2026-07-09), and **0016–0018** (profile column grants + user governance + ban backstop, ✅ **applied 2026-07-10** — see the security/UG banners above). Config notes: 0007's budget stays dormant until `AI_TOKEN_BUDGET` is set; portal listing is now open to all educators (the `portal_eligible` gate + admin toggle were removed); to reach `/admin`, **flag yourself `is_admin=true`** (dashboard) and set **`SUPABASE_SECRET_KEY`** (service-role reads) — optionally `RESEARCH_EXPORT_SALT`.
+1. **Migrations pending: `0020` (required for zip upload), `0019` (required for CF4), `0013` (optional), `0021_trackB_documents_hash_idx` (optional index, Phase 5 Track B.1 — apply anytime), `0023_trackA_infra` (optional, additive, Phase 5 Track A.6–A.7 — nullable `research_events.user_id` for anonymous discovery events, shared report rate-limit counters; apply anytime), `0024_harden_report_cap` (Phase 5 hardening — closes direct report inserts behind a capped service-role function + export index; **after** `0023` and **after** the hardening code is deployed).** `0020_staging_bucket` creates the private `staging` bucket + owner-prefix RLS that the whole-course zip upload writes through — **it needs owner/service-role privileges** (it writes `storage.buckets` and `storage.objects` policies, which the anon/authenticated roles cannot) and **must be applied BEFORE the Wave-3 code is deployed**, or every zip upload fails at the signed-URL step. Supabase Storage has no automatic TTL, so the bucket's 24-hour lifetime also needs an **operator/cron sweep** deleting objects older than 24h (the happy path deletes each object on consumption); see [Deployment.md §1](Deployment.md). `0019_document_tags` adds the per-file `tags` column the Assets collection (CF4.1/4.2) reads/writes — **apply it before relying on asset tags/metadata in production** (CF4 asset writes are otherwise held; see the CF4 entry). `0013_drop_portal_eligible` drops the now-unused `profiles.portal_eligible` column — optional cleanup, apply anytime; no code references it. Applied: 0005–0012, **0014** (documents), **0015** (portal keywords, 2026-07-09), and **0016–0018** (profile column grants + user governance + ban backstop, ✅ **applied 2026-07-10** — see the security/UG banners above). Config notes: 0007's budget stays dormant until `AI_TOKEN_BUDGET` is set; portal listing is now open to all educators (the `portal_eligible` gate + admin toggle were removed); to reach `/admin`, **flag yourself `is_admin=true`** (dashboard) and set **`SUPABASE_SECRET_KEY`** (service-role reads) — optionally `RESEARCH_EXPORT_SALT`.
 2. ✅ **Done** — Vercel build command is `node ../../scripts/fetch-vendor.mjs && next build`; Plotly is vendored and the plot editor (M11b) works live.
 3. **Interactive verification passes** (can't run in CI): slides render (M13), the in-file hosted editors (`.md.html`/`.slides.html`/`.paged.html` save round-trip via the worker tier), and the AI/reconcile live runs (M18 coherence agent, M9.6 draft-from-plan, M20 reconcile, M23 question generation, M26–M28 adapt/pull/suggest-back) once the AI gateway is on Vercel. Ketcher (M11) and plots (M11b) are verified live.
 4. **Set the AI gateway env vars in Vercel** — the self-hosted LiteLLM gateway (decided 2026-08-28, replacing Portkey; [worker-tier.md](specs/worker-tier.md) §1.5): `AI_GATEWAY_URL=https://<litellm-host>/v1`, `AI_GATEWAY_API_KEY=<virtual key>`, `AI_MODEL_DEFAULT/FAST/STRONG` = the gateway's model names — to verify the **M18 coherence agent** live. (Local dev could not reach the earlier hosted gateway from this machine — the dev Mac's firewall blocks the `node` binary's outbound; Vercel's egress is clean.) See [ai-architecture.md](specs/ai-architecture.md).
