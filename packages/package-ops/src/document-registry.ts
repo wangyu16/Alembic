@@ -19,6 +19,7 @@ import { extractSource, getKindByExtension, hasCarrier } from "@alembic/carriers
 import {
   assertRegistrationInvariants,
   hashContent,
+  isDocId,
   layerForPath,
   newDocId,
   parseRegistrationRecord,
@@ -28,6 +29,7 @@ import {
   type RegistrationRecord,
   type RepoKind,
   SPACE_REPO,
+  sha256Hex,
 } from "@alembic/package-contract";
 import type { PackageStore } from "./store";
 
@@ -99,6 +101,33 @@ export interface DocumentRegistryStore {
    * of files would otherwise read all of them on every save.
    */
   listLiveByPackage(packageId: string): Promise<RegistrationRecord[]>;
+  /**
+   * Of `docIds`, those already registered (live OR tombstoned) to a package
+   * OTHER than `packageId` (loop r1b, P5.B.1.n). A docId belongs to exactly
+   * one package: an embedded uid that another package owns is never adopted.
+   * Must see across owners (the Supabase store asks a narrow SECURITY DEFINER
+   * function that answers only "taken elsewhere", nothing about the owner).
+   */
+  foreignDocIds(packageId: string, docIds: string[]): Promise<Set<string>>;
+  /**
+   * Apply one registration run ATOMICALLY (loop r1b, P5.B.1.n): tombstone
+   * `tombstones` and upsert `upserts` — all of it or none of it. A refused
+   * upsert must never leave the tombstones behind (that turned a live file's
+   * permalink into a 410). Throws when refused; nothing changed then.
+   */
+  apply(
+    packageId: string,
+    change: { tombstones: string[]; upserts: RegistrationRecord[] },
+  ): Promise<void>;
+}
+
+/** Thrown by a registry store when a write would move a docId to another
+ *  package (the database refuses it too — migration 0027). */
+export class ForeignDocIdError extends Error {
+  constructor(public readonly docId: string) {
+    super(`Document id ${docId} belongs to another package.`);
+    this.name = "ForeignDocIdError";
+  }
 }
 
 /**
@@ -107,35 +136,79 @@ export interface DocumentRegistryStore {
  * style.
  */
 export class MemoryDocumentRegistryStore implements DocumentRegistryStore {
-  /** Keyed by `${packageId} ${docId}`. */
-  private readonly records = new Map<string, RegistrationRecord>();
+  /**
+   * Keyed by docId ALONE — like `documents.doc_id`, the table's global
+   * primary key (loop r1b). Keying by (package, docId) let two packages hold
+   * one docId in tests while production silently moved the row between
+   * them; now a cross-package write is refused here exactly as the database
+   * refuses it, and the location rule (one live identity per package + repo +
+   * path — the partial unique index) is enforced too.
+   */
+  private records = new Map<string, RegistrationRecord>();
 
-  private key(packageId: string, docId: string): string {
-    return `${packageId} ${docId}`;
-  }
-
-  async upsert(record: RegistrationRecord): Promise<void> {
-    this.records.set(this.key(record.packageId, record.docId), record);
-  }
-
-  async upsertMany(records: RegistrationRecord[]): Promise<void> {
-    for (const record of records) {
-      this.records.set(this.key(record.packageId, record.docId), record);
+  private check(next: Map<string, RegistrationRecord>, written: RegistrationRecord[]): void {
+    for (const record of written) {
+      const prior = this.records.get(record.docId);
+      if (prior && prior.packageId !== record.packageId) {
+        throw new ForeignDocIdError(record.docId);
+      }
+    }
+    const seen = new Set<string>();
+    for (const r of next.values()) {
+      if (r.tombstoned) continue;
+      const loc = `${r.packageId} ${r.repo} ${r.path}`;
+      if (seen.has(loc)) {
+        throw new Error(`duplicate key value violates unique constraint "documents_location_idx" (${loc})`);
+      }
+      seen.add(loc);
     }
   }
 
+  async upsert(record: RegistrationRecord): Promise<void> {
+    await this.apply(record.packageId, { tombstones: [], upserts: [record] });
+  }
+
+  async upsertMany(records: RegistrationRecord[]): Promise<void> {
+    const next = new Map(this.records);
+    for (const record of records) next.set(record.docId, record);
+    this.check(next, records);
+    this.records = next;
+  }
+
   async tombstone(packageId: string, docId: string): Promise<void> {
-    const existing = this.records.get(this.key(packageId, docId));
-    if (existing) {
-      this.records.set(this.key(packageId, docId), {
-        ...existing,
-        tombstoned: true,
-      });
+    const existing = this.records.get(docId);
+    if (existing && existing.packageId === packageId) {
+      this.records.set(docId, { ...existing, tombstoned: true });
     }
   }
 
   async tombstoneMany(packageId: string, docIds: string[]): Promise<void> {
     for (const docId of docIds) await this.tombstone(packageId, docId);
+  }
+
+  async apply(
+    packageId: string,
+    change: { tombstones: string[]; upserts: RegistrationRecord[] },
+  ): Promise<void> {
+    const next = new Map(this.records);
+    for (const docId of change.tombstones) {
+      const existing = next.get(docId);
+      if (existing && existing.packageId === packageId) {
+        next.set(docId, { ...existing, tombstoned: true });
+      }
+    }
+    for (const record of change.upserts) next.set(record.docId, record);
+    this.check(next, change.upserts);
+    this.records = next; // all or nothing
+  }
+
+  async foreignDocIds(packageId: string, docIds: string[]): Promise<Set<string>> {
+    const out = new Set<string>();
+    for (const docId of docIds) {
+      const r = this.records.get(docId);
+      if (r && r.packageId !== packageId) out.add(docId);
+    }
+    return out;
   }
 
   async getByLocation(
@@ -176,8 +249,8 @@ export class MemoryDocumentRegistryStore implements DocumentRegistryStore {
     packageId: string,
     docId: string,
   ): Promise<RegistrationRecord | null> {
-    const record = this.records.get(this.key(packageId, docId));
-    return record && !record.tombstoned ? record : null;
+    const record = this.records.get(docId);
+    return record && record.packageId === packageId && !record.tombstoned ? record : null;
   }
 
   async listByPackage(packageId: string): Promise<RegistrationRecord[]> {
@@ -243,6 +316,14 @@ const ORZ_META_ISLAND_RE =
  * and return null (they fall back to hash/location identity).
  */
 export function extractEmbeddedUid(content: string): string | null {
+  const uid = rawEmbeddedUid(content);
+  // Only a well-formed id is an identity (P5.B.1.o): a uid `/d` could never
+  // serve (`doc-Ch1_Intro.v2`) falls back to hash/location identity.
+  return isDocId(uid) ? uid : null;
+}
+
+/** The island's `uid` value as written, well-formed or not (import checks it). */
+export function rawEmbeddedUid(content: string): string | null {
   const m = ORZ_META_ISLAND_RE.exec(content);
   const json = m?.[1];
   if (!json) return null;
@@ -252,6 +333,30 @@ export function extractEmbeddedUid(content: string): string | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * A COPY of a carrier must not carry its source's identity (loop r1b,
+ * P5.B.1.n): fork, adapt and "copy into this course" re-mint the embedded uid
+ * so the copy registers as its own document instead of claiming the source's
+ * docId. Rewrites only the uid value inside the `#orz-meta` island; content
+ * without an island (or without a uid) is returned unchanged. The source
+ * hash is unaffected (the island is not part of the extracted source).
+ */
+export function remintEmbeddedUid(content: string, fresh: string = newDocId()): string {
+  const m = ORZ_META_ISLAND_RE.exec(content);
+  const json = m?.[1];
+  if (!m || !json) return content;
+  let uid: unknown;
+  try {
+    uid = (JSON.parse(json) as { uid?: unknown }).uid;
+  } catch {
+    return content;
+  }
+  if (typeof uid !== "string" || !uid) return content;
+  const field = new RegExp(`("uid"\\s*:\\s*)${JSON.stringify(uid).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`);
+  const island = m[0].replace(json, json.replace(field, `$1${JSON.stringify(fresh)}`));
+  return content.slice(0, m.index) + island + content.slice(m.index + m[0].length);
 }
 
 /**
@@ -290,6 +395,14 @@ export interface RegisterFileInput {
    * (which passes no adaptedFrom) preserves it via the existing record.
    */
   adaptedFrom?: string;
+  /**
+   * An explicit move hint (loop r1b, P5.B.1.m): the path in the same repo this
+   * file was moved/renamed FROM in the same write. The identity at that
+   * location travels here even when the content changed in the same write —
+   * no content-hash guessing (an edit-then-rename used to mint a new docId and
+   * 410 the old permalink).
+   */
+  movedFrom?: string;
 }
 
 /**
@@ -311,18 +424,20 @@ export function isRegistrableLocation(repo: RepoKind, path: string): boolean {
 interface DerivedFields {
   space: PackageSpace;
   sourceHash: string;
+  contentSha256: string;
   kind: string;
   formatVersion: number;
   permalinkClass: "document" | "object";
   embeddedUid: string | null;
 }
 
-function deriveFields(path: string, content: string): DerivedFields {
+async function deriveFields(path: string, content: string): Promise<DerivedFields> {
   const space = spaceForFilePath(path); // dual-mode: v2 spaces + v1 layers
   const { kind, formatVersion } = kindForFile(path, content);
   return {
     space,
     sourceHash: computeSourceHash(content),
+    contentSha256: await sha256Hex(content),
     kind,
     formatVersion,
     permalinkClass: permalinkClassForPath(path),
@@ -352,6 +467,7 @@ function buildRecord(
     kind: derived.kind,
     formatVersion: derived.formatVersion,
     sourceHash: derived.sourceHash,
+    contentSha256: derived.contentSha256,
     origin: existing?.origin ?? input.origin,
     author: input.author ?? existing?.author,
     registeredAt: existing?.registeredAt ?? new Date().toISOString(),
@@ -375,38 +491,23 @@ function buildRecord(
 }
 
 /**
- * Register (or re-register) ONE file in isolation, IDEMPOTENTLY BY IDENTITY
- * (contract v2 §2), with targeted lookups. Identity match order:
- *   0. an EMBEDDED uid (`DocMeta.uid` in a carrier's `#orz-meta` island) — the
- *      strongest signal: it travels with the file, so it holds even when the
- *      file was renamed/moved or its contents changed (offline round-trip,
- *      whole-package import, direct GitHub commit). The uid IS the docId.
- *   1. content hash within the package — same source anywhere reuses the docId;
- *   2. an existing live record at the same location;
- *   3. else it is new — mint a fresh docId.
- *
- * Without the package's file list this cannot tell a MOVE from a DUPLICATE,
- * so it favors move-continuity (contract v2 §2 "known edge"). Use it for a
- * single targeted registration (adaptation, which must stamp `adaptedFrom`);
- * every write and rebuild goes through `registerChangedFiles` /
- * `rebuildPackageRegistry`, which apply the duplicate-content tiebreaker.
- *
- * Duplicate embedded uids (e.g. a file copied byte-for-byte and both uploaded)
- * would both map to one docId; the last registration wins the location. That is
- * a degenerate input — normal authoring never mints two files with one uid.
+ * Register (or re-register) ONE file in isolation (adaptation, which must
+ * stamp `adaptedFrom`). Same identity ladder and the same guarantees as the
+ * batched path — it IS the batched path with a one-file change set, so an
+ * embedded uid owned by another package is never adopted and the write is
+ * atomic (loop r1b; before, this had its own ladder that adopted any uid).
  */
 export async function registerFile(
   store: DocumentRegistryStore,
   input: RegisterFileInput,
 ): Promise<RegistrationRecord> {
-  const derived = deriveFields(input.path, input.content);
-  const existing = derived.embeddedUid
-    ? await store.getByDocId(input.packageId, derived.embeddedUid)
-    : (await store.getByContentHash(input.packageId, derived.sourceHash)) ??
-      (await store.getByLocation(input.packageId, input.repo, input.path));
-  const docId = derived.embeddedUid ?? existing?.docId ?? newDocId();
-  const record = buildRecord(input, derived, docId, existing);
-  await store.upsert(record);
+  const ws = new RegistryWorkingSet(await store.listLiveByPackage(input.packageId));
+  const derived = await deriveFields(input.path, input.content);
+  const foreign = await foreignUids(store, input.packageId, ws, [derived]);
+  // No file list here: a hash match elsewhere is treated as a move (contract
+  // v2 §2 "known edge"), as before.
+  const record = await stageDerived(ws, input, derived, foreign, async () => false);
+  await flush(store, input.packageId, ws);
   return record;
 }
 
@@ -431,6 +532,8 @@ class RegistryWorkingSet {
   /** Live rows as loaded, for the "did it change?" test at flush. */
   private readonly original = new Map<string, RegistrationRecord>();
   private readonly touched = new Set<string>();
+  /** docId → the live identities its staging displaced from its location. */
+  private readonly displacedBy = new Map<string, Set<string>>();
 
   constructor(live: RegistrationRecord[]) {
     for (const record of live) {
@@ -486,7 +589,12 @@ class RegistryWorkingSet {
     const previous = this.byDoc.get(record.docId);
     if (previous) this.unindex(previous);
     const occupant = this.byLoc.get(locKey(record.repo, record.path));
-    if (occupant && occupant !== record.docId) this.tombstone(occupant);
+    if (occupant && occupant !== record.docId) {
+      this.tombstone(occupant);
+      let set = this.displacedBy.get(record.docId);
+      if (!set) this.displacedBy.set(record.docId, (set = new Set()));
+      set.add(occupant);
+    }
     this.index(record);
     this.touched.add(record.docId);
   }
@@ -499,8 +607,13 @@ class RegistryWorkingSet {
   }
 
   /** What the run changed: rows to upsert (new or different) and live rows to
-   *  tombstone. Unchanged rows are not written at all. */
-  changes(): { upserts: RegistrationRecord[]; tombstones: string[] } {
+   *  tombstone, plus which tombstones exist only because an upsert took their
+   *  location. Unchanged rows are not written at all. */
+  changes(): {
+    upserts: RegistrationRecord[];
+    tombstones: string[];
+    displacedBy: Map<string, Set<string>>;
+  } {
     const upserts: RegistrationRecord[] = [];
     const tombstones: string[] = [];
     for (const docId of this.touched) {
@@ -512,7 +625,7 @@ class RegistryWorkingSet {
         upserts.push(now);
       }
     }
-    return { upserts, tombstones };
+    return { upserts, tombstones, displacedBy: this.displacedBy };
   }
 }
 
@@ -527,27 +640,70 @@ function sameRecord(a: RegistrationRecord, b: RegistrationRecord): boolean {
 }
 
 /**
- * Resolve one file's identity against the working set — the same ladder as
- * `registerFile` (embedded uid → content hash → location → new), plus the
- * duplicate-content tiebreaker (contract v2 §2), which needs to know which
- * locations are still present:
+ * The embedded uids of a run that another package already owns — ONE lookup
+ * per run, and none at all when every uid is already one of this package's
+ * live identities (the common save of a registered document).
+ */
+async function foreignUids(
+  store: DocumentRegistryStore,
+  packageId: string,
+  ws: RegistryWorkingSet,
+  derived: ReadonlyArray<DerivedFields>,
+): Promise<Set<string>> {
+  const unknown = [
+    ...new Set(
+      derived
+        .map((d) => d.embeddedUid)
+        .filter((u): u is string => u !== null && ws.get(u) === null),
+    ),
+  ];
+  if (unknown.length === 0) return new Set();
+  return store.foreignDocIds(packageId, unknown);
+}
+
+/**
+ * Resolve one file's identity against the working set:
  *
- *  - a content-hash match AT this location is this file;
- *  - a content-hash match elsewhere is a MOVE only when its old location is no
- *    longer present and nothing else is registered here; if the old location
- *    still holds a file, the two are byte-identical DUPLICATES and this file
- *    gets its own identity (previously the second copy took the first one's
- *    docId, and the two flapped on every rebuild);
- *  - an exact location match wins over a cross-path hash match.
+ *  0. an explicit move hint (`movedFrom`) carries that location's identity;
+ *  1. an embedded uid is adopted when it is already this package's (and not
+ *     still held by another present file — a byte-copy keeps one owner) or
+ *     when NO package has it; a uid another package owns is ignored and the
+ *     file falls through to the ladder below (P5.B.1.n: a docId belongs to
+ *     exactly one package);
+ *  2. the duplicate-content tiebreaker (contract v2 §2):
+ *     - a content-hash match AT this location is this file;
+ *     - a content-hash match elsewhere is a MOVE only when its old location is
+ *       no longer present and nothing else is registered here; if the old
+ *       location still holds a file, the two are byte-identical DUPLICATES and
+ *       this file gets its own identity;
+ *     - an exact location match wins over a cross-path hash match;
+ *  3. else a fresh docId.
  */
 async function resolveIdentity(
   ws: RegistryWorkingSet,
   input: RegisterFileInput,
   derived: DerivedFields,
+  foreign: ReadonlySet<string>,
   isPresent: (repo: RepoKind, path: string) => Promise<boolean>,
 ): Promise<{ docId: string; existing: RegistrationRecord | null }> {
-  if (derived.embeddedUid) {
-    return { docId: derived.embeddedUid, existing: ws.get(derived.embeddedUid) };
+  if (input.movedFrom !== undefined && input.movedFrom !== input.path) {
+    const from = ws.at(input.repo, input.movedFrom);
+    if (from && !(derived.embeddedUid && derived.embeddedUid !== from.docId && ws.get(derived.embeddedUid))) {
+      return { docId: from.docId, existing: from };
+    }
+  }
+  const uid = derived.embeddedUid;
+  if (uid) {
+    const mine = ws.get(uid);
+    if (mine) {
+      const sameLoc = mine.repo === input.repo && mine.path === input.path;
+      if (sameLoc || !(await isPresent(mine.repo, mine.path))) {
+        return { docId: uid, existing: mine };
+      }
+      // Another present file holds this uid: a copy — fall through.
+    } else if (!foreign.has(uid)) {
+      return { docId: uid, existing: null };
+    }
   }
   const here = ws.at(input.repo, input.path);
   if (here && here.sourceHash === derived.sourceHash) {
@@ -564,49 +720,73 @@ async function resolveIdentity(
   return { docId: newDocId(), existing: null };
 }
 
-async function stageFile(
+async function stageDerived(
   ws: RegistryWorkingSet,
   input: RegisterFileInput,
+  derived: DerivedFields,
+  foreign: ReadonlySet<string>,
   isPresent: (repo: RepoKind, path: string) => Promise<boolean>,
 ): Promise<RegistrationRecord> {
-  const derived = deriveFields(input.path, input.content);
-  const { docId, existing } = await resolveIdentity(ws, input, derived, isPresent);
+  const { docId, existing } = await resolveIdentity(ws, input, derived, foreign, isPresent);
   const record = buildRecord(input, derived, docId, existing);
   ws.put(record);
   return record;
 }
 
 /**
- * Write a run's changes: tombstones first (they free locations the upserts
- * may reuse), then the upserts in one bulk call. If the bulk call is refused —
- * e.g. two paths swapped within one statement trip the location index
- * mid-statement — fall back to one row at a time, retrying until no further
- * row lands; a row that still cannot land is left for the next run (the
- * registry is rebuildable; the same per-file resilience the rebuild always had).
+ * Write a run's changes ATOMICALLY (loop r1b): tombstones and upserts in one
+ * `apply` — if the database refuses any upsert, nothing is tombstoned (before
+ * r1b the tombstones landed first and a refused upsert left a live file's
+ * permalink answering 410).
+ *
+ * If the one-shot apply is refused (e.g. two paths swapped within one
+ * statement trip the location index mid-statement), fall back to one row at
+ * a time — each row together with the identities it displaces, still atomic
+ * per row — retrying until no further row lands; a row that still cannot
+ * land is left for the next run, and the identity it would have displaced
+ * stays live (the registry is rebuildable). Plain deletions are applied last.
  */
 async function flush(
   store: DocumentRegistryStore,
   packageId: string,
   ws: RegistryWorkingSet,
 ): Promise<void> {
-  const { upserts, tombstones } = ws.changes();
-  if (tombstones.length > 0) await store.tombstoneMany(packageId, tombstones);
-  if (upserts.length === 0) return;
+  const { upserts, tombstones, displacedBy } = ws.changes();
+  if (upserts.length === 0 && tombstones.length === 0) return;
   try {
-    await store.upsertMany(upserts);
+    await store.apply(packageId, { tombstones, upserts });
+    return;
   } catch {
-    let pending = upserts;
-    while (pending.length > 0) {
-      const failed: RegistrationRecord[] = [];
-      for (const record of pending) {
-        try {
-          await store.upsert(record);
-        } catch {
-          failed.push(record);
-        }
+    /* fall back below */
+  }
+  const pendingTombstones = new Set(tombstones);
+  const tiedTo = (r: RegistrationRecord): string[] =>
+    [...(displacedBy.get(r.docId) ?? [])].filter((d) => pendingTombstones.has(d));
+  const blocked = new Set<string>();
+  let pending = upserts;
+  while (pending.length > 0) {
+    const failed: RegistrationRecord[] = [];
+    for (const record of pending) {
+      const tied = tiedTo(record);
+      try {
+        await store.apply(packageId, { tombstones: tied, upserts: [record] });
+        for (const d of tied) pendingTombstones.delete(d);
+      } catch {
+        failed.push(record);
       }
-      if (failed.length === pending.length) return;
-      pending = failed;
+    }
+    if (failed.length === pending.length) {
+      for (const r of failed) for (const d of tiedTo(r)) blocked.add(d);
+      break;
+    }
+    pending = failed;
+  }
+  const rest = [...pendingTombstones].filter((d) => !blocked.has(d));
+  if (rest.length > 0) {
+    try {
+      await store.apply(packageId, { tombstones: rest, upserts: [] });
+    } catch {
+      /* left for the next run */
     }
   }
 }
@@ -617,18 +797,22 @@ export interface RegistryChange {
   repo: RepoKind;
   path: string;
   content?: string | null;
+  /** Explicit move hint — see `RegisterFileInput.movedFrom`. */
+  movedFrom?: string;
 }
 
 /**
  * Register ONLY the files a write touched — the write paths know their change
  * set, so a save no longer re-reads and re-registers the whole package (the
  * scale audit's ~700–1000 serialized round-trips per save on a 333-file
- * course). Cost: one read of the package's live registry rows, one bulk
- * write, and — only when a content-hash match elsewhere has to be told apart
- * from a duplicate — one content-free path listing.
+ * course). Cost: one read of the package's live registry rows, one atomic
+ * write, and — only when needed — one content-free path listing (a hash
+ * match elsewhere to tell apart from a duplicate) and one cross-package uid
+ * lookup (an embedded uid this package does not hold yet).
  *
- * Call it AFTER the write has landed in the package store (the write path
- * projects first), so "is this location still present?" sees the new state.
+ * `writeThrough`/`updateManifest` call this for every write through a store
+ * that carries a registry (loop r1b) — callers do not.
+ *
  * Deleted files are tombstoned (their permalinks answer 410) unless a file
  * in the same change set carried their identity away (a move/rename).
  *
@@ -656,7 +840,7 @@ export async function registerChangedFiles(
   };
 
   const deleted: RegistryChange[] = [];
-  const registered: RegistrationRecord[] = [];
+  const staged: Array<{ input: RegisterFileInput; derived: DerivedFields }> = [];
   for (const change of changes) {
     const content =
       change.content === undefined
@@ -666,14 +850,26 @@ export async function registerChangedFiles(
       deleted.push(change);
       continue;
     }
+    const input: RegisterFileInput = {
+      packageId,
+      repo: change.repo,
+      path: change.path,
+      origin,
+      content,
+      ...(change.movedFrom !== undefined ? { movedFrom: change.movedFrom } : {}),
+    };
     try {
-      registered.push(
-        await stageFile(
-          ws,
-          { packageId, repo: change.repo, path: change.path, origin, content },
-          isPresent,
-        ),
-      );
+      staged.push({ input, derived: await deriveFields(change.path, content) });
+    } catch {
+      /* unregistrable — skipped, as in the full rebuild */
+    }
+  }
+  const foreign = await foreignUids(store, packageId, ws, staged.map((x) => x.derived));
+
+  const registered: RegistrationRecord[] = [];
+  for (const { input, derived } of staged) {
+    try {
+      registered.push(await stageDerived(ws, input, derived, foreign, isPresent));
     } catch {
       /* unregistrable — skipped, as in the full rebuild */
     }
@@ -700,7 +896,8 @@ export async function registerChangedFiles(
  * The READ stays full on purpose: hashes and embedded uids come from the bytes
  * (scale audit, "confirmed correct"). What changed is the writing: identity is
  * resolved in memory against one read of the live rows, and only rows that
- * differ are written, in one bulk call — an unchanged package costs no writes.
+ * differ are written, in one atomic call — an unchanged package costs no
+ * writes.
  */
 export async function rebuildPackageRegistry(
   store: DocumentRegistryStore,
@@ -717,20 +914,27 @@ export async function rebuildPackageRegistry(
   const isPresent = async (repo: RepoKind, path: string) =>
     present.has(locKey(repo, path));
 
-  const registered: RegistrationRecord[] = [];
+  const staged: Array<{ input: RegisterFileInput; derived: DerivedFields }> = [];
   for (const file of files) {
+    try {
+      staged.push({
+        input: { packageId, repo: file.repo, path: file.path, origin, content: file.content },
+        derived: await deriveFields(file.path, file.content),
+      });
+    } catch {
+      /* skipped — leave any prior record untouched */
+    }
+  }
+  const foreign = await foreignUids(store, packageId, ws, staged.map((x) => x.derived));
+
+  const registered: RegistrationRecord[] = [];
+  for (const { input, derived } of staged) {
     // Per-file resilience: one unregistrable file (unknown location, invariant
     // violation) must not abort the whole projection rebuild — skip it and
     // keep its existing record (if any) alive rather than tombstoning a file
     // that is still present.
     try {
-      registered.push(
-        await stageFile(
-          ws,
-          { packageId, repo: file.repo, path: file.path, origin, content: file.content },
-          isPresent,
-        ),
-      );
+      registered.push(await stageDerived(ws, input, derived, foreign, isPresent));
     } catch {
       /* skipped — leave any prior record untouched */
     }
@@ -743,4 +947,37 @@ export async function rebuildPackageRegistry(
 
   await flush(store, packageId, ws);
   return registered;
+}
+
+/**
+ * Locations whose registry row is stale against the stored bytes (loop r1b,
+ * P5.B.1.m) — the page-load check. Compares the content-free listing's
+ * SHA-256 (computed by the database from the stored bytes) with the digest
+ * the registration recorded; a missing digest on either side counts as
+ * stale. Also returns the paths added (no live row) and removed (row without
+ * a file). Pure.
+ */
+export function registryDrift(
+  paths: ReadonlyArray<{ repo: RepoKind; path: string; contentSha256?: string | null }>,
+  records: ReadonlyArray<RegistrationRecord>,
+): { added: RegistryChange[]; stale: RegistryChange[]; removed: RegistryChange[] } {
+  const live = new Map(
+    paths
+      .filter((f) => isRegistrableLocation(f.repo, f.path))
+      .map((f) => [locKey(f.repo, f.path), f] as const),
+  );
+  const known = new Map(records.map((r) => [locKey(r.repo, r.path), r] as const));
+  const added: RegistryChange[] = [];
+  const stale: RegistryChange[] = [];
+  for (const [loc, f] of live) {
+    const r = known.get(loc);
+    if (!r) added.push({ repo: f.repo, path: f.path });
+    else if (!f.contentSha256 || r.contentSha256 !== f.contentSha256) {
+      stale.push({ repo: f.repo, path: f.path });
+    }
+  }
+  const removed: RegistryChange[] = [...known]
+    .filter(([loc]) => !live.has(loc))
+    .map(([, r]) => ({ repo: r.repo, path: r.path, content: null }));
+  return { added, stale, removed };
 }

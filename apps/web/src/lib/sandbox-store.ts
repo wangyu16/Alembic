@@ -4,10 +4,14 @@ import {
   type PackageManifest,
 } from "@alembic/package-contract";
 import type {
+  DocumentRegistryStore,
   PackageFile,
+  PackagePathEntry,
   PackageRecord,
   PackageStore,
 } from "@alembic/package-ops";
+import { SupabaseDocumentRegistryStore } from "./document-registry-store";
+import { pageAll } from "./page-all";
 
 /**
  * Trial-sandbox PackageStore over Supabase. Paths reaching this store have
@@ -18,7 +22,16 @@ import type {
  * methods never need to filter by owner themselves.
  */
 export class SupabaseSandboxStore implements PackageStore {
-  constructor(private readonly supabase: SupabaseClient) {}
+  /**
+   * Every write through this store (`writeThrough` / `updateManifest`) is
+   * registered in the `documents` registry over the same client (loop r1b,
+   * P5.B.1.m) — the write path does it, so no server action can forget.
+   */
+  readonly registry: DocumentRegistryStore;
+
+  constructor(private readonly supabase: SupabaseClient) {
+    this.registry = new SupabaseDocumentRegistryStore(supabase);
+  }
 
   async createPackage(
     record: PackageRecord,
@@ -62,25 +75,20 @@ export class SupabaseSandboxStore implements PackageStore {
     // PostgREST caps a single response (default max-rows, typically 1000
     // rows), so one unpaged select silently truncates large packages. Page
     // deterministically (ordered by repo, then path — together the unique
-    // key within a package) until a short page signals the end.
-    const PAGE = 1000;
-    const files: PackageFile[] = [];
-    for (let offset = 0; ; offset += PAGE) {
-      const { data, error } = await this.supabase
-        .from("sandbox_files")
-        .select("repo, path, content")
-        .eq("package_id", packageId)
-        .order("repo")
-        .order("path")
-        .range(offset, offset + PAGE - 1);
-      if (error) throw new Error(`Could not load files: ${error.message}`);
-      const rows = data ?? [];
-      for (const row of rows) {
-        files.push({ repo: row.repo, path: row.path, content: row.content });
-      }
-      if (rows.length < PAGE) break;
-    }
-    return files;
+    // key within a package) until the exact count is read (`pageAll`: a short
+    // page is not the end — loop r1b, P5.B.1.p).
+    const rows = await pageAll<{ repo: "public" | "private"; path: string; content: string }>(
+      (from, to) =>
+        this.supabase
+          .from("sandbox_files")
+          .select("repo, path, content", { count: "exact" })
+          .eq("package_id", packageId)
+          .order("repo")
+          .order("path")
+          .range(from, to),
+      "Could not load files",
+    );
+    return rows.map((row) => ({ repo: row.repo, path: row.path, content: row.content }));
   }
 
   /**
@@ -90,24 +98,22 @@ export class SupabaseSandboxStore implements PackageStore {
    * on every page load. Same pagination as `listFiles`, since the row cap
    * applies regardless of how few columns are projected.
    */
-  async listPaths(
-    packageId: string,
-  ): Promise<Array<{ repo: "public" | "private"; path: string }>> {
-    const PAGE = 1000;
-    const out: Array<{ repo: "public" | "private"; path: string }> = [];
-    for (let offset = 0; ; offset += PAGE) {
-      const { data, error } = await this.supabase
-        .from("sandbox_files")
-        .select("repo, path")
-        .eq("package_id", packageId)
-        .order("repo")
-        .order("path")
-        .range(offset, offset + PAGE - 1);
-      if (error) throw new Error(`Could not load files: ${error.message}`);
-      const rows = data ?? [];
-      out.push(...rows.map((r) => ({ repo: r.repo, path: r.path })));
-      if (rows.length < PAGE) return out;
-    }
+  async listPaths(packageId: string): Promise<PackagePathEntry[]> {
+    // `content_sha256` is a generated column (migration 0027): the database
+    // hashes the stored bytes, so the page-load staleness check stays
+    // content-free (P5.B.1.m).
+    const rows = await pageAll<{ repo: "public" | "private"; path: string; content_sha256: string | null }>(
+      (from, to) =>
+        this.supabase
+          .from("sandbox_files")
+          .select("repo, path, content_sha256", { count: "exact" })
+          .eq("package_id", packageId)
+          .order("repo")
+          .order("path")
+          .range(from, to),
+      "Could not load files",
+    );
+    return rows.map((r) => ({ repo: r.repo, path: r.path, contentSha256: r.content_sha256 ?? null }));
   }
 
   /** One file's content, or null when absent — no whole-package read. */

@@ -280,10 +280,25 @@ export async function servePermalink(
 
   const cacheControl = cacheHeaders(pinned);
   if (etagMatches(reqHeaders.get("if-none-match"), hash)) {
-    deps.onPublicServed?.({ doc, pinned, status: 304 });
-    return new Response(null, {
-      status: 304,
-      headers: { etag: etagFor(hash), ...cacheControl, ...shared },
+    // 304 only when the registry hash was verified against the file's
+    // CURRENT bytes recently (loop r1b, P5.B.1.m): a stale registry row must
+    // not keep every client and the CDN on the old version indefinitely.
+    const check = await deps.cache.revalidate({ docId: doc.doc_id, hash, path: doc.path }, () =>
+      deps.readBytes(doc, access),
+    );
+    if (check === null) return notFound();
+    if (check.status === "fresh") {
+      deps.onPublicServed?.({ doc, pinned, status: 304 });
+      return new Response(null, {
+        status: 304,
+        headers: { etag: etagFor(hash), ...cacheControl, ...shared },
+      });
+    }
+    // The file moved on and the registry did not: serve what is there now,
+    // unlabelled (no ETag, not shared-cacheable) — as for any unverified read.
+    deps.onPublicServed?.({ doc, pinned: false, status: 200 });
+    return new Response(body(check.bytes), {
+      headers: { "content-type": mimeFor(doc.path), "cache-control": CACHE.unverified, ...shared },
     });
   }
 

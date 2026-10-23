@@ -188,7 +188,11 @@ export interface CourseSiteInput {
    * waives copyright rather than asserting it.
    */
   copyrightHolder?: string;
-  /** ISO timestamp, passed in for deterministic builds. */
+  /**
+   * ISO timestamp of the build. Only the copyright-year fallback reads it
+   * (when `meta.datePublished` is absent); it is NOT written into the output,
+   * so rebuilding unchanged content yields byte-identical files.
+   */
   builtAt: string;
   /** LRMI/schema.org metadata; when present, emitted as JSON-LD on the index (M30). */
   meta?: LearningResourceMeta;
@@ -604,7 +608,11 @@ ${footer}`;
     path: "build-info.json",
     content:
       JSON.stringify(
-        { generator: "Alembic", renderer: rendererVersion(), builtAt: input.builtAt },
+        // No build timestamp: the same content must build to the same bytes,
+        // or every publish would differ and "nothing changed → no new
+        // commit" could never trigger (P5.B.2.a). The renderer version is
+        // the durable, useful stamp; the publish time lives in Git history.
+        { generator: "Alembic", renderer: rendererVersion() },
         null,
         2,
       ) + "\n",

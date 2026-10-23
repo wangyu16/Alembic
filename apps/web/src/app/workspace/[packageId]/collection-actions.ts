@@ -18,7 +18,6 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
 import { rewriteMarkdownRefs } from "@/lib/rewrite-md-refs";
 import { committerFor } from "@/lib/committer";
-import { registerChanges } from "@/lib/register";
 import { uploadVerdict } from "@/lib/collection-upload";
 import { placementNote, resolveReplaceTarget } from "@/lib/slot-upsert";
 import { generateEditableFile } from "@/lib/worker-client";
@@ -152,7 +151,6 @@ export async function uploadCollectionFileAction(
     summary: "Upload file (Alembic)",
   });
   if (!written.ok) return { ok: false, error: written.error };
-  await registerChanges(supabase, packageId, changes);
 
   revalidatePath(`/workspace/${packageId}`);
   return { ok: true, path: target, warning: verdict.warning };
@@ -223,7 +221,6 @@ export async function deleteCollectionEntryAction(
     summary: isFolder ? "Delete folder (Alembic)" : "Delete file (Alembic)",
   });
   if (!written.ok) return { ok: false, error: written.error };
-  await registerChanges(supabase, packageId, changes);
   revalidatePath(`/workspace/${packageId}`);
   return { ok: true, count: targets.length };
 }
@@ -264,8 +261,9 @@ export async function renameCollectionFileAction(
   // of the old one commit together and project together, so a rename can never
   // leave two copies (or none). The registry carries the file's identity (and
   // permalink) to the new path.
+  // `movedFrom` hands the registry the identity explicitly (loop r1b).
   const changes = [
-    { repo, path: to, content: sourceContent },
+    { repo, path: to, content: sourceContent, movedFrom: from },
     { repo, path: from, content: null },
   ];
   const written = await writeChanges({
@@ -276,7 +274,6 @@ export async function renameCollectionFileAction(
     summary: "Rename file (Alembic)",
   });
   if (!written.ok) return { ok: false, error: written.error };
-  await registerChanges(supabase, packageId, changes);
   revalidatePath(`/workspace/${packageId}`);
   return { ok: true, path: to };
 }
@@ -325,7 +322,6 @@ export async function saveCollectionFileAction(
     summary: "Edit file (Alembic)",
   });
   if (!written.ok) return { ok: false, error: written.error };
-  await registerChanges(supabase, packageId, changes);
   revalidatePath(`/workspace/${packageId}`);
   return { ok: true };
 }
@@ -506,7 +502,6 @@ export async function replaceCollectionFileAction(
     summary: "Replace with edited version (Alembic)",
   });
   if (!written.ok) return { ok: false, error: written.error };
-  await registerChanges(supabase, packageId, changes);
 
   revalidatePath(`/workspace/${packageId}`);
   // Tell the educator where it landed when the picked name didn't match the
@@ -611,7 +606,7 @@ export async function createCollectionFileAction(
     const theme = record.manifest.themes?.[input.space.split("/")[0]] ?? record.manifest.theme;
     // U2: mint the document's durable id NOW and embed it in the carrier's
     // #orz-meta island, so its docId is fixed from birth. registration (below,
-    // via registerChanges) reads the embedded uid and adopts it AS the docId
+    // by the write path) reads the embedded uid and adopts it AS the docId
     // — so the permalink survives any later rename/move/offline re-upload.
     const meta = docMetaForPackage(record.manifest, { title, uid: newDocId() });
     // `kind` here is one of md/slides/paged: markdown is handled above, and
@@ -634,7 +629,6 @@ export async function createCollectionFileAction(
     summary: "Create file (Alembic)",
   });
   if (!written.ok) return { ok: false, error: written.error };
-  await registerChanges(supabase, packageId, changes);
   revalidatePath(`/workspace/${packageId}`);
   return { ok: true, path: target };
 }

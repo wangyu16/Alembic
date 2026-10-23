@@ -3,6 +3,9 @@ import { embedSource } from "@alembic/carriers";
 import type { PackageFile } from "./store";
 import { MemoryPackageStore } from "./memory-store";
 import { findLeakedPaths, reconcilePublicRepo, type RepoReader } from "./reconcile";
+import { parseManifest } from "@alembic/package-contract";
+import { createSandboxPackage } from "./create";
+import { MANIFEST_PATH, serializeManifest } from "./manifest-ops";
 
 const PKG = "pkg-1";
 
@@ -490,5 +493,80 @@ describe("findLeakedPaths (M21 audit)", () => {
     expect(leaked).toContain("private-instructor/answers.md");
     expect(leaked).toContain("private-instructor/keys/exam1.md");
     expect(leaked).not.toContain("study-guide/ch01.md");
+  });
+});
+
+describe("reconcilePublicRepo — the course details file (alembic.json)", () => {
+  async function seeded() {
+    const store = new MemoryPackageStore();
+    const { packageId } = await createSandboxPackage(store, {
+      ownerId: "user-1",
+      title: "Thermochemistry",
+      license: "CC-BY-4.0",
+    });
+    const raw = (await store.readFile(packageId, "public", MANIFEST_PATH))!;
+    return { store, packageId, raw, manifest: parseManifest(JSON.parse(raw)) };
+  }
+
+  it("[P5.B.3.e] a reconcile that absorbs alembic.json updates packages.manifest through the manifest write path so the projection sees licence/listing changes", async () => {
+    const { store, packageId, manifest } = await seeded();
+    // Edited on GitHub: licence changed, no trailing newline / other spacing.
+    const foreign = JSON.stringify({ ...manifest, license: "CC0-1.0" });
+    const reader = new FakeRepoReader(
+      "sha-9",
+      [{ path: MANIFEST_PATH, status: "modified" }],
+      new Map([[MANIFEST_PATH, foreign]]),
+    );
+
+    const out = await reconcilePublicRepo(store, packageId, { lastSyncedSha: "sha-1", reader });
+
+    expect(out.status).toBe("absorbed");
+    // The outcome carries the validated manifest — the web layer refreshes
+    // the packages.manifest read cache from it (as after every updateManifest).
+    expect(out.status === "absorbed" && out.manifest?.license).toBe("CC0-1.0");
+    // The stored file went through the write path: validated + canonical form.
+    const stored = (await store.readFile(packageId, "public", MANIFEST_PATH))!;
+    expect(parseManifest(JSON.parse(stored)).license).toBe("CC0-1.0");
+    expect(stored).toBe(serializeManifest(parseManifest(JSON.parse(foreign))));
+  });
+
+  it("[P5.B.3.e] a reconcile that does not touch alembic.json reports no manifest", async () => {
+    const { store, packageId } = await seeded();
+    const path = "study-guide/ch01.md";
+    const reader = new FakeRepoReader("sha-9", [{ path, status: "added" }], new Map([[path, validStudyGuide()]]));
+    const out = await reconcilePublicRepo(store, packageId, { lastSyncedSha: "sha-1", reader });
+    expect(out.status).toBe("absorbed");
+    expect(out.status === "absorbed" && out.manifest).toBeUndefined();
+  });
+
+  it("[P5.B.3.e] an invalid foreign alembic.json is quarantined: the stored manifest is kept and the problem reported", async () => {
+    for (const bad of ["{ not json", JSON.stringify({ title: "no schema" })]) {
+      const { store, packageId, raw } = await seeded();
+      const other = "study-guide/ch01.md";
+      const reader = new FakeRepoReader(
+        "sha-9",
+        [
+          { path: other, status: "added" },
+          { path: MANIFEST_PATH, status: "modified" },
+        ],
+        new Map([
+          [other, validStudyGuide()],
+          [MANIFEST_PATH, bad],
+        ]),
+      );
+      const out = await reconcilePublicRepo(store, packageId, { lastSyncedSha: "sha-1", reader });
+      expect(out.status).toBe("quarantined");
+      expect(out.status === "quarantined" && out.violations.join("\n")).toContain(MANIFEST_PATH);
+      expect(await store.readFile(packageId, "public", MANIFEST_PATH)).toBe(raw);
+      expect(await store.readFile(packageId, "public", other)).toBeNull();
+    }
+  });
+
+  it("[P5.B.3.e] a foreign removal of alembic.json is quarantined, never deleting the course details", async () => {
+    const { store, packageId, raw } = await seeded();
+    const reader = new FakeRepoReader("sha-9", [{ path: MANIFEST_PATH, status: "removed" }], new Map());
+    const out = await reconcilePublicRepo(store, packageId, { lastSyncedSha: "sha-1", reader });
+    expect(out.status).toBe("quarantined");
+    expect(await store.readFile(packageId, "public", MANIFEST_PATH)).toBe(raw);
   });
 });

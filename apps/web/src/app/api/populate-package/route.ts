@@ -31,7 +31,7 @@ import {
   deleteStagingObject,
   downloadStagingObject,
 } from "@/lib/staging";
-import { registerChanges, syncPackageRegistry } from "@/lib/register";
+import { syncPackageRegistry } from "@/lib/register";
 import { rewriteMarkdownRefs } from "@/lib/rewrite-md-refs";
 import { commitInRounds } from "@/lib/populate-rounds";
 
@@ -274,6 +274,9 @@ export async function POST(req: NextRequest) {
           encoding: c.encoding,
         })),
         summary,
+        // The write path registers every chunk it lands (loop r1b), with the
+        // upload's provenance.
+        origin: "uploaded",
       });
       committed += chunk.length;
     }
@@ -292,10 +295,8 @@ export async function POST(req: NextRequest) {
       return partial(committed, first.remaining + docPass.length, skipped);
     }
 
-    // Assets are in the repos now, so the registry can mint their permalinks.
-    if (firstScreen.safe.length > 0) {
-      await syncPackageRegistry(supabase, packageId, "uploaded");
-    }
+    // Assets are in the repos now and registered by the write path (loop
+    // r1b), so the registry can hand out their permalinks.
 
     // Rewrite each document's relative references to durable permalinks — the
     // same transform Insert and Replace apply — then commit the documents.
@@ -339,14 +340,9 @@ export async function POST(req: NextRequest) {
         return { ...change, content };
       },
       commit: (changes) => commitChunks(changes, "Upload package contents (Alembic)"),
-      // The documents just committed can now be linked to by permalink.
-      register: (changes) =>
-        registerChanges(
-          supabase,
-          packageId,
-          changes.map((c) => ({ repo: c.repo, path: c.path, content: c.content })),
-          "uploaded",
-        ),
+      // The documents just committed were registered by the write path
+      // itself (loop r1b), so they can already be linked to by permalink.
+      register: async () => {},
     });
     if (rounds.kind === "partial") return partial(committed, rounds.remaining, skipped);
     for (const change of rounds.unresolved) {

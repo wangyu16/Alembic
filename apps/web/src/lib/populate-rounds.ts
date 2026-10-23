@@ -12,6 +12,31 @@
  *
  * Pure orchestration over injected steps, so the ordering is unit-tested
  * without GitHub or Supabase.
+ *
+ * ## Known limits (by design for now; pinned by populate-rounds.test.ts)
+ *
+ * - **Rounds = longest link chain.** A chain d1→d2→…→dN (each document links
+ *   to the next) commits one document per round: N rounds, N commits, N
+ *   registrations. A long chain therefore spends the run's time budget and
+ *   finishes over several resumed runs (`partial` → the client posts again).
+ * - **Resolves are O(n²).** Every held document is re-resolved each round,
+ *   so that chain costs N(N+1)/2 resolves (465 for N = 30), each a
+ *   link-rewrite with registry lookups.
+ * - **Cycles never commit.** Documents that link to each other — the common
+ *   "previous / next chapter" pair, or any ring — can never resolve, because
+ *   each waits for the other's permalink. They are returned as `unresolved`
+ *   and reported to the educator as broken links; nothing of them is
+ *   committed.
+ *
+ * Why not pre-mint ids so everything resolves in one round: the documents
+ * held here are lean `.md` sources (the committed source of record;
+ * educator-version-contract §7), which carry no `#orz-meta` island, so there
+ * is nowhere to embed a pre-minted uid that registration would adopt — a
+ * plain `.md` registers by hash/location only. Reserving registry rows before
+ * the commit instead would write the projection ahead of the repository,
+ * against the repo-first write rule (storage-and-write-paths.md §3). Either
+ * route needs a contract change (an identity carrier for `.md`, or a
+ * reserve-then-commit registry step), not an orchestration tweak.
  */
 
 export interface RoundSteps<C> {

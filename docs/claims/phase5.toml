@@ -251,11 +251,15 @@ bound_to = [
 
 [[claim]]
 id = "P5.A.1.i"
-claim = "discovery_rebuild() from empty tables reproduces every derived column of the projection."
+claim = "discovery_rebuild() from empty tables reproduces every derived column of the projection, including updated_at and listed_at (recency lives in the base tables: documents.content_changed_at, packages.listing_changed_at, both trigger-owned)."
 oracle = "invariant"
 bound_to = [
-  "apps/web/src/lib/discovery-projection.sql.test.ts :: a rebuild from empty reproduces the projection",
+  "apps/web/src/lib/discovery-projection.sql.test.ts :: a rebuild from empty reproduces every derived column of the projection, including updated_at and listed_at",
+  "apps/web/src/lib/discovery-projection.sql.test.ts :: updated_at survives a rebuild from empty: an old listing, a public save, then a rebuild (updated_at and quality unchanged)",
+  "apps/web/src/lib/discovery-projection.sql.test.ts :: content_changed_at and listing_changed_at are trigger-owned: client-supplied values are ignored",
+  "apps/web/src/lib/discovery-projection.sql.test.ts :: element recency is the file's last content change: a course rename does not bump it, a save does",
 ]
+note = "Strengthened in loop r1b (MEDIUM-5): before, a rebuild from empty reset updated_at to the listing time (quality 0.39 → 0.21 in the audit repro). Element recency is now the file content's last change; a package rename or a description/tag edit re-projects the row without bumping it."
 
 [[claim]]
 id = "P5.A.1.j"
@@ -285,6 +289,22 @@ claim = "Every Discover read (search, facets, course and element pages, feed, si
 oracle = "probe"
 bound_to = []
 note = "data-handling-review says two service-role reads remain (/d resolver, adapt); no test pins the Discover side."
+
+[[claim]]
+id = "P5.A.1.m"
+claim = "A one-file save rewrites at most the changed element rows, and one registry flush (or any statement batch inside discovery_defer_begin/end) refreshes each package at most once."
+oracle = "invariant"
+bound_to = [
+  "apps/web/src/lib/discovery-cost.sql.test.ts :: a one-file save on a ${N}-element course rewrites only the changed element row",
+  "apps/web/src/lib/discovery-cost.sql.test.ts :: an unchanged ${N}-row re-registration (bulk upsert) rewrites no projection row",
+  "apps/web/src/lib/discovery-cost.sql.test.ts :: a description edit rewrites that element row only",
+  "apps/web/src/lib/discovery-cost.sql.test.ts :: one registry flush (tombstone + upsert inside discovery_defer_begin/end) refreshes the package once",
+  "apps/web/src/lib/discovery-cost.sql.test.ts :: a deferral left open is still flushed at commit (begin without end)",
+  "apps/web/src/lib/discovery-cost.sql.test.ts :: without deferral each statement still refreshes (no lost update)",
+  "apps/web/src/lib/discovery-cost.sql.test.ts :: deferral control: authenticated and service_role may call begin/end, anon may not; the queue is private",
+  "apps/web/src/lib/registry-r1b.sql.test.ts :: a flush (tombstone + new row + changed row) through documents_apply refreshes the package once",
+]
+note = "Loop r1b (MEDIUM-3), migration 0026. PGlite, 333 shared elements: rows rewritten by a one-file save 333 → 1; its time ~205–255 ms → ~29–51 ms; refreshes per registry flush 3 → 1."
 
 [[claim]]
 id = "P5.A.2.a"
@@ -406,6 +426,17 @@ bound_to = [
 ]
 
 [[claim]]
+id = "P5.A.2.m"
+claim = "Search paging decides \"is there a next page\" and the cursor from the raw rows of the page, not from the rows that survived the fail-closed parse: a dropped row never ends paging, repeats or skips a row."
+oracle = "invariant"
+bound_to = [
+  "apps/web/src/lib/discovery-search.test.ts :: search paging decides next/cursor from the raw row count, not the parsed count (both scopes)",
+  "apps/web/src/lib/discovery-search.test.ts :: a dropped LAST row of the page still anchors the cursor (no repeat, no skip)",
+  "apps/web/src/lib/discovery-search.test.ts :: a page-final row with an unusable key falls back to the last usable key in the page",
+]
+note = "Loop r1b (LOW-7)."
+
+[[claim]]
 id = "P5.A.3.a"
 claim = "Quality is a weighted sum whose weights total 1, so quality ∈ [0, 1]."
 oracle = "invariant"
@@ -517,7 +548,7 @@ bound_to = [
 
 [[claim]]
 id = "P5.A.6.c"
-claim = "A matching If-None-Match on a public /d answer gets 304 with zero byte reads; a stale one gets the full new version."
+claim = "A matching If-None-Match on a public /d answer gets 304 with zero byte reads once its hash was verified against the current bytes within 60 s (loop r1b: otherwise one read decides); a stale one gets the full new version."
 oracle = "invariant"
 bound_to = [
   "apps/web/src/lib/permalink-response.adversarial.test.ts :: If-None-Match → 304 without reading the bytes at all",
@@ -807,9 +838,76 @@ bound_to = [
 
 [[claim]]
 id = "P5.B.1.l"
-claim = "All eight write call sites (collection ×6, term ×2) register only their change set, and reconcile registers its diff (≤ 50 paths, else one full rebuild)."
+claim = "Every write through writeThrough / updateManifest registers exactly its change set inside the write path (no web write site registers by hand, no web code writes through another store), and reconcile registers its diff (≤ 50 paths, else one full rebuild)."
 oracle = "conformance"
-bound_to = []
+bound_to = [
+  "apps/web/src/lib/write-path-registers.test.ts :: the production store carries the registry the write path registers in",
+  "apps/web/src/lib/write-path-registers.test.ts :: no web code writes through any other store, and no write site re-registers by hand",
+]
+note = "Rewritten in loop r1b (HIGH-1): the eight hand-registering call sites were the minority; ~17 writeThrough saves never registered. The reconcile half is pinned by P5.B.3.c's web-door test."
+
+[[claim]]
+id = "P5.B.1.m"
+claim = "After any writeThrough / updateManifest, every touched live file's source_hash (and content digest) equals the hash of its stored content; a rename carries its identity by an explicit movedFrom hint; a page load notices a content change with an unchanged path set (content-free digest compare); /d answers 304 only when the hash was verified against the current bytes within 60 s."
+oracle = "invariant"
+bound_to = [
+  "packages/package-ops/src/document-registry.r1b.test.ts :: after writeThrough (save, add, delete) every touched live file's hash equals its stored content's",
+  "packages/package-ops/src/document-registry.r1b.test.ts :: updateManifest registers the manifest it wrote",
+  "packages/package-ops/src/document-registry.r1b.test.ts :: an edit-then-rename in ONE write keeps the docId (explicit movedFrom, no hash guessing)",
+  "packages/package-ops/src/document-registry.r1b.test.ts :: a movedFrom the change set does not delete is refused before any write",
+  "packages/package-ops/src/document-registry.r1b.test.ts :: the page-load check sees a content change that leaves the path set alone",
+  "apps/web/src/lib/registry-r1b.sql.test.ts :: sandbox_files.content_sha256 equals sha256Hex(content) for text, non-ASCII and base64",
+  "apps/web/src/lib/write-path-registers.test.ts :: the production store carries the registry the write path registers in",
+  "apps/web/src/lib/write-path-registers.test.ts :: no web code writes through any other store, and no write site re-registers by hand",
+  "apps/web/src/lib/permalink-response.freshness.test.ts :: a stale registry hash never yields 304: the current bytes are served, unlabelled",
+  "apps/web/src/lib/permalink-response.freshness.test.ts :: a matching ETag is 304 only after a recent verification, then without re-reading",
+  "apps/web/src/lib/permalink-response.freshness.test.ts :: once the window has passed, a revalidation re-reads and notices a change",
+]
+note = "Loop r1b (HIGH-1). Cost unchanged: a one-file save = 2 registry round-trips (live rows + one atomic apply); the page-load check = 2 content-free queries. The first workspace visit after r1b re-verifies every pre-r1b row once (no digest yet)."
+
+[[claim]]
+id = "P5.B.1.n"
+claim = "A docId belongs to exactly one package: an embedded uid is adopted only if no package holds it or this package already does; a uid another package owns mints a fresh identity (write path, rebuild, single registration); copies (fork, element adaptation) re-mint their uid; the database refuses to move a docId between packages; a registration run is atomic (no tombstone without its upsert)."
+oracle = "invariant"
+bound_to = [
+  "packages/package-ops/src/document-registry.r1b.test.ts :: a uid owned by another package mints a fresh identity (write path)",
+  "packages/package-ops/src/document-registry.r1b.test.ts :: a rebuild and a single registration never adopt another package's uid either",
+  "packages/package-ops/src/document-registry.r1b.test.ts :: forkPackage re-mints every embedded uid",
+  "packages/package-ops/src/document-registry.r1b.test.ts :: remintEmbeddedUid changes only the uid and leaves non-carriers alone",
+  "packages/package-ops/src/document-registry.r1b.test.ts :: the in-memory registry keys docIds globally, like documents.doc_id",
+  "packages/package-ops/src/document-registry.r1b.test.ts :: a refused upsert never leaves its tombstones behind (atomic flush)",
+  "packages/package-ops/src/document-registry.r1b.test.ts :: a save of a registered uid'd document asks nothing extra; a new uid costs one cross-package lookup",
+  "apps/web/src/lib/registry-r1b.sql.test.ts :: a same-owner fork carrying the source's uid registers a fresh identity; the source row never moves",
+  "apps/web/src/lib/registry-r1b.sql.test.ts :: a stranger's upload carrying someone else's uid registers a fresh identity (not refused, not moved)",
+  "apps/web/src/lib/registry-r1b.sql.test.ts :: the database refuses to move a docId into another package, even for its owner",
+  "apps/web/src/lib/registry-r1b.sql.test.ts :: documents_apply is all-or-nothing: a refused row leaves its tombstones undone",
+  "apps/web/src/lib/registry-r1b.sql.test.ts :: documents_foreign_doc_ids sees across owners and says only 'taken elsewhere'",
+  "apps/web/src/lib/registry-r1b.sql.test.ts :: another owner cannot write rows into my package through documents_apply (RLS applies)",
+]
+note = "Loop r1b (HIGH-2), migration 0027. Round-trips: a save of an already-registered uid'd document stays at 2; a run with a new uid adds one lookup (3). Production detection/repair: supabase/tests/0027_detect_cross_package_docids.sql."
+
+[[claim]]
+id = "P5.B.1.o"
+claim = "One docId shape (doc- + 1–64 lowercase base36) is shared by the registry (uid adoption), /d, the discovery cursor, the permalink builder/classifier and whole-package import; a malformed embedded uid is never an identity and is refused at import."
+oracle = "conformance"
+bound_to = [
+  "apps/web/src/lib/uid-shape.test.ts :: /d accepts exactly the ids the registry can mint or adopt, and so does the cursor",
+  "packages/package-ops/src/document-registry.r1b.test.ts :: an embedded uid /d could never serve is not an identity",
+  "packages/package-ops/src/document-registry.r1b.test.ts :: the permalink builder, the classifier and the registry agree on the id shape",
+  "packages/package-ops/src/import-package.test.ts :: refuses a document whose embedded id the platform could never serve as a link",
+]
+note = "Loop r1b (LOW-6). Stored rows keep a lenient read shape (^doc-) so a pre-r1b non-canonical row cannot make a package's registry unreadable; detection query Q5 in supabase/tests/0027_detect_cross_package_docids.sql."
+
+[[claim]]
+id = "P5.B.1.p"
+claim = "Package and registry listings never stop at a short page (only the exact count or an empty page ends the walk), so a server row cap below the page size can never make a rebuild tombstone a live file."
+oracle = "invariant"
+bound_to = [
+  "apps/web/src/lib/page-all.test.ts :: pageAll reads every row when the server caps pages below the page size",
+  "apps/web/src/lib/page-all.test.ts :: SupabaseSandboxStore.listFiles / listPaths and the registry read return every row under a 400-row cap",
+  "apps/web/src/lib/page-all.test.ts :: a rebuild over a capped listing tombstones nothing that still exists",
+]
+note = "Loop r1b (LOW-9). The exact count rides on each page request (no extra round-trip)."
 
 [[claim]]
 id = "P5.B.2.a"
@@ -819,6 +917,11 @@ bound_to = [
   "packages/github-bridge/src/robustness.test.ts :: publishing the same site twice makes no second commit and leaves the branch alone",
   "packages/github-bridge/src/robustness.test.ts :: a changed site is a new root commit replacing the whole tree",
   "packages/github-bridge/src/robustness.test.ts :: a branch created concurrently (422 on create) is overwritten, not an error",
+  "apps/web/src/lib/site-publish.test.ts :: publishing the same course twice (minutes apart) makes no second commit and the report says it was unchanged",
+  "apps/web/src/lib/site-publish.test.ts :: the publish action builds and pushes through these helpers (no second, timestamped path)",
+  "packages/renderer/src/course-site.test.ts :: the same course built at two different times is byte-identical (no build timestamp in the deployed tree)",
+  "packages/renderer/src/site.test.ts :: the same site built at two different times is byte-identical",
+  "packages/github-bridge/src/pages.test.ts :: uploads 150 binary files with at most 8 blob requests in flight, all of them in the tree",
 ]
 
 [[claim]]
@@ -887,6 +990,7 @@ bound_to = [
   "apps/web/src/lib/publish-report.test.ts :: says nothing when everything published",
   "apps/web/src/lib/publish-report.test.ts :: names every missing piece, by chapter, with what to do",
   "apps/web/src/lib/publish-report.test.ts :: an unchanged site is said plainly",
+  "apps/web/src/lib/site-publish.test.ts :: a changed course is published and not reported as unchanged",
 ]
 
 [[claim]]
@@ -922,6 +1026,7 @@ bound_to = [
   "apps/web/src/lib/populate-rounds.test.ts :: a broken link or a cycle is reported, never committed, and the loop ends",
   "apps/web/src/lib/populate-rounds.test.ts :: out of time: nothing of the unfinished round is lost, all of it is handed on",
   "apps/web/src/lib/populate-rounds.test.ts :: a commit that runs out of time reports its remainder plus the held documents",
+  "apps/web/src/lib/populate-rounds.test.ts :: cost limit: a forward chain of N documents commits in N rounds (N(N+1)/2 resolves); a prev+next ring commits nothing",
 ]
 
 [[claim]]
@@ -940,6 +1045,21 @@ id = "P5.B.3.d"
 claim = "The whole-package upload never commits a raw.githubusercontent.com URL into an educator's document."
 oracle = "probe"
 bound_to = []
+
+[[claim]]
+id = "P5.B.3.e"
+claim = "A reconcile that absorbs alembic.json updates packages.manifest through the manifest write path (validated, CAS, registered, never re-committed), so the projection sees licence/listing changes; an invalid or deleted foreign alembic.json is quarantined and never reaches the column."
+oracle = "scenario"
+bound_to = [
+  "packages/package-ops/src/reconcile.test.ts :: a reconcile that absorbs alembic.json updates packages.manifest through the manifest write path so the projection sees licence/listing changes",
+  "packages/package-ops/src/reconcile.test.ts :: an invalid foreign alembic.json is quarantined: the stored manifest is kept and the problem reported",
+  "packages/package-ops/src/reconcile.test.ts :: a foreign removal of alembic.json is quarantined, never deleting the course details",
+  "packages/package-ops/src/reconcile.test.ts :: a reconcile that does not touch alembic.json reports no manifest",
+  "apps/web/src/lib/reconcile-manifest.test.ts :: a reconcile that absorbs a licence change on GitHub refreshes packages.manifest from the write path's manifest",
+  "apps/web/src/lib/reconcile-manifest.test.ts :: an invalid foreign alembic.json never reaches packages.manifest",
+  "apps/web/src/lib/reconcile-manifest.test.ts :: the web reconcile refreshes the column through this helper",
+]
+note = "Loop r1b (LOW-8)."
 
 # ─── Hardening ────────────────────────────────────────────────────────────
 

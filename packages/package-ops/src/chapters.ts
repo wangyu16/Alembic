@@ -432,6 +432,7 @@ export async function renameChapterPageName(
     repo: "public";
     path: string;
     content: string | null;
+    movedFrom?: string;
   }[] = [];
   const moved: { from: string; to: string }[] = [];
   for (let i = 0; i < from.length; i++) {
@@ -440,7 +441,8 @@ export async function renameChapterPageName(
     const content = present.get(oldPath);
     if (content === undefined) continue; // no file at that slot for this chapter
     assertPathAllowedInRepo(newPath, "public");
-    changes.push({ repo: "public", path: newPath, content });
+    // The permalink identity moves with the page (loop r1b: explicit hint).
+    changes.push({ repo: "public", path: newPath, content, movedFrom: oldPath });
     changes.push({ repo: "public", path: oldPath, content: null });
     moved.push({ from: oldPath, to: newPath });
   }

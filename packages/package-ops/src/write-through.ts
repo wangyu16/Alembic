@@ -24,6 +24,8 @@ import {
   assertPublicMarkdownReferences,
   type RepoKind,
 } from "@alembic/package-contract";
+import type { RegistrationRecord } from "@alembic/package-contract";
+import { registerChangedFiles } from "./document-registry";
 import type { PackageFile, PackageStore } from "./store";
 
 /* -------------------------------------------------------------------------- *
@@ -37,6 +39,13 @@ export interface WriteThroughChange {
   content: string | null;
   /** Omitted/"utf-8" → text. "base64" → binary bytes (never reference-scanned). */
   encoding?: "utf-8" | "base64";
+  /**
+   * Registry hint only (never committed): this file was moved/renamed FROM
+   * this path in the same repo, in this same change set (which must also
+   * delete that path). Its permalink identity travels here — explicitly, not
+   * by guessing from content hashes (loop r1b, P5.B.1.m).
+   */
+  movedFrom?: string;
 }
 
 export interface CommitPlanInput {
@@ -136,6 +145,16 @@ export function validateChanges(changes: WriteThroughChange[]): void {
     seen.add(key);
 
     assertPathAllowedInEitherContract(change.path, change.repo);
+    if (change.movedFrom !== undefined) {
+      const from = changes.find(
+        (c) => c.repo === change.repo && c.path === change.movedFrom,
+      );
+      if (change.content === null || !from || from.content !== null) {
+        throw new Error(
+          `${change.path} names ${change.movedFrom} as where it moved from, but this change set does not delete it.`,
+        );
+      }
+    }
     if (
       change.repo === "public" &&
       change.content !== null &&
@@ -155,6 +174,9 @@ export interface WriteThroughInput {
   changes: WriteThroughChange[];
   /** Educator-facing description of the change ("Save study guide", …). */
   summary: string;
+  /** Which door the files came through, for their registration (default
+   *  "created"; the whole-package upload passes "uploaded"). */
+  origin?: RegistrationRecord["origin"];
 }
 
 export interface WriteThroughResult {
@@ -178,6 +200,42 @@ async function projectIntoStore(
   }
   if (puts.length > 0) await store.putFiles(packageId, puts);
   if (dels.length > 0) await store.deleteFiles(packageId, dels);
+}
+
+/**
+ * Register what a write just landed, when the store carries a registry
+ * (loop r1b, P5.B.1.m): part of the ONE write path, so every caller's files
+ * are registered and no caller can forget. Best-effort, like every registry
+ * call — the registry is a rebuildable projection and a registry hiccup must
+ * never fail an educator's save that already reached permanence; the
+ * page-load content check (`registryDrift`) heals whatever this misses.
+ */
+export async function registerWritten(
+  store: PackageStore,
+  packageId: string,
+  changes: ReadonlyArray<WriteThroughChange>,
+  origin: RegistrationRecord["origin"] = "created",
+): Promise<void> {
+  if (!store.registry || changes.length === 0) return;
+  try {
+    await registerChangedFiles(
+      store.registry,
+      store,
+      packageId,
+      changes.map((c) => ({
+        repo: c.repo,
+        path: c.path,
+        content: c.content,
+        ...(c.movedFrom !== undefined ? { movedFrom: c.movedFrom } : {}),
+      })),
+      origin,
+    );
+  } catch (err) {
+    console.warn(
+      `[registry] register failed for ${packageId}:`,
+      err instanceof Error ? err.message : err,
+    );
+  }
 }
 
 /**
@@ -206,6 +264,7 @@ export async function writeThrough(
   // 2a. Trial package: the trial store IS the truth. DB only.
   if (committer === null) {
     await projectIntoStore(store, packageId, input.changes);
+    await registerWritten(store, packageId, input.changes, input.origin);
     return { committed: false };
   }
 
@@ -230,6 +289,8 @@ export async function writeThrough(
 
   // 3. Only now project the committed changes into the derived cache.
   await projectIntoStore(store, packageId, input.changes);
+  // 4. Register what landed (the registry is part of the projection).
+  await registerWritten(store, packageId, input.changes, input.origin);
 
   return publicSha === undefined
     ? { committed: true }

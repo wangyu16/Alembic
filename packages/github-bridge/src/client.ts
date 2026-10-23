@@ -8,6 +8,37 @@ import {
   type RetryPolicy,
 } from "./http";
 
+/** Max blob uploads in flight at once (see `buildTreeEntries`). */
+export const BLOB_UPLOAD_CONCURRENCY = 8;
+
+/**
+ * `Promise.all(items.map(fn))` with at most `limit` calls of `fn` running at
+ * once. Results keep input order; the first rejection rejects the whole call
+ * (workers stop picking up new items once one has failed).
+ */
+async function mapWithConcurrency<T, R>(
+  items: readonly T[],
+  limit: number,
+  fn: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let next = 0;
+  let failed = false;
+  const worker = async () => {
+    while (!failed && next < items.length) {
+      const i = next++;
+      try {
+        results[i] = await fn(items[i]!, i);
+      } catch (e) {
+        failed = true;
+        throw e;
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return results;
+}
+
 export interface RepoCoords {
   owner: string;
   repo: string;
@@ -192,23 +223,26 @@ export class GitHubClient {
    * Build create-tree entries for a file set. Text (utf-8) content is inlined;
    * a deletion is a null-sha entry; base64 (binary) content is uploaded as a
    * blob first and referenced by sha (see `createBlob`).
+   *
+   * Blob uploads run at most `BLOB_UPLOAD_CONCURRENCY` at a time: GitHub's
+   * secondary rate limit punishes bursts of concurrent content-creating
+   * requests, and a site with 150 figures must not fire 150 POSTs at once.
+   * Entry order matches `files` order.
    */
   private async buildTreeEntries(
     coords: RepoCoords,
     files: Array<{ path: string; content: string | null; encoding?: "utf-8" | "base64" }>,
   ): Promise<Array<Record<string, unknown>>> {
-    return Promise.all(
-      files.map(async (f) => {
-        if (f.content === null) {
-          return { path: f.path, mode: "100644", type: "blob", sha: null };
-        }
-        if (f.encoding === "base64") {
-          const sha = await this.createBlob(coords, f.content, "base64");
-          return { path: f.path, mode: "100644", type: "blob", sha };
-        }
-        return { path: f.path, mode: "100644", type: "blob", content: f.content };
-      }),
-    );
+    return mapWithConcurrency(files, BLOB_UPLOAD_CONCURRENCY, async (f) => {
+      if (f.content === null) {
+        return { path: f.path, mode: "100644", type: "blob", sha: null };
+      }
+      if (f.encoding === "base64") {
+        const sha = await this.createBlob(coords, f.content, "base64");
+        return { path: f.path, mode: "100644", type: "blob", sha };
+      }
+      return { path: f.path, mode: "100644", type: "blob", content: f.content };
+    });
   }
 
   /** Tree entry: text content to write, base64 binary, or null to delete. */

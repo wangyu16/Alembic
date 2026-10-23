@@ -1,10 +1,10 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
-  isRegistrableLocation,
   rebuildPackageRegistry,
   registerChangedFiles,
   registerFile,
+  registryDrift,
   type RegistryChange,
 } from "@alembic/package-ops";
 import type { RegistrationRecord } from "@alembic/package-contract";
@@ -22,11 +22,11 @@ function warn(packageId: string, what: string, err: unknown): void {
 }
 
 /**
- * Register the files ONE write touched (Track B.1). Every workspace write
- * path knows its change set — pass it straight through (deletions as
- * `content: null`). Costs a couple of round-trips instead of a whole-package
- * read plus two or three per file (scale audit 2026-08-28). Call it after the
- * write has landed; best-effort, like every registry call.
+ * Register the files ONE change set touched (Track B.1) — for the doors that
+ * do NOT go through `writeThrough` (reconcile absorbing a foreign commit,
+ * the upload's permalink rounds). Writes through `writeThrough` /
+ * `updateManifest` are registered by the write path itself (loop r1b) and
+ * must not call this. Best-effort, like every registry call.
  */
 export async function registerChanges(
   supabase: SupabaseClient,
@@ -53,10 +53,14 @@ export async function registerChanges(
  * - Default: a FULL rebuild — every file read, identity resolved in memory,
  *   only changed rows written in bulk. For the genuine bulk doors: populate
  *   (an upload of a whole course) and external-commit reconcile.
- * - `onlyIfPathsChanged` (page loads): a read registers nothing new; the only
- *   thing it can discover is that the SET OF PATHS moved underneath it (a
- *   file committed straight to GitHub, say). Compare paths — two cheap,
- *   content-free queries — and register just the difference.
+ * - `onlyIfPathsChanged` (page loads): a read registers nothing new; what it
+ *   can discover is that the files moved underneath the registry (a file
+ *   committed straight to GitHub, a write that failed to register). Compare
+ *   locations AND content digests — two cheap, content-free queries (the
+ *   database computes `sandbox_files.content_sha256`; the registry recorded
+ *   the digest it registered) — and register just the difference (loop r1b,
+ *   P5.B.1.m: before, a content change with an unchanged path set was never
+ *   seen, so `source_hash` stayed stale indefinitely).
  */
 export async function syncPackageRegistry(
   supabase: SupabaseClient,
@@ -74,22 +78,15 @@ export async function syncPackageRegistry(
         registry.listLiveByPackage(packageId),
       ]);
       // Files no registration path accepts (unknown locations) never get a
-      // row; leave them out or this comparison never settles.
-      const live = new Map(
-        paths
-          .filter((f) => isRegistrableLocation(f.repo, f.path))
-          .map((f) => [`${f.repo} ${f.path}`, f] as const),
-      );
-      const known = new Map(records.map((r) => [`${r.repo} ${r.path}`, r] as const));
-      const added = [...live].filter(([loc]) => !known.has(loc)).map(([, f]) => f);
-      const removed = [...known]
-        .filter(([loc]) => !live.has(loc))
-        .map(([, r]) => ({ repo: r.repo, path: r.path, content: null }));
-      if (added.length === 0 && removed.length === 0) return;
-      // A handful of new files: read just those. Many (a large external
-      // commit): one whole read beats hundreds of single-row reads.
-      if (added.length <= 50) {
-        await registerChangedFiles(registry, packageStore, packageId, [...added, ...removed], origin);
+      // row; registryDrift leaves them out or this never settles.
+      const { added, stale, removed } = registryDrift(paths, records);
+      const toRead = added.length + stale.length;
+      if (toRead === 0 && removed.length === 0) return;
+      // A handful of files: read just those. Many (a large external commit,
+      // or the first visit after r1b, when no row has a digest yet): one
+      // whole read beats hundreds of single-row reads.
+      if (toRead <= 50) {
+        await registerChangedFiles(registry, packageStore, packageId, [...added, ...stale, ...removed], origin);
         return;
       }
     }

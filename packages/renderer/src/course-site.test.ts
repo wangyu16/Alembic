@@ -161,8 +161,15 @@ describe("buildCourseSite — course home hub", () => {
     const files = buildCourseSite(course);
     const info = files.find((f) => f.path === "build-info.json")!;
     expect(JSON.parse(info.content).renderer).toMatch(/^orz-markdown@/);
-    expect(JSON.parse(info.content).builtAt).toBe(course.builtAt);
     expect(files.some((f) => f.path === ".nojekyll")).toBe(true);
+  });
+
+  it("[P5.B.2.a] the same course built at two different times is byte-identical (no build timestamp in the deployed tree)", () => {
+    const a = buildCourseSite({ ...course, builtAt: "2026-10-23T10:00:00.000Z" });
+    const b = buildCourseSite({ ...course, builtAt: "2026-10-23T10:05:00.000Z" });
+    expect(b).toEqual(a);
+    const info = JSON.parse(a.find((f) => f.path === "build-info.json")!.content);
+    expect(info).not.toHaveProperty("builtAt");
   });
 
   it("shows instructor / course number / department when given, omits the line when absent", () => {

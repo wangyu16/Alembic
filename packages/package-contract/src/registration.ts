@@ -12,8 +12,30 @@
 import { z } from "zod";
 import { PACKAGE_SPACES, SPACE_REPO } from "./spaces";
 
-/** docId shape (see `newDocId` in ./ids). */
-export const DOC_ID_PATTERN = /^doc-/;
+/**
+ * THE document-id / embedded-uid shape — one pattern for every door (loop r1b,
+ * claim P5.B.1.o): the registry adopts an embedded uid only if it matches,
+ * `/d/{docId}` serves only ids that match, the discovery cursor accepts only
+ * ids that match, and whole-package import refuses a carrier whose uid does
+ * not. `newDocId` (./ids) mints `doc-` + 12 base36; the orz family's carrier
+ * `UID_PATTERN` (`doc-[0-9a-z]{10,32}`, FC-18) is a subset. Before r1b the
+ * registry adopted ANY string (e.g. `doc-Ch1_Intro.v2`) that `/d` then 404ed.
+ */
+export const DOC_ID_SOURCE = "doc-[0-9a-z]{1,64}";
+export const DOC_ID_PATTERN = new RegExp(`^${DOC_ID_SOURCE}$`);
+
+/** Whether `value` is a well-formed document id / embedded uid. */
+export function isDocId(value: unknown): value is string {
+  return typeof value === "string" && DOC_ID_PATTERN.test(value);
+}
+
+/**
+ * The shape a STORED registry row's id is read with. Deliberately looser than
+ * `DOC_ID_PATTERN`: rows registered before r1b from a non-canonical embedded
+ * uid must still parse (an unreadable row would make the whole package's
+ * registry unreadable); no new row can get such an id any more.
+ */
+const STORED_DOC_ID = /^doc-/;
 
 /**
  * Change significance tag on a version entry (§4b). Educator-supplied only,
@@ -46,7 +68,7 @@ export type DocumentVersion = z.infer<typeof DocumentVersionSchema>;
 
 export const RegistrationRecordSchema = z.object({
   /** Minted at first registration; immutable; survives rename/move/repo transfer. */
-  docId: z.string().regex(DOC_ID_PATTERN),
+  docId: z.string().regex(STORED_DOC_ID),
   packageId: z.string().min(1),
   /** Current location (updated on rename/move). */
   repo: z.enum(["public", "private"]),
@@ -83,7 +105,15 @@ export const RegistrationRecordSchema = z.object({
   tombstoned: z.boolean().default(false),
   /** File-level adaptation lineage: the source docId when this file was
    * copied from another package (permalink *references* set none). */
-  adaptedFrom: z.string().regex(DOC_ID_PATTERN).optional(),
+  adaptedFrom: z.string().regex(STORED_DOC_ID).optional(),
+  /**
+   * SHA-256 (hex) of the file's STORED bytes as the registration saw them
+   * (loop r1b, P5.B.1.m). Unlike `sourceHash` (FNV over the extracted source)
+   * the database can compute the same digest over `sandbox_files.content`, so
+   * a page load can tell "registry is stale" with a content-free query.
+   * Absent on rows registered before r1b = unknown = re-verify.
+   */
+  contentSha256: z.string().regex(/^[0-9a-f]{64}$/).optional(),
 });
 export type RegistrationRecord = z.infer<typeof RegistrationRecordSchema>;
 

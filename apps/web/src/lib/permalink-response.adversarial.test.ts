@@ -120,6 +120,11 @@ describe("public answers (Track A.6)", () => {
 
   it("[P5.A.6.c] If-None-Match → 304 without reading the bytes at all", async () => {
     const { get, reads } = harness();
+    // Loop r1b (P5.B.1.m): a 304 needs a recent verification of the hash
+    // against the current bytes — the first view does it; after that, a
+    // revalidation inside the window reads nothing.
+    expect((await get("doc-pubpub", null)).status).toBe(200);
+    reads.length = 0;
     const r = await get("doc-pubpub", null, inm(H1));
     expect(r.status).toBe(304);
     expect(await r.text()).toBe("");

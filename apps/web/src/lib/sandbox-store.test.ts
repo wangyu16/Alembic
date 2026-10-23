@@ -42,10 +42,12 @@ function makeStubClient(
   const orderCalls: string[] = [];
   let selected = "";
   let table = "";
+  let wantCount = false;
 
   const builder = {
-    select(columns: string) {
+    select(columns: string, o?: { count?: string }) {
       selected = columns;
+      wantCount = o?.count === "exact";
       return builder;
     },
     eq(column: string, value: unknown) {
@@ -65,9 +67,12 @@ function makeStubClient(
           error: { message: opts.failMessage ?? "boom" },
         });
       }
+      // The exact total rides on every page (`count: "exact"`): the store
+      // stops on it, not on a short page (loop r1b, P5.B.1.p).
       return Promise.resolve({
         data: rows.slice(from, to + 1),
         error: null,
+        count: wantCount ? rows.length : null,
       });
     },
   };
@@ -145,7 +150,7 @@ describe("SupabaseSandboxStore.listFiles — pagination", () => {
     expect(stub.rangeCalls).toHaveLength(1);
   });
 
-  it("fetches exactly one extra (empty) page when the total is a page multiple", async () => {
+  it("needs no extra (empty) page when the total is a page multiple (the exact count ends the walk)", async () => {
     const rows = makeRows(PAGE * 2);
     const stub = makeStubClient(rows);
     const store = new SupabaseSandboxStore(stub.client);
@@ -154,7 +159,7 @@ describe("SupabaseSandboxStore.listFiles — pagination", () => {
 
     expect(files).toHaveLength(PAGE * 2);
     expect(files).toEqual(rows);
-    expect(stub.rangeCalls).toHaveLength(3);
+    expect(stub.rangeCalls).toHaveLength(2);
   });
 
   it("throws the existing 'Could not load files' message when page 2 errors", async () => {

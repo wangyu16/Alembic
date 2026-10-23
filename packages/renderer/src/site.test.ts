@@ -31,8 +31,13 @@ describe("buildSite", () => {
     const files = buildSite(input);
     const info = files.find((f) => f.path === "build-info.json")!;
     expect(JSON.parse(info.content).renderer).toMatch(/^orz-markdown@/);
-    expect(JSON.parse(info.content).builtAt).toBe(input.builtAt);
     expect(files.some((f) => f.path === ".nojekyll")).toBe(true);
+  });
+
+  it("[P5.B.2.a] the same site built at two different times is byte-identical", () => {
+    const a = buildSite({ ...input, builtAt: "2026-10-23T10:00:00.000Z" });
+    const b = buildSite({ ...input, builtAt: "2026-10-23T10:05:00.000Z" });
+    expect(b).toEqual(a);
   });
 
   it("works with no worksheets", () => {

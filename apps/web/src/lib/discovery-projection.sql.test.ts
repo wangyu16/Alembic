@@ -301,11 +301,13 @@ describe("A.1 freshness: the projection follows every change", () => {
     const id = await seedPackage(db, { owner, listed: true });
     const pubDoc = await seedDoc(db, { packageId: id, discoverable: false, path: "study-guide/a.md", space: "study-guide", kind: "md" });
     const privDoc = await seedDoc(db, { packageId: id, discoverable: false, repo: "private", space: "private", path: "private/n.md" });
-    await db.query(`update public.discovery_courses set updated_at = '2020-01-01' where package_id = $1`, [id]);
+    // Recency is derived from the base tables (P5.A.1.i), so compare against
+    // the projected value rather than pinning the projection by hand.
+    const t0 = new Date((await course(id))!["updated_at"] as Date).getTime();
     await db.query(`update public.documents set source_hash = 'h2' where doc_id = $1`, [privDoc]);
-    expect(String((await course(id))!["updated_at"])).toContain("2020");
+    expect(new Date((await course(id))!["updated_at"] as Date).getTime()).toBe(t0);
     await db.query(`update public.documents set source_hash = 'h2' where doc_id = $1`, [pubDoc]);
-    expect(String((await course(id))!["updated_at"])).not.toContain("2020");
+    expect(new Date((await course(id))!["updated_at"] as Date).getTime()).toBeGreaterThan(t0);
   });
 
   it("[P5.A.1.f] concept-map saves refresh the topics", async () => {
@@ -376,8 +378,8 @@ describe("A.1 best-effort and rebuild", () => {
   it("[P5.A.1.h] a failing projector never fails the educator's write", async () => {
     const id = await seedPackage(db, { owner, listed: true });
     await db.exec(`
-      alter function public.discovery_refresh_package(text, boolean) rename to discovery_refresh_package_real;
-      create function public.discovery_refresh_package(p text, c boolean default false) returns void
+      alter function public.discovery_refresh_package(text, boolean, text[]) rename to discovery_refresh_package_real;
+      create function public.discovery_refresh_package(p text, c boolean default false, d text[] default null) returns void
         language plpgsql as $$ begin raise exception 'boom'; end $$;
     `);
     try {
@@ -386,27 +388,124 @@ describe("A.1 best-effort and rebuild", () => {
       expect(rows[0]!.title).toBe("Still saved");
     } finally {
       await db.exec(`
-        drop function public.discovery_refresh_package(text, boolean);
-        alter function public.discovery_refresh_package_real(text, boolean) rename to discovery_refresh_package;
+        drop function public.discovery_refresh_package(text, boolean, text[]);
+        alter function public.discovery_refresh_package_real(text, boolean, text[]) rename to discovery_refresh_package;
       `);
     }
     await db.query(`select public.discovery_rebuild()`);
     expect((await course(id))!["title"]).toBe("Still saved");
   });
 
-  it("[P5.A.1.i] a rebuild from empty reproduces the projection", async () => {
-    const cols = `package_id, title, description, keywords, chapter_titles, topics, discipline, level,
-      course_context, license, accessibility_status, chapter_count, element_count, adaptation_count,
-      site_url, completeness, fingerprint, search_text, search_vector::text as v`;
-    const before = (await db.query(`select ${cols} from public.discovery_courses order by package_id`)).rows;
-    const beforeEl = (await db.query(`select doc_id, fingerprint, search_vector::text as v from public.discovery_elements order by doc_id`)).rows;
-    expect(before.length).toBeGreaterThan(3);
+  it("[P5.A.1.i] element recency is the file's last content change: a course rename does not bump it, a save does", async () => {
+    const id = await seedPackage(db, { owner, listed: true, title: "Recency Course" });
+    const doc = await seedDoc(db, { packageId: id });
+    const el = async () =>
+      (
+        await db.query<{ updated_at: Date; package_title: string }>(
+          `select updated_at, package_title from public.discovery_elements where doc_id = $1`,
+          [doc],
+        )
+      ).rows[0]!;
+    const t0 = new Date((await el()).updated_at).getTime();
+    await db.query(
+      `update public.packages set title = 'Renamed Course', manifest = manifest || '{"title":"Renamed Course"}' where id = $1`,
+      [id],
+    );
+    expect((await el()).package_title).toBe("Renamed Course");
+    expect(new Date((await el()).updated_at).getTime()).toBe(t0);
+    await db.query(`update public.documents set source_hash = 'h-new' where doc_id = $1`, [doc]);
+    expect(new Date((await el()).updated_at).getTime()).toBeGreaterThan(t0);
+  });
+
+  it("[P5.A.1.i] content_changed_at and listing_changed_at are trigger-owned: client-supplied values are ignored", async () => {
+    const id = await seedPackage(db, { owner, listed: true });
+    const ts = async () =>
+      (
+        await db.query<{ l: Date | null; c: Date | null; now: Date }>(
+          `select p.listing_changed_at as l,
+                  (select max(content_changed_at) from public.documents where package_id = p.id) as c,
+                  now() as now
+           from public.packages p where p.id = $1`,
+          [id],
+        )
+      ).rows[0]!;
+    const l0 = new Date((await ts()).l!).getTime();
+    await db.query(`update public.packages set listing_changed_at = '2099-01-01' where id = $1`, [id]);
+    expect(new Date((await ts()).l!).getTime()).toBe(l0);
+    // A non-listing manifest field does not move it; a listing field does.
+    await db.query(`update public.packages set manifest = manifest || '{"createdAt":"2026-02-02T00:00:00.000Z"}' where id = $1`, [id]);
+    expect(new Date((await ts()).l!).getTime()).toBe(l0);
+    await db.query(`update public.packages set manifest = manifest || '{"description":"Now described"}' where id = $1`, [id]);
+    expect(new Date((await ts()).l!).getTime()).toBeGreaterThan(l0);
+
+    await db.query(
+      `insert into public.documents (doc_id, package_id, repo, path, space, kind, source_hash, origin,
+         discoverable, permalink_class, content_changed_at)
+       values ('doc-forge-' || $1, $1, 'public', 'study-guide/f.md', 'study-guide', 'md', 'h1', 'created',
+         false, 'document', '2099-01-01')`,
+      [id],
+    );
+    const c1 = await ts();
+    expect(new Date(c1.c!).getTime()).toBeLessThanOrEqual(new Date(c1.now).getTime());
+    await db.query(`update public.documents set content_changed_at = '2099-01-01', description = 'x' where package_id = $1`, [id]);
+    expect(new Date((await ts()).c!).getTime()).toBe(new Date(c1.c!).getTime());
+    const c = (await course(id))!;
+    expect(new Date(String(c["updated_at"])).getFullYear()).toBeLessThan(2099);
+  });
+
+  it("[P5.A.1.i] updated_at survives a rebuild from empty: an old listing, a public save, then a rebuild (updated_at and quality unchanged)", async () => {
+    const id = await seedPackage(db, { owner, listed: true });
+    await db.query(
+      `update public.portal_registrations set registered_at = now() - interval '400 days' where package_id = $1`,
+      [id],
+    );
+    await db.query(`select public.discovery_rebuild()`);
+    const d = await seedDoc(db, {
+      packageId: id,
+      discoverable: false,
+      path: "study-guide/ch1.md",
+      space: "study-guide",
+      kind: "md",
+    });
+    await db.query(`update public.documents set source_hash = 'h2' where doc_id = $1`, [d]);
+    const asOf = new Date();
+    const q = async () =>
+      (
+        await db.query(
+          `select updated_at, listed_at,
+             round(public.discovery_quality(accessibility_status, license, completeness, adaptation_count,
+               updated_at, $2)::numeric, 6) as q
+           from public.discovery_courses where package_id = $1`,
+          [id, asOf],
+        )
+      ).rows[0];
+    const before = await q();
+    expect(new Date(String((before as Record<string, unknown>)["updated_at"])).getTime()).toBeGreaterThan(
+      asOf.getTime() - 60_000,
+    );
     await db.exec(`delete from public.discovery_courses; delete from public.discovery_elements;`);
     await db.query(`select public.discovery_rebuild()`);
-    expect((await db.query(`select ${cols} from public.discovery_courses order by package_id`)).rows).toEqual(before);
-    expect(
-      (await db.query(`select doc_id, fingerprint, search_vector::text as v from public.discovery_elements order by doc_id`)).rows,
-    ).toEqual(beforeEl);
+    expect(await q()).toEqual(before);
+  });
+
+  it("[P5.A.1.i] a rebuild from empty reproduces every derived column of the projection, including updated_at and listed_at", async () => {
+    const courses = `select to_jsonb(c) - 'projected_at' as r from public.discovery_courses c order by package_id`;
+    const elements = `select to_jsonb(e) - 'projected_at' as r from public.discovery_elements e order by doc_id`;
+    // Fresh changes just before the snapshot: a public save, a shared file's
+    // save and a listing edit (each bumps a recency the rebuild must reproduce).
+    const id = await seedPackage(db, { owner, listed: true, title: "Snapshot Course" });
+    const shared = await seedDoc(db, { packageId: id });
+    const page = await seedDoc(db, { packageId: id, discoverable: false, path: "study-guide/s.md", space: "study-guide", kind: "md" });
+    await db.query(`update public.documents set source_hash = 'h9' where doc_id in ($1, $2)`, [shared, page]);
+    await db.query(`update public.packages set manifest = manifest || '{"keywords":["snapshot"]}' where id = $1`, [id]);
+    const before = (await db.query(courses)).rows;
+    const beforeEl = (await db.query(elements)).rows;
+    expect(before.length).toBeGreaterThan(3);
+    expect(beforeEl.length).toBeGreaterThan(3);
+    await db.exec(`delete from public.discovery_courses; delete from public.discovery_elements;`);
+    await db.query(`select public.discovery_rebuild()`);
+    expect((await db.query(courses)).rows).toEqual(before);
+    expect((await db.query(elements)).rows).toEqual(beforeEl);
   });
 });
 

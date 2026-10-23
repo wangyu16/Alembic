@@ -4,8 +4,9 @@ import {
   type RegistrationRecord,
   type RepoKind,
 } from "@alembic/package-contract";
-import type { DocumentRegistryStore } from "@alembic/package-ops";
+import { ForeignDocIdError, type DocumentRegistryStore } from "@alembic/package-ops";
 import { discoveryChanged } from "./discovery-cache";
+import { pageAll } from "./page-all";
 
 /**
  * The `documents` registry (R2) over Supabase — the concrete
@@ -15,7 +16,7 @@ import { discoveryChanged } from "./discovery-cache";
  * so these queries never filter by owner themselves.
  */
 
-interface DocumentRow {
+export interface DocumentRow {
   doc_id: string;
   package_id: string;
   repo: RepoKind;
@@ -35,9 +36,11 @@ interface DocumentRow {
   permalink_class: string;
   tombstoned: boolean;
   adapted_from: string | null;
+  /** SHA-256 of the stored bytes at registration (migration 0027). */
+  content_sha256: string | null;
 }
 
-function toRow(r: RegistrationRecord): DocumentRow {
+export function toRow(r: RegistrationRecord): DocumentRow {
   return {
     doc_id: r.docId,
     package_id: r.packageId,
@@ -58,10 +61,11 @@ function toRow(r: RegistrationRecord): DocumentRow {
     permalink_class: r.permalinkClass,
     tombstoned: r.tombstoned,
     adapted_from: r.adaptedFrom ?? null,
+    content_sha256: r.contentSha256 ?? null,
   };
 }
 
-function fromRow(row: DocumentRow): RegistrationRecord {
+export function fromRow(row: DocumentRow): RegistrationRecord {
   // Validate on the way out so a hand-edited row can't produce a bad record.
   return parseRegistrationRecord({
     docId: row.doc_id,
@@ -83,11 +87,60 @@ function fromRow(row: DocumentRow): RegistrationRecord {
     permalinkClass: row.permalink_class,
     tombstoned: row.tombstoned,
     adaptedFrom: row.adapted_from ?? undefined,
+    contentSha256: row.content_sha256 ?? undefined,
   });
+}
+
+/** The database refused to move a docId into another package (0027 trigger). */
+function foreignIdFrom(message: string): string | null {
+  const m = /docId (doc-[^\s]+) belongs to another package/.exec(message);
+  return m?.[1] ?? null;
 }
 
 export class SupabaseDocumentRegistryStore implements DocumentRegistryStore {
   constructor(private readonly supabase: SupabaseClient) {}
+
+  /**
+   * One registration run in ONE transaction (migration 0027's
+   * `documents_apply`, SECURITY INVOKER — RLS applies as for a plain write):
+   * tombstones and upserts land together or not at all, and the discovery
+   * projection is refreshed once for the run, not once per statement.
+   */
+  async apply(
+    packageId: string,
+    change: { tombstones: string[]; upserts: RegistrationRecord[] },
+  ): Promise<void> {
+    if (change.tombstones.length === 0 && change.upserts.length === 0) return;
+    const { error } = await this.supabase.rpc("documents_apply", {
+      p_package_id: packageId,
+      p_tombstones: change.tombstones,
+      p_rows: change.upserts.map(toRow),
+    });
+    if (error) {
+      const foreign = foreignIdFrom(error.message);
+      if (foreign) throw new ForeignDocIdError(foreign);
+      throw new Error(`Could not register the documents: ${error.message}`);
+    }
+  }
+
+  /**
+   * Which of these ids another package already holds — through a SECURITY
+   * DEFINER function that answers only that (RLS hides other owners' rows, so
+   * a plain select would say "free" and the upsert would then be refused).
+   */
+  async foreignDocIds(packageId: string, docIds: string[]): Promise<Set<string>> {
+    const out = new Set<string>();
+    const CHUNK = 500;
+    for (let i = 0; i < docIds.length; i += CHUNK) {
+      const { data, error } = await this.supabase.rpc("documents_foreign_doc_ids", {
+        p_package_id: packageId,
+        p_doc_ids: docIds.slice(i, i + CHUNK),
+      });
+      if (error) throw new Error(`Registry read failed: ${error.message}`);
+      for (const id of (data as string[] | null) ?? []) out.add(id);
+    }
+    return out;
+  }
 
   async upsert(record: RegistrationRecord): Promise<void> {
     const { error } = await this.supabase
@@ -205,23 +258,16 @@ export class SupabaseDocumentRegistryStore implements DocumentRegistryStore {
     packageId: string,
     liveOnly: boolean,
   ): Promise<RegistrationRecord[]> {
-    const PAGE = 1000;
-    const out: RegistrationRecord[] = [];
-    for (let offset = 0; ; offset += PAGE) {
+    // Ends only on the exact count or an empty page (P5.B.1.p): a server row
+    // cap below 1000 must not truncate the working set.
+    const rows = await pageAll<DocumentRow>((from, to) => {
       let query = this.supabase
         .from("documents")
-        .select("*")
+        .select("*", { count: "exact" })
         .eq("package_id", packageId);
       if (liveOnly) query = query.eq("tombstoned", false);
-      const { data, error } = await query
-        .order("repo")
-        .order("path")
-        .order("doc_id")
-        .range(offset, offset + PAGE - 1);
-      if (error) throw new Error(`Registry read failed: ${error.message}`);
-      const rows = (data as DocumentRow[] | null) ?? [];
-      out.push(...rows.map(fromRow));
-      if (rows.length < PAGE) return out;
-    }
+      return query.order("repo").order("path").order("doc_id").range(from, to);
+    }, "Registry read failed");
+    return rows.map(fromRow);
   }
 }

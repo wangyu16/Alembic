@@ -38,6 +38,8 @@ class CountingRegistry implements DocumentRegistryStore {
   async getByDocId(p: string, d: string) { this.trips++; return this.inner.getByDocId(p, d); }
   async listByPackage(p: string) { const out = await this.inner.listByPackage(p); this.trips += pages(out.length); return out; }
   async listLiveByPackage(p: string) { const out = await this.inner.listLiveByPackage(p); this.trips += pages(out.length); return out; }
+  async foreignDocIds(p: string, ids: string[]) { this.trips++; return this.inner.foreignDocIds(p, ids); }
+  async apply(p: string, c: { tombstones: string[]; upserts: RegistrationRecord[] }) { this.trips++; return this.inner.apply(p, c); }
 }
 
 /** Package store that counts round-trips and bytes read. */
@@ -330,8 +332,10 @@ describe("semantics — identity ladder and tiebreaker", () => {
 describe("flush resilience", () => {
   it("[P5.B.1.k] falls back to per-row writes when the bulk write is refused", async () => {
     const registry = new MemoryDocumentRegistryStore();
-    registry.upsertMany = async () => {
-      throw new Error("location index tripped mid-statement");
+    const apply = registry.apply.bind(registry);
+    registry.apply = async (p, c) => {
+      if (c.upserts.length > 1) throw new Error("location index tripped mid-statement");
+      return apply(p, c);
     };
     const packageStore = new MemoryPackageStore();
     await packageStore.createPackage(RECORD, [

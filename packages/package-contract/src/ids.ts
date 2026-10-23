@@ -38,3 +38,18 @@ export function newPackageId(titleSlug: string): string {
     .slice(0, 40);
   return `pkg-${slug || "untitled"}-${randomBase36(8)}`;
 }
+
+/**
+ * SHA-256 (lower-case hex) of a string's UTF-8 bytes — Web Crypto, so the
+ * package stays pure. Postgres computes the same value as
+ * `encode(sha256(convert_to(content, 'UTF8')), 'hex')` (migration 0027).
+ */
+export async function sha256Hex(content: string): Promise<string> {
+  const digest = await globalThis.crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(content),
+  );
+  let out = "";
+  for (const byte of new Uint8Array(digest)) out += byte.toString(16).padStart(2, "0");
+  return out;
+}

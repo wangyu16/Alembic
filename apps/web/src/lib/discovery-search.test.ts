@@ -303,6 +303,56 @@ describe("searchCourses / searchElements", () => {
     expect(page).toMatchObject({ hits: [], next: null, unavailable: true });
   });
 
+  it("[P5.A.2.m] search paging decides next/cursor from the raw row count, not the parsed count (both scopes)", async () => {
+    // 21 rows for a page of 20 (so a next page exists); one row inside the
+    // page fails the fail-closed parse.
+    const courseRows = Array.from({ length: 21 }, (_, i) =>
+      course(`pkg-${String(100 - i).padStart(4, "0")}`, { score: "1.000000" }),
+    );
+    courseRows[3] = course("pkg-0097", { score: "1.000000", license: "ALL-RIGHTS-RESERVED" });
+    const elementRows = Array.from({ length: 21 }, (_, i) => element(`doc-${String(100 - i).padStart(4, "0")}`));
+    elementRows[3] = element("doc-0097", { permalink_class: "weird" });
+    const { client } = fakeClient({
+      discovery_search_courses: { data: courseRows, error: null },
+      discovery_search_elements: { data: elementRows, error: null },
+    });
+
+    const c = await searchCourses(client, parseDiscoveryQuery({}) as Courses, { now });
+    // Only the page's own 20 raw rows are shown (19 after the drop) — never the
+    // look-ahead row, which opens the next page.
+    expect(c.hits).toHaveLength(19);
+    expect(c.hits.map((h) => h.package_id)).not.toContain("pkg-0080");
+    expect(decodeCursor(c.next!, "courses")).toMatchObject({ score: "1.000000", id: "pkg-0081", page: 2 });
+
+    const e = await searchElements(client, parseDiscoveryQuery({ scope: "elements" }) as Elements, { now });
+    expect(e.hits).toHaveLength(19);
+    expect(e.hits.map((h) => h.doc_id)).not.toContain("doc-0080");
+    expect(decodeCursor(e.next!, "elements")).toMatchObject({ score: "0.900000", id: "doc-0081", page: 2 });
+  });
+
+  it("[P5.A.2.m] a dropped LAST row of the page still anchors the cursor (no repeat, no skip)", async () => {
+    const rows = Array.from({ length: 4 }, (_, i) => element(`doc-${i}`, { score: `${4 - i}.000000` }));
+    rows[2] = element("doc-2", { score: "2.000000", repo: "private" }); // dropped, but its key is sound
+    const { client } = fakeClient({ discovery_search_elements: { data: rows, error: null } });
+    const page = await searchElements(client, parseDiscoveryQuery({ scope: "elements" }) as Elements, {
+      now,
+      pageSize: 3,
+    });
+    expect(page.hits.map((h) => h.doc_id)).toEqual(["doc-0", "doc-1"]);
+    expect(decodeCursor(page.next!, "elements")).toMatchObject({ score: "2.000000", id: "doc-2" });
+  });
+
+  it("[P5.A.2.m] a page-final row with an unusable key falls back to the last usable key in the page", async () => {
+    const rows: unknown[] = Array.from({ length: 4 }, (_, i) => course(`pkg-${i}`, { score: `${4 - i}.000000` }));
+    rows[2] = { junk: true, score: "x" };
+    const { client } = fakeClient({ discovery_search_courses: { data: rows, error: null } });
+    const page = await searchCourses(client, parseDiscoveryQuery({}) as Courses, { now, pageSize: 3 });
+    expect(page.hits.map((h) => h.package_id)).toEqual(["pkg-0", "pkg-1"]);
+    // The junk row is re-read (and dropped again) at the top of the next page;
+    // pkg-3 is not skipped and nothing visible repeats.
+    expect(decodeCursor(page.next!, "courses")).toMatchObject({ score: "3.000000", id: "pkg-1" });
+  });
+
   it("the course page's element list can skip facets", async () => {
     const { client, calls } = fakeClient({});
     await searchElements(client, parseDiscoveryQuery({ scope: "elements" }) as Elements, {

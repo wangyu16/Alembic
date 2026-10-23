@@ -52,7 +52,9 @@ export interface PermalinkClients {
   service: SupabaseClient | null;
 }
 
-export const DOC_ID_PATTERN = /^doc-[a-z0-9]+$/;
+/** THE docId shape, shared with the registry, the cursor and import (P5.B.1.o). */
+export { DOC_ID_PATTERN } from "@alembic/package-contract";
+import { DOC_ID_PATTERN } from "@alembic/package-contract";
 
 export async function resolvePermalinkAccess(
   docId: string,

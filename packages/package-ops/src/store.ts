@@ -8,6 +8,16 @@
  */
 
 import type { PackageManifest, RepoKind } from "@alembic/package-contract";
+import type { DocumentRegistryStore } from "./document-registry";
+
+/** One entry of a content-free listing. `contentSha256` = SHA-256 (hex) of
+ *  the stored bytes when the backend can compute it without shipping them
+ *  (Postgres: a generated column) — the page-load staleness check uses it. */
+export interface PackagePathEntry {
+  repo: RepoKind;
+  path: string;
+  contentSha256?: string | null;
+}
 
 export interface PackageFile {
   /** Which repository (or sandbox partition) the file belongs to. */
@@ -26,6 +36,15 @@ export interface PackageRecord {
 }
 
 export interface PackageStore {
+  /**
+   * The document registry this store's writes are registered in (loop r1b,
+   * P5.B.1.m). When present, `writeThrough` and `updateManifest` register
+   * every file they wrote — in the ONE write path, so no caller can forget
+   * (before r1b, most content saves never registered and the registry's
+   * `source_hash` went stale). The production store always carries one;
+   * the in-memory store carries one only when a test hands it one.
+   */
+  readonly registry?: DocumentRegistryStore;
   createPackage(record: PackageRecord, files: PackageFile[]): Promise<void>;
   getPackage(packageId: string): Promise<PackageRecord | null>;
   listFiles(packageId: string): Promise<PackageFile[]>;
@@ -39,7 +58,7 @@ export interface PackageStore {
    * this path taken?" is what made a large package unopenable. Implementations
    * MUST project only the two columns.
    */
-  listPaths(packageId: string): Promise<Array<{ repo: RepoKind; path: string }>>;
+  listPaths(packageId: string): Promise<PackagePathEntry[]>;
   /**
    * One file's content, or null when absent. For the very common case of
    * reading a single known path (`alembic.json`, one chapter's document)
