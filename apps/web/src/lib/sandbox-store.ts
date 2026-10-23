@@ -11,7 +11,7 @@ import type {
   PackageStore,
 } from "@alembic/package-ops";
 import { SupabaseDocumentRegistryStore } from "./document-registry-store";
-import { pageAll } from "./page-all";
+import { pageAllKeyset, type PageResult } from "./page-all";
 import { asRepoRef } from "./recorded-repo";
 
 /**
@@ -76,21 +76,9 @@ export class SupabaseSandboxStore implements PackageStore {
   }
 
   async listFiles(packageId: string): Promise<PackageFile[]> {
-    // PostgREST caps a single response (default max-rows, typically 1000
-    // rows), so one unpaged select silently truncates large packages. Page
-    // deterministically (ordered by repo, then path — together the unique
-    // key within a package) until the exact count is read (`pageAll`: a short
-    // page is not the end — loop r1b, P5.B.1.p).
-    const rows = await pageAll<{ repo: "public" | "private"; path: string; content: string }>(
-      (from, to) =>
-        this.supabase
-          .from("sandbox_files")
-          .select("repo, path, content", { count: "exact" })
-          .eq("package_id", packageId)
-          .order("repo")
-          .order("path")
-          .range(from, to),
-      "Could not load files",
+    const rows = await this.walk<{ repo: "public" | "private"; path: string; content: string }>(
+      packageId,
+      "repo, path, content",
     );
     return rows.map((row) => ({ repo: row.repo, path: row.path, content: row.content }));
   }
@@ -106,18 +94,43 @@ export class SupabaseSandboxStore implements PackageStore {
     // `content_sha256` is a generated column (migration 0027): the database
     // hashes the stored bytes, so the page-load staleness check stays
     // content-free (P5.B.1.m).
-    const rows = await pageAll<{ repo: "public" | "private"; path: string; content_sha256: string | null }>(
-      (from, to) =>
-        this.supabase
-          .from("sandbox_files")
-          .select("repo, path, content_sha256", { count: "exact" })
-          .eq("package_id", packageId)
-          .order("repo")
-          .order("path")
-          .range(from, to),
-      "Could not load files",
+    const rows = await this.walk<{ repo: "public" | "private"; path: string; content_sha256: string | null }>(
+      packageId,
+      "repo, path, content_sha256",
     );
     return rows.map((r) => ({ repo: r.repo, path: r.path, contentSha256: r.content_sha256 ?? null }));
+  }
+
+  /**
+   * Every file row of a package, in (repo, path) order. PostgREST caps a
+   * single response (max-rows), so one unpaged select silently truncates a
+   * large package. Paged by KEYSET (loop r2, L-4): each repo is walked
+   * separately by `path` (unique within a repo; (package, repo, path) is the
+   * primary key) — "private" then "public", the order `order by repo, path`
+   * gave — and a page ends only on the remaining count or an empty page
+   * (`pageAllKeyset`: a short page is not the end, and a row deleted between
+   * pages cannot hide a surviving one — P5.B.1.p).
+   */
+  private async walk<T extends { path: string }>(packageId: string, columns: string): Promise<T[]> {
+    const out: T[] = [];
+    for (const repo of ["private", "public"] as const) {
+      out.push(
+        ...(await pageAllKeyset<T, string>(
+          (after, limit) => {
+            let query = this.supabase
+              .from("sandbox_files")
+              .select(columns, { count: "exact" })
+              .eq("package_id", packageId)
+              .eq("repo", repo);
+            if (after !== null) query = query.gt("path", after);
+            return query.order("path").limit(limit) as unknown as PromiseLike<PageResult<T>>;
+          },
+          (row) => row.path,
+          "Could not load files",
+        )),
+      );
+    }
+    return out;
   }
 
   /** One file's content, or null when absent — no whole-package read. */

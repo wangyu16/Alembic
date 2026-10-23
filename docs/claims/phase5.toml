@@ -900,14 +900,21 @@ note = "Loop r1b (LOW-6). Stored rows keep a lenient read shape (^doc-) so a pre
 
 [[claim]]
 id = "P5.B.1.p"
-claim = "Package and registry listings never stop at a short page (only the exact count or an empty page ends the walk), so a server row cap below the page size can never make a rebuild tombstone a live file."
+claim = "Package and registry listings page by KEYSET on a unique order (registry: doc_id; trial store: path within each repo), never by offset, so a row deleted between pages never makes a surviving row disappear; a walk ends only on an empty page or when the remaining count is read, so a server row cap below the page size never truncates it (a rebuild never tombstones a live file it did not see), and N rows cost ceil(N/1000) round-trips (min 1, per repo for the trial store)."
 oracle = "invariant"
 bound_to = [
-  "apps/web/src/lib/page-all.test.ts :: pageAll reads every row when the server caps pages below the page size",
+  "apps/web/src/lib/page-all.test.ts :: a row deleted between pages never makes a surviving row disappear (files, paths)",
+  "apps/web/src/lib/page-all.test.ts :: the registry read never skips a surviving row when one is deleted between pages",
+  "apps/web/src/lib/page-all.test.ts :: both repos are listed, each file once, under a row cap",
+  "apps/web/src/lib/page-all.test.ts :: pageAllKeyset reads every row when the server caps pages below the page size",
   "apps/web/src/lib/page-all.test.ts :: SupabaseSandboxStore.listFiles / listPaths and the registry read return every row under a 400-row cap",
   "apps/web/src/lib/page-all.test.ts :: a rebuild over a capped listing tombstones nothing that still exists",
+  "apps/web/src/lib/page-all.test.ts :: N rows cost ceil(N/1000) round-trips (min 1) when the count is returned — never an extra empty page",
+  "apps/web/src/lib/page-all.test.ts :: a failed page throws (a partial listing is never returned)",
+  "apps/web/src/lib/sandbox-store.test.ts :: keeps the (repo, path) order across both repos",
+  "apps/web/src/lib/sandbox-store.test.ts :: needs no extra (empty) page when the total is a page multiple (the remaining count ends the walk)",
 ]
-note = "Loop r1b (LOW-9). The exact count rides on each page request (no extra round-trip)."
+note = "Loop r1b (LOW-9); keyset paging is loop r2 correctness L-4 (offset paging skipped a row under a concurrent delete). The remaining count rides on each page request (no extra round-trip)."
 
 [[claim]]
 id = "P5.B.2.a"

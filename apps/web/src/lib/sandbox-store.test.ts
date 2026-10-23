@@ -10,20 +10,21 @@ vi.mock("./discovery-cache", () => ({ discoveryChanged: () => {} }));
  * max-rows, typically 1000): a single unpaged select silently truncates
  * large packages, corrupting every whole-package operation downstream.
  * These tests drive the store with a minimal chainable Supabase stub that
- * serves rows through `.range()` windows.
+ * serves KEYSET pages (`eq(repo)`, `gt(path, after)`, `order(path)`,
+ * `limit(n)`) — loop r2, L-4: offsets let a concurrent delete hide a row.
  */
 
 const PAGE = 1000;
 
 type Row = { repo: "public" | "private"; path: string; content: string };
-type RangeCall = { from: number; to: number };
+type PageCall = { repo: unknown; after: string | null; limit: number };
 
-/** All rows for the package, pre-sorted by (repo, path) like PostgREST would. */
-function makeRows(count: number): Row[] {
+/** All rows for the package (public), in path order. */
+function makeRows(count: number, repo: Row["repo"] = "public"): Row[] {
   const rows: Row[] = [];
   for (let i = 0; i < count; i++) {
     rows.push({
-      repo: "public",
+      repo,
       path: `chapters/ch-${String(i).padStart(5, "0")}.md`,
       content: `content ${i}`,
     });
@@ -32,66 +33,78 @@ function makeRows(count: number): Row[] {
 }
 
 /**
- * Minimal chainable stub: from().select().eq().order().range() where range
- * resolves to `{ data, error }` — the shape the store awaits. `failOnPage`
- * (0-based) makes that range call return an error instead of rows.
+ * Minimal chainable stub: from().select().eq().eq().gt()?.order().limit(),
+ * awaited to `{ data, error, count }` — count being the rows still ahead (as
+ * PostgREST counts under the `gt` filter). `failOnPage` (0-based, across all
+ * requests) makes that request return an error instead of rows.
  */
 function makeStubClient(
   rows: Row[],
   opts: { failOnPage?: number; failMessage?: string } = {},
 ) {
-  const rangeCalls: RangeCall[] = [];
-  const eqCalls: { column: string; value: unknown }[] = [];
+  const pageCalls: PageCall[] = [];
   const orderCalls: string[] = [];
+  const packageIds: unknown[] = [];
   let selected = "";
   let table = "";
-  let wantCount = false;
 
-  const builder = {
-    select(columns: string, o?: { count?: string }) {
-      selected = columns;
-      wantCount = o?.count === "exact";
-      return builder;
-    },
-    eq(column: string, value: unknown) {
-      eqCalls.push({ column, value });
-      return builder;
-    },
-    order(column: string) {
-      orderCalls.push(column);
-      return builder;
-    },
-    range(from: number, to: number) {
-      const page = rangeCalls.length;
-      rangeCalls.push({ from, to });
-      if (opts.failOnPage === page) {
-        return Promise.resolve({
-          data: null,
-          error: { message: opts.failMessage ?? "boom" },
-        });
-      }
-      // The exact total rides on every page (`count: "exact"`): the store
-      // stops on it, not on a short page (loop r1b, P5.B.1.p).
-      return Promise.resolve({
-        data: rows.slice(from, to + 1),
-        error: null,
-        count: wantCount ? rows.length : null,
-      });
-    },
-  };
+  function builder() {
+    let wantCount = false;
+    let repo: unknown;
+    let after: string | null = null;
+    let limit = Number.POSITIVE_INFINITY;
+    const run = () => {
+      const page = pageCalls.length;
+      pageCalls.push({ repo, after, limit });
+      if (opts.failOnPage === page) return { data: null, error: { message: opts.failMessage ?? "boom" } };
+      const rest = rows
+        .filter((r) => r.repo === repo && (after === null || r.path > after))
+        .sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+      return { data: rest.slice(0, limit), error: null, count: wantCount ? rest.length : null };
+    };
+    const b = {
+      select(columns: string, o?: { count?: string }) {
+        selected = columns;
+        wantCount = o?.count === "exact";
+        return b;
+      },
+      eq(column: string, value: unknown) {
+        if (column === "package_id") packageIds.push(value);
+        if (column === "repo") repo = value;
+        return b;
+      },
+      gt(column: string, value: string) {
+        expect(column).toBe("path");
+        after = value;
+        return b;
+      },
+      order(column: string) {
+        orderCalls.push(column);
+        return b;
+      },
+      limit(n: number) {
+        limit = n;
+        return b;
+      },
+      then(res: (v: unknown) => unknown, rej?: (e: unknown) => unknown) {
+        return Promise.resolve().then(run).then(res, rej);
+      },
+    };
+    return b;
+  }
 
   const client = {
     from(name: string) {
       table = name;
-      return builder;
+      return builder();
     },
   } as unknown as SupabaseClient;
 
   return {
     client,
-    rangeCalls,
-    eqCalls,
+    pageCalls,
     orderCalls,
+    packageIds,
     get table() {
       return table;
     },
@@ -102,7 +115,7 @@ function makeStubClient(
 }
 
 describe("SupabaseSandboxStore.listFiles — pagination", () => {
-  it("accumulates 2 full pages + a partial third, in order", async () => {
+  it("[P5.B.1.p] accumulates 2 full pages + a partial third, in order, by keyset", async () => {
     const rows = makeRows(PAGE * 2 + 500);
     const stub = makeStubClient(rows);
     const store = new SupabaseSandboxStore(stub.client);
@@ -111,28 +124,28 @@ describe("SupabaseSandboxStore.listFiles — pagination", () => {
 
     expect(files).toHaveLength(PAGE * 2 + 500);
     expect(files).toEqual(rows);
-    // Deterministic paging: three range windows, PAGE rows wide each.
-    expect(stub.rangeCalls).toEqual([
-      { from: 0, to: PAGE - 1 },
-      { from: PAGE, to: PAGE * 2 - 1 },
-      { from: PAGE * 2, to: PAGE * 3 - 1 },
+    // Each repo walked by path: private (empty) once, then public in three
+    // pages, each starting strictly after the last path read.
+    expect(stub.pageCalls).toEqual([
+      { repo: "private", after: null, limit: PAGE },
+      { repo: "public", after: null, limit: PAGE },
+      { repo: "public", after: rows[PAGE - 1]!.path, limit: PAGE },
+      { repo: "public", after: rows[PAGE * 2 - 1]!.path, limit: PAGE },
     ]);
-    // Every page filters by package and orders by (repo, path).
     expect(stub.table).toBe("sandbox_files");
     expect(stub.selected).toBe("repo, path, content");
-    expect(stub.eqCalls.every((c) => c.column === "package_id")).toBe(true);
-    expect(stub.eqCalls.every((c) => c.value === "pkg-1")).toBe(true);
-    expect(stub.orderCalls).toEqual([
-      "repo",
-      "path",
-      "repo",
-      "path",
-      "repo",
-      "path",
-    ]);
+    expect(stub.packageIds.every((v) => v === "pkg-1")).toBe(true);
+    expect(stub.orderCalls.every((c) => c === "path")).toBe(true);
   });
 
-  it("stops after a single short page (small package)", async () => {
+  it("[P5.B.1.p] keeps the (repo, path) order across both repos", async () => {
+    const rows = [...makeRows(3, "private"), ...makeRows(2, "public")];
+    const stub = makeStubClient([...rows].reverse());
+    const files = await new SupabaseSandboxStore(stub.client).listFiles("pkg-1");
+    expect(files.map((f) => `${f.repo}:${f.path}`)).toEqual(rows.map((f) => `${f.repo}:${f.path}`).sort());
+  });
+
+  it("[P5.B.1.p] stops after a single short page per repo (small package)", async () => {
     const rows = makeRows(3);
     const stub = makeStubClient(rows);
     const store = new SupabaseSandboxStore(stub.client);
@@ -140,20 +153,20 @@ describe("SupabaseSandboxStore.listFiles — pagination", () => {
     const files = await store.listFiles("pkg-small");
 
     expect(files).toEqual(rows);
-    expect(stub.rangeCalls).toHaveLength(1);
+    expect(stub.pageCalls).toHaveLength(2); // one per repo
   });
 
-  it("returns [] for a package with no files", async () => {
+  it("[P5.B.1.p] returns [] for a package with no files", async () => {
     const stub = makeStubClient([]);
     const store = new SupabaseSandboxStore(stub.client);
 
     const files = await store.listFiles("pkg-empty");
 
     expect(files).toEqual([]);
-    expect(stub.rangeCalls).toHaveLength(1);
+    expect(stub.pageCalls).toHaveLength(2);
   });
 
-  it("needs no extra (empty) page when the total is a page multiple (the exact count ends the walk)", async () => {
+  it("[P5.B.1.p] needs no extra (empty) page when the total is a page multiple (the remaining count ends the walk)", async () => {
     const rows = makeRows(PAGE * 2);
     const stub = makeStubClient(rows);
     const store = new SupabaseSandboxStore(stub.client);
@@ -162,13 +175,13 @@ describe("SupabaseSandboxStore.listFiles — pagination", () => {
 
     expect(files).toHaveLength(PAGE * 2);
     expect(files).toEqual(rows);
-    expect(stub.rangeCalls).toHaveLength(2);
+    expect(stub.pageCalls.filter((c) => c.repo === "public")).toHaveLength(2);
   });
 
-  it("throws the existing 'Could not load files' message when page 2 errors", async () => {
+  it("[P5.B.1.p] throws the existing 'Could not load files' message when a page errors", async () => {
     const rows = makeRows(PAGE * 2 + 500);
     const stub = makeStubClient(rows, {
-      failOnPage: 1,
+      failOnPage: 2,
       failMessage: "connection reset",
     });
     const store = new SupabaseSandboxStore(stub.client);
@@ -176,7 +189,7 @@ describe("SupabaseSandboxStore.listFiles — pagination", () => {
     await expect(store.listFiles("pkg-err")).rejects.toThrow(
       "Could not load files: connection reset",
     );
-    expect(stub.rangeCalls).toHaveLength(2);
+    expect(stub.pageCalls).toHaveLength(3);
   });
 });
 

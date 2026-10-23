@@ -6,7 +6,7 @@ import {
 } from "@alembic/package-contract";
 import { ForeignDocIdError, type DocumentRegistryStore } from "@alembic/package-ops";
 import { discoveryChanged } from "./discovery-cache";
-import { pageAll } from "./page-all";
+import { pageAllKeyset } from "./page-all";
 
 /**
  * The `documents` registry (R2) over Supabase — the concrete
@@ -261,16 +261,22 @@ export class SupabaseDocumentRegistryStore implements DocumentRegistryStore {
     packageId: string,
     liveOnly: boolean,
   ): Promise<RegistrationRecord[]> {
-    // Ends only on the exact count or an empty page (P5.B.1.p): a server row
-    // cap below 1000 must not truncate the working set.
-    const rows = await pageAll<DocumentRow>((from, to) => {
-      let query = this.supabase
-        .from("documents")
-        .select("*", { count: "exact" })
-        .eq("package_id", packageId);
-      if (liveOnly) query = query.eq("tombstoned", false);
-      return query.order("repo").order("path").order("doc_id").range(from, to);
-    }, "Registry read failed");
+    // Keyset by doc_id (unique), ending only on the remaining count or an
+    // empty page (P5.B.1.p; loop r2, L-4): neither a server row cap nor a
+    // row deleted between pages can drop a row from the working set.
+    const rows = await pageAllKeyset<DocumentRow, string>(
+      (after, limit) => {
+        let query = this.supabase
+          .from("documents")
+          .select("*", { count: "exact" })
+          .eq("package_id", packageId);
+        if (liveOnly) query = query.eq("tombstoned", false);
+        if (after !== null) query = query.gt("doc_id", after);
+        return query.order("doc_id").limit(limit);
+      },
+      (row) => row.doc_id,
+      "Registry read failed",
+    );
     return rows.map(fromRow);
   }
 }

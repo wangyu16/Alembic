@@ -81,6 +81,11 @@ of the class ([DecisionLog](DecisionLog.md) 2026-10-23 "Closed loop r2 (correctn
   registry row went stale until a page load healed it). Removed; publish now goes through `updateManifest(store,
   null, …)` (the publish commit already carried these exact bytes). A scan test refuses any `alembic.json`
   `putFiles` outside package-ops. (Earlier Status entries naming `mirrorManifestToSandbox` are history.)
+- ✅ **L-4 — offset paging under a concurrent delete (P5.B.1.p, strengthened).** `pageAll` advanced by OFFSET, so
+  a row deleted between pages shifted the rest and one surviving row was skipped (a rebuild then tombstoned a live
+  file). Now `pageAllKeyset`: the registry walks by `doc_id`, the trial store by `path` within each repo (private,
+  then public — the old `(repo, path)` order); the walk ends on an empty page or when the remaining count is read.
+  Cost: ⌈N/1000⌉ round-trips (the trial store: per repo, so 2 for a small package). Code only.
 
 **Phase 5 closed-loop verification — round 2, steps 4–5: security audit probes and class fixes (2026-10-23,
 branch `phase5/loop-r2-sec`, not merged, migrations `0028_loop_r2_*` NOT applied).** Each round-2 security finding

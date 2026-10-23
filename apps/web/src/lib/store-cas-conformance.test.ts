@@ -53,12 +53,16 @@ function fakeSupabase(): SupabaseClient {
     let values: Partial<Row> = {};
     let payload: Row[] = [];
     const filters: Array<[string, unknown]> = [];
+    const gts: Array<[string, string]> = [];
     const orders: string[] = [];
+    let limit: number | null = null;
     let range: [number, number] | null = null;
 
     function matching(): Row[] {
-      return rows.filter((r) =>
-        filters.every(([col, val]) => (r as unknown as Record<string, unknown>)[col] === val),
+      return rows.filter(
+        (r) =>
+          filters.every(([col, val]) => (r as unknown as Record<string, unknown>)[col] === val) &&
+          gts.every(([col, val]) => String((r as unknown as Record<string, unknown>)[col]) > val),
       );
     }
 
@@ -102,7 +106,8 @@ function fakeSupabase(): SupabaseClient {
             }
             return 0;
           });
-          const windowed = range ? hit.slice(range[0], range[1] + 1) : hit;
+          const ranged = range ? hit.slice(range[0], range[1] + 1) : hit;
+          const windowed = limit === null ? ranged : ranged.slice(0, limit);
           return { data: windowed.map((r) => ({ ...r })), error: null };
         }
       }
@@ -138,6 +143,15 @@ function fakeSupabase(): SupabaseClient {
       },
       order(column: string) {
         orders.push(column);
+        return builder;
+      },
+      // Keyset paging (loop r2, L-4).
+      gt(column: string, value: string) {
+        gts.push([column, value]);
+        return builder;
+      },
+      limit(n: number) {
+        limit = n;
         return builder;
       },
       range(from: number, to: number) {
