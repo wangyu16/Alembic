@@ -22,7 +22,9 @@ In the Supabase SQL editor, run every file in
 `0013_drop_portal_eligible` (optional cleanup) → `0014_documents` →
 `0015_portal_keywords` → `0016_profile_column_grants` →
 `0017_user_governance` → `0018_rls_active_user` → `0019_document_tags` →
-`0020_staging_bucket`.
+`0020_staging_bucket` → `0021_trackB_documents_hash_idx` (optional index) →
+`0023_trackA_infra` (rate-limit counters + anonymous discovery events;
+optional, additive).
 
 You may use your existing dev project, or create a separate production project
 and run all migrations there (recommended for a real pilot).
@@ -34,6 +36,7 @@ and run all migrations there (recommended for a real pilot).
 | `0016_profile_column_grants` | **Deploy code first.** The GitHub-install callback (`api/github/installed`) must already use the service client when this revokes the blanket profile UPDATE grant — so it also needs `SUPABASE_SECRET_KEY` set (step 2). See the security banner in [Status.md](Status.md). |
 | `0017` + `0018` (user governance) | **Apply before deploying the AI gate.** `can_use_ai()` fails *closed*, so shipping the gate against a database without these stops AI for every account, owner included. |
 | `0019_document_tags` | Required before relying on per-file asset tags/metadata in production. |
+| `0023_trackA_infra` | Additive, any order relative to the code (Phase 5 Track A.6–A.7). Makes `research_events.user_id` nullable (an anonymous visitor's discovery event has no participant) and adds `rate_limit_counters` + `rate_limit_hit()` (service role only). Without it: report rate limits count per server instance only, and anonymous discovery events are dropped. |
 | `0020_staging_bucket` | **Requires owner / service-role privileges** — it inserts a row into `storage.buckets` and creates policies on `storage.objects`, which the ordinary anon/authenticated roles cannot do. Run it as the project owner in the SQL editor (or with the service-role connection), not from an app-side client. **Apply it *before* deploying the code that uses the staging bucket** (the Wave-3 zip-upload path: `api/staging-url`, `lib/staging.ts`, `api/populate-package`); without the bucket every whole-course zip upload fails at the signed-URL step. It is additive — a private `staging` bucket plus four owner-prefix RLS policies namespaced to it; no existing table, policy, or bucket changes. |
 
 #### The `staging` bucket: 24-hour TTL is an operator responsibility
@@ -96,6 +99,7 @@ AI_MODEL_STRONG                 = <model name as configured on the gateway>
 # Optional governance:
 AI_TOKEN_BUDGET                 = <tokens per window, e.g. 2000000>   # per-user budget (M16; needs 0007)
 RESEARCH_EXPORT_SALT            = <random secret>            # stable pseudonyms in the research export (M34)
+RATE_LIMIT_SECRET               = <random secret>            # optional: keys rate-limit counters (Track A.6); falls back to the secret key
 
 # GitHub App (publishing)
 GITHUB_APP_ID                   = <App ID>
@@ -111,7 +115,9 @@ Notes:
   works — without it the page shows a "needs the service key" notice. It is the
   service-role key; besides `requireAdmin` paths it backs the **public reads**
   of the permalink resolver (`/d/{docId}`, published public files only) and
-  Discover's Elements list (shared public files of published courses) — see
+  Discover's Elements list (shared public files of published courses), the
+  report rate limit's shared counters, and anonymous visitors' de-identified
+  discovery events (Phase 5 Track A.6–A.7) — see
   [specs/data-handling-review.md](specs/data-handling-review.md).
 - **`RESEARCH_EXPORT_SALT`** keeps de-identified pseudonyms stable across
   exports; if unset it falls back to the secret key (still one-way, but rotates

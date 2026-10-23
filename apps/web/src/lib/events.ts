@@ -10,7 +10,7 @@ export function supabaseEventLogger(supabase: SupabaseClient) {
     async write(event: ResearchEvent) {
       await supabase.from("research_events").insert({
         type: event.type,
-        user_id: event.userId,
+        user_id: event.userId ?? null,
         package_id: event.packageId ?? null,
         duration_ms: event.durationMs ?? null,
         detail: event.detail,

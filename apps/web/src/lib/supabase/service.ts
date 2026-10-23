@@ -6,6 +6,9 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
  * (`requireAdmin`) for cross-user operations research/admin require — reading the
  * append-only `research_events` (no user select policy by design), the
  * operator-only `portal_reports`, and toggling another user's profile flags.
+ * Also, narrowly and never for an educator workflow: the public-file reads of
+ * `/d` and Discover's Elements list, the report rate-limit counters, and
+ * anonymous discovery events (data-handling-review.md, "Access model").
  * Returns null when SUPABASE_SECRET_KEY isn't configured.
  */
 export function createServiceClient(): SupabaseClient | null {

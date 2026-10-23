@@ -2,6 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { recordDiscoveryEvent } from "@/lib/record-discovery-event";
 
 /**
  * P2 — "share this": the per-file discoverability toggle (document-model.md
@@ -20,6 +21,25 @@ export interface ShareResult {
 
 const NEVER_DISCOVERABLE = new Set(["private", "current"]);
 
+/** A.7: a de-identified share/unshare event, only when the flag really flips. */
+function logShareChange(
+  row: { package_id: string; kind?: string | null; space?: string | null; discoverable?: boolean | null },
+  next: boolean,
+  userId: string,
+  session: Awaited<ReturnType<typeof createSupabaseServerClient>>,
+): void {
+  if (Boolean(row.discoverable) === next) return;
+  recordDiscoveryEvent(
+    {
+      type: next ? "element.shared" : "element.unshared",
+      packageId: row.package_id,
+      kind: row.kind ?? null,
+      space: row.space ?? null,
+    },
+    { userId, session },
+  );
+}
+
 export async function shareFileAction(
   packageId: string,
   docId: string,
@@ -35,7 +55,7 @@ export async function shareFileAction(
   // Owner read via session RLS — a non-owner simply finds nothing.
   const { data: row } = await supabase
     .from("documents")
-    .select("doc_id, package_id, space, permalink_class, description, tombstoned")
+    .select("doc_id, package_id, space, kind, permalink_class, description, discoverable, tombstoned")
     .eq("doc_id", docId)
     .eq("package_id", packageId)
     .maybeSingle();
@@ -64,6 +84,7 @@ export async function shareFileAction(
     .eq("doc_id", docId)
     .eq("package_id", packageId);
   if (error) return { ok: false, error: "Couldn't update sharing. Please try again." };
+  logShareChange(row, share, user.id, supabase);
 
   return { ok: true, permalink: share ? `/d/${docId}` : undefined };
 }
@@ -94,7 +115,7 @@ export async function setAssetMetadataAction(
 
   const { data: row } = await supabase
     .from("documents")
-    .select("doc_id, package_id, space, permalink_class, description, tombstoned")
+    .select("doc_id, package_id, space, kind, permalink_class, description, discoverable, tombstoned")
     .eq("doc_id", docId)
     .eq("package_id", packageId)
     .maybeSingle();
@@ -122,6 +143,7 @@ export async function setAssetMetadataAction(
     .eq("doc_id", docId)
     .eq("package_id", packageId);
   if (error) return { ok: false, error: "Couldn't save. Please try again." };
+  logShareChange(row, discoverable, user.id, supabase);
 
   return { ok: true, permalink: discoverable ? `/d/${docId}` : undefined };
 }

@@ -7,6 +7,7 @@ import { isOpenLicense } from "@alembic/package-contract";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
 import { supabaseEventLogger } from "@/lib/events";
+import { recordDiscoveryEvent } from "@/lib/record-discovery-event";
 
 export interface RegisterResult {
   ok: boolean;
@@ -110,12 +111,19 @@ export async function unregisterPackageAction(
   } = await supabase.auth.getUser();
   if (!user) redirect("/signin");
 
-  const { error } = await supabase
+  const { data: removed, error } = await supabase
     .from("portal_registrations")
     .delete()
-    .eq("package_id", packageId);
+    .eq("package_id", packageId)
+    .select("package_id");
   if (error) {
     return { ok: false, error: "Could not remove the listing. Please try again." };
+  }
+  if (removed?.length) {
+    recordDiscoveryEvent(
+      { type: "portal.unregistered", packageId, reason: "owner" },
+      { userId: user.id, session: supabase },
+    );
   }
   revalidatePath(`/workspace/${packageId}`);
   revalidatePath("/portal");
