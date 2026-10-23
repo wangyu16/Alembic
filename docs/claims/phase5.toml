@@ -539,7 +539,7 @@ bound_to = []
 
 [[claim]]
 id = "P5.A.6.b"
-claim = "A public live /d answer carries ETag W/\"{source_hash}\", Cache-Control 'public, max-age=60, s-maxage=300, stale-while-revalidate=86400' and CORS; one pinned to the current hash is 'immutable'."
+claim = "A public live /d answer carries ETag W/\"{source_hash}\", Cache-Control 'public, max-age=60, s-maxage=240, stale-while-revalidate=60' (CACHE.live) and CORS; one pinned to the current hash carries Cache-Control 'private, max-age=31536000, immutable' (CACHE.pinned) with CDN-Cache-Control and Vercel-CDN-Cache-Control 'public, max-age=300' (the takedown bound)."
 oracle = "conformance"
 bound_to = [
   "apps/web/src/lib/permalink-response.adversarial.test.ts :: live: ETag = hash, CDN cache with stale-while-revalidate, CORS",
@@ -1631,3 +1631,21 @@ bound_to = [
   "apps/web/src/lib/rate-limit.test.ts :: a client rotating through its /64 is capped like one client",
 ]
 note = "Loop r2 M4 residual. Code only (clientIp → addressSubject)."
+
+# ─── Closed loop round 2 — correctness (2026-10-23, branch phase5/loop-r2-cor) ───
+
+# MEDIUM-2 — /d plain answers are bounded by the verification window
+
+[[claim]]
+id = "P5.A.6.o"
+claim = "An unpinned public /d answer is labelled with the registry hash (ETag, shared-cacheable) only if that hash was verified against the file's current bytes within 60 s on this instance — an LRU or shared-layer copy alone never suffices; otherwise the current bytes are served unlabelled, the shared copy is evicted and that one file is re-registered (best-effort, after the response, at most once per doc per window). Within the window a warm answer reads nothing; a pinned answer serves its content-addressed bytes without re-reading."
+oracle = "probe"
+bound_to = [
+  "apps/web/src/lib/permalink-response.freshness.test.ts :: after the window a warm instance and a cold one both serve the NEW bytes, unlabelled; onStale fires; the shared copy is evicted",
+  "apps/web/src/lib/permalink-response.freshness.test.ts :: within the window a warm plain GET does not re-read the origin (cost bound)",
+  "apps/web/src/lib/permalink-response.freshness.test.ts :: a pinned request is served from cached bytes without re-reading the origin",
+  "apps/web/src/app/d/[docId]/route.test.ts :: stale bytes: served unlabelled, that one file re-registered once, best-effort",
+  "apps/web/src/app/d/[docId]/route.test.ts :: a failing re-registration never affects the answer",
+]
+note = "Loop r2 correctness MEDIUM-2 (repro /tmp/p5r2/dstale2.mts). Code only. Cost: a cold instance reads the origin once per document per 60 s for unpinned views; the shared layer now mainly serves pinned reads."
+

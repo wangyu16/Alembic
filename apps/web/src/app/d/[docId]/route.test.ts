@@ -19,6 +19,8 @@ const mocks = vi.hoisted(() => ({
   rateLimit: vi.fn(async () => ({ ok: true }) as { ok: true } | { ok: false; retryAfterSeconds: number }),
   access: vi.fn(async (): Promise<PermalinkAccess> => ({ status: "not-found" })),
   calls: [] as string[],
+  registered: [] as Array<{ packageId: string; changes: unknown; origin: unknown }>,
+  registerFails: false,
 }));
 
 vi.mock("server-only", () => ({}));
@@ -45,6 +47,13 @@ vi.mock("@/lib/record-discovery-event", () => ({
     mocks.events.push({ input, ctx });
   },
 }));
+vi.mock("@/lib/register", () => ({
+  registerChanges: async (_db: unknown, packageId: string, changes: unknown, origin: unknown) => {
+    if (mocks.registerFails) throw new Error("registry down");
+    mocks.registered.push({ packageId, changes, origin });
+  },
+}));
+vi.mock("@/lib/collection-upload", () => import("../../../lib/collection-upload"));
 vi.mock("@/lib/rate-limit", () => import("../../../lib/rate-limit"));
 vi.mock("@/lib/view-dedupe", () => import("../../../lib/view-dedupe"));
 vi.mock("@/lib/permalink-response", () => import("../../../lib/permalink-response"));
@@ -90,6 +99,8 @@ beforeEach(() => {
   mocks.calls.length = 0;
   mocks.events.length = 0;
   mocks.service = null;
+  mocks.registered.length = 0;
+  mocks.registerFails = false;
   mocks.bytes = "# A shared page";
   mocks.rateLimit.mockImplementation(async () => ({ ok: true }));
   mocks.access.mockImplementation(async () => ({ status: "not-found" }));
@@ -195,5 +206,45 @@ describe("/d query strings and view events (security loop r1, L4b)", () => {
     };
     const r = await get("doc-pub", "?x=z", "192.0.2.78");
     expect(r.status).toBe(200); // event trouble never breaks the answer
+  });
+});
+
+describe("/d re-registers a file whose registry row is stale (loop r2, MEDIUM-2)", () => {
+  const staleDoc = (doc_id: string): PermalinkAccess => ({
+    status: "ok",
+    doc: { doc_id, package_id: "pkg-pub", repo: "public", path: "study-guide/x.md", source_hash: H, tombstoned: false },
+    db: {} as never,
+    ownerOnly: false,
+  });
+
+  it("[P5.A.6.o] stale bytes: served unlabelled, that one file re-registered once, best-effort", async () => {
+    mocks.service = { rpc: async () => ({ data: 1, error: null }) };
+    mocks.access.mockImplementation(async () => staleDoc("doc-stale"));
+    mocks.bytes = "# A shared page, edited"; // the registry still holds the old hash
+    const r = await get("doc-stale");
+    expect(r.status).toBe(200);
+    expect(r.headers.get("etag")).toBeNull();
+    expect(await r.text()).toBe("# A shared page, edited");
+    await new Promise((res) => setTimeout(res, 0));
+    expect(mocks.registered).toEqual([
+      {
+        packageId: "pkg-pub",
+        changes: [{ repo: "public", path: "study-guide/x.md", content: "# A shared page, edited" }],
+        origin: "external-commit",
+      },
+    ]);
+    await get("doc-stale"); // within the window: not again
+    await new Promise((res) => setTimeout(res, 0));
+    expect(mocks.registered).toHaveLength(1);
+  });
+
+  it("[P5.A.6.o] a failing re-registration never affects the answer", async () => {
+    mocks.service = { rpc: async () => ({ data: 1, error: null }) };
+    mocks.registerFails = true;
+    mocks.access.mockImplementation(async () => staleDoc("doc-stale-2"));
+    mocks.bytes = "# edited again";
+    const r = await get("doc-stale-2");
+    expect(r.status).toBe(200);
+    expect(await r.text()).toBe("# edited again");
   });
 });

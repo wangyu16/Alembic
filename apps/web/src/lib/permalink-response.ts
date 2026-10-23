@@ -15,9 +15,12 @@
  *       pinned `@{hash}` → `immutable` for a year in the BROWSER only,
  *       shared caches (CDN) at most `TAKEDOWN_BOUND_SECONDS` (300 s);
  *       live → browser 60 s, CDN 240 s + 60 s stale-while-revalidate;
- *       bytes from `DocBytesCache` (GitHub read once per version).
+ *       bytes from `DocBytesCache` (GitHub read once per version; an
+ *       unpinned answer re-verifies the hash against the current bytes at
+ *       most once per 60 s window — loop r2, P5.A.6.o).
  *     Bytes that do not hash to the registry's hash (the repo moved ahead of
- *     the registry) are served the old way: no ETag, `max-age=60`, uncached.
+ *     the registry) are served the old way: no ETag, `max-age=60`, uncached,
+ *     and `onStale` asks for that one file to be registered again.
  *
  * The ETag is WEAK because for carrier files the hash covers the embedded
  * source, not the rendered bytes: two renderings of one source are the same
@@ -195,6 +198,12 @@ export interface PermalinkDeps {
   cache: DocBytesCache;
   /** Called for every PUBLIC answer served (view events). Never for owner-only. */
   onPublicServed?: (info: ServedInfo) => void;
+  /**
+   * Called when a public file's current bytes no longer hash to the registry
+   * row (loop r2, P5.A.6.o) — the route re-registers that one file. Must not
+   * block; anything it throws is swallowed.
+   */
+  onStale?: (doc: PermalinkDoc, bytes: Buffer) => void;
 }
 
 /** The exact bytes of a Buffer as a standalone ArrayBuffer (a valid BodyInit). */
@@ -282,13 +291,27 @@ export async function servePermalink(
   }
 
   const cacheControl = cacheHeaders(pinned);
+  const key = { docId: doc.doc_id, hash, path: doc.path };
+  const servedStale = (bytes: Buffer): Response => {
+    // The file moved on and the registry did not: serve what is there now,
+    // unlabelled (no ETag, not shared-cacheable) — as for any unverified read
+    // — and ask for that one file to be registered again.
+    try {
+      deps.onStale?.(doc, bytes);
+    } catch {
+      // never affects the answer
+    }
+    deps.onPublicServed?.({ doc, pinned: false, status: 200 });
+    return new Response(body(bytes), {
+      headers: { "content-type": mimeFor(doc.path), "cache-control": CACHE.unverified, ...shared },
+    });
+  };
+
   if (etagMatches(reqHeaders.get("if-none-match"), hash)) {
     // 304 only when the registry hash was verified against the file's
     // CURRENT bytes recently (loop r1b, P5.B.1.m): a stale registry row must
     // not keep every client and the CDN on the old version indefinitely.
-    const check = await deps.cache.revalidate({ docId: doc.doc_id, hash, path: doc.path }, () =>
-      deps.readBytes(doc, access),
-    );
+    const check = await deps.cache.revalidate(key, () => deps.readBytes(doc, access));
     if (check === null) return notFound();
     if (check.status === "fresh") {
       deps.onPublicServed?.({ doc, pinned, status: 304 });
@@ -297,17 +320,31 @@ export async function servePermalink(
         headers: { etag: etagFor(hash), ...cacheControl, ...shared },
       });
     }
-    // The file moved on and the registry did not: serve what is there now,
-    // unlabelled (no ETag, not shared-cacheable) — as for any unverified read.
-    deps.onPublicServed?.({ doc, pinned: false, status: 200 });
-    return new Response(body(check.bytes), {
-      headers: { "content-type": mimeFor(doc.path), "cache-control": CACHE.unverified, ...shared },
-    });
+    return servedStale(check.bytes);
   }
 
-  const got = await deps.cache.get({ docId: doc.doc_id, hash, path: doc.path }, () =>
-    deps.readBytes(doc, access),
-  );
+  // Unpinned (loop r2, P5.A.6.o): bytes are served under the registry hash
+  // only if that hash was verified against the file's CURRENT bytes within
+  // `DocBytesCache.REVALIDATE_MS` on this instance — an LRU or shared-layer
+  // copy proves only that the file once had that hash. `revalidate` reads the
+  // origin at most once per window and hands back what it read, so there is
+  // no second read.
+  //
+  // Pinned `@{hash}`: no re-verification. The pin already equals the current
+  // registry hash (checked above), and cached bytes are content-addressed by
+  // that hash — they ARE the version the reader asked for, even if the file
+  // has since moved on.
+  let fresh: Buffer | undefined;
+  if (!pinned) {
+    const check = await deps.cache.revalidate(key, () => deps.readBytes(doc, access));
+    if (check === null) return notFound();
+    if (check.status === "stale") return servedStale(check.bytes);
+    fresh = check.bytes;
+  }
+
+  const got = fresh
+    ? { bytes: fresh, verified: true }
+    : await deps.cache.get(key, () => deps.readBytes(doc, access));
   if (got === null) return notFound();
   deps.onPublicServed?.({ doc, pinned, status: 200 });
   return new Response(body(got.bytes), {

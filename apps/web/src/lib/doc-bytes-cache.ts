@@ -40,6 +40,10 @@ export interface DocBytesKey {
  *  stored; the layer must not cache a thrown load. */
 export interface SharedBytesLayer {
   getOrLoad(key: string, load: () => Promise<Buffer>): Promise<Buffer>;
+  /** Drop `key` (best-effort): called when a revalidation finds the bytes
+   *  stored under it are no longer the file's current bytes (loop r2,
+   *  P5.A.6.o), so cold instances stop being offered the old copy. */
+  evict?(key: string): void | Promise<void>;
 }
 
 export interface CachedBytes {
@@ -79,9 +83,10 @@ export interface DocBytesCacheOptions {
   now?: () => number;
 }
 
-/** What `revalidate` found. */
+/** What `revalidate` found. `fresh.bytes` is set when this call read the
+ *  origin (so the caller need not read it again). */
 export type Revalidation =
-  | { status: "fresh" }
+  | { status: "fresh"; bytes?: Buffer }
   | { status: "stale"; bytes: Buffer }
   | null;
 
@@ -116,7 +121,12 @@ export class DocBytesCache {
    * only that those bytes once had that hash, not that the file still does.
    * Otherwise re-read: a match → "fresh" (and remembered); a mismatch → the
    * registry is stale, the remembered copy is dropped from this instance and
-   * the current bytes are returned to be served unlabelled; null → not found.
+   * the current bytes are returned to be served unlabelled, and the shared
+   * layer's copy is evicted too (loop r2, P5.A.6.o); null → not found.
+   *
+   * The plain (200) answer uses this as well (loop r2, P5.A.6.o): an
+   * unpinned answer is served under the registry hash only while that hash
+   * was verified within the window on this instance.
    */
   async revalidate(key: DocBytesKey, load: () => Promise<Buffer | null>): Promise<Revalidation> {
     const id = DocBytesCache.keyOf(key);
@@ -129,10 +139,34 @@ export class DocBytesCache {
     if (bytesMatchHash(key.path, bytes, key.hash)) {
       this.verifiedAt.set(id, this.now());
       this.remember(id, bytes);
-      return { status: "fresh" };
+      await this.storeShared(id, bytes);
+      return { status: "fresh", bytes };
     }
     this.forget(id);
+    this.evictShared(id);
     return { status: "stale", bytes };
+  }
+
+  /** Offer verified bytes to the shared layer (for pinned reads on cold
+   *  instances). Best-effort. */
+  private async storeShared(id: string, bytes: Buffer): Promise<void> {
+    const shared = this.opts.shared;
+    if (!shared || bytes.length > this.sharedMaxItemBytes) return;
+    try {
+      await shared.getOrLoad(id, async () => bytes);
+    } catch {
+      // the shared layer is optional
+    }
+  }
+
+  private evictShared(id: string): void {
+    const evict = this.opts.shared?.evict;
+    if (!evict) return;
+    try {
+      void Promise.resolve(evict.call(this.opts.shared, id)).catch(() => {});
+    } catch {
+      // best-effort: the shared copy then ages out on its own
+    }
   }
 
   private forget(id: string): void {

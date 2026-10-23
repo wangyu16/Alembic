@@ -52,6 +52,19 @@ same commit as the work it tracks. Statuses: ✅ done · 🔄 partially shipped 
 
 > **Current direction — self-contained editing (owner-locked, 2026-07).** Editing and viewing both live *in the files*: the workspace **hosts** the in-file editors of `.md.html` / `.slides.html` / `.paged.html` (orz-family) and **builds no editor of its own**; published pages **are** those self-contained files (thin CDN delivery — study guide ~74 KB, framework from jsDelivr, verified live 2026-07-06); every file gets a permalink. **Committed source of record (revised, 2026-07-08 — "lean-source model"):** a chapter's study guide, slides, and practice questions are each committed as lean markdown (`study-guide/`, `slides/`, `practice/` — `.md`, not `.md.html`); the self-contained `.md.html`/`.slides.html` is generated on demand, purely as the editing/viewing surface, and never itself committed. This supersedes the original plan (below, and in the specs) of `.md.html` as the committed source — the specs haven't all been updated to match yet; this line is authoritative until they are. Authoritative docs: [SteeringNote.md](SteeringNote.md), [self-contained-editing.md](specs/self-contained-editing.md), [workspace-framework.md](specs/workspace-framework.md), and the module-based [Roadmap.md](Roadmap.md) (Modules R/E/P/T/I/S/W — supersedes the phase-based plan). **Code state today:** the classic editor is **retired** (~2.2k lines removed; `/workspace/[id]` redirects to `/edit`); the local **Studio (`/studio`) is removed**, replaced by `/guide`; the workspace three-pane shell now *hosts* the in-file editors (`HostedStudyGuideEditor` for study guide + practice; `HostedSlidesEditor` for authored slide decks). The durable guardrails **G1–G8** (two-repo reference enforcement, block-ID reconcile on import, whole-package fork, single-source course metadata, AI-entitlement seam) that the earlier editor-overhaul design drove all **landed + tested**.
 
+**Phase 5 closed-loop verification — round 2, steps 4–5: correctness audit probes and class fixes (2026-10-23,
+branch `phase5/loop-r2-cor`, built on `phase5/loop-r2-sec`, not merged, migrations `0029_loop_r2c_*` NOT applied).**
+Each round-2 correctness finding became a claim + a probe that fails on `e057bde` (the security branch head) + a fix
+of the class ([DecisionLog](DecisionLog.md) 2026-10-23 "Closed loop r2 (correctness)").
+- ✅ **MEDIUM-2 — `/d` plain answers outlived the verification window (P5.A.6.o).** The 304 path re-verified the
+  registry hash within 60 s, but a plain GET served an LRU or shared-layer copy as verified forever (repro
+  `/tmp/p5r2/dstale2.mts`: a day after the file changed, warm and cold instances still served the old text under
+  the old ETag). An unpinned answer now re-verifies against the current bytes at most once per 60 s per instance
+  (`DocBytesCache.revalidate` hands back what it read — no second origin read); a stale registry row is served
+  unlabelled, the shared-layer key is evicted (`unstable_cache` tags + `revalidateTag`) and the route re-registers
+  that one file after the response (`after()`, service client, once per doc per window). Pinned answers keep the
+  content-addressed cached bytes. Code only. **L-5:** P5.A.6.b's claim text now quotes the real headers.
+
 **Phase 5 closed-loop verification — round 2, steps 4–5: security audit probes and class fixes (2026-10-23,
 branch `phase5/loop-r2-sec`, not merged, migrations `0028_loop_r2_*` NOT applied).** Each round-2 security finding
 became a claim + a probe that fails on `d4544cc` + a fix of the class ([DecisionLog](DecisionLog.md) 2026-10-23
