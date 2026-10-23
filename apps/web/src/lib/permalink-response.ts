@@ -25,6 +25,7 @@
  */
 
 import type { PermalinkAccess, PermalinkDoc } from "./permalink-access";
+import { pinSatisfied } from "./permalink-access";
 import type { DocBytesCache } from "./doc-bytes-cache";
 import type { RateDecision } from "./rate-limit";
 import { tooManyRequests } from "./rate-limit";
@@ -237,7 +238,9 @@ export async function servePermalink(
 
   // Version pin: the registry holds the CURRENT version; older pins arrive
   // with R3's version store.
-  if (pin && hash && pin !== hash) {
+  // A pin is satisfied only by the KNOWN current hash (loop r2, NEW-3): a
+  // pin on a row without a hash is not served as the current bytes.
+  if (pin !== null && !pinSatisfied(pin, hash)) {
     return page(
       404,
       "That exact version isn't available yet",
@@ -246,7 +249,7 @@ export async function servePermalink(
       CACHE.none,
     );
   }
-  const pinned = Boolean(pin && hash && pin === hash);
+  const pinned = pin !== null;
 
   // ── Owner-only: fresh every time, never shared, never conditional. ──
   if (ownerOnly) {

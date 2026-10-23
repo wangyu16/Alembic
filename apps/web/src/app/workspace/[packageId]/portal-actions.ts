@@ -9,7 +9,9 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
 import { supabaseEventLogger } from "@/lib/events";
 import { recordDiscoveryEvent } from "@/lib/record-discovery-event";
-import { recordedPublicRepo } from "@/lib/recorded-repo";
+import { recordedPublicRepo, repoUrl } from "@/lib/recorded-repo";
+import { packageTrustWriter } from "@/lib/package-trust-writes";
+import { createServiceClient } from "@/lib/supabase/service";
 
 export interface RegisterResult {
   ok: boolean;
@@ -75,22 +77,21 @@ export async function registerPackageAction(
     };
   }
 
-  // `owner_id` is NOT sent: it defaults to the caller (auth.uid()) and the
-  // database refuses a row for a package the caller does not own (migration
-  // 0025, security loop r1 H1). Sending it would make the upsert SET it, which
-  // needs read access to owner_id — a column no API role may read.
-  const { error } = await supabase.from("portal_registrations").upsert({
-    package_id: packageId,
+  // The listing row is written by the SERVER after the gates above (security
+  // loop r2, NEW-5; migration 0028_loop_r2_4): the API roles may no longer
+  // insert or update portal_registrations, so nobody can list a course
+  // without its attestation and release gates. Scoped to this owner.
+  const listed = await packageTrustWriter(createServiceClient).recordListing(packageId, user.id, {
     title: record!.title,
     description: record!.manifest.description ?? "",
     keywords: record!.manifest.keywords ?? [],
     discipline: record!.manifest.discipline ?? "chemistry",
     license: record!.manifest.license,
-    public_repo_url: `https://github.com/${repo.owner}/${repo.name}`,
+    public_repo_url: repoUrl(repo),
     site_url: `https://${repo.owner}.github.io/${repo.name}/`,
     accessibility_status: record!.manifest.accessibility?.status ?? "unknown",
   });
-  if (error) {
+  if (!listed.ok) {
     return { ok: false, error: "Could not list the package. Please try again." };
   }
 

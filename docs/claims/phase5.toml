@@ -237,7 +237,7 @@ id = "P5.A.1.g"
 claim = "An educator's own RLS-scoped session (list, share) and the server's archive write drive the projection, and another educator's session can neither list nor share someone else's course."
 oracle = "scenario"
 bound_to = [
-  "apps/web/src/lib/discovery-projection.sql.test.ts :: listing and sharing through the owner's own session, and archiving through the server, refresh the index",
+  "apps/web/src/lib/discovery-projection.sql.test.ts :: listing through the server, sharing through the owner's own session, and archiving through the server, refresh the index",
   "apps/web/src/lib/discovery-projection.sql.test.ts :: another educator's session can neither list nor share someone else's course",
 ]
 
@@ -1197,7 +1197,7 @@ bound_to = []
 
 [[claim]]
 id = "P5.S.1.a"
-claim = "Through the API roles a signed-in user can insert or update a portal_registrations row only for a package they own, as its owner_id; a row for another educator's package is refused."
+claim = "Through the API roles a signed-in user can never write a portal_registrations row for another educator's package (since loop r2, P5.S.1.f, not even for their own: the server writes it after the gates); the owner still lists (through the server), re-lists and unlists their own course."
 oracle = "probe"
 bound_to = [
   "apps/web/src/lib/listing-consent.sql.test.ts :: a signed-in user cannot list another educator's package",
@@ -1491,3 +1491,120 @@ bound_to = [
   "apps/web/src/lib/a11y-audit.test.ts :: the check action audits through that source and records only a published audit",
 ]
 note = "Loop r2 M2 residual (closes the r1 M2 open item for the a11y check; concept-map topics still read the mirror — listing text the owner writes anyway)."
+
+# NEW-2 — projected timestamps are server-owned
+
+[[claim]]
+id = "P5.A.1.n"
+claim = "No projected timestamp (course or element listed_at / updated_at) is client-supplied or in the future: portal_registrations.registered_at and documents.registered_at are set by the server on insert and kept on update for every role, the projector clamps every projected timestamp to now(), and migration 0028_loop_r2_1 clamps the future values already stored."
+oracle = "probe"
+bound_to = [
+  "apps/web/src/lib/loop-r2-sec.sql.test.ts :: registrations.registered_at ignores a client value on insert and update",
+  "apps/web/src/lib/loop-r2-sec.sql.test.ts :: documents.registered_at ignores a client value (direct insert, update, documents_apply)",
+  "apps/web/src/lib/loop-r2-sec.sql.test.ts :: the projector never projects a future timestamp, whatever a base row holds",
+  "apps/web/src/lib/loop-r2-sec.sql.test.ts :: future registered_at values already stored are brought back to now",
+]
+note = "Loop r2 NEW-2, migration 0028_loop_r2_1 (either order with the code; header has the read-only pre-check)."
+
+# NEW-3 — ids are never reused
+
+[[claim]]
+id = "P5.B.1.q"
+claim = "A docId and a packageId are never reused, even after deletion: every deleted id enters a private retired-id ledger, the database refuses to insert a retired id (documents_apply, direct inserts, any role), documents_foreign_doc_ids reports retired ids as taken (so the registry mints anew), and a pinned permalink or include resolves only to the doc whose known current hash it names."
+oracle = "probe"
+bound_to = [
+  "apps/web/src/lib/loop-r2-sec.sql.test.ts :: a deleted package's docId cannot be reclaimed by another package (probe2)",
+  "apps/web/src/lib/loop-r2-sec.sql.test.ts :: a deleted package's id cannot be re-created by anyone (probe3: no inherited adaptations)",
+  "apps/web/src/lib/loop-r2-sec.sql.test.ts :: the retired-id ledger is private and fed only by deletion",
+  "apps/web/src/lib/permalink-pin.test.ts :: /d with a pin on a row that has no hash answers 404, not the current bytes",
+  "apps/web/src/lib/permalink-pin.test.ts :: pinSatisfied needs an exact, known hash",
+  "apps/web/src/lib/permalink-pin.test.ts :: server-side includes apply the same pin rule",
+]
+note = "Loop r2 NEW-3, migration 0028_loop_r2_2 (either order). Back-fill covers ids still provable (lineage targets, research events); ids deleted earlier and referenced nowhere cannot be recovered."
+
+# LOW-2 — the taken-id question is scoped to the caller's own package
+
+[[claim]]
+id = "P5.B.1.r"
+claim = "documents_foreign_doc_ids answers only for a package the caller owns (otherwise it refuses), for at most 500 ids, and only 'taken' — never which package or owner holds an id."
+oracle = "probe"
+bound_to = [
+  "apps/web/src/lib/loop-r2-sec.sql.test.ts :: asking relative to someone else's package answers nothing (no membership oracle)",
+]
+note = "Loop r2 LOW-2, 0028_loop_r2_2. Residual: a caller still learns whether an id it already holds is taken (inherent in uid adoption; ids are ~62-bit random)."
+
+# NEW-4 — suggestions
+
+[[claim]]
+id = "P5.S.1.e"
+claim = "A suggestion arrives pending (status 'pending', no decided_at, no client created_at), with bounded text (body ≤ 20,000 characters, title ≤ 500, note ≤ 2,000, path ≤ 300, block id ≤ 200), at most 20 per sender per hour, 20 pending per sender and course and 200 pending per course; the target owner may change only status and decided_at."
+oracle = "probe"
+bound_to = [
+  "apps/web/src/lib/loop-r2-sec.sql.test.ts :: a sender cannot insert a pre-decided suggestion",
+  "apps/web/src/lib/loop-r2-sec.sql.test.ts :: text columns are bounded (body ≤ 20,000 characters)",
+  "apps/web/src/lib/loop-r2-sec.sql.test.ts :: one statement of 2,000 suggestions is refused (per-sender rate limit)",
+  "apps/web/src/lib/loop-r2-sec.sql.test.ts :: the hourly cap stops a sender sending one by one",
+  "apps/web/src/lib/loop-r2-sec.sql.test.ts :: the target owner resolves only status and decided_at",
+]
+note = "Loop r2 NEW-4, migration 0028_loop_r2_3 (either order). The sending package need not be published: suggest-back comes from an adaptation, which starts as a trial (spec: adapt-actions / educator-version-contract 'Propose a correction')."
+
+# NEW-5 — listings are written by the server
+
+[[claim]]
+id = "P5.S.1.f"
+claim = "No API role can insert or update a portal_registrations row; registerPackageAction writes the listing with the service client only after its gates (published, open licence, attestation, release gates), scoped to the verified owner; the owner may still delete (unlist)."
+oracle = "probe"
+bound_to = [
+  "apps/web/src/lib/loop-r2-sec.sql.test.ts :: the owner cannot insert or update a registration through the API, only delete it",
+  "apps/web/src/lib/package-trust-writes.test.ts :: recordListing proves the package is the owner's, then upserts naming that owner",
+  "apps/web/src/lib/package-trust-writes.test.ts :: someone else's package or no service key writes nothing",
+  "apps/web/src/lib/package-trust-writes.test.ts :: registerPackageAction lists through recordListing, never through the session",
+]
+note = "Loop r2 NEW-5, migration 0028_loop_r2_4. Deploy: CODE FIRST (the pre-r2 session upsert is refused once 0028_4 is applied)."
+
+# LOW-1 — the public reads only listable registrations
+
+[[claim]]
+id = "P5.S.1.g"
+claim = "A portal_registrations row is readable by anon / other users only while its course is listable (published, not archived, recorded repo, owner's consent); its owner always reads it."
+oracle = "probe"
+bound_to = [
+  "apps/web/src/lib/loop-r2-sec.sql.test.ts :: a registration row of a trial or archived package is not publicly readable; its owner still sees it",
+]
+note = "Loop r2 LOW-1, 0028_loop_r2_4. Nothing public reads unlisted rows (Discover reads discovery_courses)."
+
+# LOW-3 — definer hygiene
+
+[[claim]]
+id = "P5.S.14"
+claim = "Every SECURITY DEFINER function in the public schema pins search_path to the empty string."
+oracle = "invariant"
+bound_to = [
+  "apps/web/src/lib/loop-r2-sec.sql.test.ts :: every SECURITY DEFINER function in public has an empty search_path",
+]
+note = "Loop r2 LOW-3, migration 0028_loop_r2_5 (file_portal_report, file_portal_report_v2, rate_limit_hit were search_path=public)."
+
+# LOW-4 — adaptations need content
+
+[[claim]]
+id = "P5.S.3.f"
+claim = "A course's adaptation_count counts an adapting package only when it is published, not archived, another educator's, and holds at least one live public file; an empty course naming a source in its manifest adds nothing."
+oracle = "probe"
+bound_to = [
+  "apps/web/src/lib/loop-r2-sec.sql.test.ts :: an empty published course claiming adaptedFrom adds nothing; one with a live file counts",
+]
+note = "Loop r2 LOW-4, 0028_loop_r2_1. OPEN (DecisionLog 2026-10-23 r2): documents.adapted_from / author stay owner-asserted (server-only lineage writes would need a service-role registry path); Sybil inflation needs real GitHub accounts; per-user quotas not built. Recount is event-driven at publish/archive/rebuild."
+
+# Improvement 2 — the writable-column inventory
+
+[[claim]]
+id = "P5.S.15"
+claim = "No column the authenticated role can insert or update feeds ranking, listability, recency or the /d byte source, unless a named mechanism makes a client value inert (trigger-owned, generated, policy-pinned) or it is a recorded accepted-open item; the inventory of writable columns is complete."
+oracle = "invariant"
+bound_to = [
+  "apps/web/src/lib/loop-r2-sec.sql.test.ts :: every sensitive column is unwritable by authenticated, or listed with what neutralises it",
+  "apps/web/src/lib/loop-r2-sec.sql.test.ts :: the inventory is complete: every column authenticated can write is either harmless or listed",
+  "apps/web/src/lib/loop-r2-sec.sql.test.ts :: the neutralised columns are inert in practice",
+]
+note = "Loop r2 improvement 2. The sensitive list is explicit in the test (SENSITIVE); documents.adapted_from is the one accepted-open entry (LOW-4)."
+

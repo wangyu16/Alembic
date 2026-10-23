@@ -98,23 +98,29 @@ describe("H1 a registration row is consent only when the package owner wrote it"
 
   it("[P5.S.1.a] the owner still lists, re-lists (upsert) and unlists their own course", async () => {
     const pkg = await seedPackage(db, { owner: victim });
-    // The statement PostgREST issues for registerPackageAction's `.upsert()`:
-    // every column it sends, and owner_id is NOT one of them (it defaults to
-    // the caller — an upsert that SETs it would need to read owner_id).
+    // Since loop r2 (NEW-5, 0028_loop_r2_4) registerPackageAction checks its
+    // gates and then writes through the SERVICE client, naming the owner it
+    // verified (lib/package-trust-writes.ts, recordListing). The statement it
+    // issues for `.upsert()`:
     const upsert = `insert into public.portal_registrations
-        (package_id, title, description, license, public_repo_url, site_url)
-      values ($1, $2, '', 'CC-BY-4.0', 'u', 's')
+        (package_id, owner_id, title, description, license, public_repo_url, site_url)
+      values ($1, $3, $2, '', 'CC-BY-4.0', 'u', 's')
       on conflict (package_id) do update set
         title = excluded.title, description = excluded.description,
         license = excluded.license, public_repo_url = excluded.public_repo_url, site_url = excluded.site_url`;
-    await asRole(db, "authenticated", () => db.query(upsert, [pkg, "Mine"]), victim);
-    await asRole(db, "authenticated", () => db.query(upsert, [pkg, "Mine again"]), victim);
+    await asRole(db, "service_role", () => db.query(upsert, [pkg, "Mine", victim]));
+    await asRole(db, "service_role", () => db.query(upsert, [pkg, "Mine again", victim]));
     const { rows: reg } = await db.query<{ owner_id: string; title: string }>(
       `select owner_id, title from public.portal_registrations where package_id = $1`,
       [pkg],
     );
     expect(reg[0]).toEqual({ owner_id: victim, title: "Mine again" });
     expect(await listedIds()).toContain(pkg);
+    // The owner's own session can no longer write it (P5.S.1.f) …
+    expect(await attempt(() => asRole(db, "authenticated", () => db.query(upsert, [pkg, "Direct", victim]), victim))).toBe(
+      "refused",
+    );
+    // … but still unlists it.
     const { rows } = await asRole(
       db,
       "authenticated",

@@ -6,6 +6,39 @@ design, and what is deferred to the future. Complements [Status.md](Status.md)
 
 ---
 
+## 2026-10-23 — Closed loop r2 (security): server-owned signals, ids never reissued, Supabase-shaped test database
+
+Round-2 security audit (probes in `/tmp/alembic-r2/`), fixed on branch `phase5/loop-r2-sec` (not merged,
+migrations `0028_loop_r2_1…5` not applied). Decisions:
+
+- **The SQL test database is Supabase-shaped (P5.S.13).** Migrations run as a NON-superuser owner, each file in a
+  fresh session, because round 1's production failure (42501 on 0025) was invisible to a superuser harness. The
+  replayed data directory is cached by content hash; superuser-only settings (`track_functions`) are server
+  configuration set by the harness, never by the owner.
+- **Every server read of a published package's repository uses the publish-recorded repo (P5.S.3.e).**
+  `manifest.publicRepo` stays the course's own record in `alembic.json`, but no server path reads it; a static
+  scan pins that (five listed exceptions, none a stored manifest field).
+- **The trusted accessibility result describes the published bytes (P5.S.3.g).** The check audits the recorded
+  public repo at head through the educator's own GitHub connection; a trial's check is the owner's preview and is
+  not recorded as the trusted result. Concept-map topics still read the mirror (listing text the owner writes
+  anyway).
+- **Recency columns are server-owned for every role (P5.A.1.n)**, by BEFORE triggers (not column revokes), so the
+  registry's existing upserts keep working and no deploy coupling arises; the projector also clamps to now().
+- **Ids are never reissued (P5.B.1.q)** — a private ledger fed by delete triggers, checked on insert. Chosen over
+  forbidding package deletion: trial deletion and archived-course purge stay, the id simply stays dead. Ids
+  deleted before 0028 and referenced nowhere cannot be recovered (back-fill covers lineage targets and research
+  events).
+- **The "taken" lookup answers only for the caller's own package (P5.B.1.r).** Residual accepted: a caller learns
+  whether an id it already holds is taken (inherent in uid adoption).
+- **Suggestions arrive pending, bounded and rate-limited (P5.S.1.e)**; the sending package need NOT be published
+  (suggest-back comes from an adaptation, which starts as a trial).
+- **Listing rows are written by the server after the gates (P5.S.1.f)** — the package-trust-writes pattern; the
+  owner keeps DELETE (unlist). Deploy: code first.
+- **Adaptation counts (LOW-4, P5.S.3.f): partly fixed, partly open.** A course adaptation now needs adapted
+  content (≥ 1 live public file). OPEN: `documents.adapted_from` / `author` remain owner-asserted — a server-only
+  lineage write needs a service-role registry path, disproportionate now; Sybil inflation needs real GitHub
+  accounts; per-user quotas are not built.
+
 ## 2026-10-23 — Loop r1 + r1b integration: 0026 inherits 0025_2's projector; one deploy window
 
 | # | Decision | Why |

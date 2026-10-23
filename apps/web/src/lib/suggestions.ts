@@ -18,6 +18,21 @@ export interface SuggestionRow {
 const COLS =
   "id, target_package_id, from_package_id, chapter_path, source_block_id, suggested_title, suggested_body, note, status, created_at";
 
+/**
+ * The database's bounds on a suggestion (migration 0028_loop_r2_3, security
+ * loop r2 NEW-4) — checked here first so the educator gets a clear answer.
+ */
+export const SUGGESTION_LIMITS = { body: 20_000, title: 500, note: 2_000 } as const;
+
+/** Whether a suggestion fits the database's bounds. */
+export function suggestionFits(row: { suggestedBody: string; suggestedTitle: string | null; note: string }): boolean {
+  return (
+    row.suggestedBody.length <= SUGGESTION_LIMITS.body &&
+    (row.suggestedTitle ?? "").length <= SUGGESTION_LIMITS.title &&
+    row.note.length <= SUGGESTION_LIMITS.note
+  );
+}
+
 /** Send a suggestion to another educator's (registered) package. RLS enforces
  *  consent (target must be registered) + sender identity. Returns false on deny. */
 export async function sendSuggestion(

@@ -4,7 +4,7 @@ import { prepareSources } from "@alembic/renderer";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { fetchDocBytes } from "@/lib/doc-content";
-import { resolvePermalinkAccess } from "@/lib/permalink-access";
+import { pinSatisfied, resolvePermalinkAccess } from "@/lib/permalink-access";
 
 /**
  * The app's own permalink host — the ONLY host whose `{{md-include …}}`
@@ -153,7 +153,10 @@ async function resolveOwnPermalink(docId: string, pin: string | null): Promise<s
     );
     if (access.status !== "ok") return null;
     const { doc, db } = access;
-    if (pin && doc.source_hash && pin !== doc.source_hash) return null;
+    // A pin resolves only to the doc whose KNOWN current hash it names (loop
+    // r2, NEW-3): never to unverified bytes, and — retired ids never being
+    // reissued (0028_loop_r2_2) — never to another package's file.
+    if (pin !== null && !pinSatisfied(pin, doc.source_hash)) return null;
     const bytes = await fetchDocBytes(db, doc);
     if (!bytes || bytes.byteLength > MAX_INCLUDE_BYTES) return null;
     return bytes.toString("utf8");

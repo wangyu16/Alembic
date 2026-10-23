@@ -76,6 +76,37 @@ became a claim + a probe that fails on `d4544cc` + a fix of the class ([Decision
   published course's recorded public repository at its head (`lib/a11y-audit.ts`, through the educator's own GitHub
   connection; unreadable → refused, never the mirror), and only that audit is recorded as the trusted
   `a11y_status`; a trial's check updates its own manifest only. Probe `a11y-audit.test.ts`. Code only.
+- ✅ **NEW-2 — forgeable recency (P5.A.1.n).** `portal_registrations.registered_at` and `documents.registered_at`
+  were client-writable and projected as listed_at/updated_at (a course "registered in 2099" stayed newest).
+  Migration `0028_loop_r2_1_timestamps.sql`: clamp stored future values, BEFORE triggers make both columns
+  server-owned for every role, the projector clamps with `least(…, now())`, one re-projection.
+- ✅ **NEW-3 — reusable ids after deletion (P5.B.1.q).** A purged package freed its docIds and its package id for
+  anyone (a pinned citation could then serve someone else's bytes; a re-created package id inherited adaptations).
+  Migration `0028_loop_r2_2_retired_ids.sql`: private `retired_ids` ledger fed by delete triggers (cascades
+  included), back-filled from lineage and research events; inserts of a retired id refused for every role;
+  `documents_foreign_doc_ids` reports retired ids as taken. App: a pin is satisfied only by a known current hash
+  in `/d` and in includes (`pinSatisfied`). Siblings: **LOW-2 (P5.B.1.r)** the taken-lookup refuses a package
+  the caller does not own (membership oracle closed), ≤ 500 ids.
+- ✅ **NEW-4 — suggestions (P5.S.1.e).** `0028_loop_r2_3_suggestions.sql`: insert only the sender's columns and
+  only `pending` with no `decided_at`; length bounds (body ≤ 20,000); ≤ 20/h per sender, ≤ 20 pending per
+  sender+course, ≤ 200 pending per course (definer trigger on `rate_limit_hit`); the owner updates only status /
+  decided_at. App refuses an over-long suggestion with a clear message. The sending package need not be published
+  (adaptations start as trials).
+- ✅ **NEW-5 — listing without the gates (P5.S.1.f)** and **LOW-1 — unlisted rows publicly readable (P5.S.1.g).**
+  `0028_loop_r2_4_registrations.sql`: no API-role insert/update (owner keeps delete); read only when listable or
+  by the owner. `registerPackageAction` writes through `packageTrustWriter.recordListing` (service client, owner
+  verified) after its gates. **Deploy: code first.**
+- ✅ **LOW-3 — definer search_path (P5.S.14).** `0028_loop_r2_5_definer_hygiene.sql` pins `search_path=''` on
+  `file_portal_report(_v2)` and `rate_limit_hit`, and revokes stray update grants (research_events,
+  portal_reports, rate_limit_counters). Test: every SECURITY DEFINER function has an empty search_path.
+- 🔄 **LOW-4 — adaptation counts (P5.S.3.f).** A course adaptation now needs a live public file in the adapter
+  (`_1`). **Open:** file-level `adapted_from`/`author` remain owner-asserted; per-user quotas not built
+  (DecisionLog).
+- ✅ **Improvement 2 — writable-column inventory (P5.S.15).** A test enumerates every column `authenticated` can
+  insert/update and fails if any listed sensitive column (ranking, listability, recency, `/d` byte source) is
+  writable without a named neutraliser, or if an unknown writable column appears.
+- **Deploy order:** see [Deployment.md](Deployment.md) "Closed loop round 2": pre-checks → r2 code → `0028_1` …
+  `_5` in order (`_4` strictly after the code).
 
 **Phase 5 closed-loop verification — round 1 integration: loops r1 + r1b merged (2026-10-23, branch
 `phase5/loop-r1-integrate`, not pushed, migrations NOT applied).** `main` already carried loop r1 (security);

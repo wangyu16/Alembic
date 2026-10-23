@@ -30,6 +30,22 @@ round 1 set `0025_loop_r1_1` … `_5` → `0026_loop_r1b_discovery` →
 `0027_loop_r1b_registry` (**strictly in file order, and only as described in
 "Closed loop round 1" below** — they and the code depend on each other).
 
+### Closed loop round 2 — security (branch `phase5/loop-r2-sec`, 2026-10-23): deploy order
+
+All five files are additive, each passes the non-superuser fresh-session replay (P5.S.13), and only `_4` is
+order-sensitive:
+
+1. **Read-only pre-checks** (headers of each file): future timestamps the clamp will touch (`_1`); ids the ledger
+   back-fill will record (`_2`); oversized suggestions (`_3`, they stay — the bound is NOT VALID); registrations
+   that become owner-only to read (`_4`); definer functions without an empty search_path (`_5`). Also: published
+   packages with no recorded repo (they can no longer save, snapshot or publish their website until re-published —
+   the same query as `0025_loop_r1_2`'s first pre-check).
+2. **Deploy the r2 web code** (needs `SUPABASE_SECRET_KEY`, already required): listing now writes through the
+   service client.
+3. **Apply in order:** `0028_loop_r2_1_timestamps` (re-projects Discover once) → `_2_retired_ids` →
+   `_3_suggestions` → `_4_registrations` (must follow step 2) → `_5_definer_hygiene`. `_1`, `_2`, `_3`, `_5`
+   work with the old code too.
+
 ### Closed loop round 1 (loops r1 + r1b, merged 2026-10-23): combined deploy order
 
 The security round (`0025_loop_r1_1…5`) wants the new code **before** `_1`,
@@ -95,6 +111,7 @@ and run all migrations there (recommended for a real pilot).
 | `0019_document_tags` | Required before relying on per-file asset tags/metadata in production. |
 | `0023_trackA_infra` | Additive, any order relative to the code (Phase 5 Track A.6–A.7). Makes `research_events.user_id` nullable (an anonymous visitor's discovery event has no participant) and adds `rate_limit_counters` + `rate_limit_hit()` (service role only). Without it: report rate limits count per server instance only, and anonymous discovery events are dropped. |
 | `0024_harden_report_cap` | **Deploy code first; needs `0023`; needs `SUPABASE_SECRET_KEY`.** Closes the direct anon/authenticated insert into `portal_reports` and makes `file_portal_report()` (service role only; per-package 10 / h, 30 / day; all reports 60 / h, 300 / day via `rate_limit_hit`) the only insert path; adds the `(occurred_at, id)` index the paged research export walks. Code from the Phase 5 hardening branch files reports through the function and falls back to the old direct insert only while the function does not exist — older code applied against 0024 cannot file reports. Verify with `supabase/tests/0024_verify_report_cap.sql`. |
+| `0028_loop_r2_1` … `_5` | Security loop r2 — see "Closed loop round 2" above. `_1` server-owned registered_at + projector clamp + adaptations need content; `_2` retired-id ledger + scoped taken-lookup; `_3` suggestions pending/bounded/rate-limited; `_4` registrations server-written, readable when listable (**code first**); `_5` definer search_path + privilege sweep. |
 | `0025_loop_r1_1` … `_5`, `0026`, `0027` | **One window with the code switch** — see "Closed loop round 1" above. `_1` owner-only listing consent; `_2` package trust (column grants on `packages`, server a11y record, recorded repo); `_3` report cap v2 (either order); `_4` role statement timeouts (either order); `_5` server-only research events; `0026` incremental discovery projector + trigger-owned recency (needs `0025_2`); `0027` content digests, one package per docId, `documents_apply` (needs `0026`). |
 | `0020_staging_bucket` | **Requires owner / service-role privileges** — it inserts a row into `storage.buckets` and creates policies on `storage.objects`, which the ordinary anon/authenticated roles cannot do. Run it as the project owner in the SQL editor (or with the service-role connection), not from an app-side client. **Apply it *before* deploying the code that uses the staging bucket** (the Wave-3 zip-upload path: `api/staging-url`, `lib/staging.ts`, `api/populate-package`); without the bucket every whole-course zip upload fails at the signed-URL step. It is additive — a private `staging` bucket plus four owner-prefix RLS policies namespaced to it; no existing table, policy, or bucket changes. |
 

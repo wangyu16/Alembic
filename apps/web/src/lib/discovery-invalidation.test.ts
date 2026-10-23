@@ -61,6 +61,8 @@ const LISTABILITY_WRITES: Array<[string, RegExp]> = [
   ["packages.archived_at write (server)", /\.setArchived\(/],
   ["packages.storage / public_repo write (server)", /\.recordPublished\(/],
   ["packages.a11y_status write (server)", /\.recordA11yCheck\(/],
+  // Since security loop r2 (NEW-5) the listing row is written by the server.
+  ["portal_registrations write (server)", /\.recordListing\(/],
 ];
 
 /**
@@ -71,6 +73,10 @@ const LISTABILITY_WRITES: Array<[string, RegExp]> = [
 const EXEMPT = new Map<string, string>([
   ["app/workspace/lifecycle-actions.ts#deletePackageAction", "trial packages only; never listed"],
   ["app/workspace/lifecycle-actions.ts#reconcileArchivedPackages", "archived packages only; never listed"],
+  [
+    "lib/package-trust-writes.ts#packageTrustWriter",
+    "the server-write primitive; its callers (recordListing etc.) are scanned and invalidate",
+  ],
 ]);
 
 function writers(): Array<{ id: string; what: string[]; invalidates: boolean }> {

@@ -32,6 +32,18 @@ export interface RepoRef {
 
 type ServiceFactory = () => SupabaseClient | null;
 
+/** The listing snapshot registerPackageAction writes (portal_registrations columns). */
+export interface ListingSnapshot {
+  title: string;
+  description: string;
+  keywords: string[];
+  discipline: string;
+  license: string;
+  public_repo_url: string;
+  site_url: string;
+  accessibility_status: string;
+}
+
 async function ownerScopedUpdate(
   service: SupabaseClient | null,
   packageId: string,
@@ -73,6 +85,36 @@ export function packageTrustWriter(serviceFactory: ServiceFactory) {
     /** Archive (a timestamp) or restore (null). */
     setArchived(packageId: string, ownerId: string, archivedAt: string | null): Promise<TrustWriteResult> {
       return ownerScopedUpdate(serviceFactory(), packageId, ownerId, { archived_at: archivedAt });
+    },
+
+    /**
+     * "List publicly" (security loop r2, NEW-5; migration 0028_loop_r2_4): the
+     * API roles may no longer insert or update `portal_registrations`, so the
+     * listing is written HERE, after registerPackageAction has checked every
+     * gate (published, open licence, attestation, release gates). The service
+     * client bypasses RLS, so the package must first be proven to be this
+     * owner's; the row names that owner explicitly. Unlisting stays the
+     * owner's own DELETE.
+     */
+    async recordListing(packageId: string, ownerId: string, snapshot: ListingSnapshot): Promise<TrustWriteResult> {
+      const service = serviceFactory();
+      if (!service) return { ok: false, reason: "no-service-client" };
+      try {
+        const { data: own, error: readError } = await service
+          .from("packages")
+          .select("id")
+          .eq("id", packageId)
+          .eq("owner_id", ownerId)
+          .maybeSingle();
+        if (readError) return { ok: false, reason: "failed" };
+        if (!own) return { ok: false, reason: "not-found" };
+        const { error } = await service
+          .from("portal_registrations")
+          .upsert({ package_id: packageId, owner_id: ownerId, ...snapshot }, { onConflict: "package_id" });
+        return error ? { ok: false, reason: "failed" } : { ok: true };
+      } catch {
+        return { ok: false, reason: "failed" };
+      }
     },
 
     /** The server-side accessibility check's result (what Discover trusts). */

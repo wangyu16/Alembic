@@ -83,3 +83,79 @@ describe("M2 the trust columns are written by the service client, scoped to the 
     ).toEqual({ ok: false, reason: "failed" });
   });
 });
+
+describe("NEW-5 the listing row is written by the server, scoped to the owner", () => {
+  function listingService(owned: boolean) {
+    const calls: Array<{ table: string; op: string; arg?: unknown; filters: Array<[string, unknown]> }> = [];
+    const client = {
+      from(table: string) {
+        const call = { table, op: "", arg: undefined as unknown, filters: [] as Array<[string, unknown]> };
+        calls.push(call);
+        const q = {
+          select() {
+            call.op = "select";
+            return q;
+          },
+          eq(col: string, v: unknown) {
+            call.filters.push([col, v]);
+            return q;
+          },
+          maybeSingle: async () => ({ data: owned ? { id: "pkg-1" } : null, error: null }),
+          upsert: async (row: unknown, opts: unknown) => {
+            call.op = "upsert";
+            call.arg = { row, opts };
+            return { error: null };
+          },
+        };
+        return q;
+      },
+    };
+    return { client: client as unknown as SupabaseClient, calls };
+  }
+  const snapshot = {
+    title: "T",
+    description: "",
+    keywords: [],
+    discipline: "chemistry",
+    license: "CC-BY-4.0",
+    public_repo_url: "https://github.com/edu/c-oer",
+    site_url: "https://edu.github.io/c-oer/",
+    accessibility_status: "unknown",
+  };
+
+  it("[P5.S.1.f] recordListing proves the package is the owner's, then upserts naming that owner", async () => {
+    const { client, calls } = listingService(true);
+    expect(await packageTrustWriter(() => client).recordListing("pkg-1", "user-1", snapshot)).toEqual({ ok: true });
+    expect(calls[0]).toMatchObject({ table: "packages", filters: [["id", "pkg-1"], ["owner_id", "user-1"]] });
+    expect(calls[1]).toMatchObject({
+      table: "portal_registrations",
+      op: "upsert",
+      arg: { row: { package_id: "pkg-1", owner_id: "user-1", ...snapshot }, opts: { onConflict: "package_id" } },
+    });
+  });
+
+  it("[P5.S.1.f] someone else's package or no service key writes nothing", async () => {
+    const other = listingService(false);
+    expect(await packageTrustWriter(() => other.client).recordListing("pkg-1", "user-2", snapshot)).toEqual({
+      ok: false,
+      reason: "not-found",
+    });
+    expect(other.calls.some((c) => c.op === "upsert")).toBe(false);
+    expect(await packageTrustWriter(() => null).recordListing("pkg-1", "user-1", snapshot)).toEqual({
+      ok: false,
+      reason: "no-service-client",
+    });
+  });
+
+  it("[P5.S.1.f] registerPackageAction lists through recordListing, never through the session", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { resolve } = await import("node:path");
+    const src = readFileSync(resolve(__dirname, "../app/workspace/[packageId]/portal-actions.ts"), "utf8");
+    const register = src.slice(src.indexOf("export async function registerPackageAction"), src.indexOf("export async function unregisterPackageAction"));
+    expect(register).toMatch(/packageTrustWriter\(createServiceClient\)\.recordListing\(packageId, user\.id,/);
+    expect(register).not.toMatch(/from\("portal_registrations"\)/);
+    // The gates run before the write.
+    expect(register.indexOf("releaseGates(")).toBeLessThan(register.indexOf("recordListing("));
+    expect(register.indexOf("if (!attestation)")).toBeLessThan(register.indexOf("recordListing("));
+  });
+});

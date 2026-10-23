@@ -101,3 +101,13 @@ export async function resolvePermalinkAccess(
 
   return { status: "ok", doc, db, ownerOnly };
 }
+
+/**
+ * Does a `/d/{docId}@{pin}` pin name this file's current version? Only an
+ * exact match to a KNOWN hash (security loop r2, NEW-3): a row with no hash
+ * cannot satisfy any pin — before r2 a pin on such a row was ignored and the
+ * current, unverified bytes were served as if they were the pinned version.
+ */
+export function pinSatisfied(pin: string, hash: string | null | undefined): boolean {
+  return typeof hash === "string" && hash.length > 0 && pin === hash;
+}

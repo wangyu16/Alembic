@@ -197,13 +197,20 @@ describe("M2 discovery reads the publish-recorded repository", () => {
 describe("M2 adaptation counts only published adaptations by other educators", () => {
   it("[P5.S.3.c] trial socks and the owner's own packages add nothing; distinct educators count once", async () => {
     const target = await seedPackage(db, { owner, listed: true });
-    const fork = (by: string, storage: "sandbox" | "github", archived = false) =>
-      seedPackage(db, {
+    // A fork holds content (loop r2, LOW-4: an empty course naming a source
+    // adds nothing), then the publish path records its state.
+    const fork = async (by: string, storage: "sandbox" | "github", archived = false) => {
+      const id = await seedPackage(db, {
         owner: by,
-        storage,
-        archived,
+        storage: "sandbox",
         manifest: { adaptedFrom: { packageId: target, license: "CC-BY-4.0", attribution: "x" } },
       });
+      await seedDoc(db, { packageId: id, path: "study-guide/a.md", space: "study-guide", kind: "md" });
+      if (storage === "github" || archived) {
+        await setByService(id, `storage = '${storage}'${archived ? ", archived_at = now()" : ""}`);
+      }
+      return id;
+    };
     for (let i = 0; i < 5; i++) await fork(other, "sandbox");
     await fork(owner, "github");
     expect((await course(target))?.adaptation_count).toBe(0);

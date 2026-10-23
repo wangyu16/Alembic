@@ -46,6 +46,7 @@ import { committerFor } from "@/lib/committer";
 import { recordChange } from "@/lib/changes";
 import {
   sendSuggestion,
+  suggestionFits,
   listIncomingSuggestions,
   getSuggestion,
   setSuggestionStatus,
@@ -662,7 +663,11 @@ export async function suggestBackAction(
       });
     } else {
       // Cross-owner (M31.2): send to the upstream owner's suggestions inbox. RLS
-      // gates on the target being portal-registered (consent) + sender identity.
+      // gates on the target being portal-registered (consent) + sender identity;
+      // the database bounds the text and rate-limits senders (loop r2, NEW-4).
+      if (!suggestionFits({ suggestedBody: suggested.body, suggestedTitle: suggested.title, note })) {
+        return { ok: false, error: "That section or note is too long to suggest. Shorten it and try again." };
+      }
       const sent = await sendSuggestion(supabase, {
         targetPackageId: ref.sourcePackageId,
         fromPackageId: packageId,

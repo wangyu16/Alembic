@@ -339,11 +339,16 @@ describe("A.1 freshness: the projection follows every change", () => {
     // Adaptations count distinct OTHER educators whose adapting course is
     // published (security loop r1, M2; package-trust.sql.test.ts).
     const other = await seedUser(db, "adapter");
-    // A whole-course fork (manifest.adaptedFrom) …
-    await seedPackage(db, {
+    // A whole-course fork (manifest.adaptedFrom) — it holds content (loop r2,
+    // LOW-4) and counts once it is published …
+    const fork = await seedPackage(db, {
       owner: other,
+      storage: "sandbox",
       manifest: { adaptedFrom: { packageId: src, license: "CC-BY-4.0", attribution: "x" } },
     });
+    await seedDoc(db, { packageId: fork, path: "study-guide/a.md", space: "study-guide", kind: "md" });
+    expect((await course(src))!["adaptation_count"]).toBe(0);
+    await db.query(`update public.packages set storage = 'github' where id = $1`, [fork]);
     expect((await course(src))!["adaptation_count"]).toBe(1);
     // … and an element copy into another educator's package.
     const third = await seedPackage(db, { owner: await seedUser(db, "adapter-2") });
@@ -510,21 +515,24 @@ describe("A.1 best-effort and rebuild", () => {
 });
 
 describe("A.1 the real write path: an educator's own session (RLS) drives the projection", () => {
-  it("[P5.A.1.g] listing and sharing through the owner's own session, and archiving through the server, refresh the index", async () => {
+  it("[P5.A.1.g] listing through the server, sharing through the owner's own session, and archiving through the server, refresh the index", async () => {
     const me = await seedUser(db, "session-owner");
     const id = await seedPackage(db, { owner: me, title: "Session Course" });
     const doc = await seedDoc(db, { packageId: id, discoverable: false });
+    // "List publicly": registerPackageAction's gated write through the
+    // service client (loop r2, NEW-5 — the owner's session may not write it).
+    await asRole(db, "service_role", () =>
+      db.query(
+        `insert into public.portal_registrations
+           (package_id, owner_id, title, license, public_repo_url, site_url)
+         values ($1, $2, 'Session Course', 'CC-BY-4.0', 'x', 'y')`,
+        [id, me],
+      ),
+    );
     await asRole(
       db,
       "authenticated",
       async () => {
-        // "List publicly" (registerPackageAction's upsert, under RLS)
-        await db.query(
-          `insert into public.portal_registrations
-             (package_id, owner_id, title, license, public_repo_url, site_url)
-           values ($1, $2, 'Session Course', 'CC-BY-4.0', 'x', 'y')`,
-          [id, me],
-        );
         // "Share this" (shareFileAction's update, under RLS)
         await db.query(`update public.documents set discoverable = true where doc_id = $1`, [doc]);
       },
@@ -559,7 +567,7 @@ describe("A.1 the real write path: an educator's own session (RLS) drives the pr
           ),
         attacker,
       ),
-    ).rejects.toThrow(/row-level security/i);
+    ).rejects.toThrow(/row-level security|permission denied/i);
     await asRole(
       db,
       "authenticated",
