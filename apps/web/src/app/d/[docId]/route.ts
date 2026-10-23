@@ -2,6 +2,7 @@ import type { NextRequest } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { fetchDocBytes, bytesToBody } from "@/lib/doc-content";
+import { resolvePermalinkAccess } from "@/lib/permalink-access";
 
 export const dynamic = "force-dynamic";
 
@@ -14,29 +15,23 @@ export const dynamic = "force-dynamic";
  * Resolution (permalinks-and-registration.md §3):
  * - tombstoned            → 410 with a small educator-language page
  * - private space/repo    → owner-only (signed-in session); others see 404
+ * - any file of a TRIAL   → owner-only too (S1, 2026-10-23): an unpublished
+ *   (sandbox) package       course is not public; served from the sandbox
+ *                           store to its owner only. The decision table lives
+ *                           in `lib/permalink-access.ts` (shared with includes)
  * - public + GitHub repo  → platform-served from the public repo with the
  *                           correct MIME (raw.githubusercontent is an internal
  *                           transport only — it serves text/plain + nosniff,
  *                           so self-contained HTML must be re-served, not
  *                           redirected)
- * - public + trial        → served from the sandbox store
  * - `@{version}` pins     → served when the pin matches the CURRENT version;
  *                           older pins need the version store (R3) — honest
  *                           educator-language interim message until then
  *
- * Anonymous access to public files needs the service client (registry RLS is
- * owner-only in MVP); without SUPABASE_SECRET_KEY the resolver still works for
- * signed-in owners via their session.
+ * Anonymous access to published public files needs the service client
+ * (registry RLS is owner-only in MVP); without SUPABASE_SECRET_KEY the resolver
+ * still works for signed-in owners via their session.
  */
-
-interface DocRow {
-  doc_id: string;
-  package_id: string;
-  repo: "public" | "private";
-  path: string;
-  source_hash: string | null;
-  tombstoned: boolean;
-}
 
 const MIME: Array<[RegExp, string]> = [
   [/\.(md\.html|slides\.html|paged\.html|html)$/i, "text/html; charset=utf-8"],
@@ -110,40 +105,22 @@ export async function GET(
   const at = raw.indexOf("@");
   const docId = at === -1 ? raw : raw.slice(0, at);
   const pin = at === -1 ? null : raw.slice(at + 1);
-  if (!/^doc-[a-z0-9]+$/.test(docId)) return notFound();
 
-  // Prefer the service client (anonymous access to public files); fall back to
-  // the visitor's session (owners can always resolve their own files).
-  const session = await createSupabaseServerClient();
-  const service = createServiceClient();
-  const db = service ?? session;
-
-  const { data } = await db
-    .from("documents")
-    .select("doc_id, package_id, repo, path, source_hash, tombstoned")
-    .eq("doc_id", docId)
-    .maybeSingle();
-  const doc = data as DocRow | null;
-  if (!doc) return notFound();
-
-  if (doc.tombstoned) {
+  // Who may read this file: published public → anyone; private, or any file
+  // of an unpublished (trial) package → the owner's own session only.
+  const access = await resolvePermalinkAccess(docId, {
+    session: await createSupabaseServerClient(),
+    service: createServiceClient(),
+  });
+  if (access.status === "not-found") return notFound();
+  if (access.status === "gone") {
     return page(
       410,
       "This file was removed",
       "The educator removed this file. Its address is never reused, so this page is permanent.",
     );
   }
-
-  // Private files: only the owner (checked via their own session, so RLS does
-  // the ownership test). Everyone else sees the same 404 as a missing doc.
-  if (doc.repo === "private") {
-    const { data: own } = await session
-      .from("documents")
-      .select("doc_id")
-      .eq("doc_id", docId)
-      .maybeSingle();
-    if (!own) return notFound();
-  }
+  const { doc, db, ownerOnly } = access;
 
   // Version pin: the registry holds the CURRENT version; older pins arrive
   // with R3's version store.
@@ -166,13 +143,15 @@ export async function GET(
   return new Response(bytesToBody(content), {
     headers: {
       "content-type": mimeFor(doc.path),
-      // Live links: short cache. Pinned-and-matching: immutable.
-      "cache-control":
-        pin && pin === doc.source_hash
+      // Owner-only answers (private, trial) are never stored by a shared
+      // cache. Public live links: short cache; pinned-and-matching: immutable.
+      "cache-control": ownerOnly
+        ? "private, no-store"
+        : pin && pin === doc.source_hash
           ? "public, max-age=31536000, immutable"
           : "public, max-age=60",
-      // Public objects are embeddable cross-origin (permalink-as-src).
-      ...(doc.repo === "public" ? { "access-control-allow-origin": "*" } : {}),
+      // Published public objects are embeddable cross-origin (permalink-as-src).
+      ...(!ownerOnly ? { "access-control-allow-origin": "*" } : {}),
       ...securityHeaders(doc.path),
     },
   });

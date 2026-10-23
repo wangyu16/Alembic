@@ -71,7 +71,7 @@ The two forms sat in one table with nothing to distinguish them.)*
 |---|---|
 | public + published | **served through the platform** from the educator's public repo with the correct MIME type. *(Corrected 2026-08-28: this row said "302 redirect to the file on the educator's GitHub Pages site". The shipped resolver deliberately does NOT redirect — `raw.githubusercontent.com` answers `text/plain` with `nosniff`, so a redirected self-contained HTML document would display as source instead of rendering. It stays an internal transport only. The no-lock-in promise is carried by the repos and the educator's own Pages site, not by the permalink's hop.)* |
 | public + pinned | served **through the platform** from the Git object store with correct MIME (decided) — Pages keeps only the current build, and retaining snapshot builds on Pages would bloat repos |
-| private / trial / unpublished | served through the platform (GitHub-App token or Supabase) with owner/access checks — the `/api/asset/…` pattern generalized |
+| private / trial / unpublished | served through the platform (GitHub-App token or Supabase) with owner/access checks — the `/api/asset/…` pattern generalized. *(Enforced for trial packages 2026-10-23: before, the resolver served a trial package's public-space files to anyone. One decision table, `apps/web/src/lib/permalink-access.ts`, now serves the route and server-side includes; an include never resolves a private-repo file.)* |
 | deleted | tombstone page (provenance, successor pointer if forked/renamed) |
 
 Per-class behavior: **documents** resolve to the rendered self-contained

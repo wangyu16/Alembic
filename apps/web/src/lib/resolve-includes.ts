@@ -1,5 +1,9 @@
 import "server-only";
 import { prepareSources } from "@alembic/renderer";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/service";
+import { fetchDocBytes } from "@/lib/doc-content";
+import { resolvePermalinkAccess } from "@/lib/permalink-access";
 
 /**
  * The app's own permalink host — the ONLY host whose `{{md-include …}}`
@@ -73,18 +77,47 @@ export async function resolveWebIncludes(markdown: string): Promise<string> {
 
 /**
  * Resolve ONE include URL to its markdown — the `orz-host-include@1` bridge
- * target for hosted in-file editors (their preview requests URLs one at a time).
- * Only the app's own permalink host is fetched (SSRF guard); anything else, or
- * a failed/unset fetch, returns null (the file leaves the directive unresolved).
+ * target for hosted in-file editors (their preview requests URLs one at a time)
+ * and `prepareSources`' fetcher. Only the app's own permalink host is accepted
+ * (SSRF guard); anything else, or a failed/unset fetch, returns null (the file
+ * leaves the directive unresolved).
+ *
+ * A permalink (`/d/{docId}`, optionally `@{version}`) is resolved IN-PROCESS
+ * through the same access check as the resolver route
+ * (`lib/permalink-access.ts`), with the requesting educator's session: a
+ * published public file for anyone, a TRIAL package's file for its owner only
+ * (S1), and a private-repo file NEVER — an include can end up in a public
+ * artifact, so the two-repo invariant forbids it even for the owner. Other
+ * paths on the app host are fetched over HTTP as before.
  */
 export async function resolveIncludeUrl(url: string): Promise<string | null> {
   if (!PERMALINK_HOST) return null;
-  let host: string;
+  let parsed: URL;
   try {
-    host = new URL(url).host;
+    parsed = new URL(url);
   } catch {
     return null;
   }
-  if (host.toLowerCase() !== PERMALINK_HOST.toLowerCase()) return null;
+  if (parsed.host.toLowerCase() !== PERMALINK_HOST.toLowerCase()) return null;
+  const permalink = /^\/d\/(doc-[a-z0-9]+)(?:@([^/]+))?\/?$/.exec(parsed.pathname);
+  if (permalink) return resolveOwnPermalink(permalink[1]!, permalink[2] ?? null);
   return guardedFetch(url);
+}
+
+async function resolveOwnPermalink(docId: string, pin: string | null): Promise<string | null> {
+  try {
+    const access = await resolvePermalinkAccess(
+      docId,
+      { session: await createSupabaseServerClient(), service: createServiceClient() },
+      { allowPrivate: false },
+    );
+    if (access.status !== "ok") return null;
+    const { doc, db } = access;
+    if (pin && doc.source_hash && pin !== doc.source_hash) return null;
+    const bytes = await fetchDocBytes(db, doc);
+    if (!bytes || bytes.byteLength > MAX_INCLUDE_BYTES) return null;
+    return bytes.toString("utf8");
+  } catch {
+    return null;
+  }
 }

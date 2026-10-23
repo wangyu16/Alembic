@@ -81,6 +81,21 @@ deploys production; the owner says when).
   guard), `theme-css.test.ts`. **Operator actions:** redeploy **web and worker** (the worker's lockfile
   changed — `fly deploy` from the repo root); copy the new `.alembic/build/` into the
   `alembic-public-template` repo on GitHub (existing package repos keep their old manual-only copy).
+- **0.2 S1 — a trial course's permalinks are owner-only.** `/d/{docId}` served the public-space files of
+  *trial* (unpublished, sandbox) packages to anyone holding the docId, contrary to permalinks spec §3
+  ("private / trial / unpublished … with owner/access checks"). The access decision now lives in one
+  module, `apps/web/src/lib/permalink-access.ts`, used by the route and by server-side includes: published
+  public files → anyone; private-repo files and **every file of a trial package** → the owner's own session
+  only (RLS proves ownership), everyone else the same 404 as a missing doc. Owner-only answers are now sent
+  `private, no-store` without CORS (private files were `public, max-age=60` before — a shared cache could
+  have kept one). **Includes** (`{{md-include https://…/d/…}}`, preview and the hosted editor's include
+  bridge) resolve permalinks in-process through the same check with the educator's session — so an owner's
+  own trial includes keep working — and never resolve a private-repo file, even for its owner (an include
+  can land in a public artifact). **Adapting a shared element** (`adaptElementAction`) refuses a trial
+  package's file unless the educator owns it. Tests: `permalink-access.adversarial.test.ts` (anonymous,
+  signed-in stranger, owner, no service key, includes, tombstone, malformed ids, orphan rows). *Open for the
+  owner:* "Share this" is still offered in a trial course; the file becomes visible to others only once the
+  course is published.
 
 **Wave 4 / T42 — doc coherence pass (2026-08-28).** Docs-only sweep after the storage/write-path waves
 (the CLAUDE.md "after each phase, run a coherence pass" rule). Corrected: the Waves-2–3 test count
