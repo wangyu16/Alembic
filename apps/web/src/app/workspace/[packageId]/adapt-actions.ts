@@ -37,6 +37,7 @@ import { SupabaseDocumentRegistryStore } from "@/lib/document-registry-store";
 import { fetchDocBytes } from "@/lib/doc-content";
 import { registerAdaptedFile } from "@/lib/register";
 import { supabaseEventLogger } from "@/lib/events";
+import { recordDiscoveryEvent } from "@/lib/record-discovery-event";
 import { committerFor } from "@/lib/committer";
 import { recordChange } from "@/lib/changes";
 import {
@@ -80,6 +81,11 @@ export async function forkOwnPackageAction(
   title?: string,
 ): Promise<ForkResult> {
   const { supabase, user } = await requireUser();
+  // A.7: the attempt, so abandoned or refused adaptations are visible too.
+  recordDiscoveryEvent(
+    { type: "adaptation.started", packageId: sourcePackageId, mode: "fork" },
+    { userId: user.id, session: supabase },
+  );
   const store = new SupabaseSandboxStore(supabase);
   try {
     const record = await store.getPackage(sourcePackageId);
@@ -156,6 +162,10 @@ export async function adaptChapterAction(
   targetPath: string,
 ): Promise<AdaptResult> {
   const { supabase, user } = await requireUser();
+  recordDiscoveryEvent(
+    { type: "adaptation.started", packageId: sourcePackageId, mode: "chapter" },
+    { userId: user.id, session: supabase },
+  );
   const store = new SupabaseSandboxStore(supabase);
   try {
     const target = await store.getPackage(packageId);
@@ -279,6 +289,10 @@ export async function adaptFromPortalAction(
   targetPath: string,
 ): Promise<AdaptResult> {
   const { supabase, user } = await requireUser();
+  recordDiscoveryEvent(
+    { type: "adaptation.started", packageId: sourcePackageId, mode: "portal" },
+    { userId: user.id, session: supabase },
+  );
   const store = new SupabaseSandboxStore(supabase);
   try {
     const target = await store.getPackage(packageId);
@@ -419,6 +433,12 @@ export async function adaptElementAction(
   sourcePermalink: string,
 ): Promise<AdaptElementResult> {
   const { supabase, user } = await requireUser();
+  // The source package is not known until the docId is looked up (and the
+  // docId itself is never logged — discovery-events.ts).
+  recordDiscoveryEvent(
+    { type: "adaptation.started", mode: "element" },
+    { userId: user.id, session: supabase },
+  );
   const store = new SupabaseSandboxStore(supabase);
 
   const docId = parseDocId(sourcePermalink);

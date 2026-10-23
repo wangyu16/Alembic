@@ -89,6 +89,15 @@ itself (A.1–A.4) is a parallel branch (`phase5/trackA-core`) and is not touche
   stranger or owner, with or without `If-None-Match`/`*`/pins; a hidden file's 404 byte-identical to a
   missing one's; cached-then-made-private; package back to trial; rate limit before lookup), 11 cache,
   9 rate-limit.
+- ✅ **A.7b Events wired outside the portal search UI.** `/d` records `element.viewed` per public
+  DOCUMENT answered by the origin (200 or 304; not per embedded figure, not CDN hits, never owner-only
+  reads); anonymous reports `portal.reported` (+ the rate limit above); "share this" / asset metadata
+  `element.shared` / `element.unshared` only when the flag really flips; unlisting `portal.unregistered`
+  (`reason: owner`, or `archived` when archiving removed a listing); the four adapt actions
+  `adaptation.started` at the attempt (fork, chapter, portal, element — the element's source package is
+  not known yet and its docId is never logged). **Left for Track A core** (portal page / search / course
+  pages, not touched here): `portal.searched` and `course.viewed` — call `recordDiscoveryEvent` (usage in
+  its header comment) and `checkRateLimit("search", await headers())`.
 
 **Phase 5 Track B — GitHub bridge & Pages publishing: keep, strengthen (2026-10-23, branch `phase5/trackB`,
 not yet deployed).** Plan: family `docs/PHASE5-ALEMBIC.md` Track B; B.4–B.6 wait for the orz release wave.
