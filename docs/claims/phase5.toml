@@ -1112,13 +1112,26 @@ bound_to = [
 id = "P5.S.2.a"
 claim = "The research export keeps only allow-listed detail keys per event type, pseudonymises every kept package or doc id, and never emits a URL, repository name, GitHub login or free-text error message."
 oracle = "probe"
-bound_to = []
+bound_to = [
+  "packages/research-events/src/deidentify-allowlist.test.ts :: the export drops URLs, repo names, logins, paths and free text",
+  "packages/research-events/src/deidentify-allowlist.test.ts :: kept package and doc ids are pseudonymised with the package pseudonymiser",
+  "packages/research-events/src/deidentify-allowlist.test.ts :: analytic keys survive: counts, booleans, enums, statuses, modes",
+  "packages/research-events/src/deidentify-allowlist.test.ts :: an unknown event type or an unknown key is dropped (fail closed)",
+]
 
 [[claim]]
 id = "P5.S.2.b"
 claim = "No API role can insert into research_events; events are written by the server (service role) through the same allowlist, and a failed write never breaks the educator's action."
 oracle = "probe"
-bound_to = []
+bound_to = [
+  "apps/web/src/lib/research-events.sql.test.ts :: a signed-in user cannot insert an event, not even their own",
+  "apps/web/src/lib/research-events.sql.test.ts :: an anonymous visitor cannot insert an event",
+  "apps/web/src/lib/research-events.sql.test.ts :: the service role (the server-side writer) still inserts events",
+  "apps/web/src/lib/research-events.sql.test.ts :: the owner-insert policy is gone",
+  "apps/web/src/lib/events.test.ts :: the writer stores only allow-listed detail, through the service client, not the session",
+  "apps/web/src/lib/events.test.ts :: the writer swallows every failure: no service key, a refused insert, a throw, a rejection",
+  "apps/web/src/lib/events.test.ts :: discovery events pass the writer's allowlist unchanged",
+]
 
 # M2 — owners cannot self-publish, re-point the repo or inflate signals
 

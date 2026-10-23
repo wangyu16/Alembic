@@ -1,7 +1,6 @@
 import "server-only";
 import { after } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { createServiceClient } from "@/lib/supabase/service";
 import { supabaseEventLogger } from "@/lib/events";
 import { buildDiscoveryEvent, type DiscoveryEventInput } from "@/lib/discovery-events";
 
@@ -22,11 +21,11 @@ import { buildDiscoveryEvent, type DiscoveryEventInput } from "@/lib/discovery-e
  *   rule). Outside a request scope it does nothing.
  * - What is recorded is decided in `lib/discovery-events.ts` (no query text,
  *   no docIds, no IP).
- * - A signed-in visitor's event is written through their OWN session (the
- *   `insert own events` RLS); an anonymous visitor's through the service
- *   client with no participant (needs migration 0023; until then the insert
- *   fails and is dropped). Without the service key, anonymous events are
- *   simply not recorded.
+ * - Every event is written by the server-side writer (`lib/events.ts`,
+ *   service client, detail allowlist — security loop r1 M1); the session is
+ *   only used to resolve the signed-in visitor's id. An anonymous visitor's
+ *   event has no participant (needs migration 0023). Without the service
+ *   key, no discovery event is recorded.
  */
 export function recordDiscoveryEvent(
   input: DiscoveryEventInput,
@@ -41,9 +40,7 @@ export function recordDiscoveryEvent(
           userId = data.user?.id ?? null;
         }
         const event = buildDiscoveryEvent(input, { userId });
-        const db = userId && ctx.session ? ctx.session : createServiceClient();
-        if (!db) return;
-        await supabaseEventLogger(db).log(event);
+        await supabaseEventLogger().log(event);
       } catch {
         /* research logging never breaks a workflow */
       }

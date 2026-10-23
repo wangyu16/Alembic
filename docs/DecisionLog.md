@@ -30,6 +30,42 @@ Recorded as claim P5.S.L2, deliberately red. **Owner decision pending.**
 
 ---
 
+## 2026-10-23 — Security loop r1 M1: research events are allow-listed per type and written by the server only
+
+**Decision.** `research_events.detail` is no longer free-form. A per-event-type
+allowlist (`packages/research-events/src/allowlist.ts`, a `Record` over the
+event enum so a new type cannot be forgotten) names every key a caller may
+log and the shape its value must have: a count, a boolean, a closed
+vocabulary, a short lower-case token (kinds, modes, surfaces, licences), or a
+package/doc id. Anything else — an unknown type, an unknown key, a value of
+the wrong shape — is dropped (fail closed). It runs twice: at **export**
+(`deidentifyEvents`; kept ids are pseudonymised with the same salted function
+as the package column, so a `sourcePackageId` joins to `package`), which also
+cleans rows stored before the allowlist; and at **write** time, so the store
+never holds identifying text (ids stay raw there, like the `package_id`
+column). Dropped on purpose: `siteUrl` (carries the GitHub login),
+`publicRepo`/`privateRepo`, `publish.failed`/`agent.run.failed` raw error text,
+file `path`s, import `filename`, snapshot `tag` (from an educator-typed name),
+`fromCommit`, `sourceHash`, `chapter` slug, `changeId`, `targetBlockId`,
+`attestedAt`. A future key must be added to the allowlist or it is silently
+not recorded — the safe default.
+
+**Server-only writes.** Any signed-in user could insert arbitrary events for
+themselves ("insert own events", audit L4c). All inserts now go through one
+server-side writer (`apps/web/src/lib/events.ts`) using the service client;
+`supabaseEventLogger(session)` keeps its call-site signature but ignores the
+session, trusting the `userId` the server action took from `auth.getUser()`.
+Every failure (no service key, refused insert, throw) is swallowed — logging
+never breaks a workflow. Migration 0025 drops the policy and revokes insert
+from `anon`/`authenticated`. **Deploy the code first, then 0025**: before the
+migration, client inserts keep working; applied first, it would silently drop
+signed-in users' events until the code shipped. Trade-off: the service role
+bypasses 0018's `is_active_user()` backstop on this table; acceptable because
+a banned user has no session and middleware refuses their `/workspace/*`
+server actions (user-governance.md §2.1), so no event is produced.
+
+---
+
 ## 2026-10-23 — Owner rulings on Phase 5 open items
 
 | # | Decision | Why |

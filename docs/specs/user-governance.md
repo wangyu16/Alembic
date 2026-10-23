@@ -142,6 +142,10 @@ UPDATE/DELETE) of every **write** policy: `packages`, `sandbox_files`,
 `portal_registrations`, `documents`, `suggestions`, `package_changes`,
 `ai_invocations`, `research_events`. Reading `auth.users` keeps `banned_until`
 the single source of truth — no mirrored column, nothing to drift.
+*(Security loop r1 M1, migration 0025: `research_events` no longer has a user
+write policy at all — only the server writes events, with the service role —
+so this backstop no longer applies to it; the session/middleware gates below
+still stop a banned user's actions before any event is logged.)*
 
 This is a backstop, not the mechanism. It needs **no application changes**, no
 `requireActiveUser()`, and no gate on the GitHub commit paths: a banned user
