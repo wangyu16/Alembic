@@ -152,6 +152,9 @@ changes (+ the decisions-diff audit); each finding became a claim + a probe that
 - **Deploy order (round 5):** the round-5 code, `0032_decisions_1_a11y_neutral` (owner decision 2) and
   `0033_loop_r5_1_discovery_held` + `0033_loop_r5_2_a11y_fail_sticks` in any order (0033 after 0032 by file order;
   each needs 0022–0031, which production has). No new environment variable.
+- **Source pins updated with the code (round 5):** P5.S.3.g (the check action's bound comes before the published
+  check), P5.R.5.a (the reconcile check, shared by "keep", schedules with `userId`), P5.B.1.m/l (the test-only
+  `*.testkit.ts` simulator is not web code).
 
 **Owner decisions of 2026-10-24 (branch `phase5/decisions` on `main` 4f56f65, not merged).**
 - ✅ **Decision 1 — version pins are SHA-256 (closes P5.S.L2 / round-4 security MEDIUM-2).** The `/d` pin, ETag,

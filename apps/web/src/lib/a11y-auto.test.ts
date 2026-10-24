@@ -152,6 +152,7 @@ describe("where the automatic check is triggered", () => {
     const action = publish.slice(publish.indexOf("export async function publishToGitHubAction"));
     expect(action).toMatch(/discoveryChanged\(\);\s*\/\/[^\n]*\n(?:\s*\/\/[^\n]*\n)*\s*scheduleA11yCheck\(user\.id, packageId\);/);
     const reconcile = read("../app/workspace/[packageId]/reconcile-actions.ts");
-    expect(reconcile).toMatch(/outcome\.status === "absorbed"\) \{[\s\S]{0,400}scheduleA11yCheck\(user\.id, packageId\);/);
+    // (loop r5: the check is shared by the action and "keep", so it takes userId)
+    expect(reconcile).toMatch(/outcome\.status === "absorbed"\) \{[\s\S]{0,400}scheduleA11yCheck\(userId, packageId\);/);
   });
 });

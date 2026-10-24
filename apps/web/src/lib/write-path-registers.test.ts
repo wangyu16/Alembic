@@ -20,7 +20,8 @@ function sources(dir: string): string[] {
   return readdirSync(dir).flatMap((name) => {
     const p = join(dir, name);
     if (statSync(p).isDirectory()) return sources(p);
-    return /\.(ts|tsx)$/.test(name) && !/\.test\.tsx?$/.test(name) ? [p] : [];
+    // Test-only modules (`*.testkit.ts`, loop r5) are not web code.
+    return /\.(ts|tsx)$/.test(name) && !/\.test\.tsx?$/.test(name) && !/\.testkit\.ts$/.test(name) ? [p] : [];
   });
 }
 

@@ -84,7 +84,8 @@ describe("P5.S.3.g the trusted accessibility result describes the published byte
     const body = src.slice(src.indexOf("export async function recheckA11yAction"), src.indexOf("async function logChecked"));
     // a published course: the shared runner (owner decision 2, 2026-10-24), which
     // audits through a11yAuditSource and is the only path that records
-    expect(body).toMatch(/if \(record\?\.storage === "github"\) \{\s*const outcome = await recordPublishedA11yCheck\(user\.id, packageId\);/);
+    // (loop r5, P5.R.5.j: after the per-user bound, which reads nothing)
+    expect(body).toMatch(/if \(record\?\.storage === "github"\) \{[\s\S]{0,700}?\n\s*const outcome = await recordPublishedA11yCheck\(user\.id, packageId\);/);
     expect(body).not.toMatch(/recordA11yCheck\(/);
     // a trial course: its stored copy, never recorded as the trusted result
     expect(body).toMatch(/a11yAuditSource\(store, record, async \(\) => null\)/);
