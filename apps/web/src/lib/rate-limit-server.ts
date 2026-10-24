@@ -30,7 +30,7 @@ import {
 const memory = new MemoryRateStore();
 
 /** Buckets counted in Postgres (shared across server instances) when possible. */
-const SHARED: ReadonlySet<RateBucket> = new Set<RateBucket>(["report", "preview"]);
+const SHARED: ReadonlySet<RateBucket> = new Set<RateBucket>(["report", "preview", "reconcile"]);
 
 function storeFor(bucket: RateBucket): RateStore {
   if (!SHARED.has(bucket)) return memory;

@@ -91,6 +91,10 @@ r4, part B"). Part A (fork / reconcile / committer / editor save) runs in parall
   between registered a null (a tombstone). Now one read; the bytes are passed explicitly. A doc whose heal failed is
   left alone for an hour (bounded gate), so anonymous views never repeat a full registry read. Code only.
 - ✅ **LOW — P5.A.6.q's default cap unasserted.** Bound: by default the `/d` verification record holds ≤ 10,000.
+- 🔄 **Security LOW-5 — "Check for outside changes" had no bound while its tree fallback reads every stored file
+  (P5.S.6.d).** Now ≤ 10 checks / 10 min and ≤ 60 / day per user (Postgres-counted `reconcile` bucket), refused
+  in plain words before any reconcile. OPEN: the tree fallback still loads every file's content to hash it — moving
+  it to stored hashes is in the reconcile code part A owns this round.
 - **Deploy order (round 4, part B):** code and `0031_loop_r4b_*` in either order (each file's header). After
   `0031_loop_r4b_1`, check `cron.job_run_details` for `alembic-discovery-drain` (fallback in the header).
 

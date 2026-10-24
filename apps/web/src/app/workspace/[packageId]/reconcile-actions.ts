@@ -1,5 +1,6 @@
 "use server";
 
+import { checkUserRateLimit } from "@/lib/rate-limit-server";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -36,6 +37,16 @@ export async function reconcilePackageAction(
   packageId: string,
 ): Promise<ReconcileResult> {
   const { supabase, user } = await requireUser();
+  // Per-user bound (closed loop r4, security LOW-5): a check may compare the
+  // whole course file by file.
+  const gate = await checkUserRateLimit("reconcile", user.id);
+  if (!gate.ok) {
+    const minutes = Math.max(1, Math.ceil(gate.retryAfterSeconds / 60));
+    return {
+      ok: false,
+      error: `You've checked for outside changes many times in a short while. Please try again in ${minutes} minute${minutes === 1 ? "" : "s"}.`,
+    };
+  }
   const store = new SupabaseSandboxStore(supabase);
   const events = supabaseEventLogger(supabase);
   try {

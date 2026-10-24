@@ -43,6 +43,10 @@ fixed on branch `phase5/loop-r4b` (on `main` 03bcb00; not merged; migrations `00
 - **The `/d` heal reads the mirror once and backs off on failure.** Bytes + digest from one row read, passed to the
   registration explicitly (a null there means "deleted" and would tombstone). A failed heal holds that doc for an hour
   in the same bounded gate (10,000 entries) — chosen over a separate failure map (one bound, one eviction rule).
+- **LOW-5: a per-user bound now, the cheaper fallback later.** The tree fallback's cost (every stored file read
+  and hashed) is fixed properly by comparing stored hashes, but that is reconcile / repo-reader code part A is
+  changing this round; part B adds a per-user `reconcile` rate bucket (10 / 10 min, 60 / day, Postgres-counted)
+  on the action only — the committer's reconcile after a refused save is not limited (it runs only on a refusal).
 
 ## 2026-10-24 — Closed loop r3: identity is a whole-run matching; no lockout by our own commits; drained, aged queue; identities frozen
 

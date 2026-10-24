@@ -2084,3 +2084,12 @@ bound_to = [
   "apps/web/src/lib/permalink-heal.sql.test.ts :: when neither the origin nor the mirror holds the pinned version, the pin answers 404 (never stored) and the row is healed",
 ]
 note = "Loop r4 security LOW-2 (repro /tmp/alembic-r4/pin.test.ts). Code only. The 8-hex pin scheme is unchanged (the owner is deciding separately on SHA-256 pins; DecisionLog 2026-10-23). Supersedes r3's 'today's unlabelled answer stands' for pins."
+
+[[claim]]
+id = "P5.S.6.d"
+claim = "One account cannot run \"Check for outside changes\" without bound: reconcilePackageAction allows at most 10 checks per 10 minutes and 60 per day per signed-in user (counted in Postgres when the service client is configured), refusing the next one in plain words before any reconcile runs; other users are unaffected."
+oracle = "probe"
+bound_to = [
+  "apps/web/src/app/workspace/[packageId]/reconcile-actions.rate.test.ts :: the 11th check within 10 minutes is refused before any reconcile, in plain words; another user is unaffected",
+]
+note = "Loop r4 security LOW-5, the bounded half. OPEN: the tree fallback itself (lib/repo-reader.ts, reconcile) still reads every stored file's content to compute blob SHA-1s; using stored hashes (a generated git-blob-sha column, or listPaths + content_sha) belongs to the reconcile code part A owns in round 4 — left for it / the next round. The save path's own reconcile on a refused save (committer) is not rate-limited (it runs only on a refusal)."
