@@ -2,13 +2,13 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { parseStudyGuide, type PackageManifest } from "@alembic/package-contract";
+import { type PackageManifest } from "@alembic/package-contract";
 import {
+  CommitFailedError,
   DEFAULT_STUDY_GUIDE_PATH,
   ensureLicenseFile,
-  ManifestNotFoundError,
-  saveStudyGuide,
-  updateManifest,
+  restoreStudyGuideFile,
+  type PackageStore,
 } from "@alembic/package-ops";
 import { commitFiles, GitHubError } from "@alembic/github-bridge";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -21,14 +21,14 @@ import {
   clientForInstallation,
   clientForUser,
   githubConfig,
-  recordOwnCommit,
   recordSyncedSha,
-  syncedShaFor,
 } from "@/lib/github";
 import { slugForFile } from "@/lib/export";
 import { manifestFromFiles } from "@/lib/manifest-read";
-import { recordedPublicRepo, repoUrl } from "@/lib/recorded-repo";
+import { recordedPrivateRepo, recordedPublicRepo, repoUrl } from "@/lib/recorded-repo";
 import { flushDiscovery } from "@/lib/discovery-flush";
+import { committerFor } from "@/lib/committer";
+import { finishPublishedManifest, type PublishedRepos } from "@/lib/publish-finish";
 
 /**
  * Create a repo from a template, but tolerate a re-run after a partial publish:
@@ -97,8 +97,56 @@ async function commitFilesWhenReady(
   throw new Error("commit did not complete");
 }
 
+/** The course is published, but its last step (course details + listing) did
+ *  not finish. Pressing Publish again completes it (loop r3, P5.B.3.i). */
+class PublishFinishError extends Error {
+  constructor(readonly cause: unknown) {
+    super("publish finish step failed");
+    this.name = "PublishFinishError";
+  }
+}
+
+const FINISH_AGAIN =
+  "Your course is published, but one last step didn't finish. Click Publish again to complete it.";
+
+/**
+ * The last step of a publish — also the whole of finishing one that stopped
+ * after the repositories were recorded (loop r3, P5.B.3.i). Merges the
+ * repository pair into the course details (never overwriting a change made
+ * meanwhile), brings the online copy in line, refreshes the page and makes the
+ * course's shared files listable.
+ */
+async function finishPublish(
+  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
+  store: PackageStore,
+  userId: string,
+  packageId: string,
+  repos: PublishedRepos,
+  committed?: PackageManifest,
+): Promise<void> {
+  try {
+    await finishPublishedManifest({
+      store,
+      packageId,
+      repos,
+      ...(committed ? { committed } : {}),
+      committer: async () => {
+        const r = await committerFor(supabase, store, userId, packageId);
+        return r.kind === "github" ? r.committer : null;
+      },
+    });
+  } catch (e) {
+    throw new PublishFinishError(e);
+  }
+  revalidatePath(`/workspace/${packageId}`);
+  // Publishing makes the course's shared files listable (P5.S.8); the caller
+  // invalidates the discovery cache (discovery-invalidation scan).
+  await flushDiscovery(supabase, packageId);
+}
+
 /** Turn a publish failure into an educator-facing message with a real hint. */
 function publishErrorMessage(e: unknown): string {
+  if (e instanceof PublishFinishError) return FINISH_AGAIN;
   if (e instanceof GitHubError) {
     if (e.status === 404) {
       // The common case: a template repo can't be read by this installation —
@@ -160,6 +208,19 @@ export async function publishToGitHubAction(
   if (!record) return { ok: false, error: "Package not found." };
   const already = recordedPublicRepo(record);
   if (already) {
+    // Recorded as published — but an earlier run may have stopped after
+    // recording (before the course details gained the repositories, or before
+    // the listing refresh). Finish it instead of returning early: idempotent,
+    // and a no-op save when everything is already in step (loop r3, P5.B.3.i).
+    try {
+      await finishPublish(supabase, store, user.id, packageId, {
+        public: already,
+        private: recordedPrivateRepo(record),
+      });
+    } catch {
+      return { ok: false, error: FINISH_AGAIN };
+    }
+    discoveryChanged();
     return { ok: true, publicRepoUrl: repoUrl(already) };
   }
 
@@ -260,22 +321,21 @@ export async function publishToGitHubAction(
       throw new Error(`Could not record the published course (${recorded.reason}).`);
     }
     // Keep the trial store's alembic.json in step with what the publish
-    // commit carried — through the ONE manifest writer (loop r2, P5.B.1.w:
-    // compare-and-swap + registration; a direct putFiles had neither). Null
-    // committer: the publish commit above already carried this exact
-    // alembic.json. Every other manifest writer reads the FILE copy, so
-    // skipping this would let the next one write the repo pair away.
-    try {
-      await updateManifest(store, null, packageId, () => manifest, {
-        summary: "Publish from Alembic",
-      });
-    } catch (e) {
-      // A malformed package with no alembic.json at all: the publish commit
-      // carried none either (it mirrors the store), so there is nothing to
-      // keep in step; the read cache was set by recordPublished above.
-      if (!(e instanceof ManifestNotFoundError)) throw e;
-    }
-
+    // commit carried — through the ONE manifest writer, as a MERGE (loop r3,
+    // P5.B.3.i): only the repository pair is set on the details as they are
+    // NOW, so a rename made in another tab while publishing survives; if the
+    // details changed meanwhile, the online copy is brought in line too. Every
+    // other manifest writer reads the FILE copy, so skipping this would let the
+    // next one write the repo pair away.
+    await finishPublish(
+      supabase,
+      store,
+      user.id,
+      packageId,
+      { public: { owner, name: publicName }, private: { owner, name: privateName } },
+      manifest,
+    );
+    discoveryChanged();
     await events.log({
       type: "publish.completed",
       userId: user.id,
@@ -283,11 +343,6 @@ export async function publishToGitHubAction(
       detail: { publicRepo: publicName, privateRepo: privateName },
       occurredAt: new Date().toISOString(),
     });
-
-    revalidatePath(`/workspace/${packageId}`);
-    // Publishing makes the course's shared files listable (P5.S.8).
-    await flushDiscovery(supabase, packageId);
-    discoveryChanged();
     return { ok: true, publicRepoUrl: `https://github.com/${owner}/${publicName}` };
   } catch (e) {
     await events.log({
@@ -338,28 +393,25 @@ export async function restoreStudyGuideAction(
     if (content === null) {
       return { ok: false, error: "That version has nothing to restore for this page." };
     }
-    const parsed = parseStudyGuide(content);
-    await saveStudyGuide(store, packageId, {
-      path,
-      preamble: parsed.preamble,
-      blocks: parsed.blocks,
-    });
-    const synced = await syncedShaFor(supabase, packageId);
-    const result = await commitFiles(
-      gh.client,
-      coords,
-      {
-        repo: "public",
+    // Loop r3 (P5.B.3.h): save online first, through the one committer
+    // (guarded against outside changes, keeps the synced pointer current);
+    // Alembic's copy is written only after that succeeded — a refused restore
+    // used to leave the copy showing a restore that never happened.
+    const resolved = await committerFor(supabase, store, user.id, packageId);
+    if (resolved.kind !== "github") {
+      return { ok: false, error: resolved.kind === "unavailable" ? resolved.reason : "Restore didn't complete. Please try again." };
+    }
+    try {
+      await restoreStudyGuideFile(store, resolved.committer, packageId, {
+        path,
+        content,
         summary: `Restore ${path} to ${commitSha.slice(0, 7)}`,
-        changes: [{ path, content }],
-      },
-      "main",
-      { unchangedSince: synced },
-    );
-    // Advance the synced pointer so this restore commit isn't later mistaken
-    // for a foreign (externally-edited) commit — but never past an outside
-    // change, which reconcile must still see (loop r2, P5.B.3.f).
-    await recordOwnCommit(supabase, packageId, synced, result);
+      });
+    } catch (err) {
+      // The committer's refusals are already in plain words for the educator.
+      if (err instanceof CommitFailedError) return { ok: false, error: err.message };
+      throw err;
+    }
     await supabaseEventLogger(supabase).log({
       type: "restore.completed",
       userId: user.id,

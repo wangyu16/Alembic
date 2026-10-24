@@ -1,5 +1,6 @@
 import { ALL_RIGHTS_RESERVED, licenseLabel, type License, type PackageManifest } from "@alembic/package-contract";
 import type { PackageStore } from "./store";
+import type { Committer } from "./write-through";
 import { LICENSE_TEXTS } from "./license-texts.generated";
 
 /**
@@ -56,25 +57,74 @@ export function licenseSummary(license: License): string {
 }
 
 /**
- * Ensure the package's public `LICENSE` matches its manifest.
+ * The LICENSE content the package needs when Alembic's copy does not already
+ * match its manifest; null when it does. Writes nothing (loop r3, P5.B.3.h:
+ * "does it need one?" is split from "record it", so a published course
+ * records LICENSE only after the save to its online home succeeded).
+ */
+export async function licenseFileNeeded(
+  store: PackageStore,
+  packageId: string,
+  manifest: Pick<PackageManifest, "license">,
+): Promise<string | null> {
+  const want = licenseFileContent(manifest.license);
+  const current = await store.readFile(packageId, "public", LICENSE_PATH);
+  return current === want ? null : want;
+}
+
+/** Record LICENSE in Alembic's copy — for a published course, only after the
+ *  commit that wrote it succeeded. */
+export async function recordLicenseFile(
+  store: PackageStore,
+  packageId: string,
+  content: string,
+): Promise<void> {
+  await store.putFiles(packageId, [{ repo: "public", path: LICENSE_PATH, content }]);
+}
+
+/**
+ * Ensure the package's public `LICENSE` matches its manifest — in Alembic's
+ * copy ONLY. For a TRIAL package (the copy is the truth; the first publish
+ * then commits it with everything else).
  *
  * Idempotent, and it is the ONLY thing that keeps an existing package's LICENSE
  * honest: packages created before this existed have none, and the file must be
  * rewritten if the license ever changes. Returns true when it wrote.
  *
- * Called before staging a publish, so an already-published package picks the
- * file up on its next publish without a migration.
+ * A PUBLISHED package must use `backfillLicenseFile` instead: writing the copy
+ * before a guarded commit that is then refused left the copy claiming a
+ * LICENSE the course does not have, so no later publish retried (P5.B.3.h).
  */
 export async function ensureLicenseFile(
   store: PackageStore,
   packageId: string,
   manifest: Pick<PackageManifest, "license">,
 ): Promise<boolean> {
-  const want = licenseFileContent(manifest.license);
-  const files = await store.listFiles(packageId);
-  const current = files.find((f) => f.repo === "public" && f.path === LICENSE_PATH);
-  if (current?.content === want) return false;
+  const want = await licenseFileNeeded(store, packageId, manifest);
+  if (want === null) return false;
+  await recordLicenseFile(store, packageId, want);
+  return true;
+}
 
-  await store.putFiles(packageId, [{ repo: "public", path: LICENSE_PATH, content: want }]);
+/**
+ * Bring a PUBLISHED course's `LICENSE` in line with its manifest: save it to
+ * the online home through `committer` first, and record it in Alembic's copy
+ * only once that succeeded. A refused or failed save throws and leaves the
+ * copy unchanged, so the next publish tries again. Returns true when it wrote.
+ */
+export async function backfillLicenseFile(
+  store: PackageStore,
+  committer: Committer,
+  packageId: string,
+  manifest: Pick<PackageManifest, "license">,
+): Promise<boolean> {
+  const want = await licenseFileNeeded(store, packageId, manifest);
+  if (want === null) return false;
+  await committer.commit({
+    repo: "public",
+    summary: "Add LICENSE (Alembic)",
+    changes: [{ path: LICENSE_PATH, content: want }],
+  });
+  await recordLicenseFile(store, packageId, want);
   return true;
 }

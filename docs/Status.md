@@ -121,6 +121,15 @@ fixed here too (its later fixes build on this branch).
   `/tmp/p5r3a/manifest-bypass.mts`). Now the editor save refuses it in plain words and `writeThrough` refuses an
   invalid, foreign or deleted `alembic.json` before any commit (a valid whole-course upload passes); the writer scan
   resolves constants/aliases/templates; the dead `renamePackageTitle` bypass is removed.
+- ✅ **M3-4 — a refused LICENSE backfill was recorded anyway, so it was never retried (P5.B.3.h).** The stored copy
+  was written before the guarded commit. Now `backfillLicenseFile` commits first and records only after success
+  (site publish, through `committerFor`, so it also gets H3-2's reconcile/retry); sibling fixed: the single-chapter
+  restore (`restoreStudyGuideFile`) commits before writing the copy. Open: CITATION.cff never writes the stored copy
+  and its error wording still names GitHub.
+- ✅ **L3-1 — publishing reverted a rename made meanwhile; a half-finished publish could not be completed
+  (P5.B.3.i).** The publish wrote its start-time manifest snapshot back (repro `/tmp/p5r3a/publish-race.mts`). Now
+  it merges only the repository pair into the current details (`lib/publish-finish.ts`, saved online too when they
+  differ) and the "already published" path finishes the manifest write + discovery flush.
 
 **Phase 5 closed-loop verification — round 2, steps 4–5: correctness audit probes and class fixes (2026-10-23,
 branch `phase5/loop-r2-cor`, built on `phase5/loop-r2-sec`, not merged, migrations `0029_loop_r2c_*` NOT applied).**

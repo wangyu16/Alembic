@@ -28,6 +28,7 @@ export * from "./adaptation";
 export * from "./pull-updates";
 export * from "./document-registry";
 export * from "./license-file";
+export * from "./restore-file";
 export * from "./rewrite-refs";
 export * from "./validate-package";
 export * from "./import-package";

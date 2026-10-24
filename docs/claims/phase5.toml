@@ -1988,3 +1988,28 @@ bound_to = [
   "apps/web/src/lib/manifest-writers.scan.test.ts :: the scan does not flag other files written next to a manifest read",
 ]
 note = "Loop r3 correctness L3-2 (repro /tmp/p5r3a/manifest-bypass.mts). Code only; the dead renamePackageTitle bypass is removed."
+
+[[claim]]
+id = "P5.B.3.h"
+claim = "A refused save never leaves Alembic's stored copy recording a file the course does not have: the LICENSE backfill and the single-chapter restore commit first and write the stored copy only after the commit succeeded, so a refused backfill is retried by the next publish."
+oracle = "probe"
+bound_to = [
+  "apps/web/src/lib/mirror-after-commit.scan.test.ts :: the website publish backfills LICENSE through backfillLicenseFile, never ensureLicenseFile",
+  "apps/web/src/lib/mirror-after-commit.scan.test.ts :: the single-chapter restore saves online before writing the copy (restoreStudyGuideFile)",
+  "packages/package-ops/src/license-file.backfill.test.ts :: a refused save leaves Alembic's copy unchanged, so the next publish retries and then records it",
+  "packages/package-ops/src/license-file.backfill.test.ts :: a licence change is saved online first, and only then recorded",
+  "packages/package-ops/src/restore-file.test.ts :: a refused restore leaves Alembic's copy unchanged",
+  "packages/package-ops/src/restore-file.test.ts :: a restore that saves records exactly what was saved online",
+]
+note = "Loop r3 correctness M3-4. Code only. Not the same class: CITATION.cff never writes the stored copy (it drifts until reconcile); its error wording still says “GitHub” (open)."
+
+[[claim]]
+id = "P5.B.3.i"
+claim = "Publishing sets only the repository pair on the course details as they are at that moment (a rename made in another tab meanwhile survives in the store and online), and a publish that stopped after the course was recorded as published is finished by the next Publish click."
+oracle = "probe"
+bound_to = [
+  "apps/web/src/app/workspace/[packageId]/github-actions.test.ts :: a rename made in another tab while publishing survives, in the store and the online copy",
+  "apps/web/src/app/workspace/[packageId]/github-actions.test.ts :: an undisturbed publish saves nothing extra online",
+  "apps/web/src/app/workspace/[packageId]/github-actions.test.ts :: a publish that stopped after the course was recorded as published is finished by the next click",
+]
+note = "Loop r3 correctness L3-1 (repro /tmp/p5r3a/publish-race.mts). Code only."
