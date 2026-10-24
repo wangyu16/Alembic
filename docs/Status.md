@@ -116,6 +116,11 @@ fixed here too (its later fixes build on this branch).
 - ✅ **LOW — compare `status` ignored (P5.B.3.j).** A "diverged"/"behind" comparison or one at GitHub's 300-file
   maximum is never trusted (`CompareIncompleteError`): the save guard refuses as unverifiable and reconcile uses the
   tree comparison.
+- ✅ **L3-2 — the editor save could store a broken `alembic.json` (P5.B.1.y).** `saveFileAction` wrote it as raw text
+  (invalid JSON / schema-invalid stored; every later course-details change then failed; repro
+  `/tmp/p5r3a/manifest-bypass.mts`). Now the editor save refuses it in plain words and `writeThrough` refuses an
+  invalid, foreign or deleted `alembic.json` before any commit (a valid whole-course upload passes); the writer scan
+  resolves constants/aliases/templates; the dead `renamePackageTitle` bypass is removed.
 
 **Phase 5 closed-loop verification — round 2, steps 4–5: correctness audit probes and class fixes (2026-10-23,
 branch `phase5/loop-r2-cor`, built on `phase5/loop-r2-sec`, not merged, migrations `0029_loop_r2c_*` NOT applied).**

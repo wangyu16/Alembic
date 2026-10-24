@@ -5,7 +5,6 @@ import { MemoryPackageStore } from "./memory-store";
 import {
   PackageRenameError,
   normalizeTitle,
-  renamePackageTitle,
   withTitle,
 } from "./lifecycle";
 
@@ -47,37 +46,5 @@ describe("withTitle", () => {
     expect(next.title).toBe("Renamed");
     expect(next.packageId).toBe(manifest.packageId);
     expect(manifest.title).toBe("Thermochemistry"); // original untouched
-  });
-});
-
-describe("renamePackageTitle", () => {
-  it("updates the title in the manifest file and returns the new manifest", async () => {
-    const { store, packageId } = await seeded();
-    const before = await readManifest(store, packageId);
-
-    const updated = await renamePackageTitle(store, packageId, "  Intro Acid–Base  ");
-
-    expect(updated.title).toBe("Intro Acid–Base");
-    // Persisted to the source-of-truth file.
-    const after = await readManifest(store, packageId);
-    expect(after.title).toBe("Intro Acid–Base");
-    // packageId is immutable across a rename.
-    expect(after.packageId).toBe(before.packageId);
-  });
-
-  it("rejects an empty title without writing", async () => {
-    const { store, packageId } = await seeded();
-    await expect(renamePackageTitle(store, packageId, "  ")).rejects.toThrow(
-      PackageRenameError,
-    );
-    const after = await readManifest(store, packageId);
-    expect(after.title).toBe("Thermochemistry");
-  });
-
-  it("throws when the manifest file is missing", async () => {
-    const store = new MemoryPackageStore();
-    await expect(renamePackageTitle(store, "pkg-nope-00000000", "X")).rejects.toThrow(
-      PackageRenameError,
-    );
   });
 });

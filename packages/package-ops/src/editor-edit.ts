@@ -15,6 +15,7 @@ import {
 } from "@alembic/package-contract";
 import type { PackageFile, PackageStore } from "./store";
 import { prepareStudyGuideSave } from "./study-guide";
+import { MANIFEST_FILE, ManifestFileRefusedError } from "./write-through";
 
 const STUDY_GUIDE_PREFIX = "study-guide/";
 
@@ -51,6 +52,16 @@ export function prepareEditorEdit(edit: EditorEdit): PackageFile {
   // alongside v1 `materials/`, `private-instructor/`; a private-space path in
   // the public repo is still rejected by both, so the invariant holds.
   assertPathAllowedInEitherContract(edit.path, edit.repo);
+
+  // Loop r3 (P5.B.1.y): the course details file has ONE writer,
+  // `updateManifest` (read → patch → commit → compare-and-swap). A whole-file
+  // save of it would bypass the schema and the lost-update protection — and a
+  // broken one made every later course-details change fail forever.
+  if (edit.path.replace(/^(\.?\/)+/, "") === MANIFEST_FILE) {
+    throw new ManifestFileRefusedError(
+      "Course details can't be edited as a file. Change them in the course settings instead.",
+    );
+  }
 
   if (edit.repo === "public" && edit.path.startsWith(STUDY_GUIDE_PREFIX)) {
     const parsed = parseStudyGuide(edit.source);

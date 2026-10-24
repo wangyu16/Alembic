@@ -25,6 +25,7 @@ import {
   BlockIdIntegrityError,
   CommitFailedError,
   CommitUnavailableError,
+  ManifestFileRefusedError,
   prepareEditorEdit,
   prepareSlidesSave as prepareSlidesFile,
   prepareStudyGuideSave as prepareStudyGuideFile,
@@ -72,6 +73,8 @@ function refuseInPlainLanguage<T>(prepare: () => T): T {
   try {
     return prepare();
   } catch (e) {
+    // The course-details refusal already speaks plainly (loop r3, P5.B.1.y).
+    if (e instanceof ManifestFileRefusedError) throw new EditorSaveValidationError(e.message);
     throw new EditorSaveValidationError(
       e instanceof BlockIdIntegrityError ? BLOCK_ID_MESSAGE : CONTRACT_MESSAGE,
     );
@@ -133,7 +136,7 @@ export function saveFailureMessage(err: unknown): {
   message: string;
   retryable: boolean;
 } {
-  if (err instanceof EditorSaveValidationError) {
+  if (err instanceof EditorSaveValidationError || err instanceof ManifestFileRefusedError) {
     return { message: err.message, retryable: false };
   }
   if (err instanceof CommitUnavailableError || err instanceof CommitFailedError) {

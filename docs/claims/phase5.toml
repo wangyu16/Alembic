@@ -1974,3 +1974,17 @@ bound_to = [
   "packages/github-bridge/src/compare-status.test.ts :: a comparison listing GitHub's maximum of files is incomplete, not trusted",
 ]
 note = "Loop r3 correctness LOW (compare status). Code only."
+
+[[claim]]
+id = "P5.B.1.y"
+claim = "The course details file has one writer: the editor save refuses alembic.json, writeThrough refuses an invalid, schema-invalid, foreign or deleted alembic.json before any commit (a valid whole-course upload still passes), and no code outside package-ops writes it — the scan resolves constants, aliases, concatenations and template strings."
+oracle = "invariant"
+bound_to = [
+  "packages/package-ops/src/manifest-gate.r3c.test.ts :: the editor save refuses alembic.json — course details change only through the manifest owner",
+  "packages/package-ops/src/manifest-gate.r3c.test.ts :: writeThrough refuses an invalid, schema-invalid, foreign or deleted alembic.json before any commit",
+  "packages/package-ops/src/manifest-gate.r3c.test.ts :: a valid manifest for this course still goes through (whole-course upload)",
+  "apps/web/src/lib/editor-save.test.ts :: the editor save refuses alembic.json in plain words, not retryable",
+  "apps/web/src/lib/manifest-writers.scan.test.ts :: the scan resolves constants, aliases, concatenations and template strings to alembic.json",
+  "apps/web/src/lib/manifest-writers.scan.test.ts :: the scan does not flag other files written next to a manifest read",
+]
+note = "Loop r3 correctness L3-2 (repro /tmp/p5r3a/manifest-bypass.mts). Code only; the dead renamePackageTitle bypass is removed."

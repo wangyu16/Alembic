@@ -207,3 +207,21 @@ describe("studyGuideHeadingWarning", () => {
     expect(studyGuideHeadingWarning("   ", [])).toBeUndefined();
   });
 });
+
+describe("course details file (loop r3, P5.B.1.y)", () => {
+  it("[P5.B.1.y] the editor save refuses alembic.json in plain words, not retryable", () => {
+    for (const source of ['{"title": "oops"', JSON.stringify({ title: "no schema" })]) {
+      let caught: unknown;
+      try {
+        prepareEditorSave({ path: "alembic.json", repo: "public", source });
+      } catch (e) {
+        caught = e;
+      }
+      expect(caught).toBeInstanceOf(EditorSaveValidationError);
+      const { message, retryable } = saveFailureMessage(caught);
+      expect(message).toMatch(/course details/i);
+      expect(message).not.toMatch(/commit|git|json|repo/i);
+      expect(retryable).toBe(false);
+    }
+  });
+});

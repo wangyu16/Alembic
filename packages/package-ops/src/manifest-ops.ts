@@ -23,10 +23,10 @@ import {
   type PackageManifest,
 } from "@alembic/package-contract";
 import type { PackageStore } from "./store";
-import { registerWritten, type Committer } from "./write-through";
+import { MANIFEST_FILE, registerWritten, type Committer } from "./write-through";
 
 /** Repo-relative path of the manifest file, in the public repo. */
-export const MANIFEST_PATH = "alembic.json";
+export const MANIFEST_PATH = MANIFEST_FILE;
 
 /** Serialize a manifest exactly as every other writer in the codebase does —
  *  2-space JSON with a trailing newline. The CAS compares this byte-for-byte,

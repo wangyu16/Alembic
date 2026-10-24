@@ -22,6 +22,7 @@
 import {
   assertPathAllowedInEitherContract,
   assertPublicMarkdownReferences,
+  parseManifest,
   type RepoKind,
 } from "@alembic/package-contract";
 import type { RegistrationRecord } from "@alembic/package-contract";
@@ -94,6 +95,55 @@ export class CommitFailedError extends Error {
   }
 }
 
+/**
+ * The course details file. Its ONE owner is `updateManifest`
+ * (`manifest-ops.ts`, which re-exports this as `MANIFEST_PATH`): read → patch →
+ * commit → compare-and-swap. It never goes through `writeThrough` itself.
+ */
+export const MANIFEST_FILE = "alembic.json";
+
+/**
+ * A write that would leave the course details file broken or unowned (loop r3,
+ * P5.B.1.y). Not retryable with the same content. Educator-facing message.
+ */
+export class ManifestFileRefusedError extends Error {
+  readonly retryable = false;
+  constructor(
+    message = "The course details couldn't be saved this way. Change them in the course settings instead.",
+  ) {
+    super(message);
+    this.name = "ManifestFileRefusedError";
+  }
+}
+
+/**
+ * Loop r3 (P5.B.1.y): the gate every `alembic.json` change in `writeThrough`
+ * passes. Only the whole-course upload legitimately writes the manifest as a
+ * FILE (everything else uses `updateManifest`); what it writes must be a valid
+ * course manifest for THIS course. Invalid JSON, a manifest the schema refuses,
+ * one naming another course, or a deletion would be stored and then make every
+ * later `updateManifest` fail forever — so they are refused before any commit.
+ */
+function assertManifestChange(change: WriteThroughChange, packageId: string | undefined): void {
+  if (change.repo !== "public" || change.path !== MANIFEST_FILE) return;
+  if (change.content === null) {
+    throw new ManifestFileRefusedError(
+      "The course details file can't be removed — every course needs one.",
+    );
+  }
+  const invalid = new ManifestFileRefusedError(
+    "These course details aren't valid, so nothing was saved. Change them in the course settings instead.",
+  );
+  if (change.encoding === "base64") throw invalid;
+  let manifest: { packageId: string };
+  try {
+    manifest = parseManifest(JSON.parse(change.content));
+  } catch {
+    throw invalid;
+  }
+  if (packageId !== undefined && manifest.packageId !== packageId) throw invalid;
+}
+
 /* -------------------------------------------------------------------------- *
  * Validation — always FIRST, before any IO
  * -------------------------------------------------------------------------- */
@@ -114,9 +164,15 @@ const TEXT_EXT = /\.(md|md\.html|html|svg)$/;
  *  1. the two-repo invariant, dual-mode (v1 layers OR v2 spaces) and
  *     fail-closed — a `private-instructor/…` (v1) or `private/…` (v2) path in
  *     a public change is rejected by both contracts;
- *  2. the public reference guard on public text carriers being written.
+ *  2. the public reference guard on public text carriers being written;
+ *  3. (loop r3, P5.B.1.y) the course details file is a valid manifest for
+ *     this course and is never deleted — see `assertManifestChange`.
  */
-export function validateChanges(changes: WriteThroughChange[]): void {
+export function validateChanges(
+  changes: WriteThroughChange[],
+  /** The package being written — the course details file must name it. */
+  packageId?: string,
+): void {
   const seen = new Set<string>();
   for (const change of changes) {
     // The repo must be one the contract knows. A value outside the union (it
@@ -145,6 +201,7 @@ export function validateChanges(changes: WriteThroughChange[]): void {
     seen.add(key);
 
     assertPathAllowedInEitherContract(change.path, change.repo);
+    assertManifestChange(change, packageId);
     if (change.movedFrom !== undefined) {
       const from = changes.find(
         (c) => c.repo === change.repo && c.path === change.movedFrom,
@@ -255,7 +312,7 @@ export async function writeThrough(
   input: WriteThroughInput,
 ): Promise<WriteThroughResult> {
   // 1. Validate everything before any IO. Fail-closed, all-or-nothing.
-  validateChanges(input.changes);
+  validateChanges(input.changes, packageId);
 
   if (input.changes.length === 0) {
     return { committed: committer !== null };
