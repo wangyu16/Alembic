@@ -2016,7 +2016,7 @@ note = "Loop r3 correctness L3-1 (repro /tmp/p5r3a/publish-race.mts). Code only.
 
 [[claim]]
 id = "P5.B.1.z"
-claim = "forkPackage re-mints every contract block id ({{attrs[#blk-…]}} in study-guide/, slides/, practice/) per file — an id two chapters share gets a fresh id in each — references follow the copy they point into (/d/doc-SRC#blk-… takes that chapter's new uid and id), links to documents the fork does not copy and pinned links are left alone, and nothing inside code fences or inline code is rewritten."
+claim = "forkPackage re-mints every contract block id ({{attrs[#blk-…]}} in study-guide/, slides/, practice/) per file — an id two chapters share gets a fresh id in each, and every id parseStudyGuide reads on a section heading is fresh — references follow the copy they point into (/d/doc-SRC#blk-…, also with a ?query or a trailing slash, takes that chapter's new uid and id; a file link resolves relative to its file, URL-decoded, a lean .md name finding its .md.html carrier and a name without extension its .md/.md.html/.slides.html/.paged.html), links to documents the fork does not copy and pinned (@ or %40) links are left alone, nothing inside code is rewritten (parseStudyGuide's fences, fences in lists and quotes, indented code, inline code across lines; <code>/<pre> only as HTML outside the markdown source), and the same files in any order give the same copy."
 oracle = "probe"
 bound_to = [
   "packages/package-ops/src/fork.r3c.test.ts :: a block id two chapters share gets its own fresh id in each; references follow the chapter they point into",
@@ -2024,5 +2024,43 @@ bound_to = [
   "packages/package-ops/src/fork.r3c.test.ts :: a link to a document the fork does not copy, or to a pinned version, is left alone",
   "packages/package-ops/src/fork.r3c.test.ts :: slides and practice contract block ids are re-minted; non-contract anchors are not",
   "packages/package-ops/src/fork.r3c.test.ts :: a carrier island the reader does not recognise is re-minted wherever its marker sits, and its bytes are otherwise untouched (forksg-valid)",
+  "packages/package-ops/src/fork.r4.test.ts :: fences in quotes and lists, indented code and multi-line inline code are code; a parser heading never is",
+  "packages/package-ops/src/fork.r4.test.ts :: a <pre> or <code> MENTIONED in markdown is not code; HTML <pre>/<code> outside the source is",
+  "packages/package-ops/src/fork.r4.test.ts :: links with ?query, a trailing slash, no extension, a lean .md name or URL-encoding follow the copy; pins and other files are left",
+  "packages/package-ops/src/fork.r4.test.ts :: the fork is deterministic: the same files in any order give the same copy",
+  "packages/package-ops/src/fork.r4.test.ts :: code spans: a markdown source's fence never swallows the carrier's rendered page",
 ]
-note = "Loop r3 correctness L3-3 (repros /tmp/p5r3a/forksg-valid*.mts). Code only. OPEN for an owner ruling: {#blk-…} / {#b-…} heading attributes are not contract ids and are copied unchanged; a /d/ link to a plain .md chapter (no embedded uid) cannot be followed by the pure fork."
+note = "Loop r3 correctness L3-3 (repros /tmp/p5r3a/forksg-valid*.mts); loop r4 MEDIUM-7 (probes /tmp/p5r4/fork/p3-crafted.mts, p4-code.mts). Code only. OPEN for an owner ruling: {#blk-…} / {#b-…} heading attributes are not contract ids and are copied unchanged; a /d/ link to a plain .md chapter (no embedded uid) cannot be followed by the pure fork; a concept-map node naming an id several chapters share takes the first chapter's id."
+
+# ─── Closed loop round 4, part A — TypeScript (2026-10-24, branch phase5/loop-r4a) ───
+
+[[claim]]
+id = "P5.B.1.aa"
+claim = "A course in the v2 layout (assets/, current/) forks: every public file is copied (binaries byte for byte), each passes the dual-mode two-repo check, and a private-space path among the copied files is still refused."
+oracle = "probe"
+bound_to = [
+  "packages/package-ops/src/fork.r4.test.ts :: a v2 course with assets/ and current/ forks: every public file is copied, binaries byte for byte, and references follow",
+  "packages/package-ops/src/fork.r4.test.ts :: a private path among the copied files is still refused by both contracts",
+]
+note = "Loop r4 HIGH-1 (probe /tmp/p5r4/fork/p1-v2.mts). Fixture packages/package-ops/src/__fixtures__/fork-v2/. Code only."
+
+[[claim]]
+id = "P5.B.1.ab"
+claim = "Forking takes time linear in the course's size: only text files are read (a binary is copied untouched even when its bytes contain an id), and 1 MB of base64 plus 2 MB of hostile text (unmatched backticks, a long data: URI, thousands of links) fork in under a second."
+oracle = "probe"
+bound_to = [
+  "packages/package-ops/src/fork.r4.test.ts :: 1 MB of base64 plus 2 MB of hostile text forks in well under a second, the binary untouched",
+  "packages/package-ops/src/fork.r4.test.ts :: only text files are read: a binary whose bytes happen to contain an id is copied untouched",
+]
+note = "Loop r4 HIGH-2 (probes /tmp/p5r4/fork/p9-perf.mts, p10-perf.mts, p12-b64.mts: 40 KB base64 took 4 s, the 11 MB tutorial course 20 s; now ~0.2 s). Code only."
+
+[[claim]]
+id = "P5.B.1.ac"
+claim = "A copy of an orz 1.x carrier carries its fresh uid in the {{nyml}} source header as well as the #orz-meta island (so re-rendering it from its source keeps the copy's identity); only the header's uid line changes, and a source without a header is left as it was."
+oracle = "probe"
+bound_to = [
+  "packages/package-ops/src/fork.r4.test.ts :: the fork writes its fresh uid into the {{nyml}} header as well as the island, so a re-render keeps it",
+  "packages/package-ops/src/fork.r4.test.ts :: remintEmbeddedUid rewrites only the header's uid line; a source without a header is left as it was",
+]
+note = "Loop r4 MEDIUM-6 (probe /tmp/p5r4/fork/p7-uidheader.mts). Code only."
+

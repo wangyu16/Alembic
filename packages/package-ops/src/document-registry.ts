@@ -378,9 +378,11 @@ export function rawEmbeddedUid(content: string): string | null {
  * A COPY of a carrier must not carry its source's identity (loop r1b,
  * P5.B.1.n): fork, adapt and "copy into this course" re-mint the embedded uid
  * so the copy registers as its own document instead of claiming the source's
- * docId. Rewrites only the uid value inside the `#orz-meta` island; content
- * without an island (or without a uid) is returned unchanged. The source
- * hash is unaffected (the island is not part of the extracted source).
+ * docId. Rewrites only the uid value inside the `#orz-meta` island — and
+ * (loop r4, MEDIUM-6) the `uid:` line of an orz 1.x source header, which is
+ * the uid's source of truth; content without an island (or without a uid) is
+ * returned unchanged. The source hash is unaffected unless the source carries
+ * such a header (then only that line differs).
  */
 export function remintEmbeddedUid(content: string, fresh: string = newDocId()): string {
   const m = ORZ_META_ISLAND_RE.exec(content);
@@ -395,7 +397,39 @@ export function remintEmbeddedUid(content: string, fresh: string = newDocId()): 
   if (typeof uid !== "string" || !uid) return content;
   const field = new RegExp(`("uid"\\s*:\\s*)${JSON.stringify(uid).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`);
   const island = m[0].replace(json, json.replace(field, `$1${JSON.stringify(fresh)}`));
-  return content.slice(0, m.index) + island + content.slice(m.index + m[0].length);
+  const out = content.slice(0, m.index) + island + content.slice(m.index + m[0].length);
+  return remintSourceHeaderUid(out, fresh);
+}
+
+/** The ids of the islands a carrier keeps its markdown source in (carriers/html.ts). */
+const SOURCE_ISLAND_RE =
+  /<script\b[^>]*\bid\s*=\s*["'](?:orz-carrier|md-source|orz-src|orz-deck)["'][^>]*>/i;
+
+/**
+ * Loop r4 (MEDIUM-6): an orz 1.x carrier's source opens with a
+ * `{{nyml … uid: doc-… }}` header, and THAT is the uid's source of truth —
+ * re-rendering the file from its source (extract → assemble) writes the
+ * header's uid back into the `#orz-meta` island. So a copy's fresh uid must
+ * be written into the header too, or the copy reclaims its source's identity
+ * on its first re-render. Only the header's own `uid:` line is touched; a
+ * source without a header (or a header without a uid) is left as it is.
+ */
+function remintSourceHeaderUid(content: string, fresh: string): string {
+  const open = SOURCE_ISLAND_RE.exec(content);
+  if (!open) return content;
+  const bodyStart = open.index + open[0].length;
+  const close = content.toLowerCase().indexOf("</script", bodyStart);
+  const bodyEnd = close === -1 ? content.length : close;
+  const body = content.slice(bodyStart, bodyEnd);
+  const header = /^\s*\{\{nyml[ \t]*\r?\n([\s\S]*?)\r?\n\}\}/.exec(body);
+  if (!header) return content;
+  const inner = header[1]!;
+  const innerStart = header.index + header[0].indexOf(inner);
+  const line = /^([ \t]*uid[ \t]*:[ \t]*)(["']?)(doc-[^\s"']*)\2([ \t]*)$/m.exec(inner);
+  if (!line) return content;
+  const at = bodyStart + innerStart + line.index;
+  const replaced = `${line[1]}${line[2]}${fresh}${line[2]}${line[4]}`;
+  return content.slice(0, at) + replaced + content.slice(at + line[0].length);
 }
 
 /**

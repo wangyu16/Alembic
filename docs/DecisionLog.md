@@ -6,6 +6,27 @@ design, and what is deferred to the future. Complements [Status.md](Status.md)
 
 ---
 
+## 2026-10-24 — Closed loop r4 (part A): fork, reconcile, committer, editor saves
+
+Round-4 audit findings on the TypeScript side (probes `/tmp/p5r4/commit/r4.test.ts`, `/tmp/p5r4/fork/*.mts`), fixed
+on branch `phase5/loop-r4a` (on `main` 03bcb00; not merged; no migration). Part B (SQL / discovery) runs in parallel
+on `phase5/loop-r4b`. Decisions:
+
+- **A fork reads only text files, in linear time (P5.B.1.ab).** "Text" is decided by the file name (the same
+  extensions the upload door treats as text, plus a few data formats); binaries are stored base64 and are copied
+  untouched. Every reference pattern is anchored on a literal; a relative file link is read backward from its
+  `#blk-` fragment (bounded at 2 KB) instead of being matched forward from every character.
+- **Code is what the parser says it is, refined (P5.B.1.z).** The rule that matters for rule 7 is that every id
+  `parseStudyGuide` counts gets re-minted — so its fence rule is reused verbatim and a line it reads as a section
+  heading is never code. Beyond that, fences in lists and quotes, indented code and multi-line inline code are code
+  (examples are documentation, not identities); `<code>`/`<pre>` count only as HTML elements outside the markdown
+  source. Chosen over running the real orz-markdown parser in the pure fork (CLAUDE.md: one parser, in the
+  renderer; package-ops stays pure).
+- **The `{{nyml}}` header uid is the source of truth for orz 1.x carriers (P5.B.1.ac).** Every copy (fork, copy into
+  this course) rewrites the header's `uid:` line along with the `#orz-meta` island. Consequence: the extracted
+  source of such a copy differs from its source's in that one line, so its source hash differs (objects — the only
+  files "copy into this course" takes — carry no such header today).
+
 ## 2026-10-24 — Closed loop r3: identity is a whole-run matching; no lockout by our own commits; drained, aged queue; identities frozen
 
 Round-3 correctness audit (probes `/tmp/p5r3/`, `/tmp/p5r3a/`, `/tmp/p5r3b/`) plus the round-3 security audit's

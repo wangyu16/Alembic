@@ -14,6 +14,7 @@
 
 import {
   canAdapt,
+  assertPathAllowedInEitherContract,
   assertPathAllowedInRepo,
   hashContent,
   layerForPath,
@@ -26,7 +27,7 @@ import {
   type PackageManifest,
 } from "@alembic/package-contract";
 import { extractSource, getKindByExtension, hasCarrier } from "@alembic/carriers";
-import { remintForkIdentities } from "./fork-remint";
+import { isForkText, remintForkIdentities } from "./fork-remint";
 import type { PackageFile, PackageStore } from "./store";
 import { loadStudyGuide, prepareStudyGuideSave } from "./study-guide";
 
@@ -258,6 +259,8 @@ export interface ForkPackageInput {
   /** Injected for deterministic tests. */
   now?: () => Date;
   newBlockId?: () => string;
+  /** Injected for deterministic tests (embedded document uids). */
+  newDocId?: () => string;
 }
 
 export interface ForkedPackage {
@@ -318,17 +321,19 @@ export function forkPackage(input: ForkPackageInput): ForkedPackage {
       f.path !== "alembic.json" &&
       f.path !== ADAPTATIONS_PROVENANCE_PATH,
   );
-  const { files: reminted } = remintForkIdentities(copied, mint);
+  const { files: reminted } = remintForkIdentities(copied, mint, input.newDocId);
 
   // Per-block lineage, one entry per (file, id). Study-guide H2 blocks carry
   // their content hash (pull-updates drift detection reads it); other
   // markers (slides, practice, sub-headings) are recorded without one.
   const lineage: AdaptedBlockRef[] = [];
   const originals = new Map(copied.map((f) => [f.path, f.content]));
-  for (const f of reminted) {
+  // In path order, so the record is the same whatever order the files came in.
+  const byPathOrder = [...reminted].sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+  for (const f of byPathOrder) {
     if (f.ids.size === 0) continue;
     const hashes = new Map<string, string>();
-    if (f.path.startsWith(STUDY_GUIDE_PREFIX)) {
+    if (f.path.startsWith(STUDY_GUIDE_PREFIX) && isForkText(f.path)) {
       for (const b of parseStudyGuide(readableSource(originals.get(f.path)!)).blocks) {
         if (b.id && !hashes.has(b.id)) hashes.set(b.id, hashAdaptedBlock(b));
       }
@@ -384,7 +389,10 @@ export function forkPackage(input: ForkPackageInput): ForkedPackage {
     ...finalCloned,
     { repo: "public", path: ADAPTATIONS_PROVENANCE_PATH, content: JSON.stringify(lineage, null, 2) },
   ];
-  for (const f of files) assertPathAllowedInRepo(f.path, f.repo);
+  // Dual-mode (loop r4, HIGH-1): a v2 course keeps its files in `assets/`
+  // and `current/`, which only the v2 contract knows; a private path is still
+  // refused by both contracts (and never reaches here: public files only).
+  for (const f of files) assertPathAllowedInEitherContract(f.path, f.repo);
 
   return { packageId, manifest, files, lineage };
 }

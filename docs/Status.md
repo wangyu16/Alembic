@@ -52,6 +52,31 @@ same commit as the work it tracks. Statuses: ✅ done · 🔄 partially shipped 
 
 > **Current direction — self-contained editing (owner-locked, 2026-07).** Editing and viewing both live *in the files*: the workspace **hosts** the in-file editors of `.md.html` / `.slides.html` / `.paged.html` (orz-family) and **builds no editor of its own**; published pages **are** those self-contained files (thin CDN delivery — study guide ~74 KB, framework from jsDelivr, verified live 2026-07-06); every file gets a permalink. **Committed source of record (revised, 2026-07-08 — "lean-source model"):** a chapter's study guide, slides, and practice questions are each committed as lean markdown (`study-guide/`, `slides/`, `practice/` — `.md`, not `.md.html`); the self-contained `.md.html`/`.slides.html` is generated on demand, purely as the editing/viewing surface, and never itself committed. This supersedes the original plan (below, and in the specs) of `.md.html` as the committed source — the specs haven't all been updated to match yet; this line is authoritative until they are. Authoritative docs: [SteeringNote.md](SteeringNote.md), [self-contained-editing.md](specs/self-contained-editing.md), [workspace-framework.md](specs/workspace-framework.md), and the module-based [Roadmap.md](Roadmap.md) (Modules R/E/P/T/I/S/W — supersedes the phase-based plan). **Code state today:** the classic editor is **retired** (~2.2k lines removed; `/workspace/[id]` redirects to `/edit`); the local **Studio (`/studio`) is removed**, replaced by `/guide`; the workspace three-pane shell now *hosts* the in-file editors (`HostedStudyGuideEditor` for study guide + practice; `HostedSlidesEditor` for authored slide decks). The durable guardrails **G1–G8** (two-repo reference enforcement, block-ID reconcile on import, whole-package fork, single-source course metadata, AI-entitlement seam) that the earlier editor-overhaul design drove all **landed + tested**.
 
+**Phase 5 closed-loop verification — round 4, part A: fork, reconcile, committer, editor saves (2026-10-24,
+branch `phase5/loop-r4a` on `main` 03bcb00, not merged; code only — no migration).** Each finding became a claim + a
+probe that fails on `03bcb00` + a fix of the class ([DecisionLog](DecisionLog.md) 2026-10-24 "Closed loop r4 (part
+A)"). Part B (SQL / discovery) is a parallel branch, `phase5/loop-r4b`.
+- ✅ **HIGH-1 — no v2 course could be forked (P5.B.1.aa).** `forkPackage`'s final path check was v1-only, so any
+  file in `assets/` or `current/` threw (probe `/tmp/p5r4/fork/p1-v2.mts`). Now dual-mode
+  (`assertPathAllowedInEitherContract`; a private path is still refused by both). Siblings checked: every other
+  v1-only check in package-ops is on a fixed v1-valid path (provenance, materials/adapted, study-guide, chapters).
+  Test fixture: `packages/package-ops/src/__fixtures__/fork-v2/` (assets/ incl. a PNG, current/, slides/).
+- ✅ **HIGH-2 — fork time was quadratic (P5.B.1.ab).** The re-mint scanned base64 binaries, and its file-link
+  pattern restarted at every character of long unbroken text (40 KB base64: 4 s; the 11 MB tutorial course: 20 s;
+  probes p9/p10/p12). Now only text files are read (by extension), every pattern is anchored on a literal, a file
+  link is read backward from its `#blk-` fragment, inline-code matching is linear, span lookup is a binary search:
+  the 11 MB course forks in ~0.2 s; bound test: 1 MB base64 + 2 MB hostile text < 1 s.
+- ✅ **MEDIUM-6 — a forked orz 1.x carrier got its source's uid back on re-render (P5.B.1.ac).** The `{{nyml …
+  uid:}}` source header is the uid's source of truth; `remintEmbeddedUid` now rewrites its `uid:` line too (probe
+  p7-uidheader.mts).
+- ✅ **MEDIUM-7 — code detection disagreed with the study-guide parser; some links were not followed (P5.B.1.z).**
+  Markdown (a `.md`, or a carrier's source island) uses `parseStudyGuide`'s fence rule plus fences in lists/quotes,
+  indented code and multi-line inline code; `<code>`/`<pre>` count only in HTML outside the source; a parser
+  heading line is never code (so no id the publish gate counts survives a fork). Links with `?query`, a trailing
+  slash, no extension, a lean `.md` name or URL-encoding follow the copy; `%40` pins are left. Deterministic in
+  file order (lineage in path order; uid minter injectable). Residual: a concept-map node naming a block id shared
+  by several chapters takes the first chapter's id (rule 5), whatever path the node names.
+
 **Phase 5 closed-loop verification — round 3, steps 4–5: correctness audit (+ the round-3 security findings)
 probes and class fixes (2026-10-24, branch `phase5/loop-r3-cor` on `main` edc0d06, not merged, migrations
 `0030_loop_r3c_*` NOT applied).** Each finding became a claim + a probe that fails on `edc0d06` + a fix of the class
