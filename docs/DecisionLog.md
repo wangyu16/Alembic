@@ -6,6 +6,27 @@ design, and what is deferred to the future. Complements [Status.md](Status.md)
 
 ---
 
+## 2026-10-24 — Closed loop r4, part B: a fair drain that commits per entry; signals carried whatever changed them; `/d` answers only what it can vouch for
+
+Round-4 security and correctness findings in SQL, discovery and `/d` (repros `/tmp/alembic-r4/`, `/tmp/p5r4/sql/`),
+fixed on branch `phase5/loop-r4b` (on `main` 03bcb00; not merged; migrations `0031_loop_r4b_*` not applied). Part A
+(fork, reconcile, committer, editor save) is on `phase5/loop-r4a`. Decisions:
+
+- **The drain is fair, and a failure is split, never a sink (P5.A.1.u).** Per-entry slice least(left, budget/5, 2 s)
+  — 2 s is the owner's own flush, so a save of a package being drained waits at most one slice plus one chunk.
+  Fairness is by `drained_at` (kept across merges and cursor restarts), not by "cursor is not null": an owner who
+  restarts its own drain with every edit would otherwise stay in front. A failing chunk is set aside and the rest of
+  the pass lands (then the entry is exactly the failed ids); a failing list is retried id by id within the slice.
+  "New work" (ids the entry lacked, list → whole, a restarted cursor, content newly changed) clears the back-off;
+  attempts are kept so the next failure still backs off longer. A whole pend into a whole entry is not new work.
+- **The schedule is a procedure that commits per entry.** A function cannot commit, so the r3 job held every lock
+  for the whole 25 s run. `discovery_drain` is SECURITY INVOKER with no SET clause (Postgres forbids transaction
+  control otherwise) and reaches the queue only through definer functions; pg_cron runs it as the owner.
+  `discovery_flush_pending` stays for an operator's one-off call. Risk accepted: a pg_cron mode that wraps commands
+  in a transaction would refuse the COMMIT — the header has the check and the fallback schedule.
+- **The package lock goes through `discovery_try_lock`** (same key as the projector's) so the lock's losing side is
+  testable on the one-connection harness; the r3c composition assertion was updated deliberately for it.
+
 ## 2026-10-24 — Closed loop r3: identity is a whole-run matching; no lockout by our own commits; drained, aged queue; identities frozen
 
 Round-3 correctness audit (probes `/tmp/p5r3/`, `/tmp/p5r3a/`, `/tmp/p5r3b/`) plus the round-3 security audit's

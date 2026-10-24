@@ -52,6 +52,24 @@ same commit as the work it tracks. Statuses: ✅ done · 🔄 partially shipped 
 
 > **Current direction — self-contained editing (owner-locked, 2026-07).** Editing and viewing both live *in the files*: the workspace **hosts** the in-file editors of `.md.html` / `.slides.html` / `.paged.html` (orz-family) and **builds no editor of its own**; published pages **are** those self-contained files (thin CDN delivery — study guide ~74 KB, framework from jsDelivr, verified live 2026-07-06); every file gets a permalink. **Committed source of record (revised, 2026-07-08 — "lean-source model"):** a chapter's study guide, slides, and practice questions are each committed as lean markdown (`study-guide/`, `slides/`, `practice/` — `.md`, not `.md.html`); the self-contained `.md.html`/`.slides.html` is generated on demand, purely as the editing/viewing surface, and never itself committed. This supersedes the original plan (below, and in the specs) of `.md.html` as the committed source — the specs haven't all been updated to match yet; this line is authoritative until they are. Authoritative docs: [SteeringNote.md](SteeringNote.md), [self-contained-editing.md](specs/self-contained-editing.md), [workspace-framework.md](specs/workspace-framework.md), and the module-based [Roadmap.md](Roadmap.md) (Modules R/E/P/T/I/S/W — supersedes the phase-based plan). **Code state today:** the classic editor is **retired** (~2.2k lines removed; `/workspace/[id]` redirects to `/edit`); the local **Studio (`/studio`) is removed**, replaced by `/guide`; the workspace three-pane shell now *hosts* the in-file editors (`HostedStudyGuideEditor` for study guide + practice; `HostedSlidesEditor` for authored slide decks). The durable guardrails **G1–G8** (two-repo reference enforcement, block-ID reconcile on import, whole-package fork, single-source course metadata, AI-entitlement seam) that the earlier editor-overhaul design drove all **landed + tested**.
 
+**Phase 5 closed-loop verification — round 4, part B: SQL, discovery and `/d` fixes (2026-10-24, branch
+`phase5/loop-r4b` on `main` 03bcb00, not merged, migrations `0031_loop_r4b_*` NOT applied).** Each finding became a
+claim + a probe that fails on `03bcb00` + a fix of the class ([DecisionLog](DecisionLog.md) 2026-10-24 "Closed loop
+r4, part B"). Part A (fork / reconcile / committer / editor save) runs in parallel on `phase5/loop-r4a`.
+- ✅ **Security MEDIUM-1 + correctness LOW — the scheduled drain could be starved, absorbed, and held saves
+  (P5.A.1.u; P5.A.1.t/s clauses bound).** The oldest entry took a drain's whole budget: a course with thousands of
+  files whose owner edits its title between runs (each edit restarts its drain, its age is kept) held every
+  scheduled run, so other courses' refreshes waited indefinitely (repro `/tmp/alembic-r4/r4q.test.ts`). A failing
+  chunk rolled back a whole drain and absorbed every later edit of that course; and the cron drain was one
+  transaction, holding every package lock / queue row it touched for up to 25 s (an owner save then waited past the
+  8 s timeout). Now (`0031_loop_r4b_1`): each entry gets a slice (≤ budget/5, ≤ 2 s); entries a drain already worked
+  on sort behind untouched ones (`drained_at`, round robin); each chunk is its own sub-transaction, a failing chunk is
+  set aside and the rest lands, and a failing list is retried id by id; new work clears the back-off; the job runs the
+  procedure `discovery_drain(25, 25 s)`, which commits after every entry. Back-off steps, "every drain", oldest-first,
+  the (25, 25 s) arguments and "untouched when the lock is not taken" are now asserted.
+- **Deploy order (round 4, part B):** code and `0031_loop_r4b_*` in either order (each file's header). After
+  `0031_loop_r4b_1`, check `cron.job_run_details` for `alembic-discovery-drain` (fallback in the header).
+
 **Phase 5 closed-loop verification — round 3, steps 4–5: correctness audit (+ the round-3 security findings)
 probes and class fixes (2026-10-24, branch `phase5/loop-r3-cor` on `main` edc0d06, not merged, migrations
 `0030_loop_r3c_*` NOT applied).** Each finding became a claim + a probe that fails on `edc0d06` + a fix of the class

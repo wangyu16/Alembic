@@ -165,15 +165,24 @@ describe("composition r3c (queue): no migration silently reverted an earlier fix
       "u <= q.cursor_doc_id"]) expect(pend!.s, m).toContain(m);
     expect(pend!.s).not.toMatch(/first_queued_at\s*=/);
     const [one] = await src("discovery_flush_one");
-    for (const m of ["pg_try_advisory_xact_lock", "for update skip locked", "limit 1000", "cursor_doc_id = v_last",
+    // (r4b, 0031_loop_r4b_1, deliberately: the try-lock moved into
+    // discovery_try_lock — same key — so its losing side is testable)
+    const lockCall = one!.s.includes("discovery_try_lock(") ? "discovery_try_lock(" : "pg_try_advisory_xact_lock";
+    for (const m of [lockCall, "for update skip locked", "limit 1000", "cursor_doc_id = v_last",
       "attempts = attempts + 1", "next_attempt_at", "discovery_refresh_package(p_package_id, v_q.content, '{}')"]) {
       expect(one!.s, m).toContain(m);
     }
-    expect(one!.s.indexOf("pg_try_advisory_xact_lock")).toBeLessThan(one!.s.indexOf("from public.discovery_pending"));
+    expect(one!.s.indexOf(lockCall)).toBeLessThan(one!.s.indexOf("from public.discovery_pending"));
+    if (lockCall !== "pg_try_advisory_xact_lock") {
+      const [lock] = await src("discovery_try_lock");
+      expect(lock!.s).toContain("pg_try_advisory_xact_lock(");
+    }
     const [pkg] = await src("discovery_flush_package");
     expect(pkg!.s).toContain("caller_owns_package");
     const [all] = await src("discovery_flush_pending");
-    expect(all!.s).toContain("order by first_queued_at");
+    // (r4b: the order lives in discovery_drain_next, now fair — untouched entries oldest first)
+    const order = all!.s.includes("discovery_drain_next") ? (await src("discovery_drain_next"))[0]!.s : all!.s;
+    expect(order).toMatch(/order by (q\.drained_at nulls first, q\.)?first_queued_at/);
     // r2c's projector lock and r2 rules are untouched (the projector was not redefined)
     const [proj] = await src("discovery_refresh_package");
     for (const m of ["pg_try_advisory_xact_lock", "v_pkg.a11y_status", "least(x.registered_at, now())"]) expect(proj!.s, m).toContain(m);
