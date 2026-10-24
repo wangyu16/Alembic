@@ -1542,6 +1542,7 @@ bound_to = [
   "apps/web/src/lib/permalink-pin.test.ts :: /d with a pin on a row that has no hash answers 404, not the current bytes",
   "apps/web/src/lib/permalink-pin.test.ts :: pinSatisfied needs an exact, known hash",
   "apps/web/src/lib/permalink-pin.test.ts :: server-side includes apply the same pin rule",
+  "apps/web/src/lib/loop-r3c-identity.sql.test.ts :: renaming one's own row onto a retired docId, onto a back-filled lineage target, or to any fresh id is refused (owner and service)",
 ]
 note = "Loop r2 NEW-3, migration 0028_loop_r2_2 (either order). Back-fill covers ids still provable (lineage targets, research events); ids deleted earlier and referenced nowhere cannot be recovered."
 
@@ -1755,6 +1756,8 @@ bound_to = [
   "apps/web/src/lib/loop-r2-cor.sql.test.ts :: every trigger of rounds r1b, r2 and r2c is installed",
   "apps/web/src/lib/loop-r2-cor.sql.test.ts :: the internal projector functions stay closed to the API roles",
   "apps/web/src/lib/loop-r3c-registry.sql.test.ts :: documents_apply keeps r1b atomicity/scope, r2c owner-set rules, and parks moving rows (r3c)",
+  "apps/web/src/lib/loop-r3c-identity.sql.test.ts :: every trigger of rounds r1b, r2, r2c and this r3c migration is installed",
+  "apps/web/src/lib/loop-r3c-identity.sql.test.ts :: the internal functions stay closed to the API roles",
 ]
 note = "Loop r2 correctness, the composition rule (round 1's 0026 silently reverted 0025_2). A future migration that redefines one of these functions must keep the markers or update this test deliberately."
 
@@ -1837,3 +1840,14 @@ bound_to = [
   "apps/web/src/lib/loop-r3c-registry.sql.test.ts :: documents_apply parks moving rows: a swap in one call lands; a move onto a location still held by an unmoved row is refused, nothing changes",
 ]
 note = "Loop r3 correctness H3-1 (repros /tmp/p5r3/shift.mts, swap.mts). Migration 0030_loop_r3c_1 (either order with the code). Uid-less files keep location identity (an exact location match wins over a cross-path hash), as before. A chain longer than 500 rows is one larger call (rare: a renumbering of > 500 carriers)."
+
+[[claim]]
+id = "P5.S.16"
+claim = "No API role and no service path can change an issued identity: an UPDATE of documents.doc_id, packages.id, portal_registrations.package_id, suggestions' sender / sending / target package, sandbox_files.package_id or package_changes' package / user is refused for every role, so a retired docId or a back-filled lineage target can never be reclaimed by renaming a row; every primary-key / foreign-key column the signed-in role can UPDATE is frozen by such a trigger or is a listed role column."
+oracle = "invariant"
+bound_to = [
+  "apps/web/src/lib/loop-r3c-identity.sql.test.ts :: renaming one's own row onto a retired docId, onto a back-filled lineage target, or to any fresh id is refused (owner and service)",
+  "apps/web/src/lib/loop-r3c-identity.sql.test.ts :: every other identity column is frozen too: packages.id (service), suggestions' sender/target, the listing's and the stored file's package",
+  "apps/web/src/lib/loop-r3c-identity.sql.test.ts :: every primary-key / foreign-key column the signed-in role can UPDATE is frozen by an identity trigger, or is a listed role column",
+]
+note = "Security loop r3 HIGH-1 (repros /tmp/alembic-r3/r3db.test.ts H1, r3b.test.ts H1 variant). Migration 0030_loop_r3c_2 (either order with the code). Role columns listed in the test: documents.author (owner-asserted, like adapted_from), sandbox_files.repo/path (a stored file's location)."

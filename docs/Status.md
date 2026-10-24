@@ -69,6 +69,14 @@ fixed here too (its later fixes build on this branch).
   (`0030_loop_r3c_1_registry_moves`), and the registry keeps every move chain in one ≤ 500-row chunk (a longer
   chain is one larger call). Kept: HIGH-A (a dormant uid never displaces) and the foreign/retired-uid rule.
   Property test: 150 random permutations/shifts/deletions of up to 10 carriers, write path then full rebuild.
+- ✅ **Security HIGH-1 — a retired docId could be reclaimed by UPDATE (P5.S.16, P5.B.1.q).** The retired-id ledger
+  refused a retired id on INSERT only, and the owner may update every column of its own documents rows: renaming a
+  row's doc_id onto a deleted course's cited id (or a back-filled lineage target) took over its permalinks and
+  adaptation count (repros `/tmp/alembic-r3/r3db.test.ts`, `r3b.test.ts`). Now one trigger function
+  `refuse_identity_change` freezes every identity column for every role (documents.doc_id, packages.id,
+  portal_registrations.package_id, suggestions' sender/target, sandbox_files.package_id, package_changes' package/user;
+  `0030_loop_r3c_2`), and the P5.S.15 inventory treats every PK/FK column the signed-in role can update as sensitive
+  by default (documents.doc_id moved from harmless to sensitive). H3-1's parking step changes path only.
 
 **Phase 5 closed-loop verification — round 2, steps 4–5: correctness audit probes and class fixes (2026-10-23,
 branch `phase5/loop-r2-cor`, built on `phase5/loop-r2-sec`, not merged, migrations `0029_loop_r2c_*` NOT applied).**
