@@ -52,6 +52,24 @@ same commit as the work it tracks. Statuses: ✅ done · 🔄 partially shipped 
 
 > **Current direction — self-contained editing (owner-locked, 2026-07).** Editing and viewing both live *in the files*: the workspace **hosts** the in-file editors of `.md.html` / `.slides.html` / `.paged.html` (orz-family) and **builds no editor of its own**; published pages **are** those self-contained files (thin CDN delivery — study guide ~74 KB, framework from jsDelivr, verified live 2026-07-06); every file gets a permalink. **Committed source of record (revised, 2026-07-08 — "lean-source model"):** a chapter's study guide, slides, and practice questions are each committed as lean markdown (`study-guide/`, `slides/`, `practice/` — `.md`, not `.md.html`); the self-contained `.md.html`/`.slides.html` is generated on demand, purely as the editing/viewing surface, and never itself committed. This supersedes the original plan (below, and in the specs) of `.md.html` as the committed source — the specs haven't all been updated to match yet; this line is authoritative until they are. Authoritative docs: [SteeringNote.md](SteeringNote.md), [self-contained-editing.md](specs/self-contained-editing.md), [workspace-framework.md](specs/workspace-framework.md), and the module-based [Roadmap.md](Roadmap.md) (Modules R/E/P/T/I/S/W — supersedes the phase-based plan). **Code state today:** the classic editor is **retired** (~2.2k lines removed; `/workspace/[id]` redirects to `/edit`); the local **Studio (`/studio`) is removed**, replaced by `/guide`; the workspace three-pane shell now *hosts* the in-file editors (`HostedStudyGuideEditor` for study guide + practice; `HostedSlidesEditor` for authored slide decks). The durable guardrails **G1–G8** (two-repo reference enforcement, block-ID reconcile on import, whole-package fork, single-source course metadata, AI-entitlement seam) that the earlier editor-overhaul design drove all **landed + tested**.
 
+**Phase 5 closed-loop verification — round 3, steps 4–5: correctness audit (+ the round-3 security findings)
+probes and class fixes (2026-10-24, branch `phase5/loop-r3-cor` on `main` edc0d06, not merged, migrations
+`0030_loop_r3c_*` NOT applied).** Each finding became a claim + a probe that fails on `edc0d06` + a fix of the class
+([DecisionLog](DecisionLog.md) 2026-10-24 "Closed loop r3"). The parallel round-3 security audit's findings are
+fixed here too (its later fixes build on this branch).
+- ✅ **H3-1 — a uid's permalink did not follow its bytes when paths shifted, swapped or cycled in one run
+  (P5.B.1.x).** Identity was resolved file by file, so a carrier whose uid's old location was still occupied (by the
+  next chapter of a renumbering) was taken for a copy, and the occupant kept the location's identity: after
+  inserting a chapter, ch3's permalink served ch2's bytes; a swap kept both ids in place (repros
+  `/tmp/p5r3/shift.mts`, `swap.mts`). Now a run first MATCHES every live uid to the file that carries it on
+  (`claimLiveUids`: the file at its old location if it still carries it; else the one file carrying it when its old
+  location was deleted or given other bytes; an untouched present original keeps it — copies get fresh ids), then
+  walks the ladder with those identities reserved. `documents_apply` parks every row it moves at a private temporary
+  path first, so a shift/swap/cycle lands in one call under `documents_location_idx`
+  (`0030_loop_r3c_1_registry_moves`), and the registry keeps every move chain in one ≤ 500-row chunk (a longer
+  chain is one larger call). Kept: HIGH-A (a dormant uid never displaces) and the foreign/retired-uid rule.
+  Property test: 150 random permutations/shifts/deletions of up to 10 carriers, write path then full rebuild.
+
 **Phase 5 closed-loop verification — round 2, steps 4–5: correctness audit probes and class fixes (2026-10-23,
 branch `phase5/loop-r2-cor`, built on `phase5/loop-r2-sec`, not merged, migrations `0029_loop_r2c_*` NOT applied).**
 Each round-2 correctness finding became a claim + a probe that fails on `e057bde` (the security branch head) + a fix

@@ -6,6 +6,54 @@ design, and what is deferred to the future. Complements [Status.md](Status.md)
 
 ---
 
+## 2026-10-24 — Closed loop r3: identity is a whole-run matching; no lockout by our own commits; drained, aged queue; identities frozen
+
+Round-3 correctness audit (probes `/tmp/p5r3/`, `/tmp/p5r3a/`, `/tmp/p5r3b/`) plus the round-3 security audit's
+findings (`/tmp/alembic-r3/`), fixed on branch `phase5/loop-r3-cor` (on `main` edc0d06; not merged; migrations
+`0030_loop_r3c_1…4` not applied). Decisions:
+
+- **Identity is resolved for the whole run, not file by file (P5.B.1.x).** Every live uid is first matched to the
+  file that carries it on; an untouched present original keeps its uid (newcomers are copies). Rows a call moves are
+  parked at `'.alembic-moving/' || doc_id` inside `documents_apply` (the location index is a partial unique index and
+  cannot be deferred). A move chain is never split across calls; a chain longer than 500 rows is one larger call
+  (accepted: only a renumbering of > 500 carriers). Uid-less files keep location identity, as before.
+- **Our own commits never lock a course (P5.B.3.g).** The pointer advances by compare-and-set from the commit's
+  PARENT, so a commit on Alembic's own previous commit advances it and one on an outside commit never does. A refused
+  save reconciles at once: if the overlapping files equal what Alembic already holds, the save is retried once;
+  otherwise the outside version has been brought in and the educator redoes the change; a held-back (quarantined)
+  change names the restored "Check for outside changes" control. Reconcile now absorbs/reports only real
+  differences, and when GitHub's comparison cannot list everything (≥ 300 files, diverged/behind, failure) it
+  compares blob SHA-1s of the head tree with the stored copy. Chosen over a ledger of our commits (a new table and
+  writer) — the stored copy already is that ledger.
+- **The discovery queue (P5.A.1.s, P5.A.1.t).** A merge behind a drain's cursor restarts it; the drain takes the
+  package lock before touching its entry; failures back off (1, 2, 4 … min, ≤ 1 h) for every drain. The scheduled
+  drain is **Supabase pg_cron** (every 5 min, `discovery_flush_pending(25, 25 s)`), chosen over a Vercel Cron route
+  (Hobby plans run crons at most daily; a route would need `CRON_SECRET` and a service key in another place) and over
+  the Fly worker (not always running). The migration schedules it only when pg_cron is enabled — an OWNER ACTION.
+  Age is first-queued time (kept across merges; also the drain order, so edits cannot starve an entry), visible on
+  the admin page and in `discovery_pending_overdue`. Security LOW-2 (another user briefly holding a package's lock)
+  is now only a delay.
+- **`/d` never registers from raw bytes (P5.A.6.p, P5.A.6.r).** raw.githubusercontent.com lags a commit by minutes;
+  a stale `/d` answer now heals that one file from the trial mirror (which the write path updated after its commit),
+  through a service-role registry whose foreign-id check reads `documents` and `retired_ids` directly; it writes
+  nothing when the row already matches the mirror and never tombstones. A pin whose origin bytes lag is served from
+  the mirror when (only when) the mirror's bytes hash to the pin. Unlabelled answers are `private, no-store`.
+- **Identity columns are frozen for every role (security HIGH-1, P5.S.16).** One trigger function
+  (`refuse_identity_change`) on every PK/FK identity column the API role can update; the inventory test now treats
+  every such column as sensitive by default (owner/role columns and stored-file locations are listed exceptions).
+- **Listing signals are the server's (security LOW-3/4/5).** The listing row's accessibility status is copied by
+  the database from `packages.a11y_status`; a check records the head it audited and any later move of the recorded
+  head (including a course-details save) shows "not checked" until the next check; the first listing time survives
+  unlisting (`listing_history`). DOCUMENTED, not changed: the 200-pending inbox cap per course can be filled by ≥ 10
+  real accounts (20 each) — Sybil needs real GitHub accounts and the owner can reject in bulk; two concurrent
+  arrivals may overshoot the cap by the concurrency (no counter row is locked) — bounded, accepted.
+- **Course details have one writer (P5.B.1.y).** `writeThrough` refuses an invalid, foreign or deleted
+  `alembic.json`; the editor save refuses it outright; the dead `renamePackageTitle` is gone. Publishing merges only
+  the repository pair into the current details and a half-finished publish completes on the next click (P5.B.3.i).
+- **Fork ids are per chapter (P5.B.1.z).** Contract block ids (`{{attrs[#blk-…]}}` in study-guide/, slides/,
+  practice/) are re-minted per file; references follow the copy they point into; code is never rewritten. OPEN for an
+  owner ruling: `{#blk-…}` heading attributes are not contract ids and are copied unchanged.
+
 ## 2026-10-23 — Closed loop r2 (correctness): bounded projector, dormant uids, owner-set fields, outside changes
 
 Round-2 correctness audit (probes in `/tmp/p5r2/`, `/tmp/p5r2disc/`), fixed on branch `phase5/loop-r2-cor`, built

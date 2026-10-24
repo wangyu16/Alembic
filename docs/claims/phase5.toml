@@ -1754,6 +1754,7 @@ bound_to = [
   "apps/web/src/lib/loop-r2-cor.sql.test.ts :: the registry functions keep r1b atomicity/scope, r2 ownership/retired ids, r2c owner-set rules",
   "apps/web/src/lib/loop-r2-cor.sql.test.ts :: every trigger of rounds r1b, r2 and r2c is installed",
   "apps/web/src/lib/loop-r2-cor.sql.test.ts :: the internal projector functions stay closed to the API roles",
+  "apps/web/src/lib/loop-r3c-registry.sql.test.ts :: documents_apply keeps r1b atomicity/scope, r2c owner-set rules, and parks moving rows (r3c)",
 ]
 note = "Loop r2 correctness, the composition rule (round 1's 0026 silently reverted 0025_2). A future migration that redefines one of these functions must keep the markers or update this test deliberately."
 
@@ -1814,3 +1815,25 @@ bound_to = [
 ]
 note = "Loop r2 correctness L-1. Code only (registerChangedFiles)."
 
+
+# ─── Closed loop round 3 — correctness (2026-10-24, branch phase5/loop-r3-cor) ───
+
+# H3-1 — identity is a whole-run matching
+
+[[claim]]
+id = "P5.B.1.x"
+claim = "Under any shift, swap or cycle of paths in one registration run (write path, page-load heal or full rebuild), every live uid follows its bytes: the row of each embedded uid that is one of the package's live identities ends at the path whose file carries it, unless an untouched present original still carries it (then the newcomer is a copy with a fresh id); no carried identity is tombstoned; documents_apply lands a whole move chain in one call (moving rows are parked first), and the registry never splits a chain across calls."
+oracle = "probe"
+bound_to = [
+  "packages/package-ops/src/document-registry.r3c.test.ts :: inserting a chapter renumbers the rest: each carrier keeps its uid at its new path (shift)",
+  "packages/package-ops/src/document-registry.r3c.test.ts :: two carriers swap paths in one write; the swap lands even where the store refuses a location still held (swap)",
+  "packages/package-ops/src/document-registry.r3c.test.ts :: an outside rotation healed on page load (content read from the store) follows the bytes (cycle)",
+  "packages/package-ops/src/document-registry.r3c.test.ts :: property: random permutations and shifts of N carriers (write path, then a full rebuild) — each uid serves its own bytes",
+  "packages/package-ops/src/document-registry.r3c.test.ts :: a 600-file rotation is one move chain: it lands whole, never split into chunks that collide",
+  "packages/package-ops/src/document-registry.r3c.test.ts :: kept: a byte-copy next to its untouched original still gets its own id (HIGH-A / copy rule)",
+  "packages/package-ops/src/document-registry.r3c.test.ts :: two new files carry one live uid whose file was deleted: the one with the registered bytes takes it, the other is a copy",
+  "apps/web/src/lib/loop-r3c-registry.sql.test.ts :: inserting a chapter: X moves ch2→ch3 and Y ch3→ch4 in one write (shift)",
+  "apps/web/src/lib/loop-r3c-registry.sql.test.ts :: two carriers swap paths in one write, and a three-way rotation, each in ONE documents_apply (swap, cycle)",
+  "apps/web/src/lib/loop-r3c-registry.sql.test.ts :: documents_apply parks moving rows: a swap in one call lands; a move onto a location still held by an unmoved row is refused, nothing changes",
+]
+note = "Loop r3 correctness H3-1 (repros /tmp/p5r3/shift.mts, swap.mts). Migration 0030_loop_r3c_1 (either order with the code). Uid-less files keep location identity (an exact location match wins over a cross-path hash), as before. A chain longer than 500 rows is one larger call (rare: a renumbering of > 500 carriers)."
