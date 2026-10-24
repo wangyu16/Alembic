@@ -52,10 +52,54 @@ same commit as the work it tracks. Statuses: ✅ done · 🔄 partially shipped 
 
 > **Current direction — self-contained editing (owner-locked, 2026-07).** Editing and viewing both live *in the files*: the workspace **hosts** the in-file editors of `.md.html` / `.slides.html` / `.paged.html` (orz-family) and **builds no editor of its own**; published pages **are** those self-contained files (thin CDN delivery — study guide ~74 KB, framework from jsDelivr, verified live 2026-07-06); every file gets a permalink. **Committed source of record (revised, 2026-07-08 — "lean-source model"):** a chapter's study guide, slides, and practice questions are each committed as lean markdown (`study-guide/`, `slides/`, `practice/` — `.md`, not `.md.html`); the self-contained `.md.html`/`.slides.html` is generated on demand, purely as the editing/viewing surface, and never itself committed. This supersedes the original plan (below, and in the specs) of `.md.html` as the committed source — the specs haven't all been updated to match yet; this line is authoritative until they are. Authoritative docs: [SteeringNote.md](SteeringNote.md), [self-contained-editing.md](specs/self-contained-editing.md), [workspace-framework.md](specs/workspace-framework.md), and the module-based [Roadmap.md](Roadmap.md) (Modules R/E/P/T/I/S/W — supersedes the phase-based plan). **Code state today:** the classic editor is **retired** (~2.2k lines removed; `/workspace/[id]` redirects to `/edit`); the local **Studio (`/studio`) is removed**, replaced by `/guide`; the workspace three-pane shell now *hosts* the in-file editors (`HostedStudyGuideEditor` for study guide + practice; `HostedSlidesEditor` for authored slide decks). The durable guardrails **G1–G8** (two-repo reference enforcement, block-ID reconcile on import, whole-package fork, single-source course metadata, AI-entitlement seam) that the earlier editor-overhaul design drove all **landed + tested**.
 
+**Phase 5 closed-loop verification — CLOSED after round 5 (2026-10-24).** Owner ruling: round 5 is the last; no
+further review round. Summary (claims registry `docs/claims/phase5.toml`, `pnpm claims`; every round's findings have a
+claim, a probe that failed before and a fix of the class):
+- **Round 1** (2026-10-23, deployed): claims registry; two audits — 3 HIGH, 8 MEDIUM, 9 LOW, all fixed except L2 (the
+  32-bit pin hash, accepted then and closed by owner decision 1, SHA-256 pins); the integration caught 0026
+  reverting a fix → the composition rule (P5.A.1.r).
+- **Round 2** (2026-10-23, deployed, 0028–0029): server-owned signals, ids never reissued, a Supabase-shaped test
+  database; bounded projector, dormant uids, owner-set fields, outside changes guarded (P5.B.3.f).
+- **Round 3** (2026-10-24, deployed, 0030): identity as a whole-run matching; no lockout by Alembic's own commits;
+  a drained, aged queue; `/d` re-verification.
+- **Round 4** (2026-10-24, deployed, 0031): fork (v2, linear time, uid header), reconcile exact bytes, held-back
+  changes block only their files + "Keep Alembic's version", editor saves based on what they opened, publish
+  catch-up; a fair per-entry-committing drain, linear registration trigger, `/d` pins answered only with pinned bytes.
+- **Owner decisions of 2026-10-24** (0032): SHA-256 pins; the automatic accessibility check, neutral when absent.
+- **Round 5** (below; 0033): the final fix pass — bases from real existence, guarded 422 rebuilds in every
+  repository, a held drain failure falls through, a linear fork scan, truthful "keep", a fail that sticks.
+
+**Open, for Track C** (recorded, not fixed — none is a class (a) HIGH):
+- Discovery fairness under heavy load: with ≥ 13 new multi-second entries per scheduled run, the 25 s run cannot
+  give each a slice, so the newest wait one or more runs (bounded; no starvation of a single entry, r4b).
+- A whole pass with a permanently failing held id advances one slice per back-off interval (≤ 1 h) until the pass
+  ends and the failing ids become a scoped entry (P5.A.1.w).
+- Memory for huge changed files: reconcile and the 422 rebuild hold a changed file's whole bytes (up to GitHub's
+  100 MB blob limit) in memory; no streaming.
+- The original publish committed binaries' base64 without an encoding flag in the store (moot since r4: the stored
+  form is decided by name, P5.B.3.k/u).
+- `/d`: legacy 8-hex pins on rows registered before 0027 answer 404 until an unpinned view heals the row; a pinned
+  conditional request whose origin is stale answers 404 — a SHA-256-pinned `If-None-Match` could be answered 304
+  without reading (possible improvement).
+- Accessibility auto-check: a check skipped because the instance is busy has no retry (the next commit re-checks);
+  a course with held-back outside changes stays "not checked" until they are resolved; a fail that expired under 0030
+  before 0033_loop_r5_2 stays neutral until its next check; (the published site's schema.org accessibility
+  now follows the server's check, P5.R.5.i).
+- Editor saves: "Replace" (upload an offline-edited copy) carries no base (r4 OPEN); the block-editor fallback for
+  the practice document (only when the document worker is unavailable) opens empty and its save is unchecked; a late
+  acknowledgement of a timed-out hosted save can reach the file while the next save is in flight; the ms window of
+  P5.B.3.m's residual; a truncated head tree still ends in a plain refusal (r3).
+- "Check for outside changes": the tree fallback still reads every stored file's content to hash it (P5.S.6.d
+  OPEN; a stored git-blob-sha column would remove it).
+- `listing_history` cannot back-fill courses unlisted before 0030_loop_r3c_4 (research data — owner decision).
+- Fork/parser: fence and H2 lines ending in a stray `\r` are not recognised (old and new code alike); the fork's
+  heading rule (`/^##\s/`) is looser than the parser's (safe: it re-mints more, never less).
+- A manual accessibility check does not count against the per-course `a11yAuto` bucket (its own per-user bucket).
+
 **Phase 5 closed-loop verification — round 5, the final fix pass (2026-10-24, branch `phase5/loop-r5` on
 `phase5/decisions` ef2ded8, not merged; migrations `0033_loop_r5_*` NOT applied).** One narrow audit of round 4's
 changes (+ the decisions-diff audit); each finding became a claim + a probe that fails before + a fix of the class
-([DecisionLog](DecisionLog.md) 2026-10-24 "Closed loop r5"). No new review round follows (owner ruling).
+([DecisionLog](DecisionLog.md) 2026-10-24 "Closed loop r5"). No new review round follows: the loop is closed (below).
 - ✅ **HIGH (a) — an existing whitespace-only or empty concept map / assessment guide could never be saved
   (P5.B.3.p).** The editor took "is there a file" from `content.trim()` (and the edit page turned "no file" into
   ""), so such a file was opened with base "no file" and every save was refused as changed (R5-1, published and

@@ -46,6 +46,9 @@ Round 5 was the owner's narrow last round: one auditor on round 4's changes, plu
   trial-course preview; not checked means say nothing, never a default.
 - **"Check now" gets its own per-user bucket (P5.R.5.j).** The protected cost is the educator's installation quota,
   which is per account, not per course; and a manual check should not use up the automatic check after a save.
+- **The loop closes.** Rounds 1–5 are summarized in Status.md; what stays open is recorded there for Track C. No
+  further review round: the next check is the blind-critique round on the deployed site.
+
 ## 2026-10-24 — Owner decision 2: the accessibility badge follows an automatic check; no check is neutral
 
 The owner ruled that the badge must not depend on an educator remembering to re-run a check that every save expires
