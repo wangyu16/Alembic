@@ -164,4 +164,68 @@ describe("/d plain answers are verified against the current bytes", () => {
     expect(await r.text()).toBe(OLD);
     expect(reads()).toBe(1);
   });
+
+  it("[P5.A.6.q] an unlabelled answer is never shared-cacheable: private, no-store in every unverified branch", async () => {
+    const notShared = (r: Response, what: string) => {
+      const cc = r.headers.get("cache-control") ?? "";
+      expect(r.headers.get("etag"), what).toBeNull();
+      expect(cc, what).toBe("private, no-store");
+      expect(r.headers.get("cdn-cache-control"), what).toBeNull();
+      expect(r.headers.get("vercel-cdn-cache-control"), what).toBeNull();
+    };
+    // stale plain GET
+    notShared(await servePermalink("doc-p6yeztm4k2k7", new Headers(), deps(() => NEW).d), "stale 200");
+    // stale conditional GET
+    notShared(await servePermalink("doc-p6yeztm4k2k7", conditional, deps(() => NEW).d), "stale conditional");
+    // pinned miss whose bytes do not verify
+    notShared(await servePermalink(`doc-p6yeztm4k2k7@${H_OLD}`, new Headers(), deps(() => NEW).d), "pinned unverified");
+    // a row without a hash
+    const noHash = deps(() => NEW);
+    const inner = noHash.d.access;
+    noHash.d.access = async (id) => {
+      const a = await inner(id);
+      return a.status === "ok" ? { ...a, doc: { ...a.doc, source_hash: null } } : a;
+    };
+    notShared(await servePermalink("doc-p6yeztm4k2k7", new Headers(), noHash.d), "no hash");
+  });
+
+  it("[P5.A.6.p] a pin whose origin bytes lag is served from the mirror only when the mirror's bytes hash to the pin", async () => {
+    const pinned = `doc-p6yeztm4k2k7@${H_OLD}`;
+    // origin lags/moved; the mirror holds the pinned version → labelled as the pin
+    const a = deps(() => NEW);
+    let mirrorReads = 0;
+    (a.d as PermalinkDeps & { readMirror?: unknown }).readMirror = async () => (mirrorReads++, Buffer.from(OLD, "utf8"));
+    const ok = await servePermalink(pinned, new Headers(), a.d);
+    expect(await ok.text()).toBe(OLD);
+    expect(ok.headers.get("etag")).toBe(`W/"${H_OLD}"`);
+    expect(ok.headers.get("cache-control")).toBe(CACHE.pinned);
+    expect(mirrorReads).toBe(1);
+    // content-addressed, so the verified copy is cached: no second read anywhere
+    const again = await servePermalink(pinned, new Headers(), a.d);
+    expect(await again.text()).toBe(OLD);
+    expect(a.reads()).toBe(1);
+    expect(mirrorReads).toBe(1);
+
+    // ...and licenses nothing else: a plain GET still re-reads the origin and is unlabelled
+    const plainAfter = await servePermalink("doc-p6yeztm4k2k7", new Headers(), a.d);
+    expect(await plainAfter.text()).toBe(NEW);
+    expect(plainAfter.headers.get("etag")).toBeNull();
+    expect((await servePermalink("doc-p6yeztm4k2k7", conditional, a.d)).status).toBe(200);
+
+        // the mirror does not hold the pinned version either → today's answer
+    const b = deps(() => NEW);
+    (b.d as PermalinkDeps & { readMirror?: unknown }).readMirror = async () => Buffer.from("# something else", "utf8");
+    const no = await servePermalink(pinned, new Headers(), b.d);
+    expect(await no.text()).toBe(NEW);
+    expect(no.headers.get("etag")).toBeNull();
+    expect(no.headers.get("cache-control")).toBe(CACHE.unverified);
+
+    // an unpinned stale answer never consults the mirror
+    const c = deps(() => NEW);
+    let unpinnedMirror = 0;
+    (c.d as PermalinkDeps & { readMirror?: unknown }).readMirror = async () => (unpinnedMirror++, Buffer.from(OLD, "utf8"));
+    const plain = await servePermalink("doc-p6yeztm4k2k7", new Headers(), c.d);
+    expect(await plain.text()).toBe(NEW);
+    expect(unpinnedMirror).toBe(0);
+  });
 });

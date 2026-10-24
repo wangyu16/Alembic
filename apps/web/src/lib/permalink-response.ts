@@ -19,8 +19,10 @@
  *       unpinned answer re-verifies the hash against the current bytes at
  *       most once per 60 s window — loop r2, P5.A.6.o).
  *     Bytes that do not hash to the registry's hash (the repo moved ahead of
- *     the registry) are served the old way: no ETag, `max-age=60`, uncached,
- *     and `onStale` asks for that one file to be registered again.
+ *     the registry, or the raw CDN lags a save) are served unlabelled: no
+ *     ETag, `private, no-store` (`CACHE.unverified`), not cached, and
+ *     `onStale` asks for that one row to be healed — from the mirror, never
+ *     from these bytes (closed loop r3, P5.A.6.p; `lib/permalink-heal.ts`).
  *
  * The ETag is WEAK because for carrier files the hash covers the embedded
  * source, not the rendered bytes: two renderings of one source are the same
@@ -29,7 +31,7 @@
 
 import type { PermalinkAccess, PermalinkDoc } from "./permalink-access";
 import { pinSatisfied } from "./permalink-access";
-import type { DocBytesCache } from "./doc-bytes-cache";
+import { bytesMatchHash, type DocBytesCache } from "./doc-bytes-cache";
 import type { RateDecision } from "./rate-limit";
 import { tooManyRequests } from "./rate-limit";
 
@@ -106,8 +108,14 @@ export const CACHE = {
   pinned: "private, max-age=31536000, immutable",
   /** Browser 60 s; shared caches 240 s fresh + 60 s stale = the takedown bound. */
   live: "public, max-age=60, s-maxage=240, stale-while-revalidate=60",
-  /** Bytes we could not tie to the registry's hash: the pre-A.6 behaviour. */
-  unverified: "public, max-age=60",
+  /**
+   * Bytes we could not tie to the registry's hash (no ETag): never stored by
+   * a shared cache or kept by the browser (closed loop r3, P5.A.6.q). They
+   * may be a lagging CDN's previous version or a commit the registry has not
+   * seen; a shared copy would outlive the fix and carry no version to
+   * revalidate against.
+   */
+  unverified: "private, no-store",
   /** Not found / no access: never stored, so an owner never sees a cached 404. */
   none: "no-store",
   /** Tombstones are permanent (docIds are never reused): browsers keep them an
@@ -196,14 +204,23 @@ export interface PermalinkDeps {
   /** Read the file's bytes wherever they live (GitHub or trial store). */
   readBytes: (doc: PermalinkDoc, ok: Extract<PermalinkAccess, { status: "ok" }>) => Promise<Buffer | null>;
   cache: DocBytesCache;
+  /**
+   * Read the file's MIRROR copy (the package store the write path updates
+   * after its commit), or null. Used only for a PINNED request whose origin
+   * bytes do not hash to the pin — the raw CDN lags a save — and served only
+   * if these bytes hash to the pin (closed loop r3, P5.A.6.p).
+   */
+  readMirror?: (doc: PermalinkDoc, ok: Extract<PermalinkAccess, { status: "ok" }>) => Promise<Buffer | null>;
   /** Called for every PUBLIC answer served (view events). Never for owner-only. */
   onPublicServed?: (info: ServedInfo) => void;
   /**
-   * Called when a public file's current bytes no longer hash to the registry
-   * row (loop r2, P5.A.6.o) — the route re-registers that one file. Must not
-   * block; anything it throws is swallowed.
+   * Called when a public file's bytes no longer hash to the registry row
+   * (loop r2, P5.A.6.o) — the route heals that one row from the mirror. It
+   * is deliberately NOT given the bytes: they may lag a save (raw CDN), and
+   * registering them rolled the registry back (closed loop r3, P5.A.6.p).
+   * Must not block; anything it throws is swallowed.
    */
-  onStale?: (doc: PermalinkDoc, bytes: Buffer) => void;
+  onStale?: (doc: PermalinkDoc) => void;
 }
 
 /** The exact bytes of a Buffer as a standalone ArrayBuffer (a valid BodyInit). */
@@ -293,11 +310,11 @@ export async function servePermalink(
   const cacheControl = cacheHeaders(pinned);
   const key = { docId: doc.doc_id, hash, path: doc.path };
   const servedStale = (bytes: Buffer): Response => {
-    // The file moved on and the registry did not: serve what is there now,
-    // unlabelled (no ETag, not shared-cacheable) — as for any unverified read
-    // — and ask for that one file to be registered again.
+    // The bytes and the registry disagree (either may be the newer one):
+    // serve what was read, unlabelled (no ETag, `private, no-store`) — as for
+    // any unverified read — and ask for that one row to be healed.
     try {
-      deps.onStale?.(doc, bytes);
+      deps.onStale?.(doc);
     } catch {
       // never affects the answer
     }
@@ -342,9 +359,26 @@ export async function servePermalink(
     fresh = check.bytes;
   }
 
+  // A pin whose origin bytes are not the pinned version (the raw CDN still
+  // serves the previous one right after a save): the mirror's copy, if — and
+  // only if — it hashes to the pin. Content-addressed, so the cache may keep
+  // it under the pin like any verified read (closed loop r3, P5.A.6.p).
+  // The mirror copy is NOT an origin verification: it licenses no 304 and no
+  // unpinned label.
+  let fromMirror: Buffer | null = null;
+  const loadPinned = async (): Promise<Buffer | null> => {
+    const origin = await deps.readBytes(doc, access);
+    if (origin && bytesMatchHash(doc.path, origin, hash)) return origin;
+    if (!deps.readMirror) return origin;
+    const mirror = await deps.readMirror(doc, access).catch(() => null);
+    if (mirror && bytesMatchHash(doc.path, mirror, hash)) return (fromMirror = mirror);
+    return origin;
+  };
   const got = fresh
     ? { bytes: fresh, verified: true }
-    : await deps.cache.get(key, () => deps.readBytes(doc, access));
+    : pinned
+      ? await deps.cache.get(key, loadPinned, { fromOrigin: (b) => b !== fromMirror })
+      : await deps.cache.get(key, () => deps.readBytes(doc, access));
   if (got === null) return notFound();
   deps.onPublicServed?.({ doc, pinned, status: 200 });
   return new Response(body(got.bytes), {

@@ -98,7 +98,7 @@ function foreignIdFrom(message: string): string | null {
 }
 
 export class SupabaseDocumentRegistryStore implements DocumentRegistryStore {
-  constructor(private readonly supabase: SupabaseClient) {}
+  constructor(protected readonly supabase: SupabaseClient) {}
 
   /**
    * One registration run in ONE transaction (migration 0027's
@@ -278,5 +278,43 @@ export class SupabaseDocumentRegistryStore implements DocumentRegistryStore {
       "Registry read failed",
     );
     return rows.map(fromRow);
+  }
+}
+
+/**
+ * The registry as the PLATFORM sees it (service role) — for the one
+ * registration that runs without an owner's session: `/d`'s heal of a stale
+ * row (`lib/permalink-heal.ts`). Closed loop r3, security LOW-1 (P5.A.6.r).
+ *
+ * `documents_foreign_doc_ids` is the signed-in owner's narrow question and
+ * is revoked from service_role (it requires `caller_owns_package`,
+ * migration 0028_loop_r2_2), so through the base store every file carrying
+ * an embedded uid its package does not hold made the heal throw. The service
+ * role bypasses RLS and keeps SELECT on `documents` and on `retired_ids`
+ * (0028_loop_r2_2 revokes only its writes), so it asks the same question
+ * directly, with the same answer: ids another package holds (live or
+ * tombstoned) plus retired doc ids.
+ *
+ * Never hand this store to an owner-facing path: it would answer "taken"
+ * questions about other owners' packages (it is only ever used for the
+ * package `/d` already resolved).
+ */
+export class ServiceDocumentRegistryStore extends SupabaseDocumentRegistryStore {
+  override async foreignDocIds(packageId: string, docIds: string[]): Promise<Set<string>> {
+    const out = new Set<string>();
+    // Ids travel in the query string: 200 per request keeps it short.
+    const CHUNK = 200;
+    for (let i = 0; i < docIds.length; i += CHUNK) {
+      const ids = docIds.slice(i, i + CHUNK);
+      const [taken, retired] = await Promise.all([
+        this.supabase.from("documents").select("doc_id").in("doc_id", ids).neq("package_id", packageId),
+        this.supabase.from("retired_ids").select("id").eq("kind", "doc").in("id", ids),
+      ]);
+      if (taken.error) throw new Error(`Registry read failed: ${taken.error.message}`);
+      if (retired.error) throw new Error(`Registry read failed: ${retired.error.message}`);
+      for (const r of (taken.data as Array<{ doc_id: string }> | null) ?? []) out.add(r.doc_id);
+      for (const r of (retired.data as Array<{ id: string }> | null) ?? []) out.add(r.id);
+    }
+    return out;
   }
 }

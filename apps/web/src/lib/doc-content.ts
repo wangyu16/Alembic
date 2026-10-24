@@ -35,7 +35,20 @@ export async function fetchDocBytes(
     if (bytes) return Buffer.from(bytes);
   }
 
-  // Sandbox fallback: binary is stored base64, text as UTF-8 — decode accordingly.
+  return fetchMirrorBytes(db, doc);
+}
+
+/**
+ * The file's bytes from the package store (`sandbox_files`): the trial
+ * store, or a published package's mirror — which the write path updates
+ * after its commit. `/d` serves a pinned version from here while the raw
+ * GitHub CDN still lags a save (closed loop r3, P5.A.6.p).
+ */
+export async function fetchMirrorBytes(
+  db: SupabaseClient,
+  doc: { package_id: string; repo: "public" | "private"; path: string },
+): Promise<Buffer | null> {
+  // Binary is stored base64, text as UTF-8 — decode accordingly.
   const { data: file } = await db
     .from("sandbox_files")
     .select("content")

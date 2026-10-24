@@ -1,8 +1,7 @@
 import { after, type NextRequest } from "next/server";
-import type { PermalinkDoc } from "@/lib/permalink-access";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
-import { fetchDocBytes } from "@/lib/doc-content";
+import { fetchDocBytes, fetchMirrorBytes } from "@/lib/doc-content";
 import { resolvePermalinkAccess } from "@/lib/permalink-access";
 import { servePermalink } from "@/lib/permalink-response";
 import { DocBytesCache } from "@/lib/doc-bytes-cache";
@@ -17,8 +16,7 @@ import {
 } from "@/lib/rate-limit";
 import { isFirstView } from "@/lib/view-dedupe";
 import { recordDiscoveryEvent } from "@/lib/record-discovery-event";
-import { registerChanges } from "@/lib/register";
-import { isBinaryPath } from "@/lib/collection-upload";
+import { createStaleHealer } from "@/lib/permalink-heal";
 
 export const dynamic = "force-dynamic";
 
@@ -57,42 +55,23 @@ const VIEWED_DOCUMENT = /\.(md\.html|slides\.html|paged\.html|html|md)$/i;
 const bytesCache = new DocBytesCache({ shared: nextDocBytesLayer });
 
 /**
- * A served file whose current bytes no longer match its registry row (loop
- * r2, P5.A.6.o): re-register just that file, after the response, best-effort.
- * At most once per doc per verification window on this instance, so a
- * registration that keeps failing does not turn every view into a write.
+ * A served file whose bytes no longer match its registry row (loop r2,
+ * P5.A.6.o): heal that one row after the response, best-effort, at most once
+ * per doc per verification window on this instance. From the MIRROR, never
+ * from the bytes just read — raw GitHub lags a commit, and registering from
+ * it rolled a fresh save back (closed loop r3, P5.A.6.p; `lib/permalink-heal.ts`).
  */
-const staleFiredAt = new Map<string, number>();
-function reRegisterStale(doc: PermalinkDoc, bytes: Buffer): void {
-  const now = Date.now();
-  const last = staleFiredAt.get(doc.doc_id);
-  if (last !== undefined && now - last < DocBytesCache.REVALIDATE_MS) return;
-  if (staleFiredAt.size >= 10_000) staleFiredAt.clear();
-  staleFiredAt.set(doc.doc_id, now);
-
-  const work = async () => {
-    const service = createServiceClient();
-    if (!service) return;
-    // The content as the registration hashes it: UTF-8 text, base64 for a binary.
-    const content = bytes.toString(isBinaryPath(doc.path) ? "base64" : "utf8");
-    await registerChanges(
-      service,
-      doc.package_id,
-      [{ repo: doc.repo, path: doc.path, content }],
-      "external-commit",
-    );
-  };
-  const run = () =>
-    work().catch((err) =>
-      console.warn("[permalink] re-registration failed:", err instanceof Error ? err.message : err),
-    );
-  try {
-    after(run);
-  } catch {
-    // Outside a request scope (`after` unavailable): fire and forget.
-    void run();
-  }
-}
+const healStale = createStaleHealer({
+  service: createServiceClient,
+  schedule: (run) => {
+    try {
+      after(run);
+    } catch {
+      // Outside a request scope (`after` unavailable): fire and forget.
+      void run();
+    }
+  },
+});
 
 /** In-process fallback of the view de-duplication counter (bounded). */
 const viewMemory = new MemoryRateStore(20_000);
@@ -118,8 +97,10 @@ export async function GET(
     access: (docId) =>
       resolvePermalinkAccess(docId, { session, service: createServiceClient() }),
     readBytes: (doc, ok) => fetchDocBytes(ok.db, doc),
+    // A pin during the raw-CDN lag after a save (closed loop r3, P5.A.6.p).
+    readMirror: (doc, ok) => fetchMirrorBytes(ok.db, doc),
     cache: bytesCache,
-    onStale: reRegisterStale,
+    onStale: healStale,
     // A view event per DOCUMENT opened (not per embedded figure, which
     // would multiply one reading by its image count). CDN-served views never
     // reach here, so these count origin answers, not readers — and at most

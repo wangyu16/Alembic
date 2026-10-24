@@ -94,6 +94,16 @@ fixed here too (its later fixes build on this branch).
   `a11y_checked_sha`, and the status shows "not checked" once the recorded head moves); unlist + re-list refreshed
   "newly listed" (now the first listing time is kept, private `listing_history`). `0030_loop_r3c_4`; the inbox cap
   and its count race are documented, not changed (DecisionLog 2026-10-24).
+- ✅ **M3-3 + security LOW-1 — `/d` re-registered from bytes that lag a save (P5.A.6.p, P5.A.6.r).** raw.githubusercontent
+  serves the previous version for minutes after a commit; a `/d` view right after a save re-registered those old bytes,
+  rolling the registry back (a pin on the saved version then 404'd; repro `/tmp/p5r3b/d-regress.test.ts`). And the
+  service-role re-registration threw on any unknown embedded uid (`documents_foreign_doc_ids` is closed to
+  service_role). Now a stale answer heals that one file from the trial mirror (`lib/permalink-heal.ts`; writes nothing
+  when the row already matches it, never tombstones), through `ServiceDocumentRegistryStore` whose foreign-id check
+  reads `documents` + `retired_ids` directly; a pin whose origin bytes lag is served from the mirror only when the
+  mirror's bytes hash to the pin. Code only.
+- ✅ **LOWs — `/d` verification record unbounded; unlabelled answer cache header (P5.A.6.q).** The record drops entries
+  older than the window and holds ≤ 10,000; unlabelled answers are `private, no-store` (header = comment = test).
 
 **Phase 5 closed-loop verification — round 2, steps 4–5: correctness audit probes and class fixes (2026-10-23,
 branch `phase5/loop-r2-cor`, built on `phase5/loop-r2-sec`, not merged, migrations `0029_loop_r2c_*` NOT applied).**

@@ -79,6 +79,9 @@ export interface DocBytesCacheOptions {
    *  data cache refuses items over ~2 MB, and base64 inflates by a third). */
   shared?: SharedBytesLayer;
   sharedMaxItemBytes?: number;
+  /** Most verification records kept (default 10,000; closed loop r3,
+   *  P5.A.6.q). Records older than `REVALIDATE_MS` are dropped anyway. */
+  maxVerified?: number;
   /** Clock (tests). */
   now?: () => number;
 }
@@ -97,8 +100,12 @@ export class DocBytesCache {
   private readonly maxBytes: number;
   private readonly maxItemBytes: number;
   private readonly sharedMaxItemBytes: number;
-  /** When each key was last verified against bytes read from ORIGIN. */
+  /** When each key was last verified against bytes read from ORIGIN.
+   *  Insertion order is time order (`markVerified` re-inserts), and it is
+   *  bounded: expired records and the oldest beyond `maxVerified` go
+   *  (closed loop r3, P5.A.6.q — it used to grow with every version viewed). */
   private readonly verifiedAt = new Map<string, number>();
+  private readonly maxVerified: number;
   private readonly now: () => number;
 
   /**
@@ -111,6 +118,7 @@ export class DocBytesCache {
     this.maxBytes = opts.maxBytes ?? 64 * 1024 * 1024;
     this.maxItemBytes = opts.maxItemBytes ?? 8 * 1024 * 1024;
     this.sharedMaxItemBytes = opts.sharedMaxItemBytes ?? 1024 * 1024;
+    this.maxVerified = opts.maxVerified ?? 10_000;
     this.now = opts.now ?? Date.now;
   }
 
@@ -137,7 +145,7 @@ export class DocBytesCache {
     const bytes = await load();
     if (bytes === null) return null;
     if (bytesMatchHash(key.path, bytes, key.hash)) {
-      this.verifiedAt.set(id, this.now());
+      this.markVerified(id);
       this.remember(id, bytes);
       await this.storeShared(id, bytes);
       return { status: "fresh", bytes };
@@ -145,6 +153,18 @@ export class DocBytesCache {
     this.forget(id);
     this.evictShared(id);
     return { status: "stale", bytes };
+  }
+
+  /** Record a verification; drop expired records and any beyond the cap
+   *  (oldest first — the map is in time order). Amortised O(1). */
+  private markVerified(id: string): void {
+    const t = this.now();
+    this.verifiedAt.delete(id);
+    this.verifiedAt.set(id, t);
+    for (const [k, at] of this.verifiedAt) {
+      if (this.verifiedAt.size <= this.maxVerified && t - at < DocBytesCache.REVALIDATE_MS) break;
+      this.verifiedAt.delete(k);
+    }
   }
 
   /** Offer verified bytes to the shared layer (for pinned reads on cold
@@ -183,7 +203,18 @@ export class DocBytesCache {
   }
 
   /** Bytes for the key: from a layer, or `load()` (null = not found). */
-  async get(key: DocBytesKey, load: () => Promise<Buffer | null>): Promise<CachedBytes | null> {
+  /**
+   * `opts.fromOrigin(bytes)`: whether bytes `load` returned were read from the
+   * file's ORIGIN (default yes). Only an origin read records a verification
+   * (the 304 / unpinned licence); a mirror copy served for a pin is cached
+   * under its content-addressed key but licenses nothing else (closed loop
+   * r3, P5.A.6.p).
+   */
+  async get(
+    key: DocBytesKey,
+    load: () => Promise<Buffer | null>,
+    opts: { fromOrigin?: (bytes: Buffer) => boolean } = {},
+  ): Promise<CachedBytes | null> {
     const id = DocBytesCache.keyOf(key);
     const hit = this.lru.get(id);
     if (hit) {
@@ -193,7 +224,7 @@ export class DocBytesCache {
     }
     const pending = this.inflight.get(id);
     if (pending) return pending;
-    const p = this.miss(id, key, load).finally(() => this.inflight.delete(id));
+    const p = this.miss(id, key, load, opts.fromOrigin).finally(() => this.inflight.delete(id));
     this.inflight.set(id, p);
     return p;
   }
@@ -202,6 +233,7 @@ export class DocBytesCache {
     id: string,
     key: DocBytesKey,
     load: () => Promise<Buffer | null>,
+    fromOrigin: (bytes: Buffer) => boolean = () => true,
   ): Promise<CachedBytes | null> {
     let result: CachedBytes | null = null;
     const loadVerified = async (): Promise<{ bytes: Buffer; verified: boolean } | null> => {
@@ -237,7 +269,7 @@ export class DocBytesCache {
 
     if (result?.verified) {
       this.remember(id, result.bytes);
-      if (result.from === "origin") this.verifiedAt.set(id, this.now());
+      if (result.from === "origin" && fromOrigin(result.bytes)) this.markVerified(id);
     }
     return result;
   }

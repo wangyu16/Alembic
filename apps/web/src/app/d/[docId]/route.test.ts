@@ -28,6 +28,7 @@ vi.mock("@/lib/supabase/server", () => ({ createSupabaseServerClient: async () =
 vi.mock("@/lib/supabase/service", () => ({ createServiceClient: () => mocks.service }));
 vi.mock("@/lib/doc-content", () => ({
   fetchDocBytes: async () => (mocks.bytes === null ? null : Buffer.from(mocks.bytes, "utf8")),
+  fetchMirrorBytes: async () => null,
 }));
 vi.mock("@/lib/permalink-access", () => ({
   resolvePermalinkAccess: async (docId: string) => {
@@ -47,12 +48,24 @@ vi.mock("@/lib/record-discovery-event", () => ({
     mocks.events.push({ input, ctx });
   },
 }));
-vi.mock("@/lib/register", () => ({
-  registerChanges: async (_db: unknown, packageId: string, changes: unknown, origin: unknown) => {
-    if (mocks.registerFails) throw new Error("registry down");
-    mocks.registered.push({ packageId, changes, origin });
-  },
-}));
+// Closed loop r3 (P5.A.6.p): the route heals a stale row from the MIRROR
+// (`lib/permalink-heal.ts`, exercised end to end in permalink-heal.sql.test.ts);
+// here the real gate and scheduling run, and the heal itself is recorded.
+vi.mock("@/lib/permalink-heal", async (orig) => {
+  const real = await orig<typeof import("@/lib/permalink-heal")>();
+  return {
+    ...real,
+    createStaleHealer: (deps: import("@/lib/permalink-heal").StaleHealerDeps) =>
+      real.createStaleHealer({
+        ...deps,
+        heal: async (_service, doc) => {
+          if (mocks.registerFails) throw new Error("registry down");
+          mocks.registered.push({ packageId: doc.package_id, changes: [{ repo: doc.repo, path: doc.path }], origin: "mirror" });
+        },
+      }),
+  };
+});
+vi.mock("@/lib/discovery-cache", () => ({ discoveryChanged: () => {} }));
 vi.mock("@/lib/collection-upload", () => import("../../../lib/collection-upload"));
 vi.mock("@/lib/rate-limit", () => import("../../../lib/rate-limit"));
 vi.mock("@/lib/view-dedupe", () => import("../../../lib/view-dedupe"));
@@ -217,6 +230,10 @@ describe("/d re-registers a file whose registry row is stale (loop r2, MEDIUM-2)
     ownerOnly: false,
   });
 
+  // Updated deliberately in closed loop r3 (P5.A.6.p): the re-registration's
+  // SOURCE changed — the route no longer hands over the bytes it read (a
+  // lagging raw CDN rolled saves back); it asks for that one file to be
+  // healed from the mirror. Once per window, best-effort: unchanged.
   it("[P5.A.6.o] stale bytes: served unlabelled, that one file re-registered once, best-effort", async () => {
     mocks.service = { rpc: async () => ({ data: 1, error: null }) };
     mocks.access.mockImplementation(async () => staleDoc("doc-stale"));
@@ -229,8 +246,8 @@ describe("/d re-registers a file whose registry row is stale (loop r2, MEDIUM-2)
     expect(mocks.registered).toEqual([
       {
         packageId: "pkg-pub",
-        changes: [{ repo: "public", path: "study-guide/x.md", content: "# A shared page, edited" }],
-        origin: "external-commit",
+        changes: [{ repo: "public", path: "study-guide/x.md" }], // no bytes: from the mirror
+        origin: "mirror",
       },
     ]);
     await get("doc-stale"); // within the window: not again

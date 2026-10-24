@@ -1904,3 +1904,40 @@ bound_to = [
   "apps/web/src/lib/loop-r3c-listing.sql.test.ts :: unlisting and listing again keeps the first listing time (recency cannot be refreshed at will)",
 ]
 note = "Security loop r3 LOW-5. Migration 0030_loop_r3c_4 (§3). DOCUMENTED, not changed (DecisionLog 2026-10-24): the 200-pending inbox cap can be filled by ≥ 10 real accounts; concurrent arrivals may overshoot it by the concurrency."
+
+[[claim]]
+id = "P5.A.6.p"
+claim = "/d never re-registers a document from bytes that may lag a save (raw.githubusercontent.com serves the previous version for minutes): a stale answer heals that one file from the trial mirror the write path updated (never tombstoning, writing nothing when the row already matches the mirror), so a fresh save is never rolled back, a pin on the saved version keeps resolving — served from the mirror while the origin lags, only when the mirror's bytes hash to the pin — and old bytes are never labelled."
+oracle = "probe"
+bound_to = [
+  "apps/web/src/lib/permalink-heal.sql.test.ts :: a view during raw-CDN lag after a save keeps the registry on the saved version, the pin on it works, old bytes are never labelled",
+  "apps/web/src/lib/permalink-heal.sql.test.ts :: a pin on the version just saved serves that version during the raw-CDN lag, from the mirror",
+  "apps/web/src/lib/permalink-heal.sql.test.ts :: when neither the origin nor the mirror holds the pinned version, today's unlabelled answer stands",
+  "apps/web/src/lib/permalink-heal.sql.test.ts :: writes nothing when the row already records the mirror's digest, never tombstones a file missing from the mirror, and heals a row behind the mirror",
+  "apps/web/src/lib/permalink-heal.test.ts :: heals after the response, never with the bytes read, once per window; failures are logged, not thrown",
+  "apps/web/src/lib/permalink-heal.test.ts :: without a service client nothing is attempted",
+  "apps/web/src/lib/permalink-response.freshness.test.ts :: a pin whose origin bytes lag is served from the mirror only when the mirror's bytes hash to the pin",
+]
+note = "Loop r3 correctness M3-3 (repro /tmp/p5r3b/d-regress.test.ts). Code only. Residual: a commit made directly on GitHub that the mirror has not absorbed is not registered by /d (reconcile and the page-load sync absorb it)."
+
+[[claim]]
+id = "P5.A.6.q"
+claim = "The /d verification record never holds entries older than the 60 s window nor more than maxVerified (default 10,000), and an unlabelled /d answer is never shared-cacheable (private, no-store in every unverified branch)."
+oracle = "probe"
+bound_to = [
+  "apps/web/src/lib/doc-bytes-cache.test.ts :: entries older than the window are dropped, so the record does not grow with every version ever viewed",
+  "apps/web/src/lib/doc-bytes-cache.test.ts :: within the window it holds at most maxVerified entries (oldest first out), via revalidate and get",
+  "apps/web/src/lib/permalink-response.freshness.test.ts :: an unlabelled answer is never shared-cacheable: private, no-store in every unverified branch",
+]
+note = "Loop r3 correctness LOWs (verifiedAt trim; cache header matches its comment). Code only."
+
+[[claim]]
+id = "P5.A.6.r"
+claim = "The service-role /d heal never throws on an embedded uid the package does not hold: its foreign-id check reads documents and retired_ids directly (documents_foreign_doc_ids is closed to service_role), a retired or another package's uid is never adopted (fresh id), a known uid is kept, and a heal runs at most once per doc per window per instance with a bounded gate."
+oracle = "probe"
+bound_to = [
+  "apps/web/src/lib/permalink-heal.sql.test.ts :: the stale path re-registers from the mirror without throwing; a retired or another package's uid is never adopted, a known uid is kept",
+  "apps/web/src/lib/permalink-heal.sql.test.ts :: the service-role store: a retired or another package's uid at a new location gets a fresh id, a known uid is kept, no throw",
+  "apps/web/src/lib/permalink-heal.test.ts :: once per doc per window, and bounded in memory",
+]
+note = "Security loop r3 LOW-1. Code only (ServiceDocumentRegistryStore). Residual: a heal reads the package's live registry once per doc per window, only when the digests differ."

@@ -138,3 +138,35 @@ describe("DocBytesCache (Track A.6)", () => {
     expect(cache.has(key("cccc", "doc-cccc"))).toBe(true);
   });
 });
+
+describe("DocBytesCache verification record (closed loop r3, LOW)", () => {
+  const verified = (c: DocBytesCache) => (c as unknown as { verifiedAt: Map<string, number> }).verifiedAt.size;
+
+  it("[P5.A.6.q] entries older than the window are dropped, so the record does not grow with every version ever viewed", async () => {
+    let now = 1_000_000;
+    const cache = new DocBytesCache({ now: () => now, maxBytes: 1024 });
+    for (let i = 0; i < 500; i++) {
+      const c = `# v${i}`;
+      await cache.revalidate(key(c, `doc-${i}`), async () => text(c));
+    }
+    expect(verified(cache)).toBe(500);
+    now += DocBytesCache.REVALIDATE_MS + 1;
+    await cache.revalidate(key("# late", "doc-late"), async () => text("# late"));
+    expect(verified(cache)).toBe(1);
+  });
+
+  it("[P5.A.6.q] within the window it holds at most maxVerified entries (oldest first out), via revalidate and get", async () => {
+    const now = 1_000_000;
+    const cache = new DocBytesCache({ now: () => now, maxVerified: 100 });
+    for (let i = 0; i < 300; i++) {
+      const c = `# w${i}`;
+      if (i % 2) await cache.revalidate(key(c, `doc-${i}`), async () => text(c));
+      else await cache.get(key(c, `doc-${i}`), async () => text(c));
+    }
+    expect(verified(cache)).toBe(100);
+    // The newest is still verified (a conditional answer needs no re-read).
+    let reads = 0;
+    await cache.revalidate(key("# w299", "doc-299"), async () => (reads++, text("# w299")));
+    expect(reads).toBe(0);
+  });
+});
