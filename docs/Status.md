@@ -67,6 +67,11 @@ r4, part B"). Part A (fork / reconcile / committer / editor save) runs in parall
   set aside and the rest lands, and a failing list is retried id by id; new work clears the back-off; the job runs the
   procedure `discovery_drain(25, 25 s)`, which commits after every entry. Back-off steps, "every drain", oldest-first,
   the (25, 25 s) arguments and "untouched when the lock is not taken" are now asserted.
+- ✅ **Correctness MEDIUM-4 — a registration statement was quadratic in the rows it updated (P5.A.1.v).** The
+  documents UPDATE trigger joined its transition tables with a nested loop (no statistics, no index): re-registering
+  a 3,000-file course unchanged took 16–23 s in one statement, a 3,000-path cycle 37 s — past the 8 s timeout (repro
+  `/tmp/p5r4/sql/scale.mts`). `0031_loop_r4b_2` plans that trigger with `enable_nestloop = off` (body unchanged):
+  1.4–1.9 s, 154 ms per 500-row chunk, 3.1 s for the cycle under the harness.
 - **Deploy order (round 4, part B):** code and `0031_loop_r4b_*` in either order (each file's header). After
   `0031_loop_r4b_1`, check `cron.job_run_details` for `alembic-discovery-drain` (fallback in the header).
 

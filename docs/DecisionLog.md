@@ -26,6 +26,10 @@ fixed on branch `phase5/loop-r4b` (on `main` 03bcb00; not merged; migrations `00
   in a transaction would refuse the COMMIT — the header has the check and the fallback schedule.
 - **The package lock goes through `discovery_try_lock`** (same key as the projector's) so the lock's losing side is
   testable on the one-connection harness; the r3c composition assertion was updated deliberately for it.
+- **The quadratic trigger join is fixed by a planner setting, not a rewrite (P5.A.1.v).** `ALTER FUNCTION
+  discovery_on_documents_update() SET enable_nestloop = off` keeps the body (nothing to re-compose) and makes the
+  transition-table joins hash joins; a rewrite (e.g. a scalar subquery per row) was rejected as more code for the
+  same plan. The composition test fails if a later CREATE OR REPLACE drops the setting.
 
 ## 2026-10-24 — Closed loop r3: identity is a whole-run matching; no lockout by our own commits; drained, aged queue; identities frozen
 

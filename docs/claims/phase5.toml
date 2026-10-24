@@ -1764,6 +1764,7 @@ bound_to = [
   "apps/web/src/lib/loop-r3c-listing.sql.test.ts :: the internal functions stay closed to the API roles",
   "apps/web/src/lib/loop-r4b-queue.sql.test.ts :: the queue functions keep r2c/r3c rules and carry r4b's (slice, fair order, split, reset, commit per entry)",
   "apps/web/src/lib/loop-r4b-queue.sql.test.ts :: the internal functions and the drain procedure stay closed to the API roles",
+  "apps/web/src/lib/loop-r4b-scale.sql.test.ts :: discovery_on_documents_update plans without nested loops and keeps its body (r1b move rule, adaptation counts)",
 ]
 note = "Loop r2 correctness, the composition rule (round 1's 0026 silently reverted 0025_2). A future migration that redefines one of these functions must keep the markers or update this test deliberately."
 
@@ -2047,3 +2048,12 @@ bound_to = [
   "packages/package-ops/src/fork.r3c.test.ts :: a carrier island the reader does not recognise is re-minted wherever its marker sits, and its bytes are otherwise untouched (forksg-valid)",
 ]
 note = "Loop r3 correctness L3-3 (repros /tmp/p5r3a/forksg-valid*.mts). Code only. OPEN for an owner ruling: {#blk-…} / {#b-…} heading attributes are not contract ids and are copied unchanged; a /d/ link to a plain .md chapter (no embedded uid) cannot be followed by the pure fork."
+
+[[claim]]
+id = "P5.A.1.v"
+claim = "A documents_apply statement stays linear in the rows it updates: the documents UPDATE trigger joins its transition tables without a nested loop (discovery_on_documents_update plans with enable_nestloop = off), so re-registering a 3,000-file course unchanged, a 500-row chunk, and a cycle of all 3,000 paths each finish well under the signed-in 8 s statement timeout."
+oracle = "probe"
+bound_to = [
+  "apps/web/src/lib/loop-r4b-scale.sql.test.ts :: 3,000 rows unchanged, a 500-row chunk, and a 3,000-row path cycle each stay well under 8 s",
+]
+note = "Loop r4 correctness MEDIUM-4 (repros /tmp/p5r4/sql/scale.mts, explain.mts). Migration 0031_loop_r4b_2 (ALTER FUNCTION … SET; body unchanged). Measured in the test (PGlite): unchanged 3,000 rows 7,857 → 1,378 ms; 500-row chunk 316 → 154 ms; 3,000-path cycle 36,637 → 3,111 ms; scale.mts: unchanged 3,000 rows 16–23 s → 1.9 s. PGlite proves the shape, not production timings."
