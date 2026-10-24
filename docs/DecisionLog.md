@@ -6,6 +6,50 @@ design, and what is deferred to the future. Complements [Status.md](Status.md)
 
 ---
 
+## 2026-10-24 — Closed loop r4, part B: a fair drain that commits per entry; signals carried whatever changed them; `/d` answers only what it can vouch for
+
+Round-4 security and correctness findings in SQL, discovery and `/d` (repros `/tmp/alembic-r4/`, `/tmp/p5r4/sql/`),
+fixed on branch `phase5/loop-r4b` (on `main` 03bcb00; not merged; migrations `0031_loop_r4b_*` not applied). Part A
+(fork, reconcile, committer, editor save) is on `phase5/loop-r4a`. Decisions:
+
+- **The drain is fair, and a failure is split, never a sink (P5.A.1.u).** Per-entry slice least(left, budget/5, 2 s)
+  — 2 s is the owner's own flush, so a save of a package being drained waits at most one slice plus one chunk.
+  Fairness is by `drained_at` (kept across merges and cursor restarts), not by "cursor is not null": an owner who
+  restarts its own drain with every edit would otherwise stay in front. A failing chunk is set aside and the rest of
+  the pass lands (then the entry is exactly the failed ids); a failing list is retried id by id within the slice.
+  "New work" (ids the entry lacked, list → whole, a restarted cursor, content newly changed) clears the back-off;
+  attempts are kept so the next failure still backs off longer. A whole pend into a whole entry is not new work.
+- **The schedule is a procedure that commits per entry.** A function cannot commit, so the r3 job held every lock
+  for the whole 25 s run. `discovery_drain` is SECURITY INVOKER with no SET clause (Postgres forbids transaction
+  control otherwise) and reaches the queue only through definer functions; pg_cron runs it as the owner.
+  `discovery_flush_pending` stays for an operator's one-off call. Risk accepted: a pg_cron mode that wraps commands
+  in a transaction would refuse the COMMIT — the header has the check and the fallback schedule.
+- **The package lock goes through `discovery_try_lock`** (same key as the projector's) so the lock's losing side is
+  testable on the one-connection harness; the r3c composition assertion was updated deliberately for it.
+- **The quadratic trigger join is fixed by a planner setting, not a rewrite (P5.A.1.v).** `ALTER FUNCTION
+  discovery_on_documents_update() SET enable_nestloop = off` keeps the body (nothing to re-compose) and makes the
+  transition-table joins hash joins; a rewrite (e.g. a scalar subquery per row) was rejected as more code for the
+  same plan. The composition test fails if a later CREATE OR REPLACE drops the setting.
+- **Column-list triggers are a class hazard (P5.S.17).** `AFTER UPDATE OF col` is skipped when a BEFORE trigger
+  changes `col` in a statement that does not name it. The listing trigger now fires on every update and lets its
+  WHEN clause (which sees the final row) decide; a catalogue test fails on any new instance.
+- **`listing_history` gap documented, not back-filled from research events.** Courses unlisted before
+  0030_loop_r3c_4 have no listing row to seed their first-listing time; `research_events` ('portal.registered',
+  owner-attributed) could, but it is research instrumentation (data-handling-review) and a product signal derived
+  from it is a secondary use — left to the owner. 0031_loop_r4b_3 repeats the listing-row back-fill idempotently.
+- **A pin is a promise of exact bytes (P5.A.6.s).** When neither origin nor mirror hashes to it, `/d` answers 404
+  (`no-store`) and heals the row, instead of r3's unlabelled other bytes: an unpinned link may show the newest bytes
+  it can, a pinned one may not. The pin hash scheme (8 hex) is untouched — that is a separate owner decision.
+- **The `/d` heal reads the mirror once and backs off on failure.** Bytes + digest from one row read, passed to the
+  registration explicitly (a null there means "deleted" and would tombstone). A failed heal holds that doc for an hour
+  in the same bounded gate (10,000 entries) — chosen over a separate failure map (one bound, one eviction rule).
+- **LOW-5: a per-user bound now, the cheaper fallback later.** The tree fallback's cost (every stored file read
+  and hashed) is fixed properly by comparing stored hashes, but that is reconcile / repo-reader code part A is
+  changing this round; part B adds a per-user `reconcile` rate bucket (10 / 10 min, 60 / day, Postgres-counted)
+  on the action only — the committer's reconcile after a refused save is not limited (it runs only on a refusal).
+
+---
+
 ## 2026-10-24 — Closed loop r4 (part A): fork, reconcile, committer, editor saves
 
 Round-4 audit findings on the TypeScript side (probes `/tmp/p5r4/commit/r4.test.ts`, `/tmp/p5r4/fork/*.mts`), fixed

@@ -24,8 +24,17 @@
  * revoked from service_role (P5.A.6.r).
  *
  * Rate bound: at most once per doc per `DocBytesCache.REVALIDATE_MS` on an
- * instance (`HealGate`), so a heal that keeps failing — or a CDN that keeps
- * lagging — never turns every view into registry reads.
+ * instance (`HealGate`), so a CDN that keeps lagging never turns every view
+ * into registry reads; a heal that FAILED is not tried again for that doc for
+ * an hour (`HealGate.failed`, bounded with the rest), so anonymous views of a
+ * file that cannot heal never repeat a full registry read (closed loop r4,
+ * security LOW-3).
+ *
+ * One read of the mirror (closed loop r4, security LOW-3): its bytes and their
+ * digest come from the same row read and the bytes are handed to the
+ * registration explicitly. Reading them again inside the registration raced a
+ * concurrent delete of the file — a null read there is a deletion, and `/d`
+ * would have tombstoned a file it never meant to touch.
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -43,18 +52,24 @@ export type HealOutcome =
   /** That one file was re-registered from the mirror. */
   | "healed";
 
-/** The mirror's digest of one file (`sandbox_files.content_sha256`, computed
- *  by the database), or null when the mirror has no such file. */
-async function mirrorDigest(service: SupabaseClient, doc: PermalinkDoc): Promise<string | null> {
+/** The mirror's copy of one file — its bytes and their digest
+ *  (`sandbox_files.content_sha256`, computed by the database), from ONE row
+ *  read — or null when the mirror has no such file. */
+async function mirrorCopy(
+  service: SupabaseClient,
+  doc: PermalinkDoc,
+): Promise<{ content: string; digest: string | null } | null> {
   const { data, error } = await service
     .from("sandbox_files")
-    .select("content_sha256")
+    .select("content, content_sha256")
     .eq("package_id", doc.package_id)
     .eq("repo", doc.repo)
     .eq("path", doc.path)
     .maybeSingle();
   if (error) throw new Error(`Could not read the stored copy: ${error.message}`);
-  return (data as { content_sha256: string | null } | null)?.content_sha256 ?? null;
+  const row = data as { content: string | null; content_sha256: string | null } | null;
+  if (!row || row.content === null || row.content === undefined) return null;
+  return { content: row.content, digest: row.content_sha256 ?? null };
 }
 
 /** Re-register `doc`'s file from the mirror if its row is behind it. */
@@ -62,46 +77,65 @@ export async function healFromMirror(service: SupabaseClient, doc: PermalinkDoc)
   const registry = new ServiceDocumentRegistryStore(service);
   const [row, mirror] = await Promise.all([
     registry.getByLocation(doc.package_id, doc.repo, doc.path),
-    mirrorDigest(service, doc),
+    mirrorCopy(service, doc),
   ]);
   if (mirror === null) return "no-mirror";
-  if (row && row.contentSha256 === mirror) return "in-sync";
+  if (row && mirror.digest !== null && row.contentSha256 === mirror.digest) return "in-sync";
   await registerChangedFiles(
     registry,
     new SupabaseSandboxStore(service),
     doc.package_id,
-    [{ repo: doc.repo, path: doc.path }],
+    // the bytes just read, explicitly: never a second read that could find
+    // the file gone (a null content is a deletion — /d never tombstones)
+    [{ repo: doc.repo, path: doc.path, content: mirror.content }],
     "external-commit",
   );
   return "healed";
 }
 
-/** At most one heal per doc per window, bounded in memory. */
+/** At most one heal per doc per window — and none for an hour after one
+ *  failed — bounded in memory. */
 export class HealGate {
-  private readonly firedAt = new Map<string, number>();
+  /** docId → the time before which it may not be healed again. Insertion
+   *  order is (roughly) time order; bounded by `maxEntries`. */
+  private readonly blockedUntil = new Map<string, number>();
+
+  /** How long a doc whose heal failed is left alone (closed loop r4, LOW-3). */
+  static readonly FAILURE_HOLD_MS = 60 * 60_000;
 
   constructor(
     private readonly windowMs: number = DocBytesCache.REVALIDATE_MS,
     private readonly maxEntries = 10_000,
     private readonly now: () => number = Date.now,
+    private readonly failureHoldMs: number = HealGate.FAILURE_HOLD_MS,
   ) {}
 
   /** May `docId` be healed now? (Records the attempt when it may.) */
   admit(docId: string): boolean {
     const t = this.now();
-    const last = this.firedAt.get(docId);
-    if (last !== undefined && t - last < this.windowMs) return false;
-    this.firedAt.delete(docId);
-    this.firedAt.set(docId, t); // insertion order = time order
-    for (const [id, at] of this.firedAt) {
-      if (this.firedAt.size <= this.maxEntries && t - at < this.windowMs) break;
-      this.firedAt.delete(id);
-    }
+    const until = this.blockedUntil.get(docId);
+    if (until !== undefined && t < until) return false;
+    this.block(docId, t + this.windowMs, t);
     return true;
   }
 
+  /** `docId`'s heal failed: leave it alone for `failureHoldMs`. */
+  failed(docId: string): void {
+    const t = this.now();
+    this.block(docId, t + this.failureHoldMs, t);
+  }
+
+  private block(docId: string, until: number, t: number): void {
+    this.blockedUntil.delete(docId);
+    this.blockedUntil.set(docId, until);
+    for (const [id, u] of this.blockedUntil) {
+      if (this.blockedUntil.size <= this.maxEntries && t < u) break;
+      this.blockedUntil.delete(id);
+    }
+  }
+
   get size(): number {
-    return this.firedAt.size;
+    return this.blockedUntil.size;
   }
 }
 
@@ -126,6 +160,7 @@ export function createStaleHealer(deps: StaleHealerDeps): (doc: PermalinkDoc) =>
         const service = deps.service();
         if (service) await heal(service, doc);
       } catch (err) {
+        gate.failed(doc.doc_id); // no full registry read for this doc for an hour
         console.warn("[permalink] re-registration failed:", err instanceof Error ? err.message : err);
       }
     });

@@ -10,6 +10,8 @@
  * | `report`    | 5 per 10 minutes and 20 per day      | Postgres (`rate_limit_hit`, migration 0023), in-process fallback |
  * | `permalink` | 1200 per minute (`/d/{docId}`)       | in-process (per server instance) |
  * | `search`    | 120 per minute (portal search; helper for Track A core) | in-process |
+ * | `preview`   | 60 per minute per signed-in USER     | Postgres, in-process fallback  |
+ * | `reconcile` | 10 per 10 minutes and 60 per day per USER ("Check for outside changes") | Postgres, in-process fallback |
  *
  * Why these numbers: a class behind one NAT opening a document with dozens of
  * embedded figures makes hundreds of `/d` requests a minute, most of them
@@ -40,6 +42,14 @@ export const RATE_LIMITS = {
   // Signed-in preview renders (security loop r2, LOW-5): per USER, not per
   // address — each call renders Markdown and may resolve up to 50 includes.
   preview: [{ limit: 60, windowMs: 60_000 }],
+  // "Check for outside changes" (closed loop r4, security LOW-5): per USER.
+  // When GitHub's comparison cannot list everything, a check compares the
+  // whole head tree with every stored file — its cost grows with the course.
+  // A person checks a handful of times; these bound a script.
+  reconcile: [
+    { limit: 10, windowMs: 10 * 60_000 },
+    { limit: 60, windowMs: 24 * 60 * 60_000 },
+  ],
 } as const satisfies Record<string, readonly RateRule[]>;
 
 export type RateBucket = keyof typeof RATE_LIMITS;

@@ -141,12 +141,15 @@ describe("public answers (Track A.6)", () => {
   it("[P5.A.6.e] repo ahead of the registry: served uncached, no ETag, never immutable", async () => {
     const { get, world, cache } = harness();
     world.bytes["doc-pubpub"] = "# Version two (committed on GitHub, not yet reconciled)";
-    for (const param of ["doc-pubpub", `doc-pubpub@${H1}`]) {
-      const r = await get(param, null);
-      expect(r.status).toBe(200);
-      expect(r.headers.get("etag")).toBeNull();
-      expect(r.headers.get("cache-control")).toBe(CACHE.unverified);
-    }
+    const r = await get("doc-pubpub", null);
+    expect(r.status).toBe(200);
+    expect(r.headers.get("etag")).toBeNull();
+    expect(r.headers.get("cache-control")).toBe(CACHE.unverified);
+    // a pin is never answered with other bytes: not found, never stored (closed loop r4, LOW-2)
+    const pinned = await get(`doc-pubpub@${H1}`, null);
+    expect(pinned.status).toBe(404);
+    expect(pinned.headers.get("etag")).toBeNull();
+    expect(pinned.headers.get("cache-control")).toBe(CACHE.none);
     expect(cache.size).toBe(0);
   });
 

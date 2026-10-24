@@ -23,6 +23,9 @@
  *     ETag, `private, no-store` (`CACHE.unverified`), not cached, and
  *     `onStale` asks for that one row to be healed — from the mirror, never
  *     from these bytes (closed loop r3, P5.A.6.p; `lib/permalink-heal.ts`).
+ *     A PINNED request is never answered with other bytes: when neither the
+ *     origin nor the mirror hashes to the pin it is a 404, `no-store`, and
+ *     the row is healed (closed loop r4, security LOW-2).
  *
  * The ETag is WEAK because for carrier files the hash covers the embedded
  * source, not the rendered bytes: two renderings of one source are the same
@@ -380,6 +383,23 @@ export async function servePermalink(
       ? await deps.cache.get(key, loadPinned, { fromOrigin: (b) => b !== fromMirror })
       : await deps.cache.get(key, () => deps.readBytes(doc, access));
   if (got === null) return notFound();
+  if (pinned && !got.verified) {
+    // Neither the origin nor the mirror holds the pinned version (closed loop
+    // r4, security LOW-2): a pin promises exact bytes, so other bytes are
+    // never its answer — not found (never stored), and the row is healed.
+    try {
+      deps.onStale?.(doc);
+    } catch {
+      // never affects the answer
+    }
+    return page(
+      404,
+      "That exact version isn't available right now",
+      "This link pins a version of the file that can't be served at the moment. The current version is at " +
+        `<a href="/d/${docId}">this permalink</a>.`,
+      CACHE.none,
+    );
+  }
   deps.onPublicServed?.({ doc, pinned, status: 200 });
   return new Response(body(got.bytes), {
     headers: {

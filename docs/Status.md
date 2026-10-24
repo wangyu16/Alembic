@@ -52,6 +52,52 @@ same commit as the work it tracks. Statuses: ✅ done · 🔄 partially shipped 
 
 > **Current direction — self-contained editing (owner-locked, 2026-07).** Editing and viewing both live *in the files*: the workspace **hosts** the in-file editors of `.md.html` / `.slides.html` / `.paged.html` (orz-family) and **builds no editor of its own**; published pages **are** those self-contained files (thin CDN delivery — study guide ~74 KB, framework from jsDelivr, verified live 2026-07-06); every file gets a permalink. **Committed source of record (revised, 2026-07-08 — "lean-source model"):** a chapter's study guide, slides, and practice questions are each committed as lean markdown (`study-guide/`, `slides/`, `practice/` — `.md`, not `.md.html`); the self-contained `.md.html`/`.slides.html` is generated on demand, purely as the editing/viewing surface, and never itself committed. This supersedes the original plan (below, and in the specs) of `.md.html` as the committed source — the specs haven't all been updated to match yet; this line is authoritative until they are. Authoritative docs: [SteeringNote.md](SteeringNote.md), [self-contained-editing.md](specs/self-contained-editing.md), [workspace-framework.md](specs/workspace-framework.md), and the module-based [Roadmap.md](Roadmap.md) (Modules R/E/P/T/I/S/W — supersedes the phase-based plan). **Code state today:** the classic editor is **retired** (~2.2k lines removed; `/workspace/[id]` redirects to `/edit`); the local **Studio (`/studio`) is removed**, replaced by `/guide`; the workspace three-pane shell now *hosts* the in-file editors (`HostedStudyGuideEditor` for study guide + practice; `HostedSlidesEditor` for authored slide decks). The durable guardrails **G1–G8** (two-repo reference enforcement, block-ID reconcile on import, whole-package fork, single-source course metadata, AI-entitlement seam) that the earlier editor-overhaul design drove all **landed + tested**.
 
+**Phase 5 closed-loop verification — round 4, part B: SQL, discovery and `/d` fixes (2026-10-24, branch
+`phase5/loop-r4b` on `main` 03bcb00, not merged, migrations `0031_loop_r4b_*` NOT applied).** Each finding became a
+claim + a probe that fails on `03bcb00` + a fix of the class ([DecisionLog](DecisionLog.md) 2026-10-24 "Closed loop
+r4, part B"). Part A (fork / reconcile / committer / editor save) runs in parallel on `phase5/loop-r4a`.
+- ✅ **Security MEDIUM-1 + correctness LOW — the scheduled drain could be starved, absorbed, and held saves
+  (P5.A.1.u; P5.A.1.t/s clauses bound).** The oldest entry took a drain's whole budget: a course with thousands of
+  files whose owner edits its title between runs (each edit restarts its drain, its age is kept) held every
+  scheduled run, so other courses' refreshes waited indefinitely (repro `/tmp/alembic-r4/r4q.test.ts`). A failing
+  chunk rolled back a whole drain and absorbed every later edit of that course; and the cron drain was one
+  transaction, holding every package lock / queue row it touched for up to 25 s (an owner save then waited past the
+  8 s timeout). Now (`0031_loop_r4b_1`): each entry gets a slice (≤ budget/5, ≤ 2 s); entries a drain already worked
+  on sort behind untouched ones (`drained_at`, round robin); each chunk is its own sub-transaction, a failing chunk is
+  set aside and the rest lands, and a failing list is retried id by id; new work clears the back-off; the job runs the
+  procedure `discovery_drain(25, 25 s)`, which commits after every entry. Back-off steps, "every drain", oldest-first,
+  the (25, 25 s) arguments and "untouched when the lock is not taken" are now asserted.
+- ✅ **Correctness MEDIUM-4 — a registration statement was quadratic in the rows it updated (P5.A.1.v).** The
+  documents UPDATE trigger joined its transition tables with a nested loop (no statistics, no index): re-registering
+  a 3,000-file course unchanged took 16–23 s in one statement, a 3,000-path cycle 37 s — past the 8 s timeout (repro
+  `/tmp/p5r4/sql/scale.mts`). `0031_loop_r4b_2` plans that trigger with `enable_nestloop = off` (body unchanged):
+  1.4–1.9 s, 154 ms per 500-row chunk, 3.1 s for the cycle under the harness.
+- ✅ **Security LOW-1 (class a) — the anon-readable listing row kept "pass" after a save expired the check
+  (P5.S.3.h, P5.S.17).** The r3c listing trigger was `after update of a11y_status`, which never fires for a BEFORE
+  trigger's change (the expiry runs in a statement that names only `last_synced_sha`; repro
+  `/tmp/alembic-r4/a11y.test.ts`). `0031_loop_r4b_3` drops the column list (the WHEN clause decides) and corrects
+  stored rows; a generic catalogue test flags any `update of <col>` trigger whose column a BEFORE trigger assigns.
+  Expiry semantics and the badge unchanged (owner decision pending).
+- ✅ **LOW — r3c back-fills unasserted; `listing_history` gap (P5.S.3.i, P5.S.1.h).** An upgrade test now binds both
+  0030_loop_r3c_4 back-fills (checked-at head; first listing time). Documented, not closed: a course unlisted
+  before 0030_loop_r3c_4 has no row to back-fill from (its next listing counts as first); research_events would
+  close it but is research data — owner decision.
+- ✅ **Security LOW-2 — a pinned `/d` link served bytes that were not the pinned version (P5.A.6.s).** When neither
+  the origin nor the mirror hashed to the pin, the answer was the origin's other bytes (unlabelled; repro
+  `/tmp/alembic-r4/pin.test.ts`). Now a 404 (`no-store`), and the row is healed. The 8-hex pin scheme is unchanged
+  (owner deciding on SHA-256 pins separately). Code only.
+- ✅ **Security LOW-3 — the `/d` heal could tombstone in a race and repeat failing registry reads (P5.A.6.p,
+  P5.A.6.r).** The heal read the mirror's digest, then let the registration read the file again: a delete in
+  between registered a null (a tombstone). Now one read; the bytes are passed explicitly. A doc whose heal failed is
+  left alone for an hour (bounded gate), so anonymous views never repeat a full registry read. Code only.
+- ✅ **LOW — P5.A.6.q's default cap unasserted.** Bound: by default the `/d` verification record holds ≤ 10,000.
+- 🔄 **Security LOW-5 — "Check for outside changes" had no bound while its tree fallback reads every stored file
+  (P5.S.6.d).** Now ≤ 10 checks / 10 min and ≤ 60 / day per user (Postgres-counted `reconcile` bucket), refused
+  in plain words before any reconcile. OPEN: the tree fallback still loads every file's content to hash it — moving
+  it to stored hashes is in the reconcile code part A owns this round.
+- **Deploy order (round 4, part B):** code and `0031_loop_r4b_*` in either order (each file's header). After
+  `0031_loop_r4b_1`, check `cron.job_run_details` for `alembic-discovery-drain` (fallback in the header).
+
 **Phase 5 closed-loop verification — round 4, part A: fork, reconcile, committer, editor saves (2026-10-24,
 branch `phase5/loop-r4a` on `main` 03bcb00, not merged; code only — no migration).** Each finding became a claim + a
 probe that fails on `03bcb00` + a fix of the class ([DecisionLog](DecisionLog.md) 2026-10-24 "Closed loop r4 (part
@@ -1201,7 +1247,7 @@ theme-in-save).
 These are the only things blocking full production parity with the code:
 
 0. **Loop r1b (when merged): apply `0026_loop_r1b_discovery` then `0027_loop_r1b_registry` BEFORE deploying the r1b code**, then run `supabase/tests/0027_detect_cross_package_docids.sql` (read-only) and decide the repairs it lists (procedure inside the file). See the loop r1b entry above.
-1. **Migrations pending: `0020` (required for zip upload), `0013` (optional).** Applied: **0030_loop_r3c_1–4** (✅ 2026-10-24, owner, closed loop round 3; pg_cron enabled, `alembic-discovery-drain` every 5 min), **0028_loop_r2_1–5, 0029_loop_r2c_1–3** (✅ 2026-10-24, owner, closed loop round 2; pre-checks all 0; `discovery_rebuild_report()` clean), **0025_loop_r1_1–5, 0026, 0027** (✅ 2026-10-23, owner, closed loop round 1; 0025_1/_2 needed `select extensions.similarity('a','a')` first on Supabase — fixed in `d35715f`), **0019, 0021, 0023, 0022, 0024** (✅ 2026-10-23, owner), 0005–0012, **0014** (documents), **0015** (portal keywords, 2026-07-09), and **0016–0018** (profile column grants + user governance + ban backstop, ✅ **applied 2026-07-10** — see the security/UG banners above). Config notes: 0007's budget stays dormant until `AI_TOKEN_BUDGET` is set; portal listing is now open to all educators (the `portal_eligible` gate + admin toggle were removed); to reach `/admin`, **flag yourself `is_admin=true`** (dashboard) and set **`SUPABASE_SECRET_KEY`** (service-role reads) — optionally `RESEARCH_EXPORT_SALT`.
+1. **Migrations pending: `0031_loop_r4b_1–3` (closed loop round 4, part B — branch `phase5/loop-r4b`, not merged; either order with its code; check `cron.job_run_details` after `_1`), `0020` (required for zip upload), `0013` (optional).** Applied: **0030_loop_r3c_1–4** (✅ 2026-10-24, owner, closed loop round 3; pg_cron enabled, `alembic-discovery-drain` every 5 min), **0028_loop_r2_1–5, 0029_loop_r2c_1–3** (✅ 2026-10-24, owner, closed loop round 2; pre-checks all 0; `discovery_rebuild_report()` clean), **0025_loop_r1_1–5, 0026, 0027** (✅ 2026-10-23, owner, closed loop round 1; 0025_1/_2 needed `select extensions.similarity('a','a')` first on Supabase — fixed in `d35715f`), **0019, 0021, 0023, 0022, 0024** (✅ 2026-10-23, owner), 0005–0012, **0014** (documents), **0015** (portal keywords, 2026-07-09), and **0016–0018** (profile column grants + user governance + ban backstop, ✅ **applied 2026-07-10** — see the security/UG banners above). Config notes: 0007's budget stays dormant until `AI_TOKEN_BUDGET` is set; portal listing is now open to all educators (the `portal_eligible` gate + admin toggle were removed); to reach `/admin`, **flag yourself `is_admin=true`** (dashboard) and set **`SUPABASE_SECRET_KEY`** (service-role reads) — optionally `RESEARCH_EXPORT_SALT`.
 2. ✅ **Done** — Vercel build command is `node ../../scripts/fetch-vendor.mjs && next build`; Plotly is vendored and the plot editor (M11b) works live.
 3. **Interactive verification passes** (can't run in CI): slides render (M13), the in-file hosted editors (`.md.html`/`.slides.html`/`.paged.html` save round-trip via the worker tier), and the AI/reconcile live runs (M18 coherence agent, M9.6 draft-from-plan, M20 reconcile, M23 question generation, M26–M28 adapt/pull/suggest-back) once the AI gateway is on Vercel. Ketcher (M11) and plots (M11b) are verified live.
 4. **Set the AI gateway env vars in Vercel** — the self-hosted LiteLLM gateway (decided 2026-08-28, replacing Portkey; [worker-tier.md](specs/worker-tier.md) §1.5): `AI_GATEWAY_URL=https://<litellm-host>/v1`, `AI_GATEWAY_API_KEY=<virtual key>`, `AI_MODEL_DEFAULT/FAST/STRONG` = the gateway's model names — to verify the **M18 coherence agent** live. (Local dev could not reach the earlier hosted gateway from this machine — the dev Mac's firewall blocks the `node` binary's outbound; Vercel's egress is clean.) See [ai-architecture.md](specs/ai-architecture.md).

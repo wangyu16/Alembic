@@ -1,0 +1,45 @@
+-- Closed loop r4, part B (round-4 correctness audit, 2026-10-24), MEDIUM-4
+-- (P5.A.1.v): a registration statement that updates thousands of rows stays
+-- linear. NOT APPLIED anywhere yet. Requires 0026_loop_r1b_discovery (the
+-- function altered here, its latest definition). Apply after 0031_loop_r4b_1.
+--
+-- COMPOSITION. Nothing is redefined: ALTER FUNCTION … SET only attaches a
+-- planner setting to discovery_on_documents_update() (0026 §6) — its body, its
+-- SECURITY DEFINER and its search_path stay exactly as they are. A future
+-- CREATE OR REPLACE of the function drops the setting unless it carries
+-- `set enable_nestloop = off` itself; loop-r4b-scale.sql.test.ts (composition,
+-- P5.A.1.r) fails if it does not.
+--
+-- THE HOLE (repro /tmp/p5r4/sql/scale.mts, explain.mts). The documents UPDATE
+-- statement trigger joins its transition tables (new_rows ⋈ old_rows on
+-- doc_id). Transition tables carry no statistics and no index, and the planner
+-- chose a nested loop: quadratic in the rows one statement updates. A
+-- documents_apply whose upsert touches every row of a 3,000-file course (a
+-- re-registration where nothing changed, or a renumbering) spent 16–23 s in
+-- that join alone — past the signed-in 8 s statement timeout, so the
+-- registration failed.
+--
+-- THE FIX. The trigger function plans with enable_nestloop = off (a USERSET
+-- parameter, scoped to the function's execution: nothing else in the session
+-- or the database is affected). Its joins become hash joins — linear. The
+-- adaptation-source join (src.doc_id in (n.adapted_from, o.adapted_from)) has
+-- no hashable form and stays an index nested loop (the setting only penalises,
+-- it never forbids), as before.
+--
+-- MEASURED under the harness (PGlite; documents_apply, one statement, ms).
+-- scale.mts (fresh package per shape, analysed):  before          after
+--   500-row chunk, no change                       750–1,050       360–410
+--   3,000 rows, no change                          16,358–23,063   1,844–1,903
+--   3,000-row path cycle                           3,240–4,727     2,664–4,648
+-- loop-r4b-scale.sql.test.ts (one listed course: unchanged, then a 500-row
+-- chunk, then a cycle of all 3,000 paths):
+--   3,000 rows, no change                          7,857           1,378
+--   500-row chunk, no change                       316             154
+--   3,000-row path cycle                           36,637          3,111
+--
+-- READ-ONLY PRE-CHECK (the courses that met the hole: the largest packages):
+--   select package_id, count(*) from public.documents group by 1 order by 2 desc limit 5;
+--
+-- DEPLOY ORDER: either order with the r4b code; no code change depends on it.
+
+alter function public.discovery_on_documents_update() set enable_nestloop = off;

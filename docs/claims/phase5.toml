@@ -576,7 +576,7 @@ bound_to = [
 
 [[claim]]
 id = "P5.A.6.e"
-claim = "Only bytes that hash to the registry's source_hash (text, or either binary registration form) are cached or labelled; otherwise they are served uncached, without ETag, never immutable, and a new version never gets the old bytes."
+claim = "Only bytes that hash to the registry's source_hash (text, or either binary registration form) are cached or labelled; otherwise an unpinned request is served them uncached, without ETag, never immutable (a pinned one is a 404 — P5.A.6.s), and a new version never gets the old bytes."
 oracle = "invariant"
 bound_to = [
   "apps/web/src/lib/permalink-response.adversarial.test.ts :: repo ahead of the registry: served uncached, no ETag, never immutable",
@@ -1762,6 +1762,10 @@ bound_to = [
   "apps/web/src/lib/loop-r3c-queue.sql.test.ts :: the internal functions stay closed to the API roles",
   "apps/web/src/lib/loop-r3c-listing.sql.test.ts :: every trigger of rounds r1b, r2, r2c and this r3c migration is installed",
   "apps/web/src/lib/loop-r3c-listing.sql.test.ts :: the internal functions stay closed to the API roles",
+  "apps/web/src/lib/loop-r4b-queue.sql.test.ts :: the queue functions keep r2c/r3c rules and carry r4b's (slice, fair order, split, reset, commit per entry)",
+  "apps/web/src/lib/loop-r4b-queue.sql.test.ts :: the internal functions and the drain procedure stay closed to the API roles",
+  "apps/web/src/lib/loop-r4b-scale.sql.test.ts :: discovery_on_documents_update plans without nested loops and keeps its body (r1b move rule, adaptation counts)",
+  "apps/web/src/lib/loop-r4b-listing.sql.test.ts :: the listing triggers of r3c are installed, the accessibility one without a column list",
 ]
 note = "Loop r2 correctness, the composition rule (round 1's 0026 silently reverted 0025_2). A future migration that redefines one of these functions must keep the markers or update this test deliberately."
 
@@ -1863,30 +1867,50 @@ oracle = "probe"
 bound_to = [
   "apps/web/src/lib/loop-r3c-queue.sql.test.ts :: a doc edit queued while a whole-package drain is half-way is re-projected (lostref)",
   "apps/web/src/lib/loop-r3c-queue.sql.test.ts :: the drain takes the package's lock before it touches the entry; an entry it does not finish keeps its first-queued age",
+  "apps/web/src/lib/loop-r4b-queue.sql.test.ts :: when the package's lock is not available the entry is left exactly as it was",
 ]
-note = "Loop r3 correctness M3-1 (repro /tmp/p5r3/lostref.mts). Migration 0030_loop_r3c_3. PGlite is one connection: the losing side of the lock is pinned by the composition test (try-lock precedes every read of the entry)."
+note = "Loop r3 correctness M3-1 (repro /tmp/p5r3/lostref.mts). Migration 0030_loop_r3c_3. Loop r4b: the try-lock is public.discovery_try_lock (0031_loop_r4b_1, same key as the projector's — composition test), so the losing side is staged on the one-connection harness by making it answer no; flush_one, flush_pending and the scheduled procedure all leave the entry byte-identical."
 
 [[claim]]
 id = "P5.A.1.t"
-claim = "Every queued discovery refresh has a scheduled drain and an observable age: with pg_cron enabled the migration schedules discovery_flush_pending(25, 25 s) every 5 minutes, which drains entries oldest first by their first-queued time (kept across merges); discovery_pending_health() / discovery_pending_overdue (service role only) report pending, overdue (> 1 h) and failing entries, shown on the admin page; an entry whose drain failed backs off (1, 2, 4 … minutes, at most an hour) for every drain, so an edit-page load is not charged again."
+claim = "Every queued discovery refresh has a scheduled drain and an observable age: with pg_cron enabled the migrations schedule the procedure discovery_drain(25, 25 s) every 5 minutes (0031_loop_r4b_1; was discovery_flush_pending(25, 25 s)), which drains entries no drain has touched yet oldest first by their first-queued time (kept across merges); discovery_pending_health() / discovery_pending_overdue (service role only) report pending, overdue (> 1 h) and failing entries, shown on the admin page; an entry whose drain failed backs off 1, 2, 4, 8, 16, 32 minutes, then at most an hour, for every drain (owner, operator and scheduled), so an edit-page load is not charged again."
 oracle = "probe"
 bound_to = [
   "apps/web/src/lib/loop-r3c-queue.sql.test.ts :: with pg_cron enabled the migration schedules the drain every 5 minutes; the scheduled command drains overdue entries oldest first",
   "apps/web/src/lib/loop-r3c-queue.sql.test.ts :: the health view and function are closed to the API roles",
   "apps/web/src/lib/loop-r3c-queue.sql.test.ts :: an entry that keeps failing backs off: the edit-page flush is not charged again until its time",
   "apps/web/src/lib/discovery-flush.test.ts :: reads the queue's age with the service client for the admin page; unavailable is null, never 0",
+  "apps/web/src/lib/loop-r4b-queue.sql.test.ts :: the job runs discovery_drain(25, 25 s), which commits after every entry and leaves no lock behind",
+  "apps/web/src/lib/loop-r4b-queue.sql.test.ts :: every drain — owner, operator and scheduled — skips an entry that is backing off, and drains the others oldest first",
+  "apps/web/src/lib/loop-r4b-queue.sql.test.ts :: a failing entry backs off 1, 2, 4, 8, 16, 32 minutes, then at most an hour",
 ]
-note = "Loop r3 correctness M3-2 + security LOW-2. Migration 0030_loop_r3c_3. OWNER ACTION: enable pg_cron in Supabase (Database → Extensions) — the migration schedules the job only when cron.schedule exists; the header carries the one-line schedule statement for enabling it later."
+note = "Loop r3 correctness M3-2 + security LOW-2. Migration 0030_loop_r3c_3; the schedule moved to the committing procedure in 0031_loop_r4b_1 (P5.A.1.u). OWNER ACTION: pg_cron is enabled in production (2026-10-24); after 0031 check cron.job_run_details for the job (header of 0031_loop_r4b_1 has the fallback). Loop r4b bound the steps, 'every drain', 'oldest first' and the (25, 25 s) arguments."
+
+# ─── Closed loop round 4, part B (2026-10-24, branch phase5/loop-r4b) ───
+
+[[claim]]
+id = "P5.A.1.u"
+claim = "No queued discovery refresh can be starved or absorbed: every drain gives each entry a slice of least(what is left, budget / 5, 2 s); an entry a drain worked on without finishing sorts behind every untouched entry (drained_at, kept across merges and restarts), so a course whose owner keeps restarting its drain cannot hold up another course's refresh for even one scheduled run; a whole drain runs each chunk in its own sub-transaction, sets a failing chunk aside and lands the rest, leaving exactly the failed ids, and a failing list is retried id by id, so later work merged into a failing entry still lands; new work merged into an entry clears its back-off (the same ids, or a whole pend into a whole entry, do not); and the scheduled drain is a procedure that commits after every entry, so a package lock and its queue row are held for one slice, not the whole run."
+oracle = "probe"
+bound_to = [
+  "apps/web/src/lib/loop-r4b-queue.sql.test.ts :: a course whose owner keeps restarting its drain cannot starve another course's refresh, run after run (r4q)",
+  "apps/web/src/lib/loop-r4b-queue.sql.test.ts :: an entry a drain already worked on sorts behind every untouched entry, however old it is",
+  "apps/web/src/lib/loop-r4b-queue.sql.test.ts :: a whole drain with one bad element lands everything else, and a later single-doc edit still lands",
+  "apps/web/src/lib/loop-r4b-queue.sql.test.ts :: only new work resets the back-off: the same ids, or a whole pend into a whole entry, do not",
+  "apps/web/src/lib/loop-r4b-queue.sql.test.ts :: the job runs discovery_drain(25, 25 s), which commits after every entry and leaves no lock behind",
+]
+note = "Loop r4 security MEDIUM-1 + correctness LOW (repro /tmp/alembic-r4/r4q.test.ts). Migration 0031_loop_r4b_1 (either order with the code). PGlite is one connection: an owner save blocked behind a drain cannot be staged; per-entry commit is proven by one transaction id per drained entry and no advisory lock left after the call. Bound by reasoning: an owner save of a package being drained waits ≤ one slice (2 s) plus one chunk on its queue row, under the 8 s statement timeout. discovery_flush_pending (operator, one transaction) keeps the slice and order but not the per-entry commit."
 
 [[claim]]
 id = "P5.S.3.h"
-claim = "The anon-readable listing row's accessibility status is always the server's own check (packages.a11y_status): the database sets it on every insert or update whatever the writer sends, and carries a new check into it; registerPackageAction no longer sends the owner-written manifest field."
+claim = "The anon-readable listing row's accessibility status is always the server's own check (packages.a11y_status): the database sets it on every insert or update whatever the writer sends, and carries every change of the record into it — a new check, or the reset to not checked when a save moves the recorded head (a BEFORE trigger's change); registerPackageAction no longer sends the owner-written manifest field."
 oracle = "probe"
 bound_to = [
   "apps/web/src/lib/loop-r3c-listing.sql.test.ts :: the listing row's accessibility status is the server's check, whatever the writer sends, and follows a new check",
   "apps/web/src/lib/package-trust-writes.test.ts :: registerPackageAction no longer sends the accessibility field: not in its code, not in the listing snapshot",
+  "apps/web/src/lib/loop-r4b-listing.sql.test.ts :: a save that expires the check shows not checked on the anon-readable listing row too (a11y)",
 ]
-note = "Security loop r3 LOW-3. Migration 0030_loop_r3c_4 (§1); code drops accessibility_status from the listing snapshot."
+note = "Security loop r3 LOW-3. Migration 0030_loop_r3c_4 (§1); code drops accessibility_status from the listing snapshot. Loop r4 security LOW-1 (repro /tmp/alembic-r4/a11y.test.ts): the r3c trigger was `after update of a11y_status`, which never fired for the expiry (a BEFORE trigger's change in a statement naming only last_synced_sha); 0031_loop_r4b_3 drops the column list and keeps the WHEN clause. Expiry semantics and the badge unchanged (owner decision pending)."
 
 [[claim]]
 id = "P5.S.3.i"
@@ -1894,8 +1918,9 @@ claim = "A recorded accessibility result names the public head it audited (packa
 oracle = "probe"
 bound_to = [
   "apps/web/src/lib/loop-r3c-listing.sql.test.ts :: a check describes the head it audited: when the recorded head moves on, the course shows not checked",
+  "apps/web/src/lib/loop-r4b-listing.sql.test.ts :: a check recorded before the migration counts as checked at that head; a course listed before it keeps its first listing time",
 ]
-note = "Security loop r3 LOW-4. Migration 0030_loop_r3c_4 (§2). Accepted: any later published change (a course-details save included) expires the check; an outside commit that does not move the recorded head does not."
+note = "Security loop r3 LOW-4. Migration 0030_loop_r3c_4 (§2); the back-fill is bound by an upgrade test since loop r4b. Accepted: any later published change (a course-details save included) expires the check; an outside commit that does not move the recorded head does not."
 
 [[claim]]
 id = "P5.S.1.h"
@@ -1903,23 +1928,24 @@ claim = "Unlisting and listing a course again keeps its first listing time (list
 oracle = "probe"
 bound_to = [
   "apps/web/src/lib/loop-r3c-listing.sql.test.ts :: unlisting and listing again keeps the first listing time (recency cannot be refreshed at will)",
+  "apps/web/src/lib/loop-r4b-listing.sql.test.ts :: a check recorded before the migration counts as checked at that head; a course listed before it keeps its first listing time",
 ]
-note = "Security loop r3 LOW-5. Migration 0030_loop_r3c_4 (§3). DOCUMENTED, not changed (DecisionLog 2026-10-24): the 200-pending inbox cap can be filled by ≥ 10 real accounts; concurrent arrivals may overshoot it by the concurrency."
+note = "Security loop r3 LOW-5. Migration 0030_loop_r3c_4 (§3), back-filled from the listing rows (bound by an upgrade test in loop r4b; 0031_loop_r4b_3 repeats it idempotently). KNOWN GAP (loop r4, documented): a course unlisted before 0030_loop_r3c_4 was applied has no row to back-fill from — its next listing counts as its first — and a row whose registered_at a pre-0030 re-list refreshed seeded the ledger with that time. The only other record is research_events 'portal.registered' (research data; owner decision whether to use it). DOCUMENTED, not changed (DecisionLog 2026-10-24): the 200-pending inbox cap can be filled by ≥ 10 real accounts; concurrent arrivals may overshoot it by the concurrency."
 
 [[claim]]
 id = "P5.A.6.p"
-claim = "/d never re-registers a document from bytes that may lag a save (raw.githubusercontent.com serves the previous version for minutes): a stale answer heals that one file from the trial mirror the write path updated (never tombstoning, writing nothing when the row already matches the mirror), so a fresh save is never rolled back, a pin on the saved version keeps resolving — served from the mirror while the origin lags, only when the mirror's bytes hash to the pin — and old bytes are never labelled."
+claim = "/d never re-registers a document from bytes that may lag a save (raw.githubusercontent.com serves the previous version for minutes): a stale answer heals that one file from the trial mirror the write path updated — its bytes and digest from ONE read, handed to the registration explicitly, so a file deleted meanwhile is never tombstoned (never tombstoning, writing nothing when the row already matches the mirror), so a fresh save is never rolled back, a pin on the saved version keeps resolving — served from the mirror while the origin lags, only when the mirror's bytes hash to the pin — and old bytes are never labelled."
 oracle = "probe"
 bound_to = [
   "apps/web/src/lib/permalink-heal.sql.test.ts :: a view during raw-CDN lag after a save keeps the registry on the saved version, the pin on it works, old bytes are never labelled",
   "apps/web/src/lib/permalink-heal.sql.test.ts :: a pin on the version just saved serves that version during the raw-CDN lag, from the mirror",
-  "apps/web/src/lib/permalink-heal.sql.test.ts :: when neither the origin nor the mirror holds the pinned version, today's unlabelled answer stands",
   "apps/web/src/lib/permalink-heal.sql.test.ts :: writes nothing when the row already records the mirror's digest, never tombstones a file missing from the mirror, and heals a row behind the mirror",
+  "apps/web/src/lib/permalink-heal.sql.test.ts :: a file deleted from the mirror while a heal runs is never tombstoned: the bytes read once are the ones registered",
   "apps/web/src/lib/permalink-heal.test.ts :: heals after the response, never with the bytes read, once per window; failures are logged, not thrown",
   "apps/web/src/lib/permalink-heal.test.ts :: without a service client nothing is attempted",
   "apps/web/src/lib/permalink-response.freshness.test.ts :: a pin whose origin bytes lag is served from the mirror only when the mirror's bytes hash to the pin",
 ]
-note = "Loop r3 correctness M3-3 (repro /tmp/p5r3b/d-regress.test.ts). Code only. Residual: a commit made directly on GitHub that the mirror has not absorbed is not registered by /d (reconcile and the page-load sync absorb it)."
+note = "Loop r3 correctness M3-3 (repro /tmp/p5r3b/d-regress.test.ts). Code only. Loop r4 security LOW-3: the mirror was read twice (digest, then content inside registerChangedFiles), and a delete between the reads registered a null — a tombstone; now one read, content passed explicitly. Residual: a commit made directly on GitHub that the mirror has not absorbed is not registered by /d (reconcile and the page-load sync absorb it)."
 
 [[claim]]
 id = "P5.A.6.q"
@@ -1928,20 +1954,23 @@ oracle = "probe"
 bound_to = [
   "apps/web/src/lib/doc-bytes-cache.test.ts :: entries older than the window are dropped, so the record does not grow with every version ever viewed",
   "apps/web/src/lib/doc-bytes-cache.test.ts :: within the window it holds at most maxVerified entries (oldest first out), via revalidate and get",
+  "apps/web/src/lib/doc-bytes-cache.test.ts :: by default it holds at most 10,000 verification records",
   "apps/web/src/lib/permalink-response.freshness.test.ts :: an unlabelled answer is never shared-cacheable: private, no-store in every unverified branch",
 ]
 note = "Loop r3 correctness LOWs (verifiedAt trim; cache header matches its comment). Code only."
 
 [[claim]]
 id = "P5.A.6.r"
-claim = "The service-role /d heal never throws on an embedded uid the package does not hold: its foreign-id check reads documents and retired_ids directly (documents_foreign_doc_ids is closed to service_role), a retired or another package's uid is never adopted (fresh id), a known uid is kept, and a heal runs at most once per doc per window per instance with a bounded gate."
+claim = "The service-role /d heal never throws on an embedded uid the package does not hold: its foreign-id check reads documents and retired_ids directly (documents_foreign_doc_ids is closed to service_role), a retired or another package's uid is never adopted (fresh id), a known uid is kept, and a heal runs at most once per doc per window per instance with a bounded gate — and not again for that doc for an hour after one failed, so anonymous views never repeat a full registry read."
 oracle = "probe"
 bound_to = [
   "apps/web/src/lib/permalink-heal.sql.test.ts :: the stale path re-registers from the mirror without throwing; a retired or another package's uid is never adopted, a known uid is kept",
   "apps/web/src/lib/permalink-heal.sql.test.ts :: the service-role store: a retired or another package's uid at a new location gets a fresh id, a known uid is kept, no throw",
   "apps/web/src/lib/permalink-heal.test.ts :: once per doc per window, and bounded in memory",
+  "apps/web/src/lib/permalink-heal.test.ts :: a doc whose heal failed is left alone for an hour; others are not, and the gate stays bounded",
+  "apps/web/src/lib/permalink-heal.test.ts :: a heal that failed is not attempted again for that doc for an hour (no repeated full registry read)",
 ]
-note = "Security loop r3 LOW-1. Code only (ServiceDocumentRegistryStore). Residual: a heal reads the package's live registry once per doc per window, only when the digests differ."
+note = "Security loop r3 LOW-1. Code only (ServiceDocumentRegistryStore). Residual: a heal reads the package's live registry once per doc per window, only when the digests differ; after a failure, once per doc per hour (loop r4 security LOW-3)."
 
 [[claim]]
 id = "P5.B.3.g"
@@ -2140,3 +2169,41 @@ bound_to = [
 ]
 note = "Loop r4 MEDIUM-5. Code only (lib/publish-catchup.ts). Best effort: a failed catch-up is logged and the publish still succeeds; that file reaches the online copy with its next save. Not re-run by a later Publish click (the snapshot is gone; the store could be older than the online copy by then)."
 
+
+[[claim]]
+id = "P5.A.1.v"
+claim = "A documents_apply statement stays linear in the rows it updates: the documents UPDATE trigger joins its transition tables without a nested loop (discovery_on_documents_update plans with enable_nestloop = off), so re-registering a 3,000-file course unchanged, a 500-row chunk, and a cycle of all 3,000 paths each finish well under the signed-in 8 s statement timeout."
+oracle = "probe"
+bound_to = [
+  "apps/web/src/lib/loop-r4b-scale.sql.test.ts :: 3,000 rows unchanged, a 500-row chunk, and a 3,000-row path cycle each stay well under 8 s",
+]
+note = "Loop r4 correctness MEDIUM-4 (repros /tmp/p5r4/sql/scale.mts, explain.mts). Migration 0031_loop_r4b_2 (ALTER FUNCTION … SET; body unchanged). Measured in the test (PGlite): unchanged 3,000 rows 7,857 → 1,378 ms; 500-row chunk 316 → 154 ms; 3,000-path cycle 36,637 → 3,111 ms; scale.mts: unchanged 3,000 rows 16–23 s → 1.9 s. PGlite proves the shape, not production timings."
+
+[[claim]]
+id = "P5.S.17"
+claim = "No trigger with a column list (`update of <col>`) watches a column that a BEFORE UPDATE trigger of the same table assigns — such a trigger would miss every change the BEFORE trigger makes in a statement that does not name the column."
+oracle = "invariant"
+bound_to = [
+  "apps/web/src/lib/loop-r4b-listing.sql.test.ts :: no trigger with a column list watches a column that a BEFORE UPDATE trigger of its table assigns",
+  "apps/web/src/lib/loop-r4b-listing.sql.test.ts :: the check is real: the r3c form of the listing trigger is flagged",
+]
+note = "Loop r4 security LOW-1 (class a). Generic catalogue test over every public table (pg_trigger.tgattr × BEFORE UPDATE row-trigger sources assigning new.<col>). Migration 0031_loop_r4b_3 removed the one instance."
+
+[[claim]]
+id = "P5.A.6.s"
+claim = "A pinned /d/{doc}@{hash} is answered only with bytes that hash to the pin: when neither the origin nor the mirror holds the pinned version the answer is a 404 (no-store, no ETag, nothing cached or counted as a view) and the row is healed (onStale), never another version's bytes."
+oracle = "probe"
+bound_to = [
+  "apps/web/src/lib/permalink-response.freshness.test.ts :: a pin that neither the origin nor the mirror holds answers 404, never stored, never other bytes; the row is healed (pin)",
+  "apps/web/src/lib/permalink-heal.sql.test.ts :: when neither the origin nor the mirror holds the pinned version, the pin answers 404 (never stored) and the row is healed",
+]
+note = "Loop r4 security LOW-2 (repro /tmp/alembic-r4/pin.test.ts). Code only. The 8-hex pin scheme is unchanged (the owner is deciding separately on SHA-256 pins; DecisionLog 2026-10-23). Supersedes r3's 'today's unlabelled answer stands' for pins."
+
+[[claim]]
+id = "P5.S.6.d"
+claim = "One account cannot run \"Check for outside changes\" without bound: reconcilePackageAction allows at most 10 checks per 10 minutes and 60 per day per signed-in user (counted in Postgres when the service client is configured), refusing the next one in plain words before any reconcile runs; other users are unaffected."
+oracle = "probe"
+bound_to = [
+  "apps/web/src/app/workspace/[packageId]/reconcile-actions.rate.test.ts :: the 11th check within 10 minutes is refused before any reconcile, in plain words; another user is unaffected",
+]
+note = "Loop r4 security LOW-5, the bounded half. OPEN: the tree fallback itself (lib/repo-reader.ts, reconcile) still reads every stored file's content to compute blob SHA-1s; using stored hashes (a generated git-blob-sha column, or listPaths + content_sha) belongs to the reconcile code part A owns in round 4 — left for it / the next round. The save path's own reconcile on a refused save (committer) is not rate-limited (it runs only on a refusal)."
