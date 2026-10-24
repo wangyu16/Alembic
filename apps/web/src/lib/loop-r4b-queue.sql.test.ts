@@ -257,6 +257,7 @@ describe("the scheduled drain", () => {
     await db.query(`delete from public.discovery_pending`);
   });
 
+  // (pins kept behaviour: r3c's back-off steps, unasserted until now)
   it("[P5.A.1.t] a failing entry backs off 1, 2, 4, 8, 16, 32 minutes, then at most an hour", async () => {
     const pkg = await seedPackage(db, { owner, listed: true, title: "Steps" });
     await seedDoc(db, { packageId: pkg, docId: "doc-st00000001" });
