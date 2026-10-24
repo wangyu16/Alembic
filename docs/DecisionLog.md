@@ -30,6 +30,13 @@ fixed on branch `phase5/loop-r4b` (on `main` 03bcb00; not merged; migrations `00
   discovery_on_documents_update() SET enable_nestloop = off` keeps the body (nothing to re-compose) and makes the
   transition-table joins hash joins; a rewrite (e.g. a scalar subquery per row) was rejected as more code for the
   same plan. The composition test fails if a later CREATE OR REPLACE drops the setting.
+- **Column-list triggers are a class hazard (P5.S.17).** `AFTER UPDATE OF col` is skipped when a BEFORE trigger
+  changes `col` in a statement that does not name it. The listing trigger now fires on every update and lets its
+  WHEN clause (which sees the final row) decide; a catalogue test fails on any new instance.
+- **`listing_history` gap documented, not back-filled from research events.** Courses unlisted before
+  0030_loop_r3c_4 have no listing row to seed their first-listing time; `research_events` ('portal.registered',
+  owner-attributed) could, but it is research instrumentation (data-handling-review) and a product signal derived
+  from it is a secondary use — left to the owner. 0031_loop_r4b_3 repeats the listing-row back-fill idempotently.
 
 ## 2026-10-24 — Closed loop r3: identity is a whole-run matching; no lockout by our own commits; drained, aged queue; identities frozen
 

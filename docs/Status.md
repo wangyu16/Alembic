@@ -72,6 +72,16 @@ r4, part B"). Part A (fork / reconcile / committer / editor save) runs in parall
   a 3,000-file course unchanged took 16–23 s in one statement, a 3,000-path cycle 37 s — past the 8 s timeout (repro
   `/tmp/p5r4/sql/scale.mts`). `0031_loop_r4b_2` plans that trigger with `enable_nestloop = off` (body unchanged):
   1.4–1.9 s, 154 ms per 500-row chunk, 3.1 s for the cycle under the harness.
+- ✅ **Security LOW-1 (class a) — the anon-readable listing row kept "pass" after a save expired the check
+  (P5.S.3.h, P5.S.17).** The r3c listing trigger was `after update of a11y_status`, which never fires for a BEFORE
+  trigger's change (the expiry runs in a statement that names only `last_synced_sha`; repro
+  `/tmp/alembic-r4/a11y.test.ts`). `0031_loop_r4b_3` drops the column list (the WHEN clause decides) and corrects
+  stored rows; a generic catalogue test flags any `update of <col>` trigger whose column a BEFORE trigger assigns.
+  Expiry semantics and the badge unchanged (owner decision pending).
+- ✅ **LOW — r3c back-fills unasserted; `listing_history` gap (P5.S.3.i, P5.S.1.h).** An upgrade test now binds both
+  0030_loop_r3c_4 back-fills (checked-at head; first listing time). Documented, not closed: a course unlisted
+  before 0030_loop_r3c_4 has no row to back-fill from (its next listing counts as first); research_events would
+  close it but is research data — owner decision.
 - **Deploy order (round 4, part B):** code and `0031_loop_r4b_*` in either order (each file's header). After
   `0031_loop_r4b_1`, check `cron.job_run_details` for `alembic-discovery-drain` (fallback in the header).
 

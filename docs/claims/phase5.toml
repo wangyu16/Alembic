@@ -1765,6 +1765,7 @@ bound_to = [
   "apps/web/src/lib/loop-r4b-queue.sql.test.ts :: the queue functions keep r2c/r3c rules and carry r4b's (slice, fair order, split, reset, commit per entry)",
   "apps/web/src/lib/loop-r4b-queue.sql.test.ts :: the internal functions and the drain procedure stay closed to the API roles",
   "apps/web/src/lib/loop-r4b-scale.sql.test.ts :: discovery_on_documents_update plans without nested loops and keeps its body (r1b move rule, adaptation counts)",
+  "apps/web/src/lib/loop-r4b-listing.sql.test.ts :: the listing triggers of r3c are installed, the accessibility one without a column list",
 ]
 note = "Loop r2 correctness, the composition rule (round 1's 0026 silently reverted 0025_2). A future migration that redefines one of these functions must keep the markers or update this test deliberately."
 
@@ -1902,12 +1903,13 @@ note = "Loop r4 security MEDIUM-1 + correctness LOW (repro /tmp/alembic-r4/r4q.t
 
 [[claim]]
 id = "P5.S.3.h"
-claim = "The anon-readable listing row's accessibility status is always the server's own check (packages.a11y_status): the database sets it on every insert or update whatever the writer sends, and carries a new check into it; registerPackageAction no longer sends the owner-written manifest field."
+claim = "The anon-readable listing row's accessibility status is always the server's own check (packages.a11y_status): the database sets it on every insert or update whatever the writer sends, and carries every change of the record into it — a new check, or the reset to not checked when a save moves the recorded head (a BEFORE trigger's change); registerPackageAction no longer sends the owner-written manifest field."
 oracle = "probe"
 bound_to = [
   "apps/web/src/lib/loop-r3c-listing.sql.test.ts :: the listing row's accessibility status is the server's check, whatever the writer sends, and follows a new check",
+  "apps/web/src/lib/loop-r4b-listing.sql.test.ts :: a save that expires the check shows not checked on the anon-readable listing row too (a11y)",
 ]
-note = "Security loop r3 LOW-3. Migration 0030_loop_r3c_4 (§1); code drops accessibility_status from the listing snapshot."
+note = "Security loop r3 LOW-3. Migration 0030_loop_r3c_4 (§1); code drops accessibility_status from the listing snapshot. Loop r4 security LOW-1 (repro /tmp/alembic-r4/a11y.test.ts): the r3c trigger was `after update of a11y_status`, which never fired for the expiry (a BEFORE trigger's change in a statement naming only last_synced_sha); 0031_loop_r4b_3 drops the column list and keeps the WHEN clause. Expiry semantics and the badge unchanged (owner decision pending)."
 
 [[claim]]
 id = "P5.S.3.i"
@@ -1915,8 +1917,9 @@ claim = "A recorded accessibility result names the public head it audited (packa
 oracle = "probe"
 bound_to = [
   "apps/web/src/lib/loop-r3c-listing.sql.test.ts :: a check describes the head it audited: when the recorded head moves on, the course shows not checked",
+  "apps/web/src/lib/loop-r4b-listing.sql.test.ts :: a check recorded before the migration counts as checked at that head; a course listed before it keeps its first listing time",
 ]
-note = "Security loop r3 LOW-4. Migration 0030_loop_r3c_4 (§2). Accepted: any later published change (a course-details save included) expires the check; an outside commit that does not move the recorded head does not."
+note = "Security loop r3 LOW-4. Migration 0030_loop_r3c_4 (§2); the back-fill is bound by an upgrade test since loop r4b. Accepted: any later published change (a course-details save included) expires the check; an outside commit that does not move the recorded head does not."
 
 [[claim]]
 id = "P5.S.1.h"
@@ -1924,8 +1927,9 @@ claim = "Unlisting and listing a course again keeps its first listing time (list
 oracle = "probe"
 bound_to = [
   "apps/web/src/lib/loop-r3c-listing.sql.test.ts :: unlisting and listing again keeps the first listing time (recency cannot be refreshed at will)",
+  "apps/web/src/lib/loop-r4b-listing.sql.test.ts :: a check recorded before the migration counts as checked at that head; a course listed before it keeps its first listing time",
 ]
-note = "Security loop r3 LOW-5. Migration 0030_loop_r3c_4 (§3). DOCUMENTED, not changed (DecisionLog 2026-10-24): the 200-pending inbox cap can be filled by ≥ 10 real accounts; concurrent arrivals may overshoot it by the concurrency."
+note = "Security loop r3 LOW-5. Migration 0030_loop_r3c_4 (§3), back-filled from the listing rows (bound by an upgrade test in loop r4b; 0031_loop_r4b_3 repeats it idempotently). KNOWN GAP (loop r4, documented): a course unlisted before 0030_loop_r3c_4 was applied has no row to back-fill from — its next listing counts as its first — and a row whose registered_at a pre-0030 re-list refreshed seeded the ledger with that time. The only other record is research_events 'portal.registered' (research data; owner decision whether to use it). DOCUMENTED, not changed (DecisionLog 2026-10-24): the 200-pending inbox cap can be filled by ≥ 10 real accounts; concurrent arrivals may overshoot it by the concurrency."
 
 [[claim]]
 id = "P5.A.6.p"
@@ -2057,3 +2061,13 @@ bound_to = [
   "apps/web/src/lib/loop-r4b-scale.sql.test.ts :: 3,000 rows unchanged, a 500-row chunk, and a 3,000-row path cycle each stay well under 8 s",
 ]
 note = "Loop r4 correctness MEDIUM-4 (repros /tmp/p5r4/sql/scale.mts, explain.mts). Migration 0031_loop_r4b_2 (ALTER FUNCTION … SET; body unchanged). Measured in the test (PGlite): unchanged 3,000 rows 7,857 → 1,378 ms; 500-row chunk 316 → 154 ms; 3,000-path cycle 36,637 → 3,111 ms; scale.mts: unchanged 3,000 rows 16–23 s → 1.9 s. PGlite proves the shape, not production timings."
+
+[[claim]]
+id = "P5.S.17"
+claim = "No trigger with a column list (`update of <col>`) watches a column that a BEFORE UPDATE trigger of the same table assigns — such a trigger would miss every change the BEFORE trigger makes in a statement that does not name the column."
+oracle = "invariant"
+bound_to = [
+  "apps/web/src/lib/loop-r4b-listing.sql.test.ts :: no trigger with a column list watches a column that a BEFORE UPDATE trigger of its table assigns",
+  "apps/web/src/lib/loop-r4b-listing.sql.test.ts :: the check is real: the r3c form of the listing trigger is flagged",
+]
+note = "Loop r4 security LOW-1 (class a). Generic catalogue test over every public table (pg_trigger.tgattr × BEFORE UPDATE row-trigger sources assigning new.<col>). Migration 0031_loop_r4b_3 removed the one instance."
