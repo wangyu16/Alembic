@@ -130,6 +130,13 @@ fixed here too (its later fixes build on this branch).
   (P5.B.3.i).** The publish wrote its start-time manifest snapshot back (repro `/tmp/p5r3a/publish-race.mts`). Now
   it merges only the repository pair into the current details (`lib/publish-finish.ts`, saved online too when they
   differ) and the "already published" path finishes the manifest write + discovery flush.
+- ✅ **L3-3 — fork re-mint mapped a shared block id once for all chapters and rewrote inside code (P5.B.1.z).** Now
+  `fork-remint.ts`: contract block ids (`{{attrs[#blk-…]}}` in study-guide/, slides/, practice/) are re-minted per
+  file; `/d/doc-SRC#blk-…` and relative `file#blk-…` links follow the copy they point into; links to uncopied or
+  pinned documents are left; code fences / inline code are never rewritten; files are otherwise byte-identical.
+  OPEN (owner ruling): `{#blk-…}` heading attributes are not contract ids and are copied unchanged.
+- **Deploy order (round 3):** code and `0030_loop_r3c_1…4` in either order (each file's header); enable **pg_cron**
+  first so `0030_loop_r3c_3` schedules the drain. No new environment variables.
 
 **Phase 5 closed-loop verification — round 2, steps 4–5: correctness audit probes and class fixes (2026-10-23,
 branch `phase5/loop-r2-cor`, built on `phase5/loop-r2-sec`, not merged, migrations `0029_loop_r2c_*` NOT applied).**

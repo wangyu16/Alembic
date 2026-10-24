@@ -2013,3 +2013,16 @@ bound_to = [
   "apps/web/src/app/workspace/[packageId]/github-actions.test.ts :: a publish that stopped after the course was recorded as published is finished by the next click",
 ]
 note = "Loop r3 correctness L3-1 (repro /tmp/p5r3a/publish-race.mts). Code only."
+
+[[claim]]
+id = "P5.B.1.z"
+claim = "forkPackage re-mints every contract block id ({{attrs[#blk-…]}} in study-guide/, slides/, practice/) per file — an id two chapters share gets a fresh id in each — references follow the copy they point into (/d/doc-SRC#blk-… takes that chapter's new uid and id), links to documents the fork does not copy and pinned links are left alone, and nothing inside code fences or inline code is rewritten."
+oracle = "probe"
+bound_to = [
+  "packages/package-ops/src/fork.r3c.test.ts :: a block id two chapters share gets its own fresh id in each; references follow the chapter they point into",
+  "packages/package-ops/src/fork.r3c.test.ts :: ids inside code fences and inline code are never rewritten",
+  "packages/package-ops/src/fork.r3c.test.ts :: a link to a document the fork does not copy, or to a pinned version, is left alone",
+  "packages/package-ops/src/fork.r3c.test.ts :: slides and practice contract block ids are re-minted; non-contract anchors are not",
+  "packages/package-ops/src/fork.r3c.test.ts :: a carrier island the reader does not recognise is re-minted wherever its marker sits, and its bytes are otherwise untouched (forksg-valid)",
+]
+note = "Loop r3 correctness L3-3 (repros /tmp/p5r3a/forksg-valid*.mts). Code only. OPEN for an owner ruling: {#blk-…} / {#b-…} heading attributes are not contract ids and are copied unchanged; a /d/ link to a plain .md chapter (no embedded uid) cannot be followed by the pure fork."

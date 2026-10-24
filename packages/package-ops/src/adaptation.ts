@@ -21,13 +21,12 @@ import {
   newPackageId,
   parseManifest,
   parseStudyGuide,
-  serializeStudyGuide,
   type AdaptationSource,
   type License,
   type PackageManifest,
 } from "@alembic/package-contract";
 import { extractSource, getKindByExtension, hasCarrier } from "@alembic/carriers";
-import { remintEmbeddedUid } from "./document-registry";
+import { remintForkIdentities } from "./fork-remint";
 import type { PackageFile, PackageStore } from "./store";
 import { loadStudyGuide, prepareStudyGuideSave } from "./study-guide";
 
@@ -270,24 +269,36 @@ export interface ForkedPackage {
 
 const STUDY_GUIDE_PREFIX = "study-guide/";
 
-/**
- * Replace every whole occurrence of a block id (`blk-` + 8 or more base36
- * characters): `blk-abcdefgh` must not rewrite the head of `blk-abcdefgh1`.
- */
-function replaceId(text: string, oldId: string, newId: string): string {
-  const re = new RegExp(`${oldId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![a-z0-9])`, "g");
-  return text.replace(re, () => newId);
+/** The readable markdown of a study guide: its carrier island, else the text. */
+function readableSource(content: string): string {
+  if (hasCarrier(content)) {
+    try {
+      return extractSource(content).source;
+    } catch {
+      /* fall through: no readable island */
+    }
+  }
+  return content;
 }
 
 /**
  * Whole-package fork (guardrail G4): clone a source package's PUBLIC content
  * into a new package the educator can edit directly. Block ids are **re-minted**
- * (never reused — rule 7); references to them in concepts/objectives/etc. are
- * remapped to the new ids; `manifest.adaptedFrom` is set and per-block lineage
- * is recorded in `provenance/adaptations.json`. Private content does not travel
+ * (never reused — rule 7) per file, every embedded uid is re-minted, and
+ * references follow the copy they point into — the rule is documented in
+ * `fork-remint.ts` (loop r3, P5.B.1.z: an id two chapters share becomes one
+ * fresh id per chapter; `/d/doc-…#blk-…` links into a copied chapter follow its
+ * new uid and id; links to other courses' documents and pinned versions are
+ * left alone; code is never rewritten; `slides/` and `practice/` markers are
+ * contract ids too). `manifest.adaptedFrom` is set and per-block lineage is
+ * recorded in `provenance/adaptations.json`. Private content does not travel
  * (the source author's `private-instructor/` stays theirs). License-gated. Pure
  * (no IO) — the caller reads the source files and persists the result via
  * `store.createPackage`.
+ *
+ * Files are copied byte-for-byte apart from the ids and uids (before r3 a
+ * markdown study guide was re-serialized, and an HTML file the carrier reader
+ * did not recognise was run through the markdown serializer).
  */
 export function forkPackage(input: ForkPackageInput): ForkedPackage {
   const compat = canAdapt(input.source.manifest.license, input.target.license);
@@ -299,76 +310,46 @@ export function forkPackage(input: ForkPackageInput): ForkedPackage {
   const packageId = newPackageId(title);
   const mint = input.newBlockId ?? newBlockId;
 
-  // 1. Re-mint study-guide block ids; build old→new map + lineage.
-  const idMap = new Map<string, string>();
+  // 1–2. Copy the public files (the manifest and lineage are regenerated),
+  // re-minting ids per file and following references (fork-remint.ts).
+  const copied = input.source.publicFiles.filter(
+    (f) =>
+      f.repo === "public" && // public layers only
+      f.path !== "alembic.json" &&
+      f.path !== ADAPTATIONS_PROVENANCE_PATH,
+  );
+  const { files: reminted } = remintForkIdentities(copied, mint);
+
+  // Per-block lineage, one entry per (file, id). Study-guide H2 blocks carry
+  // their content hash (pull-updates drift detection reads it); other
+  // markers (slides, practice, sub-headings) are recorded without one.
   const lineage: AdaptedBlockRef[] = [];
-  const cloned: PackageFile[] = [];
-  const remintBlock = (b: { id: string | null; title: string; body: string }, path: string): string | null => {
-    if (!b.id) return null;
-    const nid = mint();
-    idMap.set(b.id, nid);
-    lineage.push({
-      targetBlockId: nid,
-      sourcePackageId: input.source.packageId,
-      sourceBlockId: b.id,
-      sourcePath: path,
-      sourceContentHash: hashAdaptedBlock(b),
-      ...(input.snapshot ? { snapshot: input.snapshot } : {}),
-    });
-    return nid;
-  };
-  for (const f of input.source.publicFiles) {
-    if (f.repo !== "public") continue; // public layers only
-    if (f.path === "alembic.json" || f.path === ADAPTATIONS_PROVENANCE_PATH) continue; // regenerated
-    if (f.path.startsWith(STUDY_GUIDE_PREFIX) && hasCarrier(f.content)) {
-      // A self-contained study guide (`.md.html`, v2): its markdown lives in
-      // the carrier island, its rendered HTML carries the block ids as
-      // anchors, and its `#orz-meta` island carries the source's docId. The
-      // copy gets new block ids EVERYWHERE in the file and its own uid
-      // (correctness loop r2, HIGH-A sibling, P5.B.1.s) — before, the markdown
-      // parser below saw HTML, re-minted nothing, and the fork kept both the
-      // source's block ids and its uid.
-      let blocks: ReturnType<typeof parseStudyGuide>["blocks"] = [];
-      try {
-        blocks = parseStudyGuide(extractSource(f.content).source).blocks;
-      } catch {
-        /* no readable island: nothing to re-mint but the uid */
+  const originals = new Map(copied.map((f) => [f.path, f.content]));
+  for (const f of reminted) {
+    if (f.ids.size === 0) continue;
+    const hashes = new Map<string, string>();
+    if (f.path.startsWith(STUDY_GUIDE_PREFIX)) {
+      for (const b of parseStudyGuide(readableSource(originals.get(f.path)!)).blocks) {
+        if (b.id && !hashes.has(b.id)) hashes.set(b.id, hashAdaptedBlock(b));
       }
-      let content = f.content;
-      for (const b of blocks) {
-        const nid = remintBlock(b, f.path);
-        if (nid) content = replaceId(content, b.id!, nid);
-      }
-      cloned.push({ repo: "public", path: f.path, content: remintEmbeddedUid(content) });
-    } else if (f.path.startsWith(STUDY_GUIDE_PREFIX)) {
-      const parsed = parseStudyGuide(f.content);
-      const reminted = parsed.blocks.map((b) => {
-        const nid = remintBlock(b, f.path);
-        return nid ? { ...b, id: nid } : b;
+    }
+    for (const [oldId, nid] of f.ids) {
+      const hash = hashes.get(oldId);
+      lineage.push({
+        targetBlockId: nid,
+        sourcePackageId: input.source.packageId,
+        sourceBlockId: oldId,
+        sourcePath: f.path,
+        ...(hash ? { sourceContentHash: hash } : {}),
+        ...(input.snapshot ? { snapshot: input.snapshot } : {}),
       });
-      // A copy is its own document: re-mint an embedded uid here too (a
-      // carrier whose island this reader does not recognise still carries one).
-      cloned.push({
-        repo: "public",
-        path: f.path,
-        content: remintEmbeddedUid(serializeStudyGuide(parsed.preamble, reminted)),
-      });
-    } else {
-      // A copy is its own document: re-mint the carrier's embedded uid so the
-      // fork never claims the source's docId (loop r1b, P5.B.1.n).
-      cloned.push({ repo: "public", path: f.path, content: remintEmbeddedUid(f.content) }); // remap below
     }
   }
-
-  // 2. Remap block-id references in non-study-guide files (concepts/objectives).
-  const remap = (s: string) => {
-    let out = s;
-    for (const [oldId, nid] of idMap) out = replaceId(out, oldId, nid);
-    return out;
-  };
-  // Study guides too (loop r2 correctness): a chapter may reference another
-  // chapter's block, and a carrier's rendered HTML repeats its ids.
-  const finalCloned = cloned.map((f) => ({ ...f, content: remap(f.content) }));
+  const finalCloned: PackageFile[] = reminted.map((f) => ({
+    repo: f.repo,
+    path: f.path,
+    content: f.content,
+  }));
 
   // 3. New manifest — drop the source's repo bindings; set lineage.
   const { publicRepo: _pub, privateRepo: _priv, ...base } = input.source.manifest;
