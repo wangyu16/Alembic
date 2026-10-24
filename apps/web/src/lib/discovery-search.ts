@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
-  A11Y_STATUSES,
+  CHECKED_A11Y_STATUSES,
   DiscoveryCourseSchema,
   DiscoveryElementSchema,
   ScoredSchema,
@@ -135,8 +135,10 @@ export function parseDiscoveryQuery(sp: Params): DiscoveryQuery {
     return { scope, q, filters: pick(ELEMENT_FILTERS), cursor };
   }
   const filters = pick(COURSE_FILTERS);
-  // a11y is a closed set; anything else is dropped rather than sent.
-  if (filters.a11y && !(A11Y_STATUSES as readonly string[]).includes(filters.a11y)) {
+  // a11y is a closed set of CHECKED statuses; anything else is dropped rather
+  // than sent — "not checked" is not a value Discover offers (owner decision
+  // 2, 2026-10-24: no current check is neutral, not a category).
+  if (filters.a11y && !(CHECKED_A11Y_STATUSES as readonly string[]).includes(filters.a11y)) {
     delete filters.a11y;
   }
   return { scope, q, filters, cursor };

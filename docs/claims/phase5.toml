@@ -1210,6 +1210,84 @@ claim = "Discover searches on Search/Enter through a plain GET form that works w
 oracle = "human"
 bound_to = []
 
+# ─── Owner decisions, 2026-10-24 ──────────────────────────────────────────
+# Decision 1 (SHA-256 pins) closes P5.S.L2 (bound there). Decision 2 — the
+# accessibility badge follows an automatic check; no current check is neutral.
+
+[[claim]]
+id = "P5.R.5.a"
+claim = "After every Alembic commit to a published course's public repository, every publish and every absorbed outside change, the accessibility check runs again after the response, best-effort: it audits the recorded public repository at its head through the educator's GitHub App installation and records the result only while that head is still the recorded head (a check a newer save replaced never lands); a trial course's or another educator's check records nothing."
+oracle = "probe"
+bound_to = [
+  "apps/web/src/lib/committer.test.ts :: a public commit schedules the automatic accessibility check (after recording); a private or failed one does not, and a throwing hook never fails the save",
+  "apps/web/src/lib/a11y-auto.test.ts :: after every public commit (committer), every publish and every absorbed outside change",
+  "apps/web/src/lib/a11y-auto.test.ts :: audits the published head and records it with that head; a refused record (head moved) is superseded",
+  "apps/web/src/lib/decisions-a11y.sql.test.ts :: a check of a head a newer save replaced never lands (no badge for bytes nobody checked)",
+  "apps/web/src/lib/decisions-a11y.sql.test.ts :: a trial course's check is never recorded, and another educator's check records nothing",
+]
+note = "Owner decision 2(a), 2026-10-24 (branch phase5/decisions). The record is guarded in the same UPDATE (last_synced_sha = the audited head) — recordA11yCheck. The manual \"Check now\" uses the same runner and no longer commits the result into the course details."
+
+[[claim]]
+id = "P5.R.5.b"
+claim = "The automatic check is debounced and bounded: at most one run per course at a time per instance; saves during a run coalesce into one follow-up run; a settle delay lets a burst share the first run; at most maxConcurrent (4) courses at once per instance and maxRuns (3) per scheduled task; a per-course rate gate (a11yAuto: 30/hour, 200/day, Postgres-counted when configured) stops a run."
+oracle = "invariant"
+bound_to = [
+  "apps/web/src/lib/a11y-auto.test.ts :: one run per course at a time; saves during a run coalesce into ONE follow-up with the newest request",
+  "apps/web/src/lib/a11y-auto.test.ts :: a short settle delay lets a burst of saves share the first run",
+  "apps/web/src/lib/a11y-auto.test.ts :: bounded: at most maxConcurrent courses at once, at most maxRuns per task, and the rate gate stops a run",
+]
+note = "In-process coalescing is per server instance; two instances may each run one check of the same head (idempotent: the same record). The 30/200 numbers are not asserted (the gate is injected)."
+
+[[claim]]
+id = "P5.R.5.c"
+claim = "A save of a published course expires its accessibility badge (status unknown in Discover and on the listing row) and the automatic re-check of that save earns it back."
+oracle = "scenario"
+bound_to = [
+  "apps/web/src/lib/decisions-a11y.sql.test.ts :: a commit expires then re-earns the badge",
+]
+
+[[claim]]
+id = "P5.R.5.d"
+claim = "A check that cannot run or fails (no connection, unreadable published copy, an audit that throws, a failed record) records nothing and never throws to the save or publish: the expired check stays expired and Discover shows no badge."
+oracle = "probe"
+bound_to = [
+  "apps/web/src/lib/decisions-a11y.sql.test.ts :: a failed audit hides the badge: nothing is recorded, the expired check stays expired",
+  "apps/web/src/lib/a11y-auto.test.ts :: never throws: unreadable, failing, unsaved, trial and someone else's course record nothing",
+  "apps/web/src/lib/a11y-auto.test.ts :: a failing check, a throwing gate or a failing scheduler never throws to the caller",
+]
+
+[[claim]]
+id = "P5.R.5.e"
+claim = "Without a current check (unknown) a course is neutral in Discover: no badge, no 'not checked' facet value or filter, and its quality leaves the accessibility term out and re-weights the other four (÷ 0.70) — so it ranks below an otherwise equal passing course and above an otherwise equal failing one; SQL discovery_course_quality equals the contract's courseQualityScore; elements are unchanged."
+oracle = "probe"
+bound_to = [
+  "apps/web/src/lib/decisions-a11y.sql.test.ts :: ranking neutral without a check: unknown ranks between pass and fail, never with fail, and SQL = contract",
+  "apps/web/src/lib/decisions-a11y.sql.test.ts :: the a11y facet offers no 'not checked' value; the total still counts every course",
+  "apps/web/src/lib/decisions-a11y.sql.test.ts :: discovery_course_quality = courseQualityScore over every signal combination",
+  "packages/package-contract/src/discovery-ranking.test.ts :: a course without a current accessibility check is neutral: the term is left out and the rest re-weighted",
+  "apps/web/src/lib/discovery-search.test.ts :: 'not checked' is not a filter Discover offers: a11y=unknown is dropped",
+]
+note = "Migration 0032_decisions_1_a11y_neutral. The badge was already hidden for unknown (A11Y_LABELS.unknown = null); the facet value is also filtered in discovery-ui.tsx so the code works before the migration."
+
+[[claim]]
+id = "P5.R.5.f"
+claim = "0032 redefines discovery_search_courses and discovery_course_facets from their latest (0022) definitions, keeping every rule, and the new helper is closed to the API roles."
+oracle = "invariant"
+bound_to = [
+  "apps/web/src/lib/decisions-a11y.sql.test.ts :: discovery_search_courses keeps 0022's filters, keyset paging, clamp and hour rounding, and ranks with the course quality",
+  "apps/web/src/lib/decisions-a11y.sql.test.ts :: discovery_course_facets keeps 0022's per-facet counting and caps, and drops only 'unknown' from the a11y facet",
+  "apps/web/src/lib/decisions-a11y.sql.test.ts :: the course-quality helper is closed to the API roles; the two RPCs stay open; elements keep discovery_quality",
+]
+
+[[claim]]
+id = "P5.R.5.g"
+claim = "On a published course's page the educator sees the latest accessibility check in plain words (result and when it ran, or that the latest version is not checked yet) with a Check now control."
+oracle = "human"
+bound_to = [
+  "apps/web/src/app/workspace/[packageId]/_components/accessibility-status-text.test.ts :: the educator sees the latest check in plain words, and when it ran",
+]
+note = "The words are tested; that the line renders in the publish header (accessibility-status.tsx) is a human check."
+
 # ─── Security loop r1 (audit 2026-10-23): probes and class fixes ─────────
 # One block per audit finding (H1, M1–M5, L1–L4, template). Each claim is
 # bound to the probe that reproduced the finding on ff39af5 (it failed there)
@@ -1779,6 +1857,9 @@ bound_to = [
   "apps/web/src/lib/loop-r4b-queue.sql.test.ts :: the internal functions and the drain procedure stay closed to the API roles",
   "apps/web/src/lib/loop-r4b-scale.sql.test.ts :: discovery_on_documents_update plans without nested loops and keeps its body (r1b move rule, adaptation counts)",
   "apps/web/src/lib/loop-r4b-listing.sql.test.ts :: the listing triggers of r3c are installed, the accessibility one without a column list",
+  "apps/web/src/lib/decisions-a11y.sql.test.ts :: discovery_search_courses keeps 0022's filters, keyset paging, clamp and hour rounding, and ranks with the course quality",
+  "apps/web/src/lib/decisions-a11y.sql.test.ts :: discovery_course_facets keeps 0022's per-facet counting and caps, and drops only 'unknown' from the a11y facet",
+  "apps/web/src/lib/decisions-a11y.sql.test.ts :: the course-quality helper is closed to the API roles; the two RPCs stay open; elements keep discovery_quality",
 ]
 note = "Loop r2 correctness, the composition rule (round 1's 0026 silently reverted 0025_2). A future migration that redefines one of these functions must keep the markers or update this test deliberately."
 
@@ -1923,7 +2004,7 @@ bound_to = [
   "apps/web/src/lib/package-trust-writes.test.ts :: registerPackageAction no longer sends the accessibility field: not in its code, not in the listing snapshot",
   "apps/web/src/lib/loop-r4b-listing.sql.test.ts :: a save that expires the check shows not checked on the anon-readable listing row too (a11y)",
 ]
-note = "Security loop r3 LOW-3. Migration 0030_loop_r3c_4 (§1); code drops accessibility_status from the listing snapshot. Loop r4 security LOW-1 (repro /tmp/alembic-r4/a11y.test.ts): the r3c trigger was `after update of a11y_status`, which never fired for the expiry (a BEFORE trigger's change in a statement naming only last_synced_sha); 0031_loop_r4b_3 drops the column list and keeps the WHEN clause. Expiry semantics and the badge unchanged (owner decision pending)."
+note = "Security loop r3 LOW-3. Migration 0030_loop_r3c_4 (§1); code drops accessibility_status from the listing snapshot. Loop r4 security LOW-1 (repro /tmp/alembic-r4/a11y.test.ts): the r3c trigger was `after update of a11y_status`, which never fired for the expiry (a BEFORE trigger's change in a statement naming only last_synced_sha); 0031_loop_r4b_3 drops the column list and keeps the WHEN clause. Expiry semantics kept by owner decision 2 (2026-10-24): the check now re-runs automatically after every save (P5.R.5.*)."
 
 [[claim]]
 id = "P5.S.3.i"

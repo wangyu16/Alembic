@@ -28,6 +28,7 @@ import { manifestFromFiles } from "@/lib/manifest-read";
 import { recordedPrivateRepo, recordedPublicRepo, repoUrl } from "@/lib/recorded-repo";
 import { flushDiscovery } from "@/lib/discovery-flush";
 import { committerFor } from "@/lib/committer";
+import { scheduleA11yCheck } from "@/lib/a11y-auto-server";
 import { finishPublishedManifest, type PublishedRepos } from "@/lib/publish-finish";
 import { commitLateSaves, snapshotOf } from "@/lib/publish-catchup";
 import { storedForm } from "@/lib/repo-reader";
@@ -359,6 +360,10 @@ export async function publishToGitHubAction(
       manifest,
     );
     discoveryChanged();
+    // Owner decision 2 (2026-10-24): check the published course's
+    // accessibility after the response, best-effort — never part of the
+    // publish's success (lib/a11y-auto-server.ts).
+    scheduleA11yCheck(user.id, packageId);
     await events.log({
       type: "publish.completed",
       userId: user.id,

@@ -52,15 +52,14 @@ async function ownerScopedUpdate(
   packageId: string,
   ownerId: string,
   patch: Record<string, unknown>,
+  /** Extra equality guards, checked in the same UPDATE (atomic). */
+  guards: Record<string, string> = {},
 ): Promise<TrustWriteResult> {
   if (!service) return { ok: false, reason: "no-service-client" };
   try {
-    const { data, error } = await service
-      .from("packages")
-      .update(patch)
-      .eq("id", packageId)
-      .eq("owner_id", ownerId)
-      .select("id");
+    let q = service.from("packages").update(patch).eq("id", packageId).eq("owner_id", ownerId);
+    for (const [col, v] of Object.entries(guards)) q = q.eq(col, v);
+    const { data, error } = await q.select("id");
     if (error) return { ok: false, reason: "failed" };
     if (!data || data.length === 0) return { ok: false, reason: "not-found" };
     return { ok: true };
@@ -120,19 +119,29 @@ export function packageTrustWriter(serviceFactory: ServiceFactory) {
       }
     },
 
-    /** The server-side accessibility check's result (what Discover trusts). */
+    /**
+     * The server-side accessibility check's result (what Discover trusts).
+     *
+     * `checkedSha` is the public head it audited; it is recorded ONLY while
+     * that head is still the recorded head (`last_synced_sha`), in the same
+     * UPDATE (owner decision 2, 2026-10-24): a check of a head that a later
+     * save has already replaced must not land after that save's expiry and
+     * show a badge for bytes nobody checked — the later save's own check
+     * records instead. A refused record is `not-found`. When the recorded head
+     * moves on afterwards, the database resets the status (P5.S.3.i).
+     */
     recordA11yCheck(
       packageId: string,
       ownerId: string,
-      v: { status: "pass" | "warn" | "fail" | "unknown"; checkedAt: string; checkedSha?: string | null },
+      v: { status: "pass" | "warn" | "fail"; checkedAt: string; checkedSha: string },
     ): Promise<TrustWriteResult> {
-      // The head it audited goes with it: when the recorded public head moves
-      // on, the database resets the status to "not checked" (P5.S.3.i).
-      return ownerScopedUpdate(serviceFactory(), packageId, ownerId, {
-        a11y_status: v.status,
-        a11y_checked_at: v.checkedAt,
-        ...(v.checkedSha !== undefined ? { a11y_checked_sha: v.checkedSha } : {}),
-      });
+      return ownerScopedUpdate(
+        serviceFactory(),
+        packageId,
+        ownerId,
+        { a11y_status: v.status, a11y_checked_at: v.checkedAt, a11y_checked_sha: v.checkedSha },
+        { last_synced_sha: v.checkedSha },
+      );
     },
   };
 }

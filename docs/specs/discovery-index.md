@@ -164,6 +164,10 @@ discipline, kind (elements). An empty `q` matches every listed row.
 **Facets** are counted in SQL over the same matches. Each facet is counted
 with every *other* filter applied (choosing one discipline still shows the
 others' counts); `total` applies all filters. At most 50 values per facet.
+The accessibility facet offers only checked results (`pass`, `warn`, `fail`):
+"not checked" is not a value to choose, and the app drops `a11y=unknown`
+(owner decision 2, 2026-10-24; 0032). A course without a current check shows
+no badge.
 Filters compare normalised values (trimmed, lower-cased) except licence and
 accessibility status, which are closed sets.
 
@@ -217,7 +221,7 @@ query, relevance is 1 for every row (browse = quality order).
 
 | Signal | Weight | Value |
 |---|---|---|
-| accessibility | 0.30 | course: the server-recorded audit (`packages.a11y_status`, written only by the accessibility-check action) `pass` 1, `warn` 0.5, `fail`/`unknown` 0; element: 1 when it has a description or alt text |
+| accessibility | 0.30 | course: the server-recorded audit (`packages.a11y_status`, written only by the accessibility check — automatic after every save/publish since 2026-10-24, or "Check now") `pass` 1, `warn` 0.5, `fail` 0; **no current check (`unknown`) is neutral**: the term is left out and the other four weights are scaled by 1/0.70 (`discovery_course_quality`, 0032; `courseQualityScore`) — so an unchecked course ranks below an otherwise equal passing one and above an otherwise equal failing one; element: 1 when it has a description or alt text (always known; unchanged) |
 | open licence | 0.15 | 1 for an open licence (always true for listed courses; elements may carry their own) |
 | completeness | 0.20 | course: share of {description ≥ 15 words, ≥ 3 keywords, level, discipline, concept-map topics or ≥ 2 chapters}; element: share of {description ≥ 3 words, ≥ 1 tag, a licence} |
 | recency | 0.20 | `exp(−days since updated_at / 180)` (≈ 0.5 after four months; future dates count as now) |

@@ -12,8 +12,6 @@ import {
 import type { AccessibilityStatus } from "@alembic/package-contract";
 import { discoveryChanged } from "@/lib/discovery-cache";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { createServiceClient } from "@/lib/supabase/service";
-import { packageTrustWriter } from "@/lib/package-trust-writes";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
 import { supabaseEventLogger } from "@/lib/events";
 import { committerFor } from "@/lib/committer";
@@ -21,7 +19,7 @@ import { governedProvider, RateLimitError, BudgetExceededError } from "@/lib/ai"
 import { recordChange } from "@/lib/changes";
 import type { FixableRule } from "@/lib/a11y";
 import { a11yAuditSource, auditPackageA11y } from "@/lib/a11y-audit";
-import { clientForUser } from "@/lib/github";
+import { recordPublishedA11yCheck } from "@/lib/a11y-auto-server";
 import { flushDiscovery } from "@/lib/discovery-flush";
 
 async function requireUser() {
@@ -50,24 +48,56 @@ export interface RecheckResult {
   ok: boolean;
   status?: AccessibilityStatus;
   error?: string;
+  /** Published course: the result was not recorded because a newer save
+   *  replaced the version checked (its own check follows automatically). */
+  superseded?: boolean;
 }
 
 /**
- * Re-run accessibility checks across every chapter, record the rolled-up
- * status in the package manifest (a rebuildable projection of repo content),
- * and log it. Returns the new status.
+ * "Check now": run the accessibility check across every chapter.
+ *
+ * - A PUBLISHED course (owner decision 2, 2026-10-24): the same check that
+ *   now runs automatically after every save — the recorded public repository
+ *   at its head (P5.S.3.g), recorded as the server's result only while that
+ *   head is still the recorded one (`recordPublishedA11yCheck`). It no longer
+ *   writes the result into the course details: that was a commit, which moved
+ *   the head and so expired the very check it recorded.
+ * - A TRIAL course: its stored copy is audited and the result kept in the
+ *   course details (the trial store — no commit); it is the owner's preview,
+ *   never the trusted record (P5.S.3.g).
  */
 export async function recheckA11yAction(packageId: string): Promise<RecheckResult> {
   const { supabase, user } = await requireUser();
   const store = new SupabaseSandboxStore(supabase);
   try {
-    // Audit what readers get: a published course's recorded public repository
-    // at its head, never the owner-writable mirror (security loop r2, M2
-    // residual, P5.S.3.g); a trial course's stored copy otherwise.
-    const source = await a11yAuditSource(store, await store.getPackage(packageId), async () => {
-      const gh = await clientForUser(supabase, user.id);
-      return gh ? gh.client : null;
-    });
+    const record = await store.getPackage(packageId);
+    if (record?.storage === "github") {
+      const outcome = await recordPublishedA11yCheck(user.id, packageId);
+      if (outcome.kind === "unavailable" || outcome.kind === "failed") {
+        return {
+          ok: false,
+          error:
+            outcome.kind === "unavailable"
+              ? outcome.error
+              : "Couldn't run the accessibility check. Please try again.",
+        };
+      }
+      if (outcome.kind === "trial") return { ok: false, error: "This course isn't published yet." };
+      const status: AccessibilityStatus = {
+        status: outcome.status,
+        errorCount: outcome.errorCount,
+        warningCount: outcome.warningCount,
+        checkedAt: outcome.kind === "recorded" ? outcome.checkedAt : new Date().toISOString(),
+      };
+      await logChecked(supabase, user.id, packageId, status);
+      // The badge Discover shows changed (recordPublishedA11yCheck recorded it).
+      discoveryChanged();
+      revalidatePath(`/workspace/${packageId}`);
+      return { ok: true, status, ...(outcome.kind === "superseded" ? { superseded: true } : {}) };
+    }
+
+    // Trial: the owner's preview, from the stored copy.
+    const source = await a11yAuditSource(store, record, async () => null);
     if (!source.ok) return { ok: false, error: source.error };
     const { errorCount, warningCount } = await auditPackageA11y(source.store, packageId);
     const status: AccessibilityStatus = {
@@ -76,12 +106,9 @@ export async function recheckA11yAction(packageId: string): Promise<RecheckResul
       warningCount,
       checkedAt: new Date().toISOString(),
     };
-
     // The rolled-up status lives in the manifest, so it goes through the ONE
-    // manifest owner (`updateManifest`): patched onto the FILE copy, committed
-    // for a published package, then compare-and-swapped into the projection.
-    // A published package we cannot reach is refused rather than written
-    // locally (docs/specs/storage-and-write-paths.md §3).
+    // manifest owner (`updateManifest`) — for a trial course the store IS the
+    // truth, so nothing is committed.
     const resolution = await committerFor(supabase, store, user.id, packageId);
     if (resolution.kind === "unavailable") {
       return { ok: false, error: resolution.reason };
@@ -97,25 +124,7 @@ export async function recheckA11yAction(packageId: string): Promise<RecheckResul
     // path returned — never by re-deriving it.
     await supabase.from("packages").update({ manifest }).eq("id", packageId);
     await flushDiscovery(supabase, packageId);
-    // The result Discover trusts is the server's own record of THIS run
-    // (service-role column, migration 0025, security loop r1 M2), not the
-    // owner-writable manifest field — and only a run over the PUBLISHED bytes
-    // is recorded (loop r2, P5.S.3.g). Best-effort: the check above is saved.
-    if (source.published) {
-      await packageTrustWriter(createServiceClient).recordA11yCheck(packageId, user.id, {
-        status: status.status,
-        checkedAt: status.checkedAt,
-        checkedSha: source.headSha,
-      });
-    }
-
-    await supabaseEventLogger(supabase).log({
-      type: "a11y.checked",
-      userId: user.id,
-      packageId,
-      detail: { status: status.status, errorCount, warningCount },
-      occurredAt: new Date().toISOString(),
-    });
+    await logChecked(supabase, user.id, packageId, status);
     revalidatePath(`/workspace/${packageId}`);
     discoveryChanged();
     return { ok: true, status };
@@ -127,6 +136,25 @@ export async function recheckA11yAction(packageId: string): Promise<RecheckResul
         "Couldn't run the accessibility check. Please try again.",
       ),
     };
+  }
+}
+
+async function logChecked(
+  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
+  userId: string,
+  packageId: string,
+  status: AccessibilityStatus,
+): Promise<void> {
+  try {
+    await supabaseEventLogger(supabase).log({
+      type: "a11y.checked",
+      userId,
+      packageId,
+      detail: { status: status.status, errorCount: status.errorCount, warningCount: status.warningCount },
+      occurredAt: new Date().toISOString(),
+    });
+  } catch {
+    /* research logging never breaks an educator workflow */
   }
 }
 

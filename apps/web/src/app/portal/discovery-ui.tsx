@@ -92,7 +92,10 @@ export function SearchForm({ query, facets }: { query: DiscoveryQuery; facets: F
       </div>
       <div className="flex flex-wrap items-center gap-2">
         {filters.map((f) => {
-          const values = facets.values[f] ?? [];
+          // No current accessibility check is not a choice (owner decision 2,
+          // 2026-10-24; the SQL leaves it out since 0032 — filtered here too,
+          // so the order of deploying code and migration does not matter).
+          const values = (facets.values[f] ?? []).filter((v) => !(f === "a11y" && v.value === "unknown"));
           const selected = current[f] ?? "";
           const listed = values.some((v) => v.value.toLowerCase() === selected.toLowerCase());
           return (

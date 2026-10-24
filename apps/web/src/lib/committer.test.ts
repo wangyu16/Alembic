@@ -22,7 +22,10 @@ const mocks = vi.hoisted(() => ({
     (...args: unknown[]) => Promise<{ client: GitHubClient; owner: string } | null>
   >(),
   recordOwnCommit: vi.fn<(...args: unknown[]) => Promise<void>>(),
+  scheduleA11yCheck: vi.fn<(...args: unknown[]) => void>(),
 }));
+
+vi.mock("./a11y-auto-server", () => ({ scheduleA11yCheck: mocks.scheduleA11yCheck }));
 
 vi.mock("./github", () => ({
   clientForUser: mocks.clientForUser,
@@ -102,6 +105,7 @@ beforeEach(() => {
   mocks.clientForUser.mockReset();
   mocks.recordOwnCommit.mockReset();
   mocks.recordOwnCommit.mockResolvedValue(undefined);
+  mocks.scheduleA11yCheck.mockReset();
 });
 
 describe("committerFor — which write path is this package on", () => {
@@ -188,6 +192,30 @@ describe("the committer itself", () => {
       commitSha: "sha-abc123",
       parentSha: "sha-synced",
     });
+  });
+
+  it("[P5.R.5.a] a public commit schedules the automatic accessibility check (after recording); a private or failed one does not, and a throwing hook never fails the save", async () => {
+    const { committer } = await connected();
+    await committer.commit({ repo: "private", summary: "Save", changes: [{ path: PRIVATE_PATH, content: "y" }] });
+    expect(mocks.scheduleA11yCheck).not.toHaveBeenCalled();
+    await committer.commit({ repo: "public", summary: "Save", changes: [{ path: PUBLIC_PATH, content: "x" }] });
+    expect(mocks.scheduleA11yCheck).toHaveBeenCalledWith("user-1", "pkg-1");
+    expect(mocks.recordOwnCommit.mock.invocationCallOrder[0]).toBeLessThan(mocks.scheduleA11yCheck.mock.invocationCallOrder[0]!);
+
+    mocks.scheduleA11yCheck.mockReset();
+    const failing = await connected(async () => {
+      throw new Error("502 Bad Gateway");
+    });
+    await expect(
+      failing.committer.commit({ repo: "public", summary: "Save", changes: [{ path: PUBLIC_PATH, content: "x" }] }),
+    ).rejects.toBeInstanceOf(CommitFailedError);
+    expect(mocks.scheduleA11yCheck).not.toHaveBeenCalled();
+
+    mocks.scheduleA11yCheck.mockImplementation(() => {
+      throw new Error("after() unavailable");
+    });
+    const out = await committer.commit({ repo: "public", summary: "Save", changes: [{ path: PUBLIC_PATH, content: "z" }] });
+    expect(out.commitSha).toBe("sha-abc123");
   });
 
   it("routes a private commit to the private repo and records no synced sha", async () => {

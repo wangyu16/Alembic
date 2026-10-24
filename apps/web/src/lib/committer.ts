@@ -41,6 +41,7 @@ import {
 } from "@alembic/package-ops";
 import type { GitHubClient } from "@alembic/github-bridge";
 import { clientForUser, reconcilePackage, recordOwnCommit, syncedShaFor } from "./github";
+import { scheduleA11yCheck } from "./a11y-auto-server";
 import { recordedPrivateRepo, recordedPublicRepo } from "./recorded-repo";
 
 /**
@@ -144,6 +145,10 @@ export async function committerFor(
       privateRepo: privateRepo
         ? { owner: privateRepo.owner, repo: privateRepo.name }
         : null,
+      // Owner decision 2 (2026-10-24): every public commit moves the recorded
+      // head, which expires the accessibility check — so check again, after
+      // the response, best-effort (lib/a11y-auto-server.ts).
+      onPublicCommit: () => scheduleA11yCheck(userId, packageId),
     }),
   };
 }
@@ -165,8 +170,14 @@ export function githubCommitter(args: {
    * refused as changed-outside (loop r3, P5.B.3.g). Absent → plain refusal.
    */
   reconcile?: () => Promise<ReconcileOutcome | null>;
+  /**
+   * Called after a successful commit to the PUBLIC repository (owner decision
+   * 2, 2026-10-24: the automatic accessibility check). Must not block; a
+   * throw is swallowed — the commit has happened.
+   */
+  onPublicCommit?: () => void;
 }): Committer {
-  const { supabase, packageId, client, publicRepo, privateRepo, reconcile } = args;
+  const { supabase, packageId, client, publicRepo, privateRepo, reconcile, onPublicCommit } = args;
 
   return {
     async commit(plan) {
@@ -294,6 +305,11 @@ export function githubCommitter(args: {
           await recordOwnCommit(supabase, packageId, synced, result);
         } catch {
           // Intentionally swallowed; see above.
+        }
+        try {
+          onPublicCommit?.();
+        } catch {
+          // never affects the save
         }
       }
 

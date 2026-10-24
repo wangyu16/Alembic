@@ -50,6 +50,11 @@ describe("parseDiscoveryQuery", () => {
     expect(parseDiscoveryQuery({ a11y: "pass" }).filters).toEqual({ a11y: "pass" });
     expect(parseDiscoveryQuery({ a11y: "great" }).filters).toEqual({});
   });
+
+  it("[P5.R.5.e] 'not checked' is not a filter Discover offers: a11y=unknown is dropped", () => {
+    expect(parseDiscoveryQuery({ a11y: "unknown" }).filters).toEqual({});
+    for (const v of ["pass", "warn", "fail"]) expect(parseDiscoveryQuery({ a11y: v }).filters).toEqual({ a11y: v });
+  });
 });
 
 describe("keyset cursor", () => {

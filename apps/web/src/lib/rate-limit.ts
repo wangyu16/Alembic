@@ -12,6 +12,7 @@
  * | `search`    | 120 per minute (portal search; helper for Track A core) | in-process |
  * | `preview`   | 60 per minute per signed-in USER     | Postgres, in-process fallback  |
  * | `reconcile` | 10 per 10 minutes and 60 per day per USER ("Check for outside changes") | Postgres, in-process fallback |
+ * | `a11yAuto`  | 30 per hour and 200 per day per COURSE (the automatic accessibility check) | Postgres, in-process fallback |
  *
  * Why these numbers: a class behind one NAT opening a document with dozens of
  * embedded figures makes hundreds of `/d` requests a minute, most of them
@@ -49,6 +50,15 @@ export const RATE_LIMITS = {
   reconcile: [
     { limit: 10, windowMs: 10 * 60_000 },
     { limit: 60, windowMs: 24 * 60 * 60_000 },
+  ],
+  // The automatic accessibility check after a save / publish (owner decision
+  // 2, 2026-10-24): per COURSE. Each run reads every chapter's study guide
+  // from GitHub; saves that land while one runs already coalesce, so this
+  // only bounds a script saving in a loop. Past it the course shows no badge
+  // (neutral) until a later save is checked.
+  a11yAuto: [
+    { limit: 30, windowMs: 60 * 60_000 },
+    { limit: 200, windowMs: 24 * 60 * 60_000 },
   ],
 } as const satisfies Record<string, readonly RateRule[]>;
 

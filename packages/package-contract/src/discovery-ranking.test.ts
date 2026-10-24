@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   RANKING,
   adaptationSignal,
+  courseQualityScore,
   qualityScore,
   rankScore,
   recencySignal,
@@ -68,5 +69,23 @@ describe("A.3 ranking", () => {
     expect(rankScore(1.0, 0)).toBeGreaterThan(rankScore(0.59, 1));
     // near-ties are decided by quality
     expect(rankScore(0.5, 0.9)).toBeGreaterThan(rankScore(0.55, 0.1));
+  });
+
+  it("[P5.R.5.e] a course without a current accessibility check is neutral: the term is left out and the rest re-weighted", () => {
+    const signals = { ...base, completeness: 0.6, adaptations: 4, updatedAt: "2026-09-01T00:00:00Z" };
+    const unknown = courseQualityScore(signals);
+    const pass = courseQualityScore({ ...signals, a11y: "pass" });
+    const fail = courseQualityScore({ ...signals, a11y: "fail" });
+    // never with the failing course (was: unknown counted as 0, the same as fail)
+    expect(unknown).toBeGreaterThan(fail);
+    expect(unknown).toBeLessThan(pass);
+    expect(qualityScore(signals)).toBeCloseTo(fail, 12);
+    // exactly the other four signals, re-weighted to sum to 1
+    expect(unknown).toBeCloseTo(fail / (1 - RANKING.weights.accessibility), 12);
+    // a checked course scores as before; anything that is not a check is "unknown"
+    for (const a11y of ["pass", "warn", "fail"]) expect(courseQualityScore({ ...signals, a11y })).toBe(qualityScore({ ...signals, a11y }));
+    expect(courseQualityScore({ ...signals, a11y: "bogus" })).toBe(unknown);
+    // still 0 … 1
+    expect(courseQualityScore({ a11y: "unknown", license: "CC0-1.0", completeness: 1, adaptations: 1000, updatedAt: asOf, asOf })).toBeCloseTo(1, 12);
   });
 });

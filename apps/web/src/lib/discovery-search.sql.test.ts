@@ -191,7 +191,9 @@ describe("A.2 filters and facet counts", () => {
     // … the others apply it.
     expect(f["discipline"]).toEqual({ chemistry: 2 });
     expect(f["license"]).toEqual({ "CC-BY-4.0": 1, "CC-BY-SA-4.0": 1 });
-    expect(f["a11y"]).toEqual({ unknown: 2 });
+    // no current accessibility check is not a facet value (owner decision 2,
+    // 0032): neither course has one, so the a11y facet has no values
+    expect(f["a11y"]).toBeUndefined();
   });
 
   it("[P5.A.2.b] facets follow the text query", async () => {

@@ -284,7 +284,24 @@ export default async function EditShellPage({
     .eq("package_id", packageId)
     .maybeSingle();
 
+  // The server's accessibility record (owner decision 2, 2026-10-24): the
+  // check that now runs after every save; shown as a status line.
+  const { data: a11y } = await supabase
+    .from("packages")
+    .select("a11y_status, a11y_checked_at")
+    .eq("id", packageId)
+    .maybeSingle();
+  const a11yStatus = (a11y as { a11y_status?: string } | null)?.a11y_status;
+
   const publishing = {
+    accessibility: {
+      status: (["pass", "warn", "fail"].includes(a11yStatus ?? "") ? a11yStatus : "unknown") as
+        | "pass"
+        | "warn"
+        | "fail"
+        | "unknown",
+      checkedAt: (a11y as { a11y_checked_at?: string | null } | null)?.a11y_checked_at ?? null,
+    },
     configured: Boolean(cfg),
     connected: Boolean(profile?.github_installation_id),
     // Both must hold — `storage` alone can be stale (e.g. after the manifest

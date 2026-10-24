@@ -4,7 +4,9 @@
  * store, the permalink access check) runs UNCHANGED against the real
  * migrations, as one API role. Only the query-builder calls that code uses
  * are supported: `from(t).select(cols, {count}).eq/neq/in/gt/order/limit/
- * maybeSingle/single`, and `rpc(name, args)`. Never imported by app code.
+ * maybeSingle/single`, `from(t).update(patch).eq(…).select(cols)` (owner
+ * decision 2: the guarded accessibility record), and `rpc(name, args)`.
+ * Never imported by app code.
  */
 import type { PGlite } from "@electric-sql/pglite";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -33,6 +35,7 @@ class Query implements PromiseLike<Result> {
   private orderBy: string | null = null;
   private lim: number | null = null;
   private mode: "many" | "maybe" | "single" = "many";
+  private readonly sets: string[] = [];
 
   constructor(
     private readonly run: <T>(fn: () => Promise<T>) => Promise<T>,
@@ -40,6 +43,14 @@ class Query implements PromiseLike<Result> {
     private readonly table: string,
   ) {}
 
+  /** UPDATE … SET patch (call before the filters); `.select(cols)` returns the updated rows. */
+  update(patch: Record<string, unknown>) {
+    for (const [k, v] of Object.entries(patch)) {
+      this.params.push(v !== null && typeof v === "object" ? JSON.stringify(v) : v);
+      this.sets.push(`${ident(k)} = $${this.params.length}`);
+    }
+    return this;
+  }
   select(cols = "*", opts?: { count?: "exact" }) {
     this.cols = cols
       .split(",")
@@ -85,8 +96,9 @@ class Query implements PromiseLike<Result> {
 
   private async exec(): Promise<Result> {
     const where = this.where.length ? ` where ${this.where.join(" and ")}` : "";
-    const sql =
-      `select ${this.cols} from public.${ident(this.table)}${where}` +
+    const sql = this.sets.length
+      ? `update public.${ident(this.table)} set ${this.sets.join(", ")}${where} returning ${this.cols}`
+      : `select ${this.cols} from public.${ident(this.table)}${where}` +
       (this.orderBy ? ` order by ${this.orderBy}` : "") +
       (this.lim !== null ? ` limit ${this.lim}` : "");
     try {

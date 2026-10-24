@@ -271,6 +271,24 @@ export function qualityScore(s: QualitySignals): number {
   );
 }
 
+/** Accessibility statuses that are a current check (anything else — `unknown` — is none). */
+export const CHECKED_A11Y_STATUSES = ["pass", "warn", "fail"] as const;
+
+/**
+ * A COURSE's quality (owner decision 2, 2026-10-24; SQL
+ * `discovery_course_quality`, 0032): like `qualityScore`, except that a course
+ * with no current accessibility check (`unknown` — not checked yet for the
+ * current version, or the check could not run) is NEUTRAL on accessibility:
+ * that term is left out and the other weights are re-scaled to sum to 1, so
+ * the course is never ranked below a failing one with the same other signals,
+ * nor above a passing one. Elements keep `qualityScore` (their signal — a
+ * description — is always known). 0 … 1.
+ */
+export function courseQualityScore(s: QualitySignals): number {
+  if ((CHECKED_A11Y_STATUSES as readonly string[]).includes(s.a11y)) return qualityScore(s);
+  return qualityScore({ ...s, a11y: "unknown" }) / (1 - RANKING.weights.accessibility);
+}
+
 /** Relevance first; quality scales it within ×0.75 … ×1.25. Rounded to 6
  *  decimals (the SQL returns `numeric`, the paging key). */
 export function rankScore(relevance: number, quality: number): number {

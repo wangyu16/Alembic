@@ -22,10 +22,14 @@ export interface PublishingState {
   siteUrl: string | null;
   /** Returned from the GitHub-App install (?publish=1): auto-resume publishing. */
   autoPublish?: boolean;
+  /** The server's latest accessibility check (owner decision 2, 2026-10-24). */
+  accessibility?: A11yRecord;
 }
 import { publishSiteAction } from "../site-actions";
 import { registerPackageAction, unregisterPackageAction } from "../portal-actions";
 import { OutsideChangesControl } from "./outside-changes-control";
+import { AccessibilityStatus } from "./accessibility-status";
+import type { A11yRecord } from "./accessibility-status-text";
 
 type GateFailure = { name: string; message: string };
 
@@ -368,6 +372,15 @@ export function PublishHeader({
 
       {/* Loop r3 (P5.B.3.g): the control the save refusal names. */}
       {published && <OutsideChangesControl packageId={packageId} onChanged={onChanged} />}
+
+      {/* Owner decision 2 (2026-10-24): the automatic check's latest result. */}
+      {published && (
+        <AccessibilityStatus
+          packageId={packageId}
+          initial={publishing.accessibility ?? { status: "unknown", checkedAt: null }}
+          onChanged={onChanged}
+        />
+      )}
 
       {(error || warning || gateFailures.length > 0) && (
         <div className="max-w-sm text-right text-xs">

@@ -1,6 +1,7 @@
 "use server";
 
 import { checkUserRateLimit } from "@/lib/rate-limit-server";
+import { scheduleA11yCheck } from "@/lib/a11y-auto-server";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { assertPathAllowedInEitherContract } from "@alembic/package-contract";
@@ -93,6 +94,10 @@ export async function reconcilePackageAction(
     if (!outcome) return { ok: true, status: "not-connected" };
 
     if (outcome.status === "absorbed") {
+      // Owner decision 2 (2026-10-24): an absorbed outside change moved the
+      // recorded head (expiring the accessibility check) — check again,
+      // after the response, best-effort.
+      scheduleA11yCheck(user.id, packageId);
       await events.log({
         type: "reconcile.completed",
         userId: user.id,

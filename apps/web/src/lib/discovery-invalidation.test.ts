@@ -105,7 +105,8 @@ describe("discovery cache invalidation", () => {
       "app/workspace/lifecycle-actions.ts#archivePackageAction",
       "app/workspace/lifecycle-actions.ts#restorePackageAction",
       "app/workspace/[packageId]/github-actions.ts#publishToGitHubAction",
-      "app/workspace/[packageId]/a11y-actions.ts#recheckA11yAction",
+      // owner decision 2 (2026-10-24): the check's one recorder (manual and automatic)
+      "lib/a11y-auto-server.ts#recordPublishedA11yCheck",
       "app/workspace/[packageId]/share-actions.ts#shareFileAction",
       "app/workspace/[packageId]/share-actions.ts#setAssetMetadataAction",
       "lib/document-registry-store.ts#tombstone",

@@ -59,6 +59,15 @@ same commit as the work it tracks. Statuses: ✅ done · 🔄 partially shipped 
   SHA-256, never `immutable`. The round-4 forge can no longer swap a pin (`permalink-forge.test.ts`). Code only, no
   migration; `source_hash` stays the registry's internal identity key ([DecisionLog](DecisionLog.md) "Owner decision
   1"). Deploy: any time.
+- ✅ **Decision 2 — the accessibility badge follows an automatic check; no check is neutral (P5.R.5.a–g).** After
+  every public commit (committer hook), publish and absorbed outside change, the check re-runs after the response,
+  best-effort, debounced and bounded (`lib/a11y-auto.ts`, `a11y-auto-server.ts`; bucket `a11yAuto`), and records only
+  while the audited head is still the recorded head. Expiry kept. Without a current check Discover shows no badge, no
+  "Not checked" facet, and ranks the course neutral (accessibility term left out, rest ÷ 0.70 — migration
+  **`0032_decisions_1_a11y_neutral` NOT applied**). "Check now" no longer commits into the course details. The
+  publish header shows the latest result. **Deploy:** code and `0032` in either order (the UI also hides the facet
+  value); `0032` needs `0022`–`0031` applied (main has them). **Open:** the published site's schema.org
+  accessibility still reads `manifest.accessibility` (no longer refreshed for published courses).
 
 **Phase 5 closed-loop verification — round 4, part B: SQL, discovery and `/d` fixes (2026-10-24, branch
 `phase5/loop-r4b` on `main` 03bcb00, not merged, migrations `0031_loop_r4b_*` NOT applied).** Each finding became a
@@ -85,7 +94,7 @@ r4, part B"). Part A (fork / reconcile / committer / editor save) runs in parall
   trigger's change (the expiry runs in a statement that names only `last_synced_sha`; repro
   `/tmp/alembic-r4/a11y.test.ts`). `0031_loop_r4b_3` drops the column list (the WHEN clause decides) and corrects
   stored rows; a generic catalogue test flags any `update of <col>` trigger whose column a BEFORE trigger assigns.
-  Expiry semantics and the badge unchanged (owner decision pending).
+  Expiry semantics and the badge unchanged (owner decision pending — decided 2026-10-24, decision 2 above).
 - ✅ **LOW — r3c back-fills unasserted; `listing_history` gap (P5.S.3.i, P5.S.1.h).** An upgrade test now binds both
   0030_loop_r3c_4 back-fills (checked-at head; first listing time). Documented, not closed: a course unlisted
   before 0030_loop_r3c_4 has no row to back-fill from (its next listing counts as first); research_events would

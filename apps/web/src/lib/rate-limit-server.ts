@@ -30,7 +30,7 @@ import {
 const memory = new MemoryRateStore();
 
 /** Buckets counted in Postgres (shared across server instances) when possible. */
-const SHARED: ReadonlySet<RateBucket> = new Set<RateBucket>(["report", "preview", "reconcile"]);
+const SHARED: ReadonlySet<RateBucket> = new Set<RateBucket>(["report", "preview", "reconcile", "a11yAuto"]);
 
 function storeFor(bucket: RateBucket): RateStore {
   if (!SHARED.has(bucket)) return memory;
@@ -58,6 +58,19 @@ export async function checkRateLimit(
 export async function checkUserRateLimit(bucket: RateBucket, userId: string): Promise<RateDecision> {
   try {
     const key = rateKey(bucket, `user:${userId}`, rateSecret());
+    return await consumeRateLimit(storeFor(bucket), bucket, key);
+  } catch {
+    return { ok: true };
+  }
+}
+
+/**
+ * Per COURSE (owner decision 2, 2026-10-24): the automatic accessibility
+ * check is bounded per package, whoever's saves trigger it. Never throws.
+ */
+export async function checkPackageRateLimit(bucket: RateBucket, packageId: string): Promise<RateDecision> {
+  try {
+    const key = rateKey(bucket, `package:${packageId}`, rateSecret());
     return await consumeRateLimit(storeFor(bucket), bucket, key);
   } catch {
     return { ok: true };

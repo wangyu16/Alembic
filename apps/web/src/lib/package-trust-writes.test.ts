@@ -50,15 +50,17 @@ describe("M2 the trust columns are written by the service client, scoped to the 
     ).toEqual({ ok: true });
     await w.setArchived("pkg-1", "user-1", "2026-10-23T00:00:00.000Z");
     await w.setArchived("pkg-1", "user-1", null);
-    await w.recordA11yCheck("pkg-1", "user-1", { status: "pass", checkedAt: "2026-10-23T00:00:00.000Z" });
+    await w.recordA11yCheck("pkg-1", "user-1", { status: "pass", checkedAt: "2026-10-23T00:00:00.000Z", checkedSha: "c1" });
     expect(calls).toHaveLength(4);
     for (const c of calls) {
       expect(c.table).toBe("packages");
-      expect(c.filters).toEqual([
+      expect(c.filters.slice(0, 2)).toEqual([
         ["id", "pkg-1"],
         ["owner_id", "user-1"],
       ]);
     }
+    // the a11y record lands only while the audited head is still the recorded head (owner decision 2)
+    expect(calls[3]!.filters[2]).toEqual(["last_synced_sha", "c1"]);
     expect(calls[0]!.patch).toEqual({
       storage: "github",
       public_repo: { owner: "edu", name: "c-oer" },
@@ -67,7 +69,7 @@ describe("M2 the trust columns are written by the service client, scoped to the 
     });
     expect(calls[1]!.patch).toEqual({ archived_at: "2026-10-23T00:00:00.000Z" });
     expect(calls[2]!.patch).toEqual({ archived_at: null });
-    expect(calls[3]!.patch).toEqual({ a11y_status: "pass", a11y_checked_at: "2026-10-23T00:00:00.000Z" });
+    expect(calls[3]!.patch).toEqual({ a11y_status: "pass", a11y_checked_at: "2026-10-23T00:00:00.000Z", a11y_checked_sha: "c1" });
   });
 
   it("[P5.S.3.a] someone else's package (no row matched), a missing service key or an error is not success", async () => {

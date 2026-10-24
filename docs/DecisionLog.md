@@ -6,6 +6,57 @@ design, and what is deferred to the future. Complements [Status.md](Status.md)
 
 ---
 
+## 2026-10-24 — Owner decision 2: the accessibility badge follows an automatic check; no check is neutral
+
+The owner ruled that the badge must not depend on an educator remembering to re-run a check that every save expires
+(0030), and that a course without a current check must not be ranked as failing. Branch `phase5/decisions`; migration
+`0032_decisions_1_a11y_neutral` (NOT applied). Expiry semantics are KEPT (any move of the recorded head resets the
+status) — the re-check now follows automatically.
+
+- **(a) When it runs.** After every Alembic commit to a published course's public repository (the committer's new
+  `onPublicCommit` hook in `committerFor` — so every save path, one seam), after publishing, and after "Check for
+  outside changes" absorbs a change. It runs in `after()` — after the response — so it never delays or fails a save or
+  publish; a failure is logged and records nothing.
+- **Whose GitHub access.** The educator's GitHub App installation token, minted server-side from the App key
+  (`clientForUser`) — the same credential the save used, not a browser session — so it works after the response.
+  Reads use the service client (cookies may be unreadable by then); the runner refuses a course whose owner is not the
+  requesting user and the record filters on owner. No worker path was needed; a worker would need the same App key.
+  Without `SUPABASE_SECRET_KEY` nothing can be recorded, so nothing runs (no badge — neutral).
+- **What it audits and records.** Unchanged sources (P5.S.3.g): `a11yAuditSource` → the recorded public repository at
+  its branch head → `auditPackageA11y`; a trial course is never recorded. NEW: the record is accepted only while the
+  audited head is still the recorded head (`recordA11yCheck` adds `last_synced_sha = checkedSha` to the same UPDATE).
+  Without it, a check of head c1 finishing after a save moved the head to c2 (and expired the status) would write
+  "pass" for c2's bytes, which nobody checked. A superseded check records nothing; c2's own check follows. Accepted:
+  while an outside commit waits for reconcile (the published head ≠ the recorded head) no check is recorded.
+- **Debounce and bounds.** Per instance: one run per course at a time; saves during a run coalesce into ONE follow-up
+  run (reading the newest head); 1.5 s settle so a burst shares a run; ≤ 4 courses at once; ≤ 3 runs per scheduled
+  task. Across instances: a per-COURSE bucket `a11yAuto` (30/hour, 200/day, Postgres-counted). Past a bound the
+  course shows no badge until a later save is checked — neutral, not a penalty. Chosen over a queue table + cron (a
+  new writer and schedule for a best-effort signal).
+- **"Check now" no longer commits.** The manual action used to write the result into `alembic.json` through
+  `updateManifest` — a commit, which moved the head and so expired the very check it recorded (and would now trigger
+  another automatic check). For a published course it now runs the same runner and records only the server result;
+  a trial course keeps the old behaviour (its stored copy, the trial store, no commit). Residual: the published
+  site's schema.org `accessibility` still reads `manifest.accessibility`, which is no longer refreshed for published
+  courses — OPEN: point the site metadata at the server record.
+- **(b) Neutral, defined.** For a course with no current check the accessibility term (0.30) is left out and the
+  other four weights are re-scaled to sum to 1 (`discovery_course_quality` = `discovery_quality('unknown', …) / 0.70`,
+  mirrored by `courseQualityScore`). So an unchecked course ranks strictly between an otherwise equal `fail` and
+  `pass`; before, it ranked with `fail`. Chosen over "unknown = warn (0.5)" (that asserts minor issues) and over
+  dropping the signal for everyone. Elements are unchanged (their signal — a description — is always known).
+  Discover shows no badge (already so) and no "Not checked" facet value; the app drops `a11y=unknown` and filters the
+  value in the UI too, so code and migration deploy in either order.
+- **Composition.** `discovery_search_courses` and `discovery_course_facets` are redefined from 0022 (their latest
+  definitions) with one change each; `decisions-a11y.sql.test.ts` asserts every 0022 rule is still there (P5.A.1.r)
+  and the helper is closed to the API roles. Rule 8 (no automation past publish/registration) is not touched: the
+  check publishes nothing and lists nothing — it records a server signal about what is already published.
+- **The educator sees it.** A status line in the publish header (published courses): the latest result and when it
+  ran, or "not checked for your latest version yet — it is checked automatically after you save", with "Check now".
+- **Discover's cache.** A recorded result calls `discoveryChanged()`; inside `after()` that may be a no-op (outside a
+  Server Action), in which case the 120 s revalidate window bounds the staleness.
+
+---
+
 ## 2026-10-24 — Owner decision 1: version pins are SHA-256 (closes P5.S.L2 / round-4 security MEDIUM-2)
 
 The owner ruled that a version pin must be a cryptographic hash. Branch `phase5/decisions` (on `main` 4f56f65; not

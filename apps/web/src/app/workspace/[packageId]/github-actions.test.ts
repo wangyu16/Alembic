@@ -49,6 +49,7 @@ const state = {
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("next/navigation", () => ({ redirect: vi.fn(() => { throw new Error("redirect"); }) }));
 vi.mock("@/lib/discovery-cache", () => ({ discoveryChanged: vi.fn() }));
+vi.mock("@/lib/a11y-auto-server", () => ({ scheduleA11yCheck: vi.fn() }));
 vi.mock("@/lib/discovery-flush", () => ({
   flushDiscovery: vi.fn(async () => {
     state.flushes += 1;

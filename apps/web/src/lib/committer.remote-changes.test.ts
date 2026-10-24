@@ -17,6 +17,9 @@ import { CommitFailedError, type PackageRecord, type PackageStore } from "@alemb
 
 const mocks = vi.hoisted(() => ({ client: null as unknown }));
 
+// The automatic accessibility check after a public commit (owner decision 2):
+// server wiring, out of scope here (committer.test.ts pins the hook).
+vi.mock("./a11y-auto-server", () => ({ scheduleA11yCheck: () => {} }));
 vi.mock("./github", async () => ({
   ...(await import("./synced-sha")),
   clientForUser: async () => ({ client: mocks.client, owner: "prof" }),

@@ -81,10 +81,20 @@ describe("P5.S.3.g the trusted accessibility result describes the published byte
 
   it("[P5.S.3.g] the check action audits through that source and records only a published audit", () => {
     const src = readFileSync(resolve(__dirname, "../app/workspace/[packageId]/a11y-actions.ts"), "utf8");
-    const body = src.slice(src.indexOf("export async function recheckA11yAction"), src.indexOf("export interface SuggestFixResult"));
-    expect(body).toMatch(/a11yAuditSource\(/);
+    const body = src.slice(src.indexOf("export async function recheckA11yAction"), src.indexOf("async function logChecked"));
+    // a published course: the shared runner (owner decision 2, 2026-10-24), which
+    // audits through a11yAuditSource and is the only path that records
+    expect(body).toMatch(/if \(record\?\.storage === "github"\) \{\s*const outcome = await recordPublishedA11yCheck\(user\.id, packageId\);/);
+    expect(body).not.toMatch(/recordA11yCheck\(/);
+    // a trial course: its stored copy, never recorded as the trusted result
+    expect(body).toMatch(/a11yAuditSource\(store, record, async \(\) => null\)/);
     expect(body).toMatch(/auditPackageA11y\(source\.store/);
     expect(body).not.toMatch(/loadStudyGuide\(store/);
-    expect(body).toMatch(/if \(source\.published\) \{\s*await packageTrustWriter\(createServiceClient\)\.recordA11yCheck/);
+    const runner = readFileSync(resolve(__dirname, "a11y-auto.ts"), "utf8");
+    expect(runner).toMatch(/a11yAuditSource\(deps\.store, record, deps\.connect\)/);
+    expect(runner).toMatch(/if \(!source\.published\) return \{ kind: "trial" \};/);
+    expect(runner).toMatch(/auditPackageA11y\(source\.store, packageId\)/);
+    const server = readFileSync(resolve(__dirname, "a11y-auto-server.ts"), "utf8");
+    expect(server).toMatch(/packageTrustWriter\(createServiceClient\)\.recordA11yCheck\(packageId, userId, v\)/);
   });
 });

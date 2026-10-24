@@ -37,6 +37,9 @@ import {
 
 const mocks = vi.hoisted(() => ({ client: null as unknown, reconciles: 0, failReconcile: false }));
 
+// The automatic accessibility check after a public commit (owner decision 2):
+// server wiring, out of scope here (committer.test.ts pins the hook).
+vi.mock("./a11y-auto-server", () => ({ scheduleA11yCheck: () => {} }));
 vi.mock("./github", async () => {
   const synced = await import("./synced-sha");
   const { reconcilePublicRepo } = await import("@alembic/package-ops");
