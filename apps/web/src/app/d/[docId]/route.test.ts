@@ -9,6 +9,7 @@
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { NextRequest } from "next/server";
+import { createHash } from "node:crypto";
 import { computeSourceHash } from "@alembic/package-ops";
 import type { PermalinkAccess } from "@/lib/permalink-access";
 
@@ -88,9 +89,11 @@ const get = (docId: string, search = "", ip = "203.0.113.7") =>
   GET(request(`/d/${docId}${search}`, ip), { params: Promise.resolve({ docId }) });
 
 const H = computeSourceHash("# A shared page");
+/** The version key `/d` serves, labels and pins by (P5.S.L2). */
+const S = createHash("sha256").update("# A shared page", "utf8").digest("hex");
 const PUBLIC_DOC: PermalinkAccess = {
   status: "ok",
-  doc: { doc_id: "doc-pub", package_id: "pkg-pub", repo: "public", path: "study-guide/x.md", source_hash: H, tombstoned: false },
+  doc: { doc_id: "doc-pub", package_id: "pkg-pub", repo: "public", path: "study-guide/x.md", source_hash: H, content_sha256: S, tombstoned: false },
   db: {} as never,
   ownerOnly: false,
 };
@@ -225,7 +228,7 @@ describe("/d query strings and view events (security loop r1, L4b)", () => {
 describe("/d re-registers a file whose registry row is stale (loop r2, MEDIUM-2)", () => {
   const staleDoc = (doc_id: string): PermalinkAccess => ({
     status: "ok",
-    doc: { doc_id, package_id: "pkg-pub", repo: "public", path: "study-guide/x.md", source_hash: H, tombstoned: false },
+    doc: { doc_id, package_id: "pkg-pub", repo: "public", path: "study-guide/x.md", source_hash: H, content_sha256: S, tombstoned: false },
     db: {} as never,
     ownerOnly: false,
   });

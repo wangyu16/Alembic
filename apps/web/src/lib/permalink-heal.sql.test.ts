@@ -26,6 +26,10 @@ import type { PGlite } from "@electric-sql/pglite";
 import type { NextRequest } from "next/server";
 import { newDocId } from "@alembic/package-contract";
 import { computeSourceHash, registerChangedFiles } from "@alembic/package-ops";
+import { createHash } from "node:crypto";
+
+/** The version key `/d` labels and pins by (SHA-256 of the content, P5.S.L2). */
+const sha = (s: string) => createHash("sha256").update(s, "utf8").digest("hex");
 
 const edge = vi.hoisted(() => ({
   db: null as unknown as import("@electric-sql/pglite").PGlite,
@@ -161,7 +165,6 @@ describe("/d never rolls a fresh save back (closed loop r3, M3-3)", () => {
     const path = "study-guide/week1.md";
     const v0 = "# Week 1\nold text\n";
     const v1 = "# Week 1\nnew text (educator's save)\n";
-    const h0 = computeSourceHash(v0);
     const h1 = computeSourceHash(v1);
 
     await save(pkg, path, v0);
@@ -170,7 +173,7 @@ describe("/d never rolls a fresh save back (closed loop r3, M3-3)", () => {
 
     // A reader warms it on v0.
     const warm = await view(docId);
-    expect(warm.headers.get("etag")).toBe(`W/"${h0}"`);
+    expect(warm.headers.get("etag")).toBe(`W/"${sha(v0)}"`); // the SHA-256 version key (P5.S.L2)
 
     // The educator saves v1: committed, mirrored, registered. Raw still v0.
     tick(1_000);
@@ -184,7 +187,7 @@ describe("/d never rolls a fresh save back (closed loop r3, M3-3)", () => {
     expect((await rowAt(pkg, path))!.doc_id).toBe(docId);
 
     // A pinned link to the version the educator just saved still resolves.
-    const pin = await view(`${docId}@${h1}`);
+    const pin = await view(`${docId}@${sha(v1)}`);
     expect(pin.status).toBe(200);
 
     // 61 s later, raw still v0: still unlabelled, and not shared-cacheable.
@@ -200,7 +203,7 @@ describe("/d never rolls a fresh save back (closed loop r3, M3-3)", () => {
     tick(61_000);
     const r3 = await view(docId);
     expect(r3.body).toBe(v1);
-    expect(r3.headers.get("etag")).toBe(`W/"${h1}"`);
+    expect(r3.headers.get("etag")).toBe(`W/"${sha(v1)}"`);
     expect((await rowAt(pkg, path))!.source_hash).toBe(h1);
     vi.useRealTimers();
   });
@@ -212,7 +215,7 @@ describe("/d pins during raw-CDN lag (closed loop r3, M3-3 residual)", () => {
     const path = "study-guide/pin.md";
     const v0 = "# Pin\nold\n";
     const v1 = "# Pin\nsaved\n";
-    const h1 = computeSourceHash(v1);
+    const h1 = sha(v1);
     await save(pkg, path, v0);
     edge.raw.set(path, v0);
     const docId = (await rowAt(pkg, path))!.doc_id;
@@ -229,7 +232,7 @@ describe("/d pins during raw-CDN lag (closed loop r3, M3-3 residual)", () => {
     const pkg = await seedPackage(db, { owner });
     const path = "study-guide/pin2.md";
     const v1 = "# Pin2\nsaved\n";
-    const h1 = computeSourceHash(v1);
+    const h1 = sha(v1);
     await save(pkg, path, v1);
     const docId = (await rowAt(pkg, path))!.doc_id;
     edge.raw.set(path, "# Pin2\nolder\n"); // origin lags
@@ -365,7 +368,7 @@ describe("healFromMirror (closed loop r3)", () => {
     const path = "study-guide/h.md";
     await save(pkg, path, "# H\nv1\n");
     const row = (await rowAt(pkg, path))!;
-    const doc = { doc_id: row.doc_id, package_id: pkg, repo: "public" as const, path, source_hash: row.source_hash, tombstoned: false };
+    const doc = { doc_id: row.doc_id, package_id: pkg, repo: "public" as const, path, source_hash: row.source_hash, content_sha256: row.content_sha256, tombstoned: false };
 
     const applies = async () =>
       Number((await db.query<{ n: number }>(`select count(*)::int as n from public.documents where package_id = $1`, [pkg])).rows[0]!.n);
@@ -391,7 +394,7 @@ describe("healFromMirror reads the mirror once (closed loop r4, security LOW-3)"
     const path = "study-guide/race.md";
     await save(pkg, path, "# Race\nv1\n");
     const row = (await rowAt(pkg, path))!;
-    const doc = { doc_id: row.doc_id, package_id: pkg, repo: "public" as const, path, source_hash: row.source_hash, tombstoned: false };
+    const doc = { doc_id: row.doc_id, package_id: pkg, repo: "public" as const, path, source_hash: row.source_hash, content_sha256: row.content_sha256, tombstoned: false };
     await mirrorOnly(pkg, path, "# Race\nv2\n");
 
     // The service client, except that the first read of this file's mirror row

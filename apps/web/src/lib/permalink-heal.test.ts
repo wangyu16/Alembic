@@ -18,6 +18,7 @@ const doc = (doc_id: string): PermalinkDoc => ({
   repo: "public",
   path: "study-guide/a.md",
   source_hash: "h",
+  content_sha256: null,
   tombstoned: false,
 });
 

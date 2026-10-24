@@ -8,6 +8,7 @@
  * (Touches the other fix agent's area — `/d` cache headers — minimally: only
  * the conditional branch; headers are unchanged.)
  */
+import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { computeSourceHash } from "@alembic/package-ops";
 import type { PermalinkDoc } from "./permalink-access";
@@ -16,7 +17,8 @@ import { DocBytesCache } from "./doc-bytes-cache";
 
 const OLD = "# Ch1\n\nOld text\n";
 const NEW = "# Ch1\n\nNEW text\n";
-const H_OLD = computeSourceHash(OLD);
+/** The registry row's version key (SHA-256 of the content, P5.S.L2). */
+const H_OLD = createHash("sha256").update(OLD, "utf8").digest("hex");
 
 function deps(current: () => string, cache = new DocBytesCache()) {
   let reads = 0;
@@ -25,7 +27,8 @@ function deps(current: () => string, cache = new DocBytesCache()) {
     package_id: "pkg-x",
     repo: "public",
     path: "study-guide/ch1.md",
-    source_hash: H_OLD, // the registry row
+    source_hash: computeSourceHash(OLD), // the registry row (identity hash)
+    content_sha256: H_OLD, // the version it serves, labels and pins by
     tombstoned: false,
   };
   const d: PermalinkDeps = {
@@ -188,7 +191,7 @@ describe("/d plain answers are verified against the current bytes", () => {
     const inner = noHash.d.access;
     noHash.d.access = async (id) => {
       const a = await inner(id);
-      return a.status === "ok" ? { ...a, doc: { ...a.doc, source_hash: null } } : a;
+      return a.status === "ok" ? { ...a, doc: { ...a.doc, content_sha256: null } } : a;
     };
     notShared(await servePermalink("doc-p6yeztm4k2k7", new Headers(), noHash.d), "no hash");
   });

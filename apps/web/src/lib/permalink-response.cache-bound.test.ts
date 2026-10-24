@@ -12,6 +12,7 @@
  * because a stale copy is still served. The longest of them is the answer's
  * shared lifetime.
  */
+import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { computeSourceHash } from "@alembic/package-ops";
@@ -22,7 +23,10 @@ import { sharedLifetimeSeconds } from "./cache-lifetime";
 
 
 const V1 = "# Version one";
-const H1 = computeSourceHash(V1);
+/** The version key (SHA-256 of the content, P5.S.L2). */
+const H1 = createHash("sha256").update(V1, "utf8").digest("hex");
+/** The legacy 8-hex FNV pin of the same version. */
+const F1 = computeSourceHash(V1);
 const db = {} as SupabaseClient;
 
 function doc(over: Partial<PermalinkDoc> = {}): PermalinkDoc {
@@ -31,7 +35,8 @@ function doc(over: Partial<PermalinkDoc> = {}): PermalinkDoc {
     package_id: "pkg-pub",
     repo: "public",
     path: "study-guide/x.md",
-    source_hash: H1,
+    source_hash: F1,
+    content_sha256: H1,
     tombstoned: false,
     ...over,
   };
@@ -53,13 +58,16 @@ const ok = (d: PermalinkDoc, ownerOnly = false): PermalinkAccess => ({ status: "
 const CASES: Case[] = [
   { kind: "public pinned", param: `doc-pub@${H1}`, access: ok(doc()), status: 200 },
   { kind: "public pinned 304", param: `doc-pub@${H1}`, access: ok(doc()), headers: { "if-none-match": `W/"${H1}"` }, status: 304 },
+  { kind: "public pinned, legacy pin", param: `doc-pub@${F1}`, access: ok(doc()), status: 200 },
+  { kind: "public pinned, legacy pin 304", param: `doc-pub@${F1}`, access: ok(doc()), headers: { "if-none-match": `W/"${H1}"` }, status: 304 },
+  { kind: "public pinned, legacy pin, bytes ahead of registry", param: `doc-pub@${F1}`, access: ok(doc()), bytes: "# v2", status: 404 },
   { kind: "public live", param: "doc-pub", access: ok(doc()), status: 200 },
   { kind: "public live 304", param: "doc-pub", access: ok(doc()), headers: { "if-none-match": `W/"${H1}"` }, status: 304 },
   { kind: "public, bytes ahead of registry", param: "doc-pub", access: ok(doc()), bytes: "# v2", status: 200 },
   { kind: "public pinned, bytes ahead of registry", param: `doc-pub@${H1}`, access: ok(doc()), bytes: "# v2", status: 404 }, // r4 LOW-2
-  { kind: "public, no registry hash", param: "doc-pub", access: ok(doc({ source_hash: null })), status: 200 },
+  { kind: "public, no registry hash", param: "doc-pub", access: ok(doc({ content_sha256: null })), status: 200 },
   { kind: "public, bytes missing", param: "doc-pub", access: ok(doc()), bytes: null, status: 404 },
-  { kind: "public, no hash, bytes missing", param: "doc-pub", access: ok(doc({ source_hash: null })), bytes: null, status: 404 },
+  { kind: "public, no hash, bytes missing", param: "doc-pub", access: ok(doc({ content_sha256: null })), bytes: null, status: 404 },
   { kind: "older pin", param: "doc-pub@deadbeef", access: ok(doc()), status: 404 },
   { kind: "malformed address", param: "doc-pub%zz", access: ok(doc()), status: 404 },
   { kind: "not found", param: "doc-nope", access: { status: "not-found" }, status: 404 },

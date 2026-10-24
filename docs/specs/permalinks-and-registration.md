@@ -24,7 +24,8 @@ record is a **rebuildable projection** (repos stay the source of truth):
 | `space` | study-guide · slides · concepts · assessment-support · practice · assets · current · metadata · provenance · private — in contract v2 the space IS the layer (one term, one meaning; the v1 layer names map in migration: `materials`→`assets`, `private-instructor`→`private`) |
 | kind + format version | from the carrier kind registry (`md`, `slides`, `paged`, `ketcher`, `plot`, image, audio, plain md, …) |
 | permalink class | **document** (final view) or **object** (insertable) |
-| source hash | for carrier formats: hash of embedded markdown source |
+| source hash | for carrier formats: hash of embedded markdown source (32-bit FNV-1a, 8 hex) — a registry-internal **identity** key (content-hash identity at first registration, move matching); never a version pin since 2026-10-24 |
+| content SHA-256 | SHA-256 (64 hex) of the stored content (`content_sha256`) — the **version**: the `@{version}` pin, the `/d` ETag, the server bytes-cache key and the mirror check (owner decision 2026-10-24) |
 | provenance | origin (created / uploaded / external-commit), author, time, `adapted-from` lineage |
 | description / alt text | for objects (a11y + element search) — **captured lazily**: an object registers without one and is flagged *needs description* for follow-up. Required before the file can be **shared / made discoverable**, never a blocker on registration itself. *(Corrected 2026-08-28: this said "required", contradicting [package-contract-v2.md](package-contract-v2.md) §3 and [package-layout.md](package-layout.md), which the code follows.)* |
 | license | inherited from package unless overridden per file |
@@ -55,10 +56,17 @@ or archived package is a plain 404, so the page never confirms such a course
 exists. Element detail lives at `/portal/element/{docId}`; the element's
 permalink stays `/d/{docId}`. `/p/{packageId}@{snapshot}` is still planned.)*
 
-- `{version}` for files is a **short content hash** of the file version
-  (decided; educators see it as a dated entry in the file's history, never
-  type it). Content hashes survive history rewrites (leakage remediation)
-  where commit SHAs die.
+- `{version}` for files is the **SHA-256 of the file version's content**,
+  all 64 hex digits (owner decision 2026-10-24; educators see it as a dated
+  entry in the file's history, never type it). Content hashes survive history
+  rewrites (leakage remediation) where commit SHAs die. *(Until 2026-10-24 it
+  was the 8-hex 32-bit FNV-1a source hash, whose second preimages are cheap —
+  a forged figure could be served under a real figure's pin (security loop
+  r1, P5.S.L2). The full digest is used, not a prefix, so there is no
+  collision bound to argue. **Legacy 8-hex pins** already in circulation still
+  resolve — to the CURRENT version only, only when the served bytes match the
+  current SHA-256, and cached like a live answer, never `immutable`. They are
+  never emitted again: `pinnedPermalink` refuses anything but 64 hex.)*
 - `{snapshot}` is the package-level named version ("fall-2026", a Git tag).
   A file permalink may also pin via snapshot: `/d/{docId}@{snapshot}` —
   "this figure, as taught in Fall 2026."
@@ -94,9 +102,11 @@ file the visitor may not read.
 
 | Answer | Cache-Control | Validator |
 |---|---|---|
-| public, live | `public, max-age=60, s-maxage=240, stale-while-revalidate=60` | `ETag: W/"{source_hash}"`; `If-None-Match` → 304 with no GitHub read |
-| public, pinned to the current hash | `private, max-age=31536000, immutable`, plus `CDN-Cache-Control` and `Vercel-CDN-Cache-Control: public, max-age=300` | same ETag |
-| public, unpinned, bytes not matching the registry hash (repo ahead of reconcile, or the raw CDN lagging a save) | `private, no-store` (closed loop r3) | none — never labelled with a hash it does not have; the row is healed from the mirror |
+| public, live | `public, max-age=60, s-maxage=240, stale-while-revalidate=60` | `ETag: W/"{content_sha256}"`; `If-None-Match` → 304 with no GitHub read |
+| public, pinned to the current SHA-256 | `private, max-age=31536000, immutable`, plus `CDN-Cache-Control` and `Vercel-CDN-Cache-Control: public, max-age=300` | same ETag |
+| public, legacy 8-hex pin naming the current version (bytes match the current SHA-256) | as live — never `immutable` on the FNV alone | same ETag |
+| public, a row with no SHA-256 yet (registered before 0027, not since) | `private, no-store`, served unlabelled; the row is healed | none |
+| public, unpinned, bytes not matching the registry SHA-256 (repo ahead of reconcile, or the raw CDN lagging a save) | `private, no-store` (closed loop r3) | none — never labelled with a hash it does not have; the row is healed from the mirror |
 | public, pinned, neither the origin nor the mirror holds the pinned bytes | 404, `no-store` (closed loop r4) | none — a pin is never answered with other bytes; the row is healed |
 | owner-only (private repo, trial package) | `private, no-store` | none; never 304, no CORS, never in a shared or server cache |
 | not found / no access / older pin / malformed address (bad `%` escape — same 404, after the rate limit) | `no-store` | — |
@@ -114,11 +124,14 @@ acceptable; shared caches read the CDN headers (Vercel honours them over
 nothing. Every answer kind is checked against the bound by
 `apps/web/src/lib/permalink-response.cache-bound.test.ts` (claims P5.S.4.a–b).
 
-Public bytes are cached server-side per `(docId, source_hash)` (in process,
-plus Next's data cache for files ≤ 1 MB), so GitHub is read once per file
-version, not per view; a new version is a new key, so nothing is
-invalidated. The ETag is weak: for carrier files the hash covers the embedded
-source, not the rendered bytes. A public file that turns private or trial
+Public bytes are cached server-side per `(docId, content_sha256)` (in
+process, plus Next's data cache for files ≤ 1 MB), so GitHub is read once per
+file version, not per view; a new version is a new key, so nothing is
+invalidated. Bytes count as a version only when the SHA-256 of the raw bytes
+(or, for a binary, of their base64 — the trial store's form) equals the
+registered digest; a lossy UTF-8 decode never matches. The ETag stays weak (it
+was the FNV of a carrier's embedded source before 2026-10-24; old validators
+simply stop matching). A public file that turns private or trial
 stops being served at once by the origin; a shared-cache copy can outlive the
 change by at most the takedown bound (300 s).
 `/d` is rate limited per client IP (1200/min, in process). The answer ignores the
@@ -272,7 +285,9 @@ remains opt-in via **List publicly** (Tier 3).
   remain an internal transport inside the resolver.
 - `livePermalink()` / `pinnedPermalink()` in package-contract emit the
   platform forms `/d/{docId}` and `/d/{docId}@{version}` (optionally on the
-  app origin), and refuse anything that is not a docId; `classifyReference()`
+  app origin), and refuse anything that is not a docId — and, since
+  2026-10-24, any version that is not a 64-hex SHA-256 (`VERSION_PIN_PATTERN`;
+  the legacy 8-hex form is recognised by `pinForm()` for resolution only); `classifyReference()`
   recognizes `/d/` (root-relative, or absolute on the app origin) and still
   classifies legacy raw URLs. ✅ **Done 2026-10-23 (Phase 5 Track B.3)** — the
   one caller (whole-package upload's `../` fallback) used to write raw GitHub

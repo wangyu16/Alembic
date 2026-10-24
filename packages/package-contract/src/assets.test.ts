@@ -10,8 +10,12 @@ import {
   classifyReference,
   livePermalink,
   newAssetId,
+  pinForm,
   pinnedPermalink,
 } from "./assets";
+
+/** A SHA-256 version pin (64 hex). */
+const SHA = "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08";
 
 const validRecord = {
   assetId: "ast-abcd1234",
@@ -185,14 +189,23 @@ describe("permalink builders — platform permalinks, never raw GitHub (permalin
   });
 
   it("[P5.B.3.a] builds a pinned /d/{docId}@{version} permalink", () => {
-    expect(pinnedPermalink("doc-abc123", "9f86d081", "https://alembic.orz.how")).toBe(
-      "https://alembic.orz.how/d/doc-abc123@9f86d081",
+    expect(pinnedPermalink("doc-abc123", SHA, "https://alembic.orz.how")).toBe(
+      `https://alembic.orz.how/d/doc-abc123@${SHA}`,
     );
+  });
+
+  it("[P5.S.L2] a new pin is the full SHA-256 (64 hex); the legacy 8-hex FNV form is recognised but never emitted", () => {
+    expect(pinForm(SHA)).toBe("sha256");
+    expect(pinForm("9f86d081")).toBe("legacy");
+    expect(pinForm(SHA.slice(0, 32))).toBeNull();
+    expect(pinForm(SHA.toUpperCase())).toBeNull();
+    expect(() => pinnedPermalink("doc-abc123", "9f86d081")).toThrow();
+    expect(() => pinnedPermalink("doc-abc123", SHA.slice(0, 63))).toThrow();
   });
 
   it("[P5.B.3.a] never emits a raw GitHub URL", () => {
     expect(livePermalink("doc-x1", "https://alembic.orz.how")).not.toContain("githubusercontent");
-    expect(pinnedPermalink("doc-x1", "abc")).not.toContain("githubusercontent");
+    expect(pinnedPermalink("doc-x1", SHA)).not.toContain("githubusercontent");
   });
 
   it("[P5.B.3.a] refuses a path where a document id belongs (the old signature), fail-closed", () => {
@@ -204,6 +217,6 @@ describe("permalink builders — platform permalinks, never raw GitHub (permalin
   it("[P5.B.3.a] built permalinks classify back (round-trip)", () => {
     const appOrigin = "https://alembic.orz.how";
     expect(classifyReference(livePermalink("doc-r1", appOrigin), { appOrigin })).toBe("live");
-    expect(classifyReference(pinnedPermalink("doc-r1", "c0ffee00", appOrigin), { appOrigin })).toBe("pinned");
+    expect(classifyReference(pinnedPermalink("doc-r1", SHA, appOrigin), { appOrigin })).toBe("pinned");
   });
 });

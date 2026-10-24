@@ -9,9 +9,11 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { pinSatisfied, resolvePermalinkAccess, type PermalinkDoc } from "./permalink-access";
+import { matchPin, resolvePermalinkAccess, type PermalinkDoc } from "./permalink-access";
 import { servePermalink, type PermalinkDeps } from "./permalink-response";
 import { DocBytesCache } from "./doc-bytes-cache";
+
+const S = "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08";
 
 function db(doc: PermalinkDoc): SupabaseClient {
   return {
@@ -40,24 +42,32 @@ function deps(doc: PermalinkDoc): PermalinkDeps {
 
 describe("P5.B.1.q a pin is satisfied only by the doc's known current hash", () => {
   it("[P5.B.1.q] /d with a pin on a row that has no hash answers 404, not the current bytes", async () => {
-    const doc: PermalinkDoc = { doc_id: "doc-cited1", package_id: "pkg-a", repo: "public", path: "f.md", source_hash: null, tombstoned: false };
+    const doc: PermalinkDoc = { doc_id: "doc-cited1", package_id: "pkg-a", repo: "public", path: "f.md", source_hash: null, content_sha256: null, tombstoned: false };
     const r = await servePermalink("doc-cited1@5d5e142d", new Headers(), deps(doc));
     expect(r.status).toBe(404);
+    expect((await servePermalink(`doc-cited1@${S}`, new Headers(), deps(doc))).status).toBe(404);
     expect(await r.text()).not.toContain("NEW OWNER");
     // Unpinned, the current bytes are still served (unlabelled).
     expect((await servePermalink("doc-cited1", new Headers(), deps(doc))).status).toBe(200);
   });
 
-  it("[P5.B.1.q] pinSatisfied needs an exact, known hash", () => {
-    expect(pinSatisfied("abc", "abc")).toBe(true);
-    expect(pinSatisfied("abc", "abd")).toBe(false);
-    expect(pinSatisfied("abc", null)).toBe(false);
-    expect(pinSatisfied("", "")).toBe(false);
+  it("[P5.B.1.q] matchPin needs an exact, known hash", () => {
+    const row = { source_hash: "5d5e142d", content_sha256: S };
+    expect(matchPin(S, row)).toBe("sha256");
+    expect(matchPin("5d5e142d", row)).toBe("legacy");
+    expect(matchPin(S.replace(/.$/, "0"), row)).toBeNull();
+    expect(matchPin("5d5e142e", row)).toBeNull();
+    expect(matchPin(S, { source_hash: "5d5e142d", content_sha256: null })).toBeNull();
+    // a legacy pin needs the SHA-256 too: the bytes are always checked against it
+    expect(matchPin("5d5e142d", { source_hash: "5d5e142d", content_sha256: null })).toBeNull();
+    expect(matchPin("", { source_hash: "", content_sha256: "" })).toBeNull();
   });
 
-  it("[P5.B.1.q] server-side includes apply the same pin rule", () => {
+  it("[P5.B.1.q] [P5.S.L2] server-side includes apply the same pin rule", () => {
     const src = readFileSync(resolve(__dirname, "resolve-includes.ts"), "utf8");
     const fn = src.slice(src.indexOf("async function resolveOwnPermalink"));
-    expect(fn).toMatch(/if \(pin !== null && !pinSatisfied\(pin, doc\.source_hash\)\) return null;/);
+    expect(fn).toMatch(/const pinKind = pin === null \? null : matchPin\(pin, doc\);\s*if \(pin !== null && pinKind === null\) return null;/);
+    // and a pinned include takes only bytes that hash to the SHA-256 (P5.S.L2)
+    expect(fn).toMatch(/if \(pinKind !== null && !bytesMatchSha256\(doc\.path, bytes, doc\.content_sha256 \?\? ""\)\) return null;/);
   });
 });

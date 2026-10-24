@@ -5,6 +5,7 @@
  * access check (`resolvePermalinkAccess`) over in-memory Supabase doubles:
  * the service client sees every row, a session sees only its owner's rows.
  */
+import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { computeSourceHash } from "@alembic/package-ops";
@@ -47,11 +48,15 @@ function client(world: World, viewer: string | "service" | null): SupabaseClient
 
 const OWNER = "user-owner";
 const STRANGER = "user-stranger";
+const sha = (s: string) => createHash("sha256").update(s, "utf8").digest("hex");
 const V1 = "# Version one";
-const H1 = computeSourceHash(V1);
+/** The version key since 2026-10-24 (P5.S.L2): SHA-256 of the content. */
+const H1 = sha(V1);
+/** The legacy 8-hex FNV identity hash of the same version. */
+const F1 = computeSourceHash(V1);
 
 function doc(doc_id: string, package_id: string, repo: "public" | "private", path = `${repo === "public" ? "study-guide" : "private"}/x.md`): PermalinkDoc {
-  return { doc_id, package_id, repo, path, source_hash: H1, tombstoned: false };
+  return { doc_id, package_id, repo, path, source_hash: F1, content_sha256: H1, tombstoned: false };
 }
 
 function makeWorld(): World {
@@ -156,7 +161,7 @@ describe("public answers (Track A.6)", () => {
   it("[P5.A.6.c] a stale If-None-Match gets the full new version", async () => {
     const { get, world } = harness();
     const v2 = "# v2";
-    world.documents[0] = { ...world.documents[0]!, source_hash: computeSourceHash(v2) };
+    world.documents[0] = { ...world.documents[0]!, source_hash: computeSourceHash(v2), content_sha256: sha(v2) };
     world.bytes["doc-pubpub"] = v2;
     const r = await get("doc-pubpub", null, inm(H1));
     expect(r.status).toBe(200);
@@ -165,9 +170,52 @@ describe("public answers (Track A.6)", () => {
 
   it("[P5.A.6.f] an older pin is not served (interim page), and that answer is not stored", async () => {
     const { get } = harness();
-    const r = await get("doc-pubpub@deadbeef", null);
+    for (const old of ["deadbeef", sha("# Version zero")]) {
+      const r = await get(`doc-pubpub@${old}`, null);
+      expect(r.status).toBe(404);
+      expect(r.headers.get("cache-control")).toBe(CACHE.none);
+    }
+  });
+
+  it("[P5.S.L2] a legacy 8-hex pin resolves to the current version only: live caching, the SHA-256 ETag, never immutable", async () => {
+    const { get } = harness();
+    const r = await get(`doc-pubpub@${F1}`, null);
+    expect(r.status).toBe(200);
+    expect(await r.text()).toBe(V1);
+    expect(r.headers.get("etag")).toBe(`W/"${H1}"`);
+    expect(r.headers.get("cache-control")).toBe(CACHE.live);
+    expect(r.headers.get("cdn-cache-control")).toBeNull();
+    // a conditional legacy-pinned request: 304 under the same live policy
+    const c = await get(`doc-pubpub@${F1}`, null, inm(H1));
+    expect(c.status).toBe(304);
+    expect(c.headers.get("cache-control")).toBe(CACHE.live);
+  });
+
+  it("[P5.S.L2] a legacy pin on a row without a SHA-256 is not served; nor is a truncated or upper-case SHA-256 pin", async () => {
+    const { get, world } = harness();
+    for (const p of [H1.slice(0, 32), H1.toUpperCase(), `${H1}0`]) {
+      expect((await get(`doc-pubpub@${p}`, null)).status, p).toBe(404);
+    }
+    world.documents[0] = { ...world.documents[0]!, content_sha256: null };
+    const r = await get(`doc-pubpub@${F1}`, null);
     expect(r.status).toBe(404);
     expect(r.headers.get("cache-control")).toBe(CACHE.none);
+  });
+
+  it("[P5.S.L2] a row without a SHA-256 yet: the current bytes, unlabelled and healed", async () => {
+    const world = makeWorld();
+    world.documents[0] = { ...world.documents[0]!, content_sha256: null };
+    const healed: string[] = [];
+    const r = await servePermalink("doc-pubpub", new Headers(), {
+      access: (id) => resolvePermalinkAccess(id, { session: client(world, null), service: client(world, "service") }),
+      readBytes: async () => Buffer.from(V1),
+      cache: new DocBytesCache(),
+      onStale: (d) => healed.push(d.doc_id),
+    });
+    expect(r.status).toBe(200);
+    expect(r.headers.get("etag")).toBeNull();
+    expect(r.headers.get("cache-control")).toBe(CACHE.unverified);
+    expect(healed).toEqual(["doc-pubpub"]);
   });
 });
 

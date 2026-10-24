@@ -10,10 +10,15 @@
  *     a file the visitor may not read, so neither can reveal that it exists;
  *  3. owner-only answers (private repo, trial package) — fetched fresh,
  *     `private, no-store`, no ETag, no 304, no CORS, never in a shared cache;
- *  4. public answers — keyed by the registry's `source_hash`:
- *       ETag `W/"{hash}"`; `If-None-Match` → 304 without reading GitHub;
- *       pinned `@{hash}` → `immutable` for a year in the BROWSER only,
+ *  4. public answers — keyed by the registry's `content_sha256` (SHA-256 of
+ *     the content; owner decision 2026-10-24, P5.S.L2 — before, the 32-bit
+ *     FNV `source_hash`, whose second preimages are cheap):
+ *       ETag `W/"{sha256}"`; `If-None-Match` → 304 without reading GitHub;
+ *       pinned `@{sha256}` → `immutable` for a year in the BROWSER only,
  *       shared caches (CDN) at most `TAKEDOWN_BOUND_SECONDS` (300 s);
+ *       a LEGACY 8-hex FNV pin → the current version only, only when the
+ *       bytes match the current SHA-256, and cached like a live answer —
+ *       never `immutable` on the FNV alone;
  *       live → browser 60 s, CDN 240 s + 60 s stale-while-revalidate;
  *       bytes from `DocBytesCache` (GitHub read once per version; an
  *       unpinned answer re-verifies the hash against the current bytes at
@@ -27,14 +32,14 @@
  *     origin nor the mirror hashes to the pin it is a 404, `no-store`, and
  *     the row is healed (closed loop r4, security LOW-2).
  *
- * The ETag is WEAK because for carrier files the hash covers the embedded
- * source, not the rendered bytes: two renderings of one source are the same
- * version, not the same bytes.
+ * The ETag stays WEAK (as before 2026-10-24, when it was the FNV source hash
+ * of a carrier's embedded source): weak comparison is all `If-None-Match`
+ * needs, and old `W/"{fnv}"` validators simply stop matching (one full 200).
  */
 
 import type { PermalinkAccess, PermalinkDoc } from "./permalink-access";
-import { pinSatisfied } from "./permalink-access";
-import { bytesMatchHash, type DocBytesCache } from "./doc-bytes-cache";
+import { matchPin } from "./permalink-access";
+import { bytesMatchSha256, type DocBytesCache } from "./doc-bytes-cache";
 import type { RateDecision } from "./rate-limit";
 import { tooManyRequests } from "./rate-limit";
 
@@ -263,13 +268,18 @@ export async function servePermalink(
     );
   }
   const { doc, ownerOnly } = access;
-  const hash = doc.source_hash;
+  // The version key: SHA-256 of the content (P5.S.L2). A row registered
+  // before 0027 may not have one yet — served unlabelled and healed below.
+  const hash = doc.content_sha256 && /^[0-9a-f]{64}$/.test(doc.content_sha256) ? doc.content_sha256 : null;
 
   // Version pin: the registry holds the CURRENT version; older pins arrive
   // with R3's version store.
   // A pin is satisfied only by the KNOWN current hash (loop r2, NEW-3): a
-  // pin on a row without a hash is not served as the current bytes.
-  if (pin !== null && !pinSatisfied(pin, hash)) {
+  // pin on a row without a hash is not served as the current bytes. Since
+  // 2026-10-24 that hash is the SHA-256; a legacy 8-hex FNV pin matches the
+  // current `source_hash` only, and is then held to the SHA-256 like any pin.
+  const pinKind = pin === null ? null : matchPin(pin, doc);
+  if (pin !== null && pinKind === null) {
     return page(
       404,
       "That exact version isn't available yet",
@@ -279,6 +289,8 @@ export async function servePermalink(
     );
   }
   const pinned = pin !== null;
+  /** Only a SHA-256 pin earns the immutable answer; a legacy pin is a live one. */
+  const immutable = pinKind === "sha256";
 
   // ── Owner-only: fresh every time, never shared, never conditional. ──
   if (ownerOnly) {
@@ -301,16 +313,23 @@ export async function servePermalink(
   };
 
   if (!hash) {
-    // No registry hash to key on (should not happen for registered files).
+    // No SHA-256 to key on: a row registered before 0027 and not since (a pin
+    // never gets here — matchPin needs the SHA-256). Served unlabelled, and
+    // the row is healed so the next view has its digest.
     const bytes = await deps.readBytes(doc, access);
     if (bytes === null) return notFound();
+    try {
+      deps.onStale?.(doc);
+    } catch {
+      // never affects the answer
+    }
     deps.onPublicServed?.({ doc, pinned: false, status: 200 });
     return new Response(body(bytes), {
       headers: { "content-type": mimeFor(doc.path), "cache-control": CACHE.unverified, ...shared },
     });
   }
 
-  const cacheControl = cacheHeaders(pinned);
+  const cacheControl = cacheHeaders(immutable);
   const key = { docId: doc.doc_id, hash, path: doc.path };
   const servedStale = (bytes: Buffer): Response => {
     // The bytes and the registry disagree (either may be the newer one):
@@ -340,7 +359,10 @@ export async function servePermalink(
         headers: { etag: etagFor(hash), ...cacheControl, ...shared },
       });
     }
-    return servedStale(check.bytes);
+    // A pinned request is never answered with other bytes (P5.A.6.s), not
+    // even on this conditional path: it goes on to the content-addressed
+    // answer below (cache, origin, mirror — or a 404).
+    if (!pinned) return servedStale(check.bytes);
   }
 
   // Unpinned (loop r2, P5.A.6.o): bytes are served under the registry hash
@@ -353,7 +375,11 @@ export async function servePermalink(
   // Pinned `@{hash}`: no re-verification. The pin already equals the current
   // registry hash (checked above), and cached bytes are content-addressed by
   // that hash — they ARE the version the reader asked for, even if the file
-  // has since moved on.
+  // has since moved on. A LEGACY pin takes the same content-addressed path
+  // (key = the CURRENT SHA-256, which the FNV pin matched through the
+  // registry row), so it is served only bytes that hash to that SHA-256 —
+  // a forged FNV collision never qualifies — and is labelled as live, not
+  // immutable (P5.S.L2).
   let fresh: Buffer | undefined;
   if (!pinned) {
     const check = await deps.cache.revalidate(key, () => deps.readBytes(doc, access));
@@ -371,10 +397,10 @@ export async function servePermalink(
   let fromMirror: Buffer | null = null;
   const loadPinned = async (): Promise<Buffer | null> => {
     const origin = await deps.readBytes(doc, access);
-    if (origin && bytesMatchHash(doc.path, origin, hash)) return origin;
+    if (origin && bytesMatchSha256(doc.path, origin, hash)) return origin;
     if (!deps.readMirror) return origin;
     const mirror = await deps.readMirror(doc, access).catch(() => null);
-    if (mirror && bytesMatchHash(doc.path, mirror, hash)) return (fromMirror = mirror);
+    if (mirror && bytesMatchSha256(doc.path, mirror, hash)) return (fromMirror = mirror);
     return origin;
   };
   const got = fresh

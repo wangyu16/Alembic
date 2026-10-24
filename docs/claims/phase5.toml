@@ -546,7 +546,7 @@ bound_to = []
 
 [[claim]]
 id = "P5.A.6.b"
-claim = "A public live /d answer carries ETag W/\"{source_hash}\", Cache-Control 'public, max-age=60, s-maxage=240, stale-while-revalidate=60' (CACHE.live) and CORS; one pinned to the current hash carries Cache-Control 'private, max-age=31536000, immutable' (CACHE.pinned) with CDN-Cache-Control and Vercel-CDN-Cache-Control 'public, max-age=300' (the takedown bound)."
+claim = "A public live /d answer carries ETag W/\"{content_sha256}\" (SHA-256 of the content since 2026-10-24), Cache-Control 'public, max-age=60, s-maxage=240, stale-while-revalidate=60' (CACHE.live) and CORS; one pinned to the current SHA-256 carries Cache-Control 'private, max-age=31536000, immutable' (CACHE.pinned) with CDN-Cache-Control and Vercel-CDN-Cache-Control 'public, max-age=300' (the takedown bound)."
 oracle = "conformance"
 bound_to = [
   "apps/web/src/lib/permalink-response.adversarial.test.ts :: live: ETag = hash, CDN cache with stale-while-revalidate, CORS",
@@ -565,7 +565,7 @@ bound_to = [
 
 [[claim]]
 id = "P5.A.6.d"
-claim = "GitHub is read once per (docId, source_hash), not per view: repeat views, a cold instance with the shared layer, and concurrent misses cost ≤ 1 origin read."
+claim = "GitHub is read once per (docId, content_sha256), not per view: repeat views, a cold instance with the shared layer, and concurrent misses cost ≤ 1 origin read."
 oracle = "invariant"
 bound_to = [
   "apps/web/src/lib/permalink-response.adversarial.test.ts :: GitHub is read once per version, not once per view",
@@ -576,14 +576,14 @@ bound_to = [
 
 [[claim]]
 id = "P5.A.6.e"
-claim = "Only bytes that hash to the registry's source_hash (text, or either binary registration form) are cached or labelled; otherwise an unpinned request is served them uncached, without ETag, never immutable (a pinned one is a 404 — P5.A.6.s), and a new version never gets the old bytes."
+claim = "Only bytes whose SHA-256 is the registry's content_sha256 (raw bytes, or a binary's base64 form; never a lossy UTF-8 decode) are cached or labelled; otherwise an unpinned request is served them uncached, without ETag, never immutable (a pinned one is a 404 — P5.A.6.s), and a new version never gets the old bytes."
 oracle = "invariant"
 bound_to = [
   "apps/web/src/lib/permalink-response.adversarial.test.ts :: repo ahead of the registry: served uncached, no ETag, never immutable",
   "apps/web/src/lib/doc-bytes-cache.test.ts :: bytes that do not hash to the key are served but NOT cached, and flagged",
   "apps/web/src/lib/doc-bytes-cache.test.ts :: a new version is a new key — the old bytes are never served for it",
-  "apps/web/src/lib/doc-bytes-cache.test.ts :: text: matches the registration hash of the UTF-8 content",
-  "apps/web/src/lib/doc-bytes-cache.test.ts :: binary: matches either registration form (GitHub UTF-8 read, trial base64)",
+  "apps/web/src/lib/doc-bytes-cache.test.ts :: text: matches the registered SHA-256 of the UTF-8 content",
+  "apps/web/src/lib/doc-bytes-cache.test.ts :: binary: matches the raw bytes or the trial base64 form, exactly",
 ]
 
 [[claim]]
@@ -1462,10 +1462,23 @@ bound_to = [
 
 [[claim]]
 id = "P5.S.L2"
-claim = "A pinned /d/{doc}@{hash} cannot be satisfied by different bytes with the same pin."
+claim = "A pinned /d/{doc}@{hash} cannot be satisfied by different bytes with the same pin: new pins are the full SHA-256 of the content (64 hex, content_sha256), which the served bytes must hash to; a legacy 8-hex FNV pin resolves only to the current version, only when the bytes match the current SHA-256, and is never answered immutable; the ETag, the bytes-cache key and the mirror check use the SHA-256 too, and a pinned include takes only bytes that hash to it."
 oracle = "probe"
-bound_to = []
-note = "ACCEPTED, not fixed (DecisionLog 2026-10-23 security loop r1): the pin is the 32-bit FNV-1a source hash, and a second preimage is cheap (/tmp/alembic-audit/fnv.mts). Stays red until R3 moves pins to a cryptographic hash; owner decision pending."
+bound_to = [
+  "apps/web/src/lib/permalink-forge.test.ts :: the forge is real: the wrong figure has the right figure's FNV hash, not its SHA-256",
+  "apps/web/src/lib/permalink-forge.test.ts :: the forged bytes cannot be served under the SHA-256 pin, from the origin or the mirror",
+  "apps/web/src/lib/permalink-forge.test.ts :: nor under the legacy FNV pin the forge collides with — the bytes must match the current SHA-256",
+  "apps/web/src/lib/permalink-forge.test.ts :: unpinned, the forged bytes are served only as unverified: no ETag, private, no-store, not cached",
+  "apps/web/src/lib/permalink-forge.test.ts :: control: the genuine bytes are served immutable under the SHA-256 pin and live under the legacy pin",
+  "apps/web/src/lib/permalink-forge.test.ts :: the bytes cache is keyed by the SHA-256: a forged copy is never stored under the version key",
+  "apps/web/src/lib/doc-bytes-cache.test.ts :: a lossy UTF-8 decode is never a match: two binaries that decode to the same string cannot stand in for each other",
+  "apps/web/src/lib/permalink-response.adversarial.test.ts :: a legacy 8-hex pin resolves to the current version only: live caching, the SHA-256 ETag, never immutable",
+  "apps/web/src/lib/permalink-response.adversarial.test.ts :: a legacy pin on a row without a SHA-256 is not served; nor is a truncated or upper-case SHA-256 pin",
+  "apps/web/src/lib/permalink-response.adversarial.test.ts :: a row without a SHA-256 yet: the current bytes, unlabelled and healed",
+  "packages/package-contract/src/assets.test.ts :: a new pin is the full SHA-256 (64 hex); the legacy 8-hex FNV form is recognised but never emitted",
+  "apps/web/src/lib/permalink-pin.test.ts :: server-side includes apply the same pin rule",
+]
+note = "FIXED (owner decision 2026-10-24, branch phase5/decisions; DecisionLog). Was ACCEPTED since security loop r1: the pin was the 32-bit FNV-1a source hash, whose second preimage is cheap (/tmp/alembic-audit/fnv.mts; round-4 forge /tmp/alembic-r4/forge.test.ts, reproduced in permalink-forge.test.ts). Code only — documents.content_sha256 exists since 0027; a row without one is served unlabelled and healed on view. source_hash stays the registry's internal identity key."
 
 # ─── Security loop r2 (audit 2026-10-23, round 2): probes and class fixes ─
 # Each claim is bound to the probe that reproduced the finding on d4544cc
@@ -1540,7 +1553,7 @@ bound_to = [
   "apps/web/src/lib/loop-r2-sec.sql.test.ts :: a deleted package's id cannot be re-created by anyone (probe3: no inherited adaptations)",
   "apps/web/src/lib/loop-r2-sec.sql.test.ts :: the retired-id ledger is private and fed only by deletion",
   "apps/web/src/lib/permalink-pin.test.ts :: /d with a pin on a row that has no hash answers 404, not the current bytes",
-  "apps/web/src/lib/permalink-pin.test.ts :: pinSatisfied needs an exact, known hash",
+  "apps/web/src/lib/permalink-pin.test.ts :: matchPin needs an exact, known hash",
   "apps/web/src/lib/permalink-pin.test.ts :: server-side includes apply the same pin rule",
   "apps/web/src/lib/loop-r3c-identity.sql.test.ts :: renaming one's own row onto a retired docId, onto a back-filled lineage target, or to any fresh id is refused (owner and service)",
 ]

@@ -28,7 +28,12 @@ export interface PermalinkDoc {
   package_id: string;
   repo: "public" | "private";
   path: string;
+  /** The 32-bit FNV-1a identity hash (registry-internal; legacy 8-hex pins). */
   source_hash: string | null;
+  /** SHA-256 of the stored content (64 hex): the version `/d` serves, labels,
+   *  caches and pins by (owner decision 2026-10-24, P5.S.L2). Null on a row
+   *  registered before 0027 and not re-registered since — healed on view. */
+  content_sha256: string | null;
   tombstoned: boolean;
 }
 
@@ -54,7 +59,7 @@ export interface PermalinkClients {
 
 /** THE docId shape, shared with the registry, the cursor and import (P5.B.1.o). */
 export { DOC_ID_PATTERN } from "@alembic/package-contract";
-import { DOC_ID_PATTERN } from "@alembic/package-contract";
+import { DOC_ID_PATTERN, VERSION_PIN_PATTERN, pinForm } from "@alembic/package-contract";
 
 export async function resolvePermalinkAccess(
   docId: string,
@@ -69,7 +74,7 @@ export async function resolvePermalinkAccess(
 
   const { data } = await db
     .from("documents")
-    .select("doc_id, package_id, repo, path, source_hash, tombstoned")
+    .select("doc_id, package_id, repo, path, source_hash, content_sha256, tombstoned")
     .eq("doc_id", docId)
     .maybeSingle();
   const doc = data as PermalinkDoc | null;
@@ -103,11 +108,34 @@ export async function resolvePermalinkAccess(
 }
 
 /**
- * Does a `/d/{docId}@{pin}` pin name this file's current version? Only an
- * exact match to a KNOWN hash (security loop r2, NEW-3): a row with no hash
- * cannot satisfy any pin — before r2 a pin on such a row was ignored and the
- * current, unverified bytes were served as if they were the pinned version.
+ * Does a `/d/{docId}@{pin}` pin name this file's CURRENT version, and in which
+ * form? (Security loop r2, NEW-3: only an exact match to a KNOWN hash — a row
+ * without one satisfies no pin.)
+ *
+ * - `"sha256"` — the pin is the full SHA-256 of the current content
+ *   (`content_sha256`). The form every new link uses (owner decision
+ *   2026-10-24, P5.S.L2): collision-resistant, so the bytes `/d` serves under
+ *   it — which must hash to it — are the version the link was made for.
+ * - `"legacy"` — the pin is the 8-hex FNV `source_hash` links carried before
+ *   2026-10-24. It still resolves, but ONLY to the current version, only when
+ *   that version has a SHA-256 to check the bytes against (the caller serves
+ *   nothing that does not hash to it), and never as an immutable answer: a
+ *   32-bit FNV match proves nothing about the bytes (second preimages are
+ *   cheap — /tmp/alembic-r4/forge.test.ts).
+ * - `null` — no match: an older version, a malformed pin, or a row without
+ *   the hash the pin needs.
  */
-export function pinSatisfied(pin: string, hash: string | null | undefined): boolean {
-  return typeof hash === "string" && hash.length > 0 && pin === hash;
+export function matchPin(
+  pin: string,
+  doc: Pick<PermalinkDoc, "source_hash" | "content_sha256">,
+): "sha256" | "legacy" | null {
+  const sha = typeof doc.content_sha256 === "string" && VERSION_PIN_PATTERN.test(doc.content_sha256)
+    ? doc.content_sha256
+    : null;
+  const form = pinForm(pin);
+  if (form === "sha256") return sha !== null && pin === sha ? "sha256" : null;
+  if (form === "legacy") {
+    return sha !== null && typeof doc.source_hash === "string" && pin === doc.source_hash ? "legacy" : null;
+  }
+  return null;
 }

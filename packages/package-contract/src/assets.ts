@@ -212,13 +212,39 @@ export function assertPublicMarkdownReferences(markdown: string): void {
   }
 }
 
+/**
+ * The version pin of `/d/{docId}@{pin}` (owner decision 2026-10-24, closing
+ * P5.S.L2): the file version's SHA-256 — the registry's `contentSha256`, the
+ * full 64 lower-case hex digits of the stored content. A pin is a promise of
+ * exact bytes, so it must be collision-resistant; the full digest is used (no
+ * prefix, so no collision bound to argue about).
+ */
+export const VERSION_PIN_PATTERN = /^[0-9a-f]{64}$/;
+
+/**
+ * The pre-2026-10-24 pin: the 8-hex 32-bit FNV-1a `sourceHash`, whose second
+ * preimage is cheap. Still RECOGNISED so links already in circulation keep
+ * resolving (to the current version only, and only when the bytes also match
+ * the current SHA-256 — `/d`), never EMITTED.
+ */
+export const LEGACY_PIN_PATTERN = /^[0-9a-f]{8}$/;
+
+/** Which pin form a `@{pin}` is: the SHA-256 form, the legacy FNV form, or neither. */
+export function pinForm(pin: string): "sha256" | "legacy" | null {
+  if (VERSION_PIN_PATTERN.test(pin)) return "sha256";
+  if (LEGACY_PIN_PATTERN.test(pin)) return "legacy";
+  return null;
+}
+
 function platformPermalink(docId: string, version: string | null, origin: string): string {
   if (!DOC_ID_PATTERN.test(docId)) {
     // Fail closed: before 2026-10 these helpers took a repo PATH; a path must
     // never be turned into a link that looks like a permalink.
     throw new Error(`Not a document id: ${JSON.stringify(docId)}`);
   }
-  if (version !== null && !/^[A-Za-z0-9._-]+$/.test(version)) {
+  // Only the SHA-256 form is ever emitted (2026-10-24); the legacy 8-hex FNV
+  // form is still resolved by `/d` but never written into a new link.
+  if (version !== null && !VERSION_PIN_PATTERN.test(version)) {
     throw new Error(`Not a version: ${JSON.stringify(version)}`);
   }
   const base = origin.replace(/\/+$/, "");
@@ -242,7 +268,9 @@ export function livePermalink(docId: string, origin = ""): string {
 
 /**
  * The PINNED platform permalink — `/d/{docId}@{version}`, where `version` is
- * the file version's content hash (the registry's `sourceHash`). Pure.
+ * the file version's SHA-256 (the registry's `contentSha256`, 64 hex —
+ * `VERSION_PIN_PATTERN`). Anything else — including the legacy 8-hex FNV
+ * `sourceHash` — is refused. Pure.
  */
 export function pinnedPermalink(docId: string, version: string, origin = ""): string {
   return platformPermalink(docId, version, origin);

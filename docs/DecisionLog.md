@@ -6,6 +6,41 @@ design, and what is deferred to the future. Complements [Status.md](Status.md)
 
 ---
 
+## 2026-10-24 — Owner decision 1: version pins are SHA-256 (closes P5.S.L2 / round-4 security MEDIUM-2)
+
+The owner ruled that a version pin must be a cryptographic hash. Branch `phase5/decisions` (on `main` 4f56f65; not
+merged). **Code only — no migration**: `documents.content_sha256` (SHA-256 of the stored content string's UTF-8, 64
+hex) has been written by every registration since `0027`.
+
+- **What uses the SHA-256.** The `/d/{doc}@{pin}` pin, the `/d` ETag (`W/"{sha256}"`), the server bytes-cache key
+  (`{docId}@{sha256}`, in process and in Next's data cache), the mirror check for a pin during raw-CDN lag, and the
+  pin check of a server-side include. `pinnedPermalink` emits only the SHA-256 form and refuses anything else (the
+  upload rewrite emits live `/d/{docId}` links, unchanged).
+- **Full 64 hex, not a prefix.** A 32-hex prefix would still be ample (2^64 birthday work for a random pair; a
+  second preimage of a given pin 2^128), but the full digest costs only 56 more URL characters and removes the bound
+  from every future argument. Lower-case only; a truncated, upper-case or over-long pin is no match.
+- **Exact bytes.** `bytesMatchSha256` accepts SHA-256 of the raw bytes, or — for a binary path — of their base64 (the
+  trial store's form). The old helper also accepted the FNV of a lossy UTF-8 decode, under which two binaries that
+  differ only in invalid sequences hash alike; such a row (a binary registered from a lossy text read) is now served
+  unlabelled and healed from the mirror (base64) rather than vouched for.
+- **Legacy 8-hex pins keep resolving, but vouch for nothing.** A legacy pin matches only the row's CURRENT
+  `source_hash`, and is then served through the same content-addressed path as a SHA-256 pin — keyed by the CURRENT
+  SHA-256, so only bytes that hash to it are served (else 404 + heal) — and labelled as a LIVE answer (no
+  `immutable`, no year-long browser copy). A row without a SHA-256 satisfies no pin of either form.
+- **A row without a SHA-256** (registered before `0027` and not re-registered since) is served unlabelled
+  (`private, no-store`) and healed on view; the page-load sync treats a missing digest as stale too. No back-fill
+  migration: the registry has no content to hash, and copying the mirror's digest would vouch for bytes the row may
+  not describe.
+- **`source_hash` stays, as an internal identity key.** It is the registry's content-hash identity (first
+  registration, move matching; for carriers it hashes the embedded source, so a re-render keeps the identity) and
+  appears in the registry and discovery SQL of a dozen migrations. Its collision risk there is bounded: identity
+  is resolved only within the owner's own package, explicit uids and move hints win over it, and nothing outside the
+  owner's own registry is decided by it. Migrating it would touch every registry function for no reader-facing gain.
+- **Also fixed on the way:** a pinned request with a matching `If-None-Match` whose origin bytes had moved was served
+  the origin's other bytes (unlabelled) — now it falls through to the pinned path (cache, origin, mirror, else 404).
+
+---
+
 ## 2026-10-24 — Closed loop r4, part B: a fair drain that commits per entry; signals carried whatever changed them; `/d` answers only what it can vouch for
 
 Round-4 security and correctness findings in SQL, discovery and `/d` (repros `/tmp/alembic-r4/`, `/tmp/p5r4/sql/`),

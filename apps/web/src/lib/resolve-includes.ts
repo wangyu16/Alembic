@@ -4,7 +4,8 @@ import { prepareSources } from "@alembic/renderer";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { fetchDocBytes } from "@/lib/doc-content";
-import { pinSatisfied, resolvePermalinkAccess } from "@/lib/permalink-access";
+import { matchPin, resolvePermalinkAccess } from "@/lib/permalink-access";
+import { bytesMatchSha256 } from "@/lib/doc-bytes-cache";
 
 /**
  * The app's own permalink host — the ONLY host whose `{{md-include …}}`
@@ -156,9 +157,14 @@ async function resolveOwnPermalink(docId: string, pin: string | null): Promise<s
     // A pin resolves only to the doc whose KNOWN current hash it names (loop
     // r2, NEW-3): never to unverified bytes, and — retired ids never being
     // reissued (0028_loop_r2_2) — never to another package's file.
-    if (pin !== null && !pinSatisfied(pin, doc.source_hash)) return null;
+    // Since 2026-10-24 (P5.S.L2) the pin is the SHA-256 (a legacy 8-hex FNV
+    // pin matches the current version only), and the bytes must hash to that
+    // SHA-256 — a pinned include never takes bytes the pin does not name.
+    const pinKind = pin === null ? null : matchPin(pin, doc);
+    if (pin !== null && pinKind === null) return null;
     const bytes = await fetchDocBytes(db, doc);
     if (!bytes || bytes.byteLength > MAX_INCLUDE_BYTES) return null;
+    if (pinKind !== null && !bytesMatchSha256(doc.path, bytes, doc.content_sha256 ?? "")) return null;
     return bytes.toString("utf8");
   } catch {
     return null;

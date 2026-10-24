@@ -1,6 +1,9 @@
 /**
- * Server-side cache of a PUBLIC permalink's bytes, keyed by (docId, source
- * hash) — Phase 5 Track A.6. With it, `/d/{docId}` reads GitHub once per
+ * Server-side cache of a PUBLIC permalink's bytes, keyed by (docId, SHA-256 of
+ * the content) — Phase 5 Track A.6; SHA-256 since the owner decision of
+ * 2026-10-24 (P5.S.L2 — the 32-bit FNV `source_hash` it used to be keyed by
+ * has cheap second preimages, so a forged file could be cached and served
+ * under another version's key). With it, `/d/{docId}` reads GitHub once per
  * file version instead of once per view.
  *
  * Two layers, both optional, no new service:
@@ -12,8 +15,8 @@
  *
  * **Only verified bytes are cached.** The key is the registry's hash, but the
  * bytes come from the repo's current head; when someone committed to GitHub
- * and reconcile has not run yet, the two disagree. `bytesMatchHash` recomputes
- * the registration hash over the fetched bytes; a mismatch is served (as
+ * and reconcile has not run yet, the two disagree. `bytesMatchSha256`
+ * recomputes the registered SHA-256 over the fetched bytes; a mismatch is served (as
  * before) but never cached and never labelled with that hash (no ETag, no
  * `immutable`). This keeps a pinned `@{hash}` from ever being cached with
  * bytes of another version.
@@ -25,12 +28,12 @@
  * Pure apart from the injected loader/layer — unit-tested.
  */
 
-import { computeSourceHash } from "@alembic/package-ops";
+import { createHash } from "node:crypto";
 import { isBinaryPath } from "./collection-upload";
 
 export interface DocBytesKey {
   docId: string;
-  /** The registry's `source_hash` for the version being served. */
+  /** The registry's `content_sha256` (64 hex) for the version being served. */
   hash: string;
   /** Repo path (decides how the registration hashed a binary). */
   path: string;
@@ -53,15 +56,25 @@ export interface CachedBytes {
   from: "memory" | "shared" | "origin";
 }
 
+const sha256Hex = (data: Buffer | string): string => createHash("sha256").update(data).digest("hex");
+
 /**
- * Do these bytes hash to the registry's `source_hash`? The registration hashes
- * a string: UTF-8 text for text files and for binaries read from GitHub, the
- * base64 text for binaries read from a trial store — both forms are derived
- * from the bytes, so both are tried for a binary path.
+ * Are these EXACTLY the bytes the registry's `content_sha256` names (owner
+ * decision 2026-10-24, P5.S.L2)? The registration hashes the stored content
+ * string's UTF-8: for a text file that is the file's bytes; for a binary the
+ * trial store keeps base64 text. So a match is either
+ *  - SHA-256 of the raw bytes — exact: it equals the registered digest only
+ *    when the stored string was these very bytes (a lossy UTF-8 decode, where
+ *    invalid sequences became U+FFFD, never matches, so two different
+ *    binaries that decode to the same string cannot stand in for each other);
+ *  - for a binary path, SHA-256 of their base64 text — exact too (base64 is
+ *    one-to-one).
+ * No FNV comparison is made anywhere on this path any more.
  */
-export function bytesMatchHash(path: string, bytes: Buffer, hash: string): boolean {
-  if (computeSourceHash(bytes.toString("utf8")) === hash) return true;
-  return isBinaryPath(path) && computeSourceHash(bytes.toString("base64")) === hash;
+export function bytesMatchSha256(path: string, bytes: Buffer, sha256: string): boolean {
+  if (!/^[0-9a-f]{64}$/.test(sha256)) return false;
+  if (sha256Hex(bytes) === sha256) return true;
+  return isBinaryPath(path) && sha256Hex(bytes.toString("base64")) === sha256;
 }
 
 class NotStored extends Error {
@@ -144,7 +157,7 @@ export class DocBytesCache {
     }
     const bytes = await load();
     if (bytes === null) return null;
-    if (bytesMatchHash(key.path, bytes, key.hash)) {
+    if (bytesMatchSha256(key.path, bytes, key.hash)) {
       this.markVerified(id);
       this.remember(id, bytes);
       await this.storeShared(id, bytes);
@@ -238,7 +251,7 @@ export class DocBytesCache {
     let result: CachedBytes | null = null;
     const loadVerified = async (): Promise<{ bytes: Buffer; verified: boolean } | null> => {
       const bytes = await load();
-      return bytes ? { bytes, verified: bytesMatchHash(key.path, bytes, key.hash) } : null;
+      return bytes ? { bytes, verified: bytesMatchSha256(key.path, bytes, key.hash) } : null;
     };
 
     const shared = this.opts.shared;

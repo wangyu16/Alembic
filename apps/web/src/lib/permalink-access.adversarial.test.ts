@@ -63,7 +63,7 @@ const world: World = {
 };
 
 function doc(doc_id: string, package_id: string, repo: "public" | "private"): PermalinkDoc {
-  return { doc_id, package_id, repo, path: `${repo}/x.md`, source_hash: "h1", tombstoned: false };
+  return { doc_id, package_id, repo, path: `${repo}/x.md`, source_hash: "h1", content_sha256: null, tombstoned: false };
 }
 
 const service = client(world, "service");

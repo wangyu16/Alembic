@@ -1,12 +1,15 @@
 import { describe, expect, it } from "vitest";
+import { createHash } from "node:crypto";
 import { computeSourceHash } from "@alembic/package-ops";
-import { bytesMatchHash, DocBytesCache, type SharedBytesLayer } from "./doc-bytes-cache";
+import { bytesMatchSha256, DocBytesCache, type SharedBytesLayer } from "./doc-bytes-cache";
 
+/** The registry's content_sha256 of a stored content string (sha256Hex of its UTF-8). */
+const sha = (s: string) => createHash("sha256").update(s, "utf8").digest("hex");
 const text = (s: string) => Buffer.from(s, "utf8");
 const key = (content: string, docId = "doc-a", path = "study-guide/a.md") => ({
   docId,
   path,
-  hash: computeSourceHash(content),
+  hash: sha(content),
 });
 
 function counter(bytes: Buffer | null) {
@@ -34,18 +37,32 @@ function fakeShared(): SharedBytesLayer & { store: Map<string, Buffer> } {
   };
 }
 
-describe("bytesMatchHash", () => {
-  it("[P5.A.6.e] text: matches the registration hash of the UTF-8 content", () => {
-    expect(bytesMatchHash("a.md", text("# Hi"), computeSourceHash("# Hi"))).toBe(true);
-    expect(bytesMatchHash("a.md", text("# Hi!"), computeSourceHash("# Hi"))).toBe(false);
+describe("bytesMatchSha256 (owner decision 2026-10-24, P5.S.L2)", () => {
+  it("[P5.A.6.e] text: matches the registered SHA-256 of the UTF-8 content", () => {
+    expect(bytesMatchSha256("a.md", text("# Hi"), sha("# Hi"))).toBe(true);
+    expect(bytesMatchSha256("a.md", text("# Hi!"), sha("# Hi"))).toBe(false);
+    // never an FNV comparison: the legacy 8-hex hash of the same content is no match
+    expect(bytesMatchSha256("a.md", text("# Hi"), computeSourceHash("# Hi"))).toBe(false);
   });
 
-  it("[P5.A.6.e] binary: matches either registration form (GitHub UTF-8 read, trial base64)", () => {
-    const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0xff, 0x00, 0x10]);
-    expect(bytesMatchHash("assets/x.png", png, computeSourceHash(png.toString("utf8")))).toBe(true);
-    expect(bytesMatchHash("assets/x.png", png, computeSourceHash(png.toString("base64")))).toBe(true);
+  it("[P5.A.6.e] binary: matches the raw bytes or the trial base64 form, exactly", () => {
+    const png = Buffer.from([0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]); // valid UTF-8
+    expect(bytesMatchSha256("assets/x.png", png, sha(png.toString("utf8")))).toBe(true);
+    expect(bytesMatchSha256("assets/x.png", png, sha(png.toString("base64")))).toBe(true);
     // a text path does not get the base64 allowance
-    expect(bytesMatchHash("a.md", png, computeSourceHash(png.toString("base64")))).toBe(false);
+    expect(bytesMatchSha256("a.md", png, sha(png.toString("base64")))).toBe(false);
+  });
+
+  it("[P5.S.L2] a lossy UTF-8 decode is never a match: two binaries that decode to the same string cannot stand in for each other", () => {
+    const a = Buffer.from([0x89, 0x50, 0x4e, 0x47]); // 0x89: invalid UTF-8 → U+FFFD
+    const b = Buffer.from([0x80, 0x50, 0x4e, 0x47]); // 0x80: invalid UTF-8 → U+FFFD
+    expect(a.toString("utf8")).toBe(b.toString("utf8")); // the old, lossy form collides
+    const lossy = sha(a.toString("utf8"));
+    expect(bytesMatchSha256("assets/x.png", a, lossy)).toBe(false);
+    expect(bytesMatchSha256("assets/x.png", b, lossy)).toBe(false);
+    // the exact base64 registration still matches only its own bytes
+    expect(bytesMatchSha256("assets/x.png", a, sha(a.toString("base64")))).toBe(true);
+    expect(bytesMatchSha256("assets/x.png", b, sha(a.toString("base64")))).toBe(false);
   });
 });
 
