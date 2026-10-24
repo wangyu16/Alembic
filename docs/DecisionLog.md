@@ -6,6 +6,20 @@ design, and what is deferred to the future. Complements [Status.md](Status.md)
 
 ---
 
+## 2026-10-24 — Closed loop r5 (final): a held failure falls through; a fail sticks (SQL)
+
+Round 5 was the owner's narrow last round: one auditor on round 4's changes, plus the decisions-diff audit. Branch
+`phase5/loop-r5` on `phase5/decisions`. Every finding: claim + probe that fails before + fix of the class.
+
+- **A held failure falls through (P5.A.1.w).** A failure in one part of a drain must not stop the other parts. The
+  held retry records its failure and the drain continues; at the end what is owed becomes a scoped entry. One
+  attempt and one back-off per drain, however many steps fail. Not changed: held ids are still retried at each
+  slice (they could wait for the end of the pass) — kept to preserve the r4b rule; a possible later refinement.
+- **A fail sticks until re-checked (P5.R.5.h, refines owner decision 2).** "Neutral" is for "no current check yet",
+  not "failed, then changed". Smallest mechanism: the expiry trigger expires only pass/warn — no new column. Rejected:
+  a separate last-completed-result column used for ranking only (the listing row and badge would say "not checked"
+  while ranking said fail). The fail is shown everywhere: it describes earlier bytes, but it can only understate a
+  course, and the automatic re-check after each save replaces it.
 ## 2026-10-24 — Owner decision 2: the accessibility badge follows an automatic check; no check is neutral
 
 The owner ruled that the badge must not depend on an educator remembering to re-run a check that every save expires

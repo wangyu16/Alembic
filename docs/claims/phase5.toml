@@ -1248,7 +1248,7 @@ bound_to = [
 
 [[claim]]
 id = "P5.R.5.d"
-claim = "A check that cannot run or fails (no connection, unreadable published copy, an audit that throws, a failed record) records nothing and never throws to the save or publish: the expired check stays expired and Discover shows no badge."
+claim = "A check that cannot run or fails (no connection, unreadable published copy, an audit that throws, a failed record) records nothing and never throws to the save or publish: an expired pass or warn stays expired and Discover shows no badge; a fail stays a fail (P5.R.5.h, loop r5)."
 oracle = "probe"
 bound_to = [
   "apps/web/src/lib/decisions-a11y.sql.test.ts :: a failed audit hides the badge: nothing is recorded, the expired check stays expired",
@@ -1860,6 +1860,9 @@ bound_to = [
   "apps/web/src/lib/decisions-a11y.sql.test.ts :: discovery_search_courses keeps 0022's filters, keyset paging, clamp and hour rounding, and ranks with the course quality",
   "apps/web/src/lib/decisions-a11y.sql.test.ts :: discovery_course_facets keeps 0022's per-facet counting and caps, and drops only 'unknown' from the a11y facet",
   "apps/web/src/lib/decisions-a11y.sql.test.ts :: the course-quality helper is closed to the API roles; the two RPCs stay open; elements keep discovery_quality",
+  "apps/web/src/lib/loop-r5-sql.sql.test.ts :: discovery_flush_one (0033_loop_r5_1) keeps r2c/r3c/r4b rules and falls through after a held failure",
+  "apps/web/src/lib/loop-r5-sql.sql.test.ts :: packages_a11y_expires (0033_loop_r5_2) keeps r3c's expiry rules and keeps a fail; its trigger and the listing trigger stay",
+  "apps/web/src/lib/loop-r5-sql.sql.test.ts :: the functions 0033 redefines stay closed to the API roles",
 ]
 note = "Loop r2 correctness, the composition rule (round 1's 0026 silently reverted 0025_2). A future migration that redefines one of these functions must keep the markers or update this test deliberately."
 
@@ -2301,3 +2304,27 @@ bound_to = [
   "apps/web/src/app/workspace/[packageId]/reconcile-actions.rate.test.ts :: the 11th check within 10 minutes is refused before any reconcile, in plain words; another user is unaffected",
 ]
 note = "Loop r4 security LOW-5, the bounded half. OPEN: the tree fallback itself (lib/repo-reader.ts, reconcile) still reads every stored file's content to compute blob SHA-1s; using stored hashes (a generated git-blob-sha column, or listPaths + content_sha) belongs to the reconcile code part A owns in round 4 — left for it / the next round. The save path's own reconcile on a refused save (committer) is not rate-limited (it runs only on a refusal)."
+
+
+# ─── Closed loop round 5 — the final fix pass (2026-10-24, branch phase5/loop-r5) ───
+
+[[claim]]
+id = "P5.A.1.w"
+claim = "Ids a whole discovery drain set aside (held_doc_ids) that keep failing never block the rest of the work: a drain whose held retry fails records what is still held (with last_error, one attempt and the back-off) and falls through to the entry's own work — a whole pass continues from its cursor (at least one chunk, even when the held retry spent the slice) to the course row, then leaves exactly the still-failing held ids plus this pass's failed chunks as a scoped entry; a scoped entry refreshes its own ids and keeps the held ones owed; a drain that fails in several steps counts one attempt; and a later edit merged into the entry still lands."
+oracle = "probe"
+bound_to = [
+  "apps/web/src/lib/loop-r5-sql.sql.test.ts :: an id set aside at a slice deadline that keeps failing does not block the rest of the pass or later refreshes",
+  "apps/web/src/lib/loop-r5-sql.sql.test.ts :: a scoped entry with held ids still refreshes its own ids, and keeps the held ones owed",
+]
+note = "Loop r5 correctness MEDIUM (class b; repro /tmp/p5r5/sql/held.test.ts). Migration 0033_loop_r5_1_discovery_held (after 0032; either order with the code). Before it, discovery_flush_one returned as soon as the held retry failed, so the cursor never moved again and every later refresh merged into that whole entry was never projected. Back-off is unchanged: a pass with a held failure advances one slice per back-off interval (1, 2, 4 … min, at most 1 h; new merged work clears it)."
+
+[[claim]]
+id = "P5.R.5.h"
+claim = "A course whose last completed accessibility check failed shows and ranks as failed (packages record, anon-readable listing row, Discover row, facet and badge) until a newer completed check records a result: moving the recorded head, any number of unchecked saves, and a re-check that cannot run or throws leave the fail; only a never-checked course, or a pass or warn that a new head expired, is not checked (neutral)."
+oracle = "probe"
+bound_to = [
+  "apps/web/src/lib/loop-r5-sql.sql.test.ts :: a save after a failed check keeps the course failed (rank, facet, listing, badge) — saving cannot escape a fail",
+  "apps/web/src/lib/loop-r5-sql.sql.test.ts :: a re-check that cannot run or throws leaves the fail; a newer completed check replaces it",
+  "apps/web/src/lib/loop-r5-sql.sql.test.ts :: (kept) a pass or warn that a new head expired, and a never-checked course, are not checked (neutral)",
+]
+note = "Loop r5 LOW (class b) on owner decision 2 (decisions-diff audit). Migration 0033_loop_r5_2_a11y_fail_sticks (after 0032; no code change). packages_a11y_expires expires only pass/warn. Gap: a fail that already expired to 'unknown' under 0030 before this migration cannot be told apart from an expired pass/warn (the old result is not stored) and stays neutral until its next completed check."
