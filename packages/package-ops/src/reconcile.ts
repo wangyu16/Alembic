@@ -45,6 +45,8 @@ export type ReconcileOutcome =
   | {
       status: "absorbed";
       headSha: string;
+      /** Paths whose content at head differed from the stored copy and were
+       *  brought in (loop r3: identical content is neither written nor listed). */
       changedPaths: string[];
       /**
        * Present when the foreign change included the course details file
@@ -97,12 +99,20 @@ export async function reconcilePublicRepo(
   }
 
   // Foreign commit(s) exist (or we have never synced). Validate before absorbing.
-  const changed = await reader.listChangedPaths(lastSyncedSha, head);
+  const listed = await reader.listChangedPaths(lastSyncedSha, head);
   const violations: string[] = [];
   // The foreign course details file, validated up front (absorbed last).
   let foreignManifest: PackageManifest | undefined;
+  // Loop r3 (P5.B.3.g): only what REALLY differs from the stored copy is
+  // absorbed and reported. A listed path whose content at head equals ours
+  // (typically Alembic's own save, already projected) is no change at all —
+  // the committer relies on this to retry a save that was refused only
+  // because the synced point lagged behind Alembic's own commit.
+  const changed: Array<{ path: string; status: "added" | "modified" | "removed"; content: string | null }> = [];
 
-  for (const change of changed) {
+  for (const change of listed) {
+    const ours = await store.readFile(packageId, "public", change.path);
+
     // The course details file is the package's identity: a foreign deletion
     // would leave a course with no manifest. Keep ours and report it.
     if (change.path === MANIFEST_PATH) {
@@ -111,9 +121,11 @@ export async function reconcilePublicRepo(
         continue;
       }
       const content = await reader.readFileAtRef(change.path, head);
+      if (content !== null && content === ours) continue; // unchanged
       try {
         if (content === null) throw new Error(`expected content at ${head} but file was absent`);
         foreignManifest = parseManifest(JSON.parse(content));
+        changed.push({ path: change.path, status: change.status, content });
       } catch (err) {
         // Invalid foreign manifest: never let it reach the projection (or the
         // packages.manifest cache). Keep the old one; quarantine and report.
@@ -123,7 +135,10 @@ export async function reconcilePublicRepo(
       continue;
     }
 
-    if (change.status === "removed") continue;
+    if (change.status === "removed") {
+      if (ours !== null) changed.push({ path: change.path, status: "removed", content: null });
+      continue;
+    }
 
     // Two-repo invariant: a private-space path or disallowed location must
     // never land in the PUBLIC repo. This is the security-critical leak check.
@@ -138,15 +153,19 @@ export async function reconcilePublicRepo(
       continue;
     }
 
+    const content = await reader.readFileAtRef(change.path, head);
+    if (content === null) {
+      if (isStudyGuideMarkdown(change.path)) {
+        violations.push(`${change.path}: expected content at ${head} but file was absent`);
+      }
+      // Otherwise defensive: a path reported added/modified but missing at
+      // head. Skip rather than write a null projection.
+      continue;
+    }
+    if (content === ours) continue; // identical to the stored copy: no change
+
     // Block-ID integrity: a foreign edit must not corrupt or duplicate IDs.
     if (isStudyGuideMarkdown(change.path)) {
-      const content = await reader.readFileAtRef(change.path, head);
-      if (content === null) {
-        violations.push(
-          `${change.path}: expected content at ${head} but file was absent`,
-        );
-        continue;
-      }
       // v1 `.md` is parsed directly; v2 `.md.html` has its markdown extracted
       // from the carrier first, so external commits of either format have
       // their block IDs validated identically (origin parity, door #3).
@@ -159,8 +178,10 @@ export async function reconcilePublicRepo(
         for (const e of integrity.errors) {
           violations.push(`${change.path}: ${e}`);
         }
+        continue;
       }
     }
+    changed.push({ path: change.path, status: change.status, content });
   }
 
   // Bad foreign state: refuse to absorb. Write NOTHING.
@@ -168,23 +189,15 @@ export async function reconcilePublicRepo(
     return { status: "quarantined", headSha: head, violations };
   }
 
-  // Clean: absorb the changeset into the projection.
+  // Clean: absorb the real differences into the projection.
   for (const change of changed) {
     if (change.path === MANIFEST_PATH) continue; // through the write path, below
-    if (change.status === "removed") {
-      await store.deleteFiles(packageId, [
-        { repo: "public", path: change.path },
-      ]);
-      continue;
-    }
-    const content = await reader.readFileAtRef(change.path, head);
-    if (content === null) {
-      // Defensive: a path reported added/modified but missing at head. We
-      // already validated; skip rather than write a null projection.
+    if (change.content === null) {
+      await store.deleteFiles(packageId, [{ repo: "public", path: change.path }]);
       continue;
     }
     await store.putFiles(packageId, [
-      { repo: "public", path: change.path, content },
+      { repo: "public", path: change.path, content: change.content },
     ]);
   }
 

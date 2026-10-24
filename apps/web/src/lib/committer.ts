@@ -37,9 +37,10 @@ import {
   CommitUnavailableError,
   type Committer,
   type PackageStore,
+  type ReconcileOutcome,
 } from "@alembic/package-ops";
 import type { GitHubClient } from "@alembic/github-bridge";
-import { clientForUser, recordOwnCommit, syncedShaFor } from "./github";
+import { clientForUser, reconcilePackage, recordOwnCommit, syncedShaFor } from "./github";
 import { recordedPrivateRepo, recordedPublicRepo } from "./recorded-repo";
 
 /**
@@ -68,11 +69,32 @@ const MISSING_HOME =
   "can't be saved. Reconnect publishing from the package menu, then try " +
   "again. Nothing was changed.";
 
-/** Loop r2 (P5.B.3.f): the save would overwrite something changed outside. */
-const CHANGED_OUTSIDE =
+/**
+ * Loop r2 (P5.B.3.f): the save would overwrite something changed outside,
+ * and the outside change could not be brought in automatically just now.
+ * Names the control on the course's edit page (publish header →
+ * "Check for outside changes", loop r3).
+ */
+export const CHANGED_OUTSIDE =
   "This course was changed outside Alembic since your last save, so this " +
   "change wasn't saved — nothing was changed. Use \u201cCheck for outside " +
-  "changes\u201d to bring those changes in first, then try again.";
+  "changes\u201d at the top of the course page to bring those changes in " +
+  "first, then try again.";
+
+/** Loop r3 (P5.B.3.g): the outside change touched this file and has now been
+ *  brought in; the educator's edit was made on the old version. */
+export const CHANGED_OUTSIDE_BROUGHT_IN =
+  "This course was changed outside Alembic since your last save. Those " +
+  "changes have now been brought into Alembic \u2014 reopen the file to see " +
+  "them, then make your change again. Nothing from this save was written.";
+
+/** Loop r3: the outside change cannot be brought in (it breaks the course's
+ *  rules), so saves of the files it touched stay blocked until it is fixed. */
+export const CHANGED_OUTSIDE_HELD_BACK =
+  "This course was changed outside Alembic, and those changes can't be " +
+  "brought in automatically, so this change wasn't saved \u2014 nothing was " +
+  "changed. Use \u201cCheck for outside changes\u201d at the top of the " +
+  "course page to see what needs fixing.";
 
 const SAVE_FAILED =
   "We couldn't save this change to the package's online home. " +
@@ -113,6 +135,8 @@ export async function committerFor(
     committer: githubCommitter({
       supabase,
       packageId,
+      // Loop r3 (P5.B.3.g): a refused save brings the outside change in.
+      reconcile: () => reconcilePackage(supabase, store, userId, packageId),
       client: gh.client,
       publicRepo: { owner: publicRepo.owner, repo: publicRepo.name },
       privateRepo: privateRepo
@@ -134,8 +158,13 @@ export function githubCommitter(args: {
   publicRepo: RepoCoords;
   /** Null when the package has no private repo recorded yet. */
   privateRepo: RepoCoords | null;
+  /**
+   * Bring outside changes in (`reconcilePackage`), run when a public save is
+   * refused as changed-outside (loop r3, P5.B.3.g). Absent → plain refusal.
+   */
+  reconcile?: () => Promise<ReconcileOutcome | null>;
 }): Committer {
-  const { supabase, packageId, client, publicRepo, privateRepo } = args;
+  const { supabase, packageId, client, publicRepo, privateRepo, reconcile } = args;
 
   return {
     async commit(plan) {
@@ -173,42 +202,64 @@ export function githubCommitter(args: {
         }
       }
 
-      let result: { commitSha: string; parentSha: string };
-      try {
-        result = await commitFiles(
+      const attempt = (since: string | null) =>
+        commitFiles(
           client,
           coords,
           commitPlan,
           "main",
-          plan.repo === "public" ? { unchangedSince: synced } : {},
+          plan.repo === "public" ? { unchangedSince: since } : {},
         );
+
+      let result: { commitSha: string; parentSha: string };
+      try {
+        result = await attempt(synced);
       } catch (err) {
-        if (err instanceof RemoteChangedError) {
-          console.warn(
-            `[commit] ${coords.owner}/${coords.repo}: refused, changed outside Alembic (${err.reason}):`,
-            err.paths.join(", "),
-          );
-          throw new CommitFailedError(CHANGED_OUTSIDE, err);
-        }
-        // Only the message is passed on: the underlying text is a raw GitHub
-        // API string — method, path, HTTP status, and a JSON body like
-        // `{"message":"GitRPC::BadObjectState"}`. Twelve call sites
-        // re-surface this message to educators, so appending it put developer
-        // diagnostics in front of people who have never seen a repository.
-        // Log it for us; show plain language to them.
+        if (!(err instanceof RemoteChangedError)) throw saveFailed(coords, plan.repo, err);
         console.warn(
-          `[commit] ${coords.owner}/${coords.repo} (${plan.repo}) failed:`,
-          err instanceof Error ? err.message : err,
+          `[commit] ${coords.owner}/${coords.repo}: refused, changed outside Alembic (${err.reason}):`,
+          err.paths.join(", "),
         );
-        throw new CommitFailedError(SAVE_FAILED);
+        // Loop r3 (P5.B.3.g): never a dead end. Bring the outside change in
+        // now; if none of THIS save's files really differ from what Alembic
+        // already has (the "outside" commit was Alembic's own — a second tab,
+        // or a pointer write that failed), the synced point has moved and the
+        // save is retried once. Otherwise refuse — but the outside version is
+        // now in Alembic, so the educator can reopen and redo the change.
+        const outcome = reconcile
+          ? await Promise.resolve()
+              .then(reconcile)
+              .catch((e: unknown) => {
+                console.warn(`[commit] ${packageId}: reconcile after refusal failed:`, e instanceof Error ? e.message : e);
+                return null;
+              })
+          : null;
+        if (!outcome) throw new CommitFailedError(CHANGED_OUTSIDE, err);
+        if (outcome.status === "quarantined") throw new CommitFailedError(CHANGED_OUTSIDE_HELD_BACK, err);
+        if (outcome.status === "absorbed") {
+          const ours = new Set(commitPlan.changes.map((c) => c.path));
+          if (outcome.changedPaths.some((p) => ours.has(p))) {
+            throw new CommitFailedError(CHANGED_OUTSIDE_BROUGHT_IN, err);
+          }
+        }
+        try {
+          synced = await syncedShaFor(supabase, packageId);
+          result = await attempt(synced);
+        } catch (again) {
+          if (again instanceof RemoteChangedError) {
+            console.warn(`[commit] ${coords.owner}/${coords.repo}: refused again after reconcile (${again.reason})`);
+            throw new CommitFailedError(CHANGED_OUTSIDE, again);
+          }
+          throw saveFailed(coords, plan.repo, again);
+        }
       }
 
       if (plan.repo === "public") {
         // Best-effort ON PURPOSE (inside `recordOwnCommit`): the commit
         // already succeeded, so reporting a failure here would be a lie. A
-        // pointer left behind is self-healing — reconcile sees the commits
-        // after it as foreign and absorbs them in the repo→projection
-        // direction, which is the correct outcome.
+        // pointer left behind is self-healing — the next refused save
+        // reconciles, finds Alembic's own commit already in the store, and
+        // retries (loop r3, P5.B.3.g).
         try {
           await recordOwnCommit(supabase, packageId, synced, result);
         } catch {
@@ -219,4 +270,21 @@ export function githubCommitter(args: {
       return { commitSha: result.commitSha };
     },
   };
+}
+
+/**
+ * A commit attempt that failed for any reason other than an outside change.
+ * Only the message is passed on: the underlying text is a raw GitHub API
+ * string — method, path, HTTP status, and a JSON body like
+ * `{"message":"GitRPC::BadObjectState"}`. Twelve call sites re-surface this
+ * message to educators, so appending it put developer diagnostics in front
+ * of people who have never seen a repository. Log it for us; show plain
+ * language to them.
+ */
+function saveFailed(coords: RepoCoords, repo: "public" | "private", err: unknown): CommitFailedError {
+  console.warn(
+    `[commit] ${coords.owner}/${coords.repo} (${repo}) failed:`,
+    err instanceof Error ? err.message : err,
+  );
+  return new CommitFailedError(SAVE_FAILED);
 }

@@ -1941,3 +1941,36 @@ bound_to = [
   "apps/web/src/lib/permalink-heal.test.ts :: once per doc per window, and bounded in memory",
 ]
 note = "Security loop r3 LOW-1. Code only (ServiceDocumentRegistryStore). Residual: a heal reads the package's live registry once per doc per window, only when the digests differ."
+
+[[claim]]
+id = "P5.B.3.g"
+claim = "A published course is never locked against saves by Alembic's own commits and the educator always has a way out: the synced pointer advances by compare-and-set from the commit's parent (two tabs saving at once keep it current; a commit on an outside commit never moves it past); a save refused as changed outside reconciles at once and is retried when the overlapping files equal Alembic's stored copy (Alembic's own commit, or a failed pointer write), else refused with the outside version brought in, or — held back — naming the reachable “Check for outside changes” control; when GitHub's comparison cannot list everything, reconcile compares blob SHA-1s of the head tree with the stored copy."
+oracle = "scenario"
+bound_to = [
+  "apps/web/src/lib/committer.lockout.test.ts :: two tabs saving different files at once: the pointer follows both saves and both files stay savable",
+  "apps/web/src/lib/committer.lockout.test.ts :: a pointer write that fails once is retried and lands",
+  "apps/web/src/lib/committer.lockout.test.ts :: a pointer write that keeps failing after a save does not lock the file: the next save repairs it",
+  "apps/web/src/lib/committer.lockout.test.ts :: a real outside edit to the same file: refused, nothing written, and the outside version is brought in",
+  "apps/web/src/lib/committer.lockout.test.ts :: an outside edit Alembic can't accept: plain refusal naming the reachable control, nothing written",
+  "apps/web/src/lib/committer.lockout.test.ts :: comparison ${mode}: an outside edit to OTHER files is brought in by whole-tree comparison and the save goes through",
+  "apps/web/src/lib/committer.lockout.test.ts :: comparison ${mode}: an outside edit to the SAME file is refused and brought in",
+  "apps/web/src/lib/committer.lockout.test.ts :: “Check for outside changes” is rendered for published courses and calls the reconcile action",
+  "packages/github-bridge/src/compare-status.test.ts :: listTree returns each file's blob sha alongside its path",
+  "packages/github-bridge/src/compare-status.test.ts :: gitBlobSha is git's blob id (sha1 of \\\"blob <len>\\\\0<bytes>\\\")",
+  "packages/package-ops/src/reconcile.changed-only.test.ts :: a listed path whose content equals the stored copy is neither written nor reported",
+  "packages/package-ops/src/reconcile.changed-only.test.ts :: a listed removal of a file the store does not have is not reported",
+  "packages/package-ops/src/reconcile.changed-only.test.ts :: an unchanged course details file is not re-absorbed",
+]
+note = "Loop r3 correctness H3-2 (probe /tmp/p5r3b/cas-lockout.test.ts). Code only. Residuals: a truncated head tree (very large repo) still ends in a plain refusal; if two tabs' pointer writes land out of order the pointer trails by one commit until the next save (one extra reconcile)."
+
+[[claim]]
+id = "P5.B.3.j"
+claim = "A GitHub comparison whose base is not an ancestor of head (“diverged” / “behind”) or that lists GitHub's maximum of files is never trusted: the save guard refuses as unverifiable (nothing written) and reconcile falls back to the tree comparison."
+oracle = "probe"
+bound_to = [
+  "packages/github-bridge/src/compare-status.test.ts :: a \"${status}\" comparison is not trusted: compareCommits refuses to return its file list",
+  "packages/github-bridge/src/compare-status.test.ts :: a \"${status}\" comparison makes the save guard refuse as unverifiable, writing nothing",
+  "packages/github-bridge/src/compare-status.test.ts :: an \\\"ahead\\\" comparison is trusted as before",
+  "packages/github-bridge/src/compare-status.test.ts :: a comparison listing GitHub's maximum of files is incomplete, not trusted",
+]
+note = "Loop r3 correctness LOW (compare status). Code only."

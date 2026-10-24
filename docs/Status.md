@@ -104,6 +104,18 @@ fixed here too (its later fixes build on this branch).
   mirror's bytes hash to the pin. Code only.
 - ✅ **LOWs — `/d` verification record unbounded; unlabelled answer cache header (P5.A.6.q).** The record drops entries
   older than the window and holds ≤ 10,000; unlabelled answers are `private, no-store` (header = comment = test).
+- ✅ **H3-2 — Alembic's own commits could lock a published course against saves, with no way out (P5.B.3.g).** Two
+  tabs saving at once (or one failed pointer write) left the synced pointer behind Alembic's own commit; every later
+  save of those files was then refused as "changed outside Alembic … use Check for outside changes" — a control no
+  page rendered since f3ecb36 (probe `/tmp/p5r3b/cas-lockout.test.ts`). Now: the pointer advances by compare-and-set
+  from the commit's parent (retried once); a refused save reconciles at once and retries when the overlapping files
+  equal Alembic's stored copy, else refuses with the outside version brought in, or (held back) names the restored
+  **"Check for outside changes"** control in the published-course header; reconcile absorbs and reports only real
+  differences, and falls back to comparing blob SHA-1s of the head tree when GitHub's comparison can't list
+  everything (`lib/repo-reader.ts`). Code only. MEDIUM-4's rule (P5.B.3.f) unchanged; its tests pass as they were.
+- ✅ **LOW — compare `status` ignored (P5.B.3.j).** A "diverged"/"behind" comparison or one at GitHub's 300-file
+  maximum is never trusted (`CompareIncompleteError`): the save guard refuses as unverifiable and reconcile uses the
+  tree comparison.
 
 **Phase 5 closed-loop verification — round 2, steps 4–5: correctness audit probes and class fixes (2026-10-23,
 branch `phase5/loop-r2-cor`, built on `phase5/loop-r2-sec`, not merged, migrations `0029_loop_r2c_*` NOT applied).**

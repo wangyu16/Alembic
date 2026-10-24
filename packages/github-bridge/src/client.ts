@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { staticTokenSource, type TokenSource } from "./app-auth";
 import {
   defaultFetch,
@@ -114,6 +115,32 @@ function isReplayable(method: string, path: string): boolean {
  */
 /** GitHub's Compare API lists at most this many files. */
 const COMPARE_FILE_LIMIT = 300;
+
+/**
+ * Git's blob id for some bytes: SHA-1 of `"blob <len>\0" + bytes` — what a
+ * tree listing reports per file, so content can be compared with a stored
+ * copy without downloading it (loop r3, P5.B.3.g).
+ */
+export function gitBlobSha(bytes: Uint8Array): string {
+  return createHash("sha1").update(`blob ${bytes.length}\0`).update(bytes).digest("hex");
+}
+
+/**
+ * A comparison whose file list cannot be trusted as "everything that changed
+ * since base" (loop r3, P5.B.3.j): the base is not an ancestor of the head
+ * (GitHub status "diverged"/"behind" — the list is then the diff from the
+ * merge base), or the list is at GitHub's cap and may be cut short.
+ */
+export class CompareIncompleteError extends Error {
+  constructor(readonly reason: "not-ancestor" | "too-many-files") {
+    super(
+      reason === "not-ancestor"
+        ? "comparison base is not an ancestor of head"
+        : `comparison lists ${COMPARE_FILE_LIMIT} or more files and may be incomplete`,
+    );
+    this.name = "CompareIncompleteError";
+  }
+}
 
 /**
  * A commit was refused because the branch moved since the caller's last sync
@@ -541,6 +568,11 @@ export class GitHubClient {
    * comment used to promise "reconcile all", which no caller does). Note also
    * that GitHub lists at most 300 files per comparison; a larger foreign change
    * is absorbed only in part. Both are open items in Status.md (Track B).
+   *
+   * Loop r3 (P5.B.3.j): a comparison whose base is not an ancestor of head, or
+   * that lists GitHub's maximum of 300 files, throws `CompareIncompleteError`
+   * rather than return a list that may miss changes; reconcile then falls back
+   * to comparing the whole tree (apps/web lib/repo-reader.ts).
    */
   async compareCommits(
     coords: RepoCoords,
@@ -549,6 +581,7 @@ export class GitHubClient {
   ): Promise<Array<{ path: string; status: "added" | "modified" | "removed" }>> {
     if (base === null || base === head) return [];
     const data = await this.request<{
+      status?: string;
       files?: Array<{
         filename: string;
         status: string;
@@ -558,6 +591,15 @@ export class GitHubClient {
       "GET",
       `/repos/${coords.owner}/${coords.repo}/compare/${base}...${head}`,
     );
+    // Loop r3 (P5.B.3.j): "diverged"/"behind" means base is not an ancestor
+    // of head; the files are then the diff from the merge base and may omit
+    // changes made since `base`. A list at the cap may be cut short.
+    if (data.status === "diverged" || data.status === "behind") {
+      throw new CompareIncompleteError("not-ancestor");
+    }
+    if ((data.files?.length ?? 0) >= COMPARE_FILE_LIMIT) {
+      throw new CompareIncompleteError("too-many-files");
+    }
     const out: Array<{
       path: string;
       status: "added" | "modified" | "removed";
@@ -599,13 +641,16 @@ export class GitHubClient {
   async listTree(
     coords: RepoCoords,
     ref: string,
-  ): Promise<{ paths: string[]; truncated: boolean }> {
+  ): Promise<{ paths: string[]; entries: Array<{ path: string; sha: string }>; truncated: boolean }> {
     const data = await this.request<{
-      tree: Array<{ path: string; type: string }>;
+      tree: Array<{ path: string; type: string; sha?: string }>;
       truncated?: boolean;
     }>("GET", `/repos/${coords.owner}/${coords.repo}/git/trees/${ref}?recursive=1`);
+    const blobs = data.tree.filter((e) => e.type === "blob");
     return {
-      paths: data.tree.filter((e) => e.type === "blob").map((e) => e.path),
+      paths: blobs.map((e) => e.path),
+      // Blob ids, for comparing content without downloading it (P5.B.3.g).
+      entries: blobs.map((e) => ({ path: e.path, sha: e.sha ?? "" })),
       truncated: data.truncated === true,
     };
   }

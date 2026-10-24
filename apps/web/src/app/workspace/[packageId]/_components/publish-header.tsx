@@ -25,6 +25,7 @@ export interface PublishingState {
 }
 import { publishSiteAction } from "../site-actions";
 import { registerPackageAction, unregisterPackageAction } from "../portal-actions";
+import { OutsideChangesControl } from "./outside-changes-control";
 
 type GateFailure = { name: string; message: string };
 
@@ -364,6 +365,9 @@ export function PublishHeader({
           />
         )}
       </div>
+
+      {/* Loop r3 (P5.B.3.g): the control the save refusal names. */}
+      {published && <OutsideChangesControl packageId={packageId} onChanged={onChanged} />}
 
       {(error || warning || gateFailures.length > 0) && (
         <div className="max-w-sm text-right text-xs">

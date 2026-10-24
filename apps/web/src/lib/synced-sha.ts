@@ -57,12 +57,24 @@ export async function advanceSyncedSha(
 }
 
 /**
- * After Alembic's own commit to the public repo: advance the pointer to it
- * ONLY when the commit was built directly on the synced point (`parentSha ===
- * synced`), or nothing was ever synced. Otherwise a commit made outside
- * Alembic sits in between; the pointer stays so reconcile still sees it.
- * Best-effort: the commit already landed, so a bookkeeping failure is logged,
- * never reported as a failed save.
+ * After Alembic's own commit to the public repo: advance the pointer
+ * `parentSha` → `commitSha` by compare-and-set — it moves only when it still
+ * holds the commit's PARENT (or, never synced, null). So:
+ *
+ *  - a commit built on the synced point advances it (as always);
+ *  - a commit built on Alembic's OWN previous commit advances it too, once
+ *    that commit's pointer write has landed (loop r3, P5.B.3.g: two tabs
+ *    saving at once used to strand the pointer one commit behind, and the
+ *    second tab's files were then refused forever);
+ *  - a commit built on a change made outside Alembic never moves it past
+ *    that change (MEDIUM-4, P5.B.3.f): the pointer holds the point before
+ *    the outside commit, not its parent, so the swap does not apply and
+ *    reconcile still sees the outside change.
+ *
+ * Best-effort: the commit already landed, so a bookkeeping failure is
+ * retried once and then logged, never reported as a failed save. A pointer
+ * left behind is repaired by the next save (the committer reconciles, finds
+ * nothing new in Alembic's own commit, and retries).
  */
 export async function recordOwnCommit(
   supabase: SupabaseClient,
@@ -70,17 +82,22 @@ export async function recordOwnCommit(
   synced: string | null,
   result: { commitSha: string; parentSha: string },
 ): Promise<void> {
-  try {
-    if (synced !== null && result.parentSha !== synced) {
-      console.warn(
-        `[sync] ${packageId}: outside changes since ${synced.slice(0, 7)}; synced pointer left for reconcile`,
-      );
+  if (result.commitSha === result.parentSha) return; // nothing new was committed
+  const from = synced === null ? null : result.parentSha;
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      const moved = await advanceSyncedSha(supabase, packageId, from, result.commitSha);
+      if (!moved) {
+        console.warn(
+          `[sync] ${packageId}: synced pointer not at ${from?.slice(0, 7) ?? "(none)"} (outside change or concurrent save); left for reconcile`,
+        );
+      }
       return;
+    } catch (err) {
+      console.warn(
+        `[sync] ${packageId}: pointer update failed (attempt ${attempt}):`,
+        err instanceof Error ? err.message : err,
+      );
     }
-    if (result.commitSha === synced) return; // nothing new was committed
-    const moved = await advanceSyncedSha(supabase, packageId, synced, result.commitSha);
-    if (!moved) console.warn(`[sync] ${packageId}: synced pointer moved concurrently; left as is`);
-  } catch (err) {
-    console.warn(`[sync] ${packageId}: pointer update failed:`, err instanceof Error ? err.message : err);
   }
 }

@@ -13,12 +13,12 @@ import {
   reconcilePublicRepo,
   type PackageStore,
   type ReconcileOutcome,
-  type RepoReader,
 } from "@alembic/package-ops";
 import { registerChanges, syncPackageRegistry } from "@/lib/register";
 import { refreshManifestAfterReconcile } from "@/lib/reconcile-manifest";
 import { recordedPublicRepo } from "@/lib/recorded-repo";
 import { recordSyncedSha, syncedShaFor } from "./synced-sha";
+import { githubRepoReader } from "./repo-reader";
 import { flushDiscovery } from "@/lib/discovery-flush";
 
 export interface GithubConfig {
@@ -126,15 +126,6 @@ export async function clientForUser(
 
 export { advanceSyncedSha, recordOwnCommit, recordSyncedSha, syncedShaFor } from "./synced-sha";
 
-/** A network-backed RepoReader over the public repo (keeps package-ops IO-free). */
-function githubRepoReader(client: GitHubClient, coords: RepoCoords): RepoReader {
-  return {
-    getHeadSha: async () => (await client.getBranchHead(coords)).commitSha,
-    listChangedPaths: (base, head) => client.compareCommits(coords, base, head),
-    readFileAtRef: (path, ref) => client.getFileAtRef(coords, path, ref),
-  };
-}
-
 /**
  * Reconcile a GitHub-backed package's public repo against external edits (M20):
  * detect foreign commits past the last-synced SHA, rebuild the projection, and
@@ -158,7 +149,9 @@ export async function reconcilePackage(
   const lastSyncedSha = await syncedShaFor(supabase, packageId);
   const outcome = await reconcilePublicRepo(store, packageId, {
     lastSyncedSha,
-    reader: githubRepoReader(gh.client, coords),
+    // Falls back to a whole-tree comparison when GitHub's compare cannot
+    // list everything (loop r3, P5.B.3.g / P5.B.3.j).
+    reader: githubRepoReader(gh.client, coords, { store, packageId }),
   });
   // Advance the synced pointer only when the repo state is clean (up-to-date or
   // cleanly absorbed). A quarantine leaves it untouched so the divergence stays
