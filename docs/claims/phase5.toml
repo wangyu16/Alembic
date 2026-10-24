@@ -2086,10 +2086,11 @@ bound_to = [
   "packages/package-ops/src/reconcile.r4.test.ts :: a save that lands while reconcile runs is kept: every absorb is compare-and-set against the copy it read",
   "packages/package-ops/src/reconcile.r4.test.ts :: text that is not text is held back by path; nothing is written",
   "packages/github-bridge/src/commit.r4.test.ts :: a file the contents API does not inline is read through the blobs API, by the blob id it names",
+  "packages/github-bridge/src/commit.r4.test.ts :: getFileAtRef reads a file over the inline limit whole (it used to return an empty string)",
   "apps/web/src/lib/store-cas-conformance.test.ts :: a 2 MB file is compared and set like any other; a stale large expectation conflicts",
   "apps/web/src/lib/store-cas-conformance.test.ts :: deleteFileIf removes the file only while it still holds the expected content",
 ]
-note = "Loop r4 HIGH-3 (probes /tmp/p5r4/commit/r4.test.ts R4-5, R4-6) + the r3 store-regression LOW. Code only: SupabaseSandboxStore compares by sandbox_files.content_sha256 (generated column, 0027) instead of the content (which rides in the request URL). Binary vs text is decided by the file name (isBinaryPath, the upload door's rule)."
+note = "Loop r4 HIGH-3 (probes /tmp/p5r4/commit/r4.test.ts R4-5, R4-6) + the r3 store-regression LOW. Code only: SupabaseSandboxStore compares by sandbox_files.content_sha256 (generated column, 0027) instead of the content (which rides in the request URL). Binary vs text is decided by the file name (isBinaryPath, the upload door's rule). Siblings: getFileAtRef (restore, accessibility audit) reads past 1 MB too; the restore decodes strictly."
 
 [[claim]]
 id = "P5.B.3.l"

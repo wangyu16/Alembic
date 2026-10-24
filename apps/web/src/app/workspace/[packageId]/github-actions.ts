@@ -30,6 +30,7 @@ import { flushDiscovery } from "@/lib/discovery-flush";
 import { committerFor } from "@/lib/committer";
 import { finishPublishedManifest, type PublishedRepos } from "@/lib/publish-finish";
 import { commitLateSaves, snapshotOf } from "@/lib/publish-catchup";
+import { storedForm } from "@/lib/repo-reader";
 
 /**
  * Create a repo from a template, but tolerate a re-run after a partial publish:
@@ -411,7 +412,11 @@ export async function restoreStudyGuideAction(
 
   try {
     const coords = { owner: repo.owner, repo: repo.name };
-    const content = await gh.client.getFileAtRef(coords, path, commitSha);
+    // Exact bytes, strictly decoded (loop r4, P5.B.3.k sibling): a chapter
+    // over 1 MB used to come back empty, and bytes that aren't text would have
+    // been restored with replacement characters (storedForm refuses them).
+    const bytes = await gh.client.getFileBytesAtRef(coords, path, commitSha);
+    const content = bytes === null ? null : storedForm(path, bytes);
     if (content === null) {
       return { ok: false, error: "That version has nothing to restore for this page." };
     }

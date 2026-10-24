@@ -56,4 +56,15 @@ describe("bridge, loop r4", () => {
       }
     }
   });
+
+  it("[P5.B.3.k] getFileAtRef reads a file over the inline limit whole (it used to return an empty string)", async () => {
+    const text = "x".repeat(1_200_000);
+    const fetchImpl: FetchLike = async (url) => {
+      if (url.includes("/contents/")) return ok({ content: "", encoding: "none", sha: "b2", size: text.length });
+      if (url.endsWith("/git/blobs/b2")) return ok({ content: Buffer.from(text).toString("base64"), encoding: "base64" });
+      throw new Error(url);
+    };
+    expect(await new GitHubClient("t", fetchImpl).getFileAtRef(coords, "slides/a.slides.html", "h")).toBe(text);
+  });
 });
+

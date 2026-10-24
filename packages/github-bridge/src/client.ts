@@ -700,7 +700,10 @@ export class GitHubClient {
       if (e instanceof GitHubError && e.status === 404) return null;
       throw e;
     }
-    if (data.encoding === "base64" && typeof data.content === "string") {
+    if (
+      typeof data.content === "string" &&
+      (data.encoding === "base64" || (data.encoding === undefined && data.content !== ""))
+    ) {
       return Buffer.from(data.content, "base64");
     }
     let sha = data.sha;
@@ -722,21 +725,17 @@ export class GitHubClient {
     return Buffer.from(data.content, "base64");
   }
 
-  /** Read a UTF-8 file at a ref (commit/branch). Returns null if absent. */
+  /**
+   * Read a UTF-8 file at a ref (commit/branch). Returns null if absent. Loop
+   * r4 (P5.B.3.k sibling): a file over the contents API's 1 MB inline limit is
+   * read whole through the blobs API — before r4 it came back as "".
+   */
   async getFileAtRef(
     coords: RepoCoords,
     path: string,
     ref: string,
   ): Promise<string | null> {
-    try {
-      const data = await this.request<{ content: string; encoding: string }>(
-        "GET",
-        `/repos/${coords.owner}/${coords.repo}/contents/${path}?ref=${ref}`,
-      );
-      return Buffer.from(data.content, "base64").toString("utf8");
-    } catch (e) {
-      if (e instanceof GitHubError && e.status === 404) return null;
-      throw e;
-    }
+    const bytes = await this.getFileBytesAtRef(coords, path, ref);
+    return bytes === null ? null : Buffer.from(bytes).toString("utf8");
   }
 }

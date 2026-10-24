@@ -83,7 +83,9 @@ A)"). Part B (SQL / discovery) is a parallel branch, `phase5/loop-r4b`.
   (the git blobs API past 1 MB), stores binaries (by name, the upload door's rule) as base64, holds back text that is
   not UTF-8, and absorbs each path by compare-and-set against the copy it read — a save landing meanwhile is kept
   (closes the r3 store-regression LOW). `SupabaseSandboxStore` compare-and-sets by `content_sha256` (the 0027
-  generated column), not the content, which rode in the request URL; new `deleteFileIf`.
+  generated column), not the content, which rode in the request URL; new `deleteFileIf`. Siblings: the bridge's
+  `getFileAtRef` (chapter restore, accessibility audit) also returned "" past 1 MB — now reads whole; the restore
+  decodes strictly.
 - ✅ **HIGH-4 — one held-back outside change locked the course file by file (P5.B.3.l).** Every file Alembic saved
   joined the guarded range behind the held-back commit and was refused on its next save (R4-7). Now a save whose
   files are not involved commits on the head reconcile saw (the pointer still never passes the held-back change);
@@ -98,7 +100,8 @@ A)"). Part B (SQL / discovery) is a parallel branch, `phase5/loop-r4b`.
   the new one); `writeThrough` refuses — "This file changed since you opened it — reload to see the newer
   version", not retryable — when the stored copy moved on. The committer re-checks after reading the synced point
   and before the post-reconcile retry, so that retry is safe by construction; trial saves land by compare-and-set
-  (R4-2, R4-3, R4-4).
+  (R4-2, R4-3, R4-4). OPEN (sibling, not an editor): "Replace" (upload an offline-edited copy) carries no base,
+  so it can still overwrite a save made after the download.
 - ✅ **R4-1 — two tabs saving different files at the same moment: the second got a generic failure (P5.B.3.n).** A
   422 "not a fast forward" is now rebuilt on the new head once, the outside-change guard re-run.
 - ✅ **MEDIUM-5 — a save made in another tab during the ~10 s publish never reached the online copy (P5.B.3.o).**
