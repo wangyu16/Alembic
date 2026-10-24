@@ -75,7 +75,15 @@ export interface PublishedReader {
 }
 
 export type A11yAuditSource =
-  | { ok: true; store: PackageStore; published: boolean; repo: RepoRef | null }
+  | {
+      ok: true;
+      store: PackageStore;
+      published: boolean;
+      repo: RepoRef | null;
+      /** The public head audited (published only): recorded with the result,
+       *  which expires when the recorded head moves on (0030_loop_r3c_4, P5.S.3.i). */
+      headSha: string | null;
+    }
   | { ok: false; error: string };
 
 /**
@@ -90,7 +98,7 @@ export async function a11yAuditSource(
   connect: () => Promise<PublishedReader | null>,
 ): Promise<A11yAuditSource> {
   if (!record) return { ok: false, error: "We couldn't find this course." };
-  if (record.storage !== "github") return { ok: true, store, published: false, repo: null };
+  if (record.storage !== "github") return { ok: true, store, published: false, repo: null, headSha: null };
   const repo = recordedPublicRepo(record);
   if (!repo) {
     return { ok: false, error: "This course's published copy isn't recorded yet. Publish it again, then re-run the check." };
@@ -103,6 +111,7 @@ export async function a11yAuditSource(
     ok: true,
     published: true,
     repo,
+    headSha: head,
     store: publishedReadStore(store, (path) => client.getFileAtRef(coords, path, head)),
   };
 }

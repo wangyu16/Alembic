@@ -1760,6 +1760,8 @@ bound_to = [
   "apps/web/src/lib/loop-r3c-identity.sql.test.ts :: the internal functions stay closed to the API roles",
   "apps/web/src/lib/loop-r3c-queue.sql.test.ts :: the queue functions keep r2c rules and carry r3c's (cursor restart, lock first, back-off, age)",
   "apps/web/src/lib/loop-r3c-queue.sql.test.ts :: the internal functions stay closed to the API roles",
+  "apps/web/src/lib/loop-r3c-listing.sql.test.ts :: every trigger of rounds r1b, r2, r2c and this r3c migration is installed",
+  "apps/web/src/lib/loop-r3c-listing.sql.test.ts :: the internal functions stay closed to the API roles",
 ]
 note = "Loop r2 correctness, the composition rule (round 1's 0026 silently reverted 0025_2). A future migration that redefines one of these functions must keep the markers or update this test deliberately."
 
@@ -1875,3 +1877,30 @@ bound_to = [
   "apps/web/src/lib/discovery-flush.test.ts :: reads the queue's age with the service client for the admin page; unavailable is null, never 0",
 ]
 note = "Loop r3 correctness M3-2 + security LOW-2. Migration 0030_loop_r3c_3. OWNER ACTION: enable pg_cron in Supabase (Database → Extensions) — the migration schedules the job only when cron.schedule exists; the header carries the one-line schedule statement for enabling it later."
+
+[[claim]]
+id = "P5.S.3.h"
+claim = "The anon-readable listing row's accessibility status is always the server's own check (packages.a11y_status): the database sets it on every insert or update whatever the writer sends, and carries a new check into it; registerPackageAction no longer sends the owner-written manifest field."
+oracle = "probe"
+bound_to = [
+  "apps/web/src/lib/loop-r3c-listing.sql.test.ts :: the listing row's accessibility status is the server's check, whatever the writer sends, and follows a new check",
+]
+note = "Security loop r3 LOW-3. Migration 0030_loop_r3c_4 (§1); code drops accessibility_status from the listing snapshot."
+
+[[claim]]
+id = "P5.S.3.i"
+claim = "A recorded accessibility result names the public head it audited (packages.a11y_checked_sha, service role only); when the recorded head (last_synced_sha) moves to anything else the status becomes unknown (not checked) and stays so until a new check, including when the head moves back; checks recorded before the migration count as checked at the head of that moment."
+oracle = "probe"
+bound_to = [
+  "apps/web/src/lib/loop-r3c-listing.sql.test.ts :: a check describes the head it audited: when the recorded head moves on, the course shows not checked",
+]
+note = "Security loop r3 LOW-4. Migration 0030_loop_r3c_4 (§2). Accepted: any later published change (a course-details save included) expires the check; an outside commit that does not move the recorded head does not."
+
+[[claim]]
+id = "P5.S.1.h"
+claim = "Unlisting and listing a course again keeps its first listing time (listed_at), so listing recency cannot be refreshed at will; the first-listing ledger is closed to every API role."
+oracle = "probe"
+bound_to = [
+  "apps/web/src/lib/loop-r3c-listing.sql.test.ts :: unlisting and listing again keeps the first listing time (recency cannot be refreshed at will)",
+]
+note = "Security loop r3 LOW-5. Migration 0030_loop_r3c_4 (§3). DOCUMENTED, not changed (DecisionLog 2026-10-24): the 200-pending inbox cap can be filled by ≥ 10 real accounts; concurrent arrivals may overshoot it by the concurrency."

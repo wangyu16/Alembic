@@ -88,6 +88,12 @@ fixed here too (its later fixes build on this branch).
   enabled; `discovery_pending_health()` / `discovery_pending_overdue` (service role) and an admin-page line; failures
   back off 1, 2, 4 … min (≤ 1 h) for every drain. 🔴 **OWNER ACTION:** enable pg_cron in Supabase (Database →
   Extensions) before applying `0030_loop_r3c_3`, or run the `cron.schedule(…)` line from its header afterwards.
+- ✅ **Security LOW-3/4/5 — listing signals the owner could steer (P5.S.3.h, P5.S.3.i, P5.S.1.h).** The anon-readable
+  listing row copied the owner-written manifest accessibility status (now the database sets it from
+  `packages.a11y_status`); a "pass" survived every later save (now a check records the head it audited,
+  `a11y_checked_sha`, and the status shows "not checked" once the recorded head moves); unlist + re-list refreshed
+  "newly listed" (now the first listing time is kept, private `listing_history`). `0030_loop_r3c_4`; the inbox cap
+  and its count race are documented, not changed (DecisionLog 2026-10-24).
 
 **Phase 5 closed-loop verification — round 2, steps 4–5: correctness audit probes and class fixes (2026-10-23,
 branch `phase5/loop-r2-cor`, built on `phase5/loop-r2-sec`, not merged, migrations `0029_loop_r2c_*` NOT applied).**

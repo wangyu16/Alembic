@@ -105,6 +105,7 @@ export async function recheckA11yAction(packageId: string): Promise<RecheckResul
       await packageTrustWriter(createServiceClient).recordA11yCheck(packageId, user.id, {
         status: status.status,
         checkedAt: status.checkedAt,
+        checkedSha: source.headSha,
       });
     }
 

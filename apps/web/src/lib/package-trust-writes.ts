@@ -9,7 +9,9 @@ import type { PackageManifest } from "@alembic/package-contract";
  *                                          GitHub App created the repos under
  *                                          the educator's own installation;
  *   archived_at                          — archive / restore;
- *   a11y_status, a11y_checked_at         — the server-side accessibility check.
+ *   a11y_status, a11y_checked_at,
+ *   a11y_checked_sha                     — the server-side accessibility check
+ *                                          and the public head it audited.
  *
  * Since 0025 the API roles cannot write these columns at all (column grants),
  * so an owner can no longer publish a trial course, un-archive it, re-point
@@ -41,7 +43,8 @@ export interface ListingSnapshot {
   license: string;
   public_repo_url: string;
   site_url: string;
-  accessibility_status: string;
+  // (accessibility_status is NOT part of the snapshot: the database sets it
+  // from packages.a11y_status — 0030_loop_r3c_4, security r3 LOW-3, P5.S.3.h.)
 }
 
 async function ownerScopedUpdate(
@@ -121,11 +124,14 @@ export function packageTrustWriter(serviceFactory: ServiceFactory) {
     recordA11yCheck(
       packageId: string,
       ownerId: string,
-      v: { status: "pass" | "warn" | "fail" | "unknown"; checkedAt: string },
+      v: { status: "pass" | "warn" | "fail" | "unknown"; checkedAt: string; checkedSha?: string | null },
     ): Promise<TrustWriteResult> {
+      // The head it audited goes with it: when the recorded public head moves
+      // on, the database resets the status to "not checked" (P5.S.3.i).
       return ownerScopedUpdate(serviceFactory(), packageId, ownerId, {
         a11y_status: v.status,
         a11y_checked_at: v.checkedAt,
+        ...(v.checkedSha !== undefined ? { a11y_checked_sha: v.checkedSha } : {}),
       });
     },
   };

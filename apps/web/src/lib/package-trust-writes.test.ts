@@ -120,7 +120,6 @@ describe("NEW-5 the listing row is written by the server, scoped to the owner", 
     license: "CC-BY-4.0",
     public_repo_url: "https://github.com/edu/c-oer",
     site_url: "https://edu.github.io/c-oer/",
-    accessibility_status: "unknown",
   };
 
   it("[P5.S.1.f] recordListing proves the package is the owner's, then upserts naming that owner", async () => {

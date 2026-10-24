@@ -90,7 +90,8 @@ export async function registerPackageAction(
     license: record!.manifest.license,
     public_repo_url: repoUrl(repo),
     site_url: `https://${repo.owner}.github.io/${repo.name}/`,
-    accessibility_status: record!.manifest.accessibility?.status ?? "unknown",
+    // (no accessibility_status: the database copies the server's own check,
+    // packages.a11y_status — never the owner-written manifest field; P5.S.3.h)
   });
   if (!listed.ok) {
     return { ok: false, error: "Could not list the package. Please try again." };
