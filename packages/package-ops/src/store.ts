@@ -108,4 +108,14 @@ export interface PackageStore {
     file: PackageFile,
     expected: { content: string } | null,
   ): Promise<"ok" | "conflict">;
+  /**
+   * Optional (loop r4, P5.B.3.k): delete ONE file only if its stored content is
+   * still `expected.content` — the compare-and-set reconcile absorbs a removal
+   * with. Absent → the caller re-reads and compares just before deleting.
+   */
+  deleteFileIf?(
+    packageId: string,
+    file: { repo: RepoKind; path: string },
+    expected: { content: string },
+  ): Promise<"ok" | "conflict">;
 }

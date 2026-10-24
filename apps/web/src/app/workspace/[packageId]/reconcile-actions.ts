@@ -2,10 +2,15 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { assertPathAllowedInEitherContract } from "@alembic/package-contract";
+import { writeThrough, type ReconcileOutcome, type WriteThroughChange } from "@alembic/package-ops";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
 import { supabaseEventLogger } from "@/lib/events";
 import { reconcilePackage, scanPublicRepoForLeaks } from "@/lib/github";
+import { committerFor } from "@/lib/committer";
+import { isBinaryPath } from "@/lib/collection-upload";
+import { saveFailureMessage } from "@/lib/editor-save";
 
 async function requireUser() {
   const supabase = await createSupabaseServerClient();
@@ -23,7 +28,41 @@ export interface ReconcileResult {
   changedPaths?: string[];
   /** Invariant violations that blocked absorption (the leak / corruption case). */
   violations?: string[];
+  /**
+   * Loop r4 (P5.B.3.l), held back only: the files whose outside change
+   * Alembic can't accept — split into those Alembic's own version can
+   * replace (`keepable`) and those that must be removed where they were
+   * added (`removeOutside`: a file that never belongs in the public course).
+   * Until they are resolved, saves of them (and of any file whose outside
+   * change is held back with them) are refused; every other file saves.
+   */
+  keepable?: string[];
+  removeOutside?: string[];
+  /** The outside state the educator is shown (the "keep" action overwrites
+   *  exactly this, never a later change). */
+  seenAt?: string;
   error?: string;
+}
+
+/** Which held-back files Alembic's version can replace (loop r4, P5.B.3.l). */
+function heldBack(outcome: Extract<ReconcileOutcome, { status: "quarantined" }>): {
+  keepable: string[];
+  removeOutside: string[];
+} {
+  const keepable: string[] = [];
+  const removeOutside: string[] = [];
+  // Only the files the violations are about: once they are resolved, the
+  // course's other outside changes (held back with them) are brought in by
+  // the next check, so keeping Alembic's version never reverts a clean edit.
+  for (const path of new Set(outcome.violationPaths)) {
+    try {
+      assertPathAllowedInEitherContract(path, "public");
+      keepable.push(path);
+    } catch {
+      removeOutside.push(path);
+    }
+  }
+  return { keepable: keepable.sort(), removeOutside: removeOutside.sort() };
 }
 
 /**
@@ -62,12 +101,81 @@ export async function reconcilePackageAction(
         detail: { violations: outcome.violations.length },
         occurredAt: new Date().toISOString(),
       });
-      return { ok: true, status: "quarantined", violations: outcome.violations };
+      return {
+        ok: true,
+        status: "quarantined",
+        violations: outcome.violations,
+        ...heldBack(outcome),
+        seenAt: outcome.headSha,
+      };
     }
 
     return { ok: true, status: "up-to-date" };
   } catch {
     return { ok: false, error: "Couldn't check for outside changes. Please try again." };
+  }
+}
+
+/**
+ * Loop r4 (P5.B.3.l) — "Keep Alembic's version": replace an outside change
+ * Alembic can't bring in with the copy Alembic has, for the files the
+ * educator was shown. Overwrites only the outside state they saw (`seenAt`):
+ * if the course changed again meanwhile, nothing is written and they are asked
+ * to check again. A file that never belongs in the public course is not
+ * touched here (it has to be removed where it was added). Then the course is
+ * checked again, so a now-clean course is fully in step.
+ */
+export async function keepAlembicVersionAction(
+  packageId: string,
+  seenAt: string,
+  paths: string[],
+): Promise<ReconcileResult> {
+  const { supabase, user } = await requireUser();
+  const store = new SupabaseSandboxStore(supabase);
+  const again = "This course was changed outside Alembic again since you checked. Check again, then decide.";
+  try {
+    const now = await reconcilePackage(supabase, store, user.id, packageId);
+    if (!now) return { ok: true, status: "not-connected" };
+    if (now.status !== "quarantined") return reconcilePackageAction(packageId);
+    if (now.headSha !== seenAt) return { ok: false, error: again };
+    const { keepable } = heldBack(now);
+    const chosen = paths.filter((p) => keepable.includes(p));
+    if (chosen.length === 0) return reconcilePackageAction(packageId);
+
+    const resolved = await committerFor(supabase, store, user.id, packageId);
+    if (resolved.kind !== "github") {
+      return { ok: false, error: resolved.kind === "unavailable" ? resolved.reason : "This course isn't saved online." };
+    }
+    const changes: WriteThroughChange[] = [];
+    for (const path of chosen) {
+      const ours = await store.readFile(packageId, "public", path);
+      changes.push(
+        ours === null
+          ? { repo: "public", path, content: null }
+          : { repo: "public", path, content: ours, ...(isBinaryPath(path) ? { encoding: "base64" as const } : {}) },
+      );
+    }
+    await writeThrough(store, resolved.committer, packageId, {
+      changes,
+      summary: "Keep Alembic's version (Alembic)",
+      overwriteSeenAt: seenAt,
+    });
+    try {
+      await supabaseEventLogger(supabase).log({
+        type: "reconcile.completed",
+        userId: user.id,
+        packageId,
+        detail: { changed: chosen.length },
+        occurredAt: new Date().toISOString(),
+      });
+    } catch {
+      /* research logging never breaks an educator workflow */
+    }
+    revalidatePath(`/workspace/${packageId}`);
+    return reconcilePackageAction(packageId);
+  } catch (e) {
+    const { message } = saveFailureMessage(e);
+    return { ok: false, error: message };
   }
 }
 

@@ -8,6 +8,7 @@ import {
   isSeededOnCreate,
   newDocId,
   parseStudyGuide,
+  sha256Hex,
   slotRepo,
   validateBlockIds,
   type CollectionScope,
@@ -175,13 +176,14 @@ export async function loadCollectionFileAction(
   packageId: string,
   repo: "public" | "private",
   path: string,
-): Promise<{ ok: boolean; content?: string; error?: string }> {
+): Promise<{ ok: boolean; content?: string; contentHash?: string; error?: string }> {
   const { supabase } = await requireUser();
   const store = new SupabaseSandboxStore(supabase);
   // ONE row: this runs on every click that opens a file.
   const content = await store.readFile(packageId, repo, path);
   if (content === null) return { ok: false, error: "That file no longer exists." };
-  return { ok: true, content };
+  // Loop r4 (P5.B.3.m): the editor's save is based on exactly this version.
+  return { ok: true, content, contentHash: await sha256Hex(content) };
 }
 
 /**
@@ -299,7 +301,10 @@ export async function saveCollectionFileAction(
   space: string,
   path: string,
   content: string,
-): Promise<{ ok: boolean; error?: string }> {
+  /** Loop r4 (P5.B.3.m): the digest of the stored copy the editor loaded
+   *  (`loadCollectionFileAction`'s `contentHash`; null = no file yet). */
+  baseHash?: string | null,
+): Promise<{ ok: boolean; error?: string; contentHash?: string }> {
   const { supabase, user } = await requireUser();
   const repo = repoOf(space);
   const clean = path.replace(/^\/+/, "");
@@ -313,7 +318,9 @@ export async function saveCollectionFileAction(
   const rewritten = await rewriteMarkdownRefs(supabase, packageId, repo, clean, content);
 
   const store = new SupabaseSandboxStore(supabase);
-  const changes = [{ repo, path: clean, content: rewritten }];
+  const changes = [
+    { repo, path: clean, content: rewritten, ...(baseHash !== undefined ? { baseHash } : {}) },
+  ];
   const written = await writeChanges({
     store,
     resolution: await committerFor(supabase, store, user.id, packageId),
@@ -323,7 +330,7 @@ export async function saveCollectionFileAction(
   });
   if (!written.ok) return { ok: false, error: written.error };
   revalidatePath(`/workspace/${packageId}`);
-  return { ok: true };
+  return { ok: true, contentHash: await sha256Hex(rewritten) };
 }
 
 // ── Upload-to-replace: offline document round-trip (U1) ──────────────────────

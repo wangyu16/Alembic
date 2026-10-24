@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   parseManifest,
+  sha256Hex,
   type PackageManifest,
 } from "@alembic/package-contract";
 import type {
@@ -210,15 +211,37 @@ export class SupabaseSandboxStore implements PackageStore {
       throw new Error(`Could not save files: ${error.message}`);
     }
 
+    // Compared by the stored digest column (`content_sha256`, generated from
+    // `content`), not by the content itself: a content filter travels in the
+    // request URL, which a file of any size would overflow (loop r4: reconcile
+    // absorbs every path by compare-and-set, large files included).
     const { data, error } = await this.supabase
       .from("sandbox_files")
       .update({ content: file.content })
       .eq("package_id", packageId)
       .eq("repo", file.repo)
       .eq("path", file.path)
-      .eq("content", expected.content)
+      .eq("content_sha256", await sha256Hex(expected.content))
       .select("path");
     if (error) throw new Error(`Could not save files: ${error.message}`);
+    return (data?.length ?? 0) > 0 ? "ok" : "conflict";
+  }
+
+  /** Delete one file only if it still holds `expected` (loop r4, P5.B.3.k). */
+  async deleteFileIf(
+    packageId: string,
+    file: { repo: "public" | "private"; path: string },
+    expected: { content: string },
+  ): Promise<"ok" | "conflict"> {
+    const { data, error } = await this.supabase
+      .from("sandbox_files")
+      .delete()
+      .eq("package_id", packageId)
+      .eq("repo", file.repo)
+      .eq("path", file.path)
+      .eq("content_sha256", await sha256Hex(expected.content))
+      .select("path");
+    if (error) throw new Error(`Could not delete file: ${error.message}`);
     return (data?.length ?? 0) > 0 ? "ok" : "conflict";
   }
 }

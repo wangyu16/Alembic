@@ -88,13 +88,15 @@ export const CHANGED_OUTSIDE_BROUGHT_IN =
   "changes have now been brought into Alembic \u2014 reopen the file to see " +
   "them, then make your change again. Nothing from this save was written.";
 
-/** Loop r3: the outside change cannot be brought in (it breaks the course's
- *  rules), so saves of the files it touched stay blocked until it is fixed. */
+/** Loop r3/r4: an outside change to THIS file cannot be brought in (it breaks
+ *  the course's rules, or comes with one that does), so this file stays
+ *  blocked until it is fixed or Alembic's version is kept. Other files save
+ *  normally (loop r4, P5.B.3.l). */
 export const CHANGED_OUTSIDE_HELD_BACK =
-  "This course was changed outside Alembic, and those changes can't be " +
-  "brought in automatically, so this change wasn't saved \u2014 nothing was " +
-  "changed. Use \u201cCheck for outside changes\u201d at the top of the " +
-  "course page to see what needs fixing.";
+  "This file was changed outside Alembic in a way that can't be brought in " +
+  "automatically, so this change wasn't saved \u2014 nothing was changed. Use " +
+  "\u201cCheck for outside changes\u201d at the top of the course page to see " +
+  "what needs fixing, or to keep Alembic's version.";
 
 const SAVE_FAILED =
   "We couldn't save this change to the package's online home. " +
@@ -210,10 +212,20 @@ export function githubCommitter(args: {
           "main",
           plan.repo === "public" ? { unchangedSince: since } : {},
         );
+      // Loop r4 (P5.B.3.m): the stored copies this save's edits were based on
+      // are still the stored ones — after reading the synced point (so an
+      // earlier save's commit is either in the guarded range or already in
+      // the store) and again before any retry.
+      const recheck = async () => {
+        if (plan.recheck) await plan.recheck();
+      };
+      await recheck();
 
       let result: { commitSha: string; parentSha: string };
       try {
-        result = await attempt(synced);
+        // "Keep Alembic's version" (loop r4, P5.B.3.l): outside changes up to
+        // the head the educator saw are overwritten; later ones still refuse.
+        result = await attempt(plan.overwriteSeenAt ?? synced);
       } catch (err) {
         if (!(err instanceof RemoteChangedError)) throw saveFailed(coords, plan.repo, err);
         console.warn(
@@ -235,16 +247,34 @@ export function githubCommitter(args: {
               })
           : null;
         if (!outcome) throw new CommitFailedError(CHANGED_OUTSIDE, err);
-        if (outcome.status === "quarantined") throw new CommitFailedError(CHANGED_OUTSIDE_HELD_BACK, err);
-        if (outcome.status === "absorbed") {
-          const ours = new Set(commitPlan.changes.map((c) => c.path));
-          if (outcome.changedPaths.some((p) => ours.has(p))) {
+        const ours = new Set(commitPlan.changes.map((c) => c.path));
+        // Loop r4 (P5.B.3.l): a held-back outside change blocks only the files
+        // it is about, or whose outside version it holds back. Any other save
+        // goes through, on the head reconcile saw — the synced point itself
+        // stays before the held-back commit (it moves only from a commit's
+        // parent), so the outside change stays visible until it is resolved.
+        // Before r4 a held-back change refused every save whose files had
+        // joined the guarded range — Alembic's own saves included — so the
+        // course locked up file by file.
+        let since: string | null;
+        if (outcome.status === "quarantined") {
+          const blocked = [...outcome.violationPaths, ...outcome.changedPaths];
+          if (blocked.some((p) => ours.has(p))) throw new CommitFailedError(CHANGED_OUTSIDE_HELD_BACK, err);
+          since = outcome.headSha;
+        } else {
+          if (outcome.status === "absorbed" && outcome.changedPaths.some((p) => ours.has(p))) {
             throw new CommitFailedError(CHANGED_OUTSIDE_BROUGHT_IN, err);
           }
+          try {
+            synced = await syncedShaFor(supabase, packageId);
+          } catch (e) {
+            throw saveFailed(coords, plan.repo, e);
+          }
+          since = synced;
         }
+        await recheck();
         try {
-          synced = await syncedShaFor(supabase, packageId);
-          result = await attempt(synced);
+          result = await attempt(since);
         } catch (again) {
           if (again instanceof RemoteChangedError) {
             console.warn(`[commit] ${coords.owner}/${coords.repo}: refused again after reconcile (${again.reason})`);

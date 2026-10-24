@@ -15,6 +15,7 @@
  * is a finding, not a detail.
  */
 
+import { createHash } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
@@ -58,10 +59,15 @@ function fakeSupabase(): SupabaseClient {
     let limit: number | null = null;
     let range: [number, number] | null = null;
 
+    // `content_sha256` is a generated column (0027): sha256 of the UTF-8 content.
+    const col = (r: Row, c: string): unknown =>
+      c === "content_sha256"
+        ? createHash("sha256").update(r.content, "utf8").digest("hex")
+        : (r as unknown as Record<string, unknown>)[c];
     function matching(): Row[] {
       return rows.filter(
         (r) =>
-          filters.every(([col, val]) => (r as unknown as Record<string, unknown>)[col] === val) &&
+          filters.every(([c, val]) => col(r, c) === val) &&
           gts.every(([col, val]) => String((r as unknown as Record<string, unknown>)[col]) > val),
       );
     }
@@ -94,8 +100,9 @@ function fakeSupabase(): SupabaseClient {
           return { data: hit.map((r) => ({ path: r.path })), error: null };
         }
         case "delete": {
-          for (const r of matching()) rows.splice(rows.indexOf(r), 1);
-          return { data: null, error: null };
+          const hit = matching();
+          for (const r of hit) rows.splice(rows.indexOf(r), 1);
+          return { data: hit.map((r) => ({ path: r.path })), error: null };
         }
         case "select": {
           const hit = [...matching()].sort((a, b) => {
@@ -285,6 +292,27 @@ describe.each(IMPLS)("replaceFileIf CAS conformance — %s", (_name, make) => {
         { content: "priv" },
       ),
     ).toBe("conflict");
+  });
+
+  it("[P5.B.3.k] a 2 MB file is compared and set like any other; a stale large expectation conflicts", async () => {
+    const store = make();
+    const packageId = await seed(store);
+    const big = "x".repeat(2_000_000);
+    await store.putFiles(packageId, [{ repo: "public", path: "slides/big.slides.html", content: big }]);
+    const file = { repo: "public" as const, path: "slides/big.slides.html", content: big + "y" };
+    expect(await store.replaceFileIf(packageId, file, { content: big + "z" })).toBe("conflict");
+    expect(await store.replaceFileIf(packageId, file, { content: big })).toBe("ok");
+    expect(await store.readFile(packageId, "public", "slides/big.slides.html")).toBe(big + "y");
+  });
+
+  it("[P5.B.3.k] deleteFileIf removes the file only while it still holds the expected content", async () => {
+    const store = make();
+    const packageId = await seed(store);
+    await store.putFiles(packageId, [{ repo: "public", path: "study-guide/a.md", content: "newer" }]);
+    expect(await store.deleteFileIf!(packageId, { repo: "public", path: "study-guide/a.md" }, { content: "older" })).toBe("conflict");
+    expect(await store.readFile(packageId, "public", "study-guide/a.md")).toBe("newer");
+    expect(await store.deleteFileIf!(packageId, { repo: "public", path: "study-guide/a.md" }, { content: "newer" })).toBe("ok");
+    expect(await store.readFile(packageId, "public", "study-guide/a.md")).toBeNull();
   });
 
   it("updateManifest end-to-end: a foreign write between read and CAS does not lose an update", async () => {

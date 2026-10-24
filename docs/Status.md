@@ -76,6 +76,44 @@ A)"). Part B (SQL / discovery) is a parallel branch, `phase5/loop-r4b`.
   slash, no extension, a lean `.md` name or URL-encoding follow the copy; `%40` pins are left. Deterministic in
   file order (lineage in path order; uid minter injectable). Residual: a concept-map node naming a block id shared
   by several chapters takes the first chapter's id (rule 5), whatever path the node names.
+- ✅ **HIGH-3 — reconcile could store a picture as mangled text, or a large file as empty (P5.B.3.k).** Reconcile read
+  every file as UTF-8 through the contents API, which inlines only ≤ 1 MB: Alembic's own PNG commit in a reconcile
+  range came back as replacement-character text (R4-6), an outside change to a > 1 MB deck as "" (R4-5). Now it
+  compares blob ids with the stored copy BEFORE reading (an unchanged file is never downloaded), reads exact bytes
+  (the git blobs API past 1 MB), stores binaries (by name, the upload door's rule) as base64, holds back text that is
+  not UTF-8, and absorbs each path by compare-and-set against the copy it read — a save landing meanwhile is kept
+  (closes the r3 store-regression LOW). `SupabaseSandboxStore` compare-and-sets by `content_sha256` (the 0027
+  generated column), not the content, which rode in the request URL; new `deleteFileIf`.
+- ✅ **HIGH-4 — one held-back outside change locked the course file by file (P5.B.3.l).** Every file Alembic saved
+  joined the guarded range behind the held-back commit and was refused on its next save (R4-7). Now a save whose
+  files are not involved commits on the head reconcile saw (the pointer still never passes the held-back change);
+  only files the violations are about, or whose clean outside version is held back with them, are refused. New
+  **"Keep Alembic's version"** in the "Check for outside changes" control (`keepAlembicVersionAction`): commits
+  Alembic's copy of the flagged files over exactly the outside state the educator saw (a later change still
+  refuses), then re-checks. The control now names only the blocked files and says the rest of the course saves; a
+  private-space file in the public course is not offered (remove it where it was added).
+- ✅ **MEDIUM-2/3 — a stale tab could overwrite a newer save or a just-absorbed outside fix (P5.B.3.m).** Every
+  editor save (hosted study guide + slides, block editor, file editor, collection editor, an applied AI rewrite)
+  sends the digest of the stored version it opened (`baseHash`; generate/load actions return it, each save returns
+  the new one); `writeThrough` refuses — "This file changed since you opened it — reload to see the newer
+  version", not retryable — when the stored copy moved on. The committer re-checks after reading the synced point
+  and before the post-reconcile retry, so that retry is safe by construction; trial saves land by compare-and-set
+  (R4-2, R4-3, R4-4).
+- ✅ **R4-1 — two tabs saving different files at the same moment: the second got a generic failure (P5.B.3.n).** A
+  422 "not a fast forward" is now rebuilt on the new head once, the outside-change guard re-run.
+- ✅ **MEDIUM-5 — a save made in another tab during the ~10 s publish never reached the online copy (P5.B.3.o).**
+  It was a trial save (store only) after the publish snapshot. Now, once the course is recorded as published,
+  every stored file that differs from the publish commits (incl. additions/deletions, both repos; not the course
+  details, which `finishPublishedManifest` merges) is committed through the committer, each commit re-checking the
+  store first (a newer save supersedes it). Best effort: a failure is logged; the file's next save carries it.
+- ✅ **LOWs.** The single-chapter restore registers the restored file (P5.B.3.h). P5.B.1.y reworded truthfully: the
+  first publish commit also writes `alembic.json` (into the new repository, before the course is published) —
+  pinned by a scan to that one place.
+- ✅ **Unasserted clauses bound.** P5.B.3.g (retried exactly once; refused again after reconcile; reconcile
+  failure), P5.B.1.x (a > 500-row chain is ONE call — call count), P5.B.3.j (its own end-to-end test),
+  P5.S.3.h (registerPackageAction sends no accessibility field — code, type and payload).
+- **Deploy (round 4 part A):** code only; no migration, no new environment variable. Works with part B's
+  migrations in either order.
 
 **Phase 5 closed-loop verification — round 3, steps 4–5: correctness audit (+ the round-3 security findings)
 probes and class fixes (2026-10-24, branch `phase5/loop-r3-cor` on `main` edc0d06, not merged, migrations

@@ -1,7 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { parseStudyGuide, serializeStudyGuide } from "@alembic/package-contract";
+import { parseStudyGuide, serializeStudyGuide, sha256Hex } from "@alembic/package-contract";
 import { loadStudyGuide, loadSlidesDeck, writeThrough } from "@alembic/package-ops";
 import { slidesSourceFromBlocks, deckThemeFromSource, withDeckTheme } from "@alembic/renderer";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -59,7 +59,21 @@ export interface ChapterHtmlResult {
    * `@/lib/editor-html-cache` and docs/specs/workspace-collections.md §2a.
    */
   theme?: string;
+  /**
+   * Loop r4 (P5.B.3.m): the SHA-256 of the stored file this editing surface was
+   * generated from (null = no file yet). The editor sends it back with its
+   * save, which is refused if the stored file has moved on since.
+   */
+  contentHash?: string | null;
   error?: string;
+}
+
+/** The stored file's digest (P5.B.3.m), read BEFORE the content it describes:
+ *  a save landing in between can only make a later save refuse, never let it
+ *  overwrite unseen text. */
+async function storedHash(store: SupabaseSandboxStore, packageId: string, path: string): Promise<string | null> {
+  const raw = await store.readFile(packageId, "public", path);
+  return raw === null ? null : sha256Hex(raw);
 }
 
 /** The public repo URL for a package's canonical `source`, or undefined for a
@@ -91,6 +105,7 @@ export async function generateChapterHtmlAction(
   try {
     const store = new SupabaseSandboxStore(supabase);
     const record = await store.getPackage(packageId);
+    const contentHash = await storedHash(store, packageId, path);
     const doc = await loadStudyGuide(store, packageId, path);
     const stored = serializeStudyGuide(doc.preamble, doc.blocks);
     // Nothing written yet and nothing asked for → report the empty slot.
@@ -106,7 +121,7 @@ export async function generateChapterHtmlAction(
     // copy is self-describing. `source` only exists once the package has a repo.
     const meta = record ? docMetaForPackage(record.manifest, { title, source: repoUrlOf(record) }) : undefined;
     const html = await generateEditableFile({ kind: "md", markdown, title, theme, metadata: meta });
-    return { ok: true, editable: true, html, theme };
+    return { ok: true, editable: true, html, theme, contentHash };
   } catch (e) {
     // No reachable worker / generation error — degrade to the block editor, but
     // surface + log a real generation failure so it isn't silently invisible.
@@ -138,6 +153,7 @@ export async function generateSlidesHtmlAction(
   try {
     const store = new SupabaseSandboxStore(supabase);
     const record = await store.getPackage(packageId);
+    const contentHash = await storedHash(store, packageId, path);
     const deck = await loadSlidesDeck(store, packageId, path);
     // Nothing authored yet and nothing asked for → report the empty slot.
     if (!deck.source.trim() && starter === undefined) return { ok: true, empty: true };
@@ -153,7 +169,7 @@ export async function generateSlidesHtmlAction(
     const source = theme ? withDeckTheme(seeded, theme) : seeded;
     const meta = record ? docMetaForPackage(record.manifest, { title, source: repoUrlOf(record) }) : undefined;
     const html = await generateEditableFile({ kind: "slides", markdown: source, title, theme, metadata: meta });
-    return { ok: true, editable: true, html, theme };
+    return { ok: true, editable: true, html, theme, contentHash };
   } catch (e) {
     // Don't silently degrade: a real orz-slides build failure (e.g. a deck the
     // pinned engine can't parse) was invisible before — surface + log it so the
@@ -182,7 +198,7 @@ export async function generateSlidesHtmlAction(
 export async function hostSaveSlidesAction(
   packageId: string,
   path: string,
-  payload: { source: string; theme?: string },
+  payload: { source: string; theme?: string; baseHash?: string | null },
 ): Promise<HostSaveResult> {
   const { supabase, user } = await requireUser();
   if (!payload.source.trim()) {
@@ -190,6 +206,7 @@ export async function hostSaveSlidesAction(
   }
   const store = new SupabaseSandboxStore(supabase);
   let committed: boolean;
+  let contentHash: string;
   try {
     const write = prepareSlidesSave(path, payload.source);
     const resolution = await committerFor(supabase, store, user.id, packageId);
@@ -200,9 +217,10 @@ export async function hostSaveSlidesAction(
       store,
       resolution.kind === "github" ? resolution.committer : null,
       packageId,
-      { changes: [write], summary: `Update ${path}` },
+      { changes: [withBase(write, payload.baseHash)], summary: `Update ${path}` },
     );
     committed = result.committed;
+    contentHash = await sha256Hex(write.content);
   } catch (e) {
     const { message, retryable } = saveFailureMessage(e);
     return { ok: false, error: message, retryable };
@@ -217,7 +235,7 @@ export async function hostSaveSlidesAction(
       /* keep the save even if the theme couldn't persist */
     }
   }
-  return { ok: true, committed };
+  return { ok: true, committed, contentHash };
 }
 
 export interface ChapterViewResult {
@@ -286,6 +304,17 @@ export interface HostSaveResult {
   committed?: boolean;
   retryable?: boolean;
   warning?: string;
+  /** Loop r4 (P5.B.3.m): the digest of what is now stored — the editor's next
+   *  save is based on it. */
+  contentHash?: string;
+}
+
+/** The change, with the loaded copy's digest when the editor sent one. */
+function withBase<T extends { repo: "public" | "private"; path: string; content: string }>(
+  write: T,
+  baseHash: string | null | undefined,
+): T & { baseHash?: string | null } {
+  return baseHash === undefined ? write : { ...write, baseHash };
 }
 
 /**
@@ -304,7 +333,7 @@ export interface HostSaveResult {
 export async function hostSaveStudyGuideAction(
   packageId: string,
   path: string,
-  payload: { source: string; theme?: string },
+  payload: { source: string; theme?: string; baseHash?: string | null },
 ): Promise<HostSaveResult> {
   const { supabase, user } = await requireUser();
   if (!payload.source.trim()) {
@@ -315,6 +344,7 @@ export async function hostSaveStudyGuideAction(
 
   let committed: boolean;
   let warning: string | undefined;
+  let contentHash: string;
   try {
     // 1. Parse + validate + canonicalize (mint IDs, reject broken ones,
     //    serialize, reference-guard). Nothing has been written yet.
@@ -333,9 +363,10 @@ export async function hostSaveStudyGuideAction(
       store,
       resolution.kind === "github" ? resolution.committer : null,
       packageId,
-      { changes: [write], summary: `Update ${path}` },
+      { changes: [withBase(write, payload.baseHash)], summary: `Update ${path}` },
     );
     committed = result.committed;
+    contentHash = await sha256Hex(write.content);
 
     // Research logging never breaks an educator workflow (CLAUDE.md).
     try {
@@ -369,5 +400,5 @@ export async function hostSaveStudyGuideAction(
 
   // The save landed; a note (e.g. "this isn't a section yet") rides along as the
   // in-file ack message, with `ok` still true.
-  return { ok: true, committed, ...(warning ? { warning, error: warning } : {}) };
+  return { ok: true, committed, contentHash, ...(warning ? { warning, error: warning } : {}) };
 }

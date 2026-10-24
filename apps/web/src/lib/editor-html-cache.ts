@@ -36,6 +36,9 @@ interface Entry {
   /** Resolved theme baked into `html` (server-resolved; see hosted-actions.ts). */
   theme?: string;
   html: string;
+  /** Loop r4 (P5.B.3.m): the stored version `html` shows (its digest; null =
+   *  no file yet) — what the next save is based on. Undefined = unknown. */
+  baseHash?: string | null;
 }
 
 // Most-recently-used LAST. Module-level → exactly one per browser tab, and it
@@ -65,6 +68,16 @@ export function peekEditorHtml(
   return i === -1 ? undefined : entries[i].html;
 }
 
+/** The stored version a cached document shows (loop r4, P5.B.3.m). */
+export function peekEditorBase(
+  packageId: string,
+  path: string,
+  title: string,
+): string | null | undefined {
+  const i = indexOf(packageId, path, title);
+  return i === -1 ? undefined : entries[i].baseHash;
+}
+
 /** Mark an entry most-recently-used. Call from an effect, never during render. */
 export function touchEditorHtml(packageId: string, path: string, title: string): void {
   const i = indexOf(packageId, path, title);
@@ -80,10 +93,11 @@ export function storeEditorHtml(
   title: string,
   html: string,
   theme?: string,
+  baseHash?: string | null,
 ): void {
   const i = indexOf(packageId, path, title);
   if (i !== -1) entries.splice(i, 1);
-  entries.push({ packageId, path, title, theme, html });
+  entries.push({ packageId, path, title, theme, html, baseHash });
   while (entries.length > MAX_ENTRIES) entries.shift();
 }
 
@@ -101,10 +115,12 @@ export function recordEditorSave(args: {
   title: string;
   rendered: string;
   theme?: string;
+  /** The digest of what the save stored (the next save's base). */
+  baseHash?: string | null;
 }): void {
-  const { packageId, path, title, rendered, theme } = args;
+  const { packageId, path, title, rendered, theme, baseHash } = args;
   const i = indexOf(packageId, path, title);
   const themeChanged = i !== -1 && entries[i].theme !== theme;
   if (themeChanged) entries.length = 0;
-  storeEditorHtml(packageId, path, title, rendered, theme);
+  storeEditorHtml(packageId, path, title, rendered, theme, baseHash);
 }

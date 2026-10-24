@@ -1,7 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import type { StudyGuideBlock } from "@alembic/package-contract";
+import { sha256Hex, type StudyGuideBlock } from "@alembic/package-contract";
 import {
   BlockIdIntegrityError,
   prepareStudyGuideSave,
@@ -20,6 +20,8 @@ export interface SaveResult {
   error?: string;
   /** Non-fatal note, e.g. the text saved but isn't a section yet. */
   warning?: string;
+  /** Loop r4 (P5.B.3.m): the digest of what is now stored (the next save's base). */
+  contentHash?: string;
 }
 
 /**
@@ -34,6 +36,9 @@ export interface SaveResult {
 export async function saveStudyGuideAction(
   packageId: string,
   doc: StudyGuideDoc,
+  /** Loop r4 (P5.B.3.m): the digest of the stored chapter the editor loaded
+   *  (null = no file yet); the save is refused if it moved on. */
+  baseHash?: string | null,
 ): Promise<SaveResult> {
   const supabase = await createSupabaseServerClient();
   const {
@@ -67,7 +72,7 @@ export async function saveStudyGuideAction(
     store,
     resolution,
     packageId,
-    changes: [file],
+    changes: [baseHash === undefined ? file : { ...file, baseHash }],
     summary: `Update ${doc.path}`,
   });
   if (!written.ok) return { ok: false, error: written.error };
@@ -92,5 +97,5 @@ export async function saveStudyGuideAction(
       ? 'Saved — but this needs a "## Heading" line above your text to count as a section. A single "#" is reserved for the page title; add "##" (or a lower level) before your first section.'
       : undefined;
 
-  return { ok: true, blocks, ...(warning ? { warning } : {}) };
+  return { ok: true, blocks, contentHash: await sha256Hex(file.content), ...(warning ? { warning } : {}) };
 }

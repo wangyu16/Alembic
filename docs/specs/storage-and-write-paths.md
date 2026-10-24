@@ -53,6 +53,18 @@ plan writes; afterwards the pointer advances — compare-and-set — only when t
 commit's parent IS the synced pointer, so a foreign commit in between stays
 visible to reconcile. See `lib/synced-sha.ts`.)
 
+(Loop r4, 2026-10-24 — P5.B.3.k…n: **an editor save names the version it
+was based on** — `WriteThroughChange.baseHash`, the SHA-256 of the stored copy
+it loaded, i.e. `content_sha256` — and is refused, writing nothing, when the
+stored copy is no longer that version; the committer re-checks after reading
+the synced pointer and before any retry, and a trial write lands by
+compare-and-set. A held-back outside change blocks only the files it is about
+(other saves commit on the head reconcile saw; the pointer still never passes
+it). Reconcile compares blob ids before reading, reads binaries and files over
+the contents API's 1 MB limit exactly (base64 / full text), holds back text
+that is not UTF-8, and absorbs each path by compare-and-set. A branch moved
+under a commit (422) is rebuilt once with the guard re-run.)
+
 - If the commit fails, **nothing changed anywhere**; the educator sees a
   retryable, plain-language failure. A save that didn't reach permanence
   didn't happen — this is the version contract's "Save records a permanent
@@ -116,7 +128,10 @@ Corollaries:
   product one (`MAX_PACKAGE_ZIP_BYTES` = 50 MB).
 - **Graduation** (trial → published) is the one legitimate bulk DB→GitHub
   write: initial commits of all trial files, then the truth flips and the
-  rows become projection.
+  rows become projection. (Loop r4, P5.B.3.o: a trial save made while the
+  publish runs is not in those commits; once the course is recorded as
+  published, every stored file that differs from what was committed is
+  committed through the committer — `lib/publish-catchup.ts`.)
 
 ## 4. Slots, not placeholders
 

@@ -163,6 +163,16 @@ export class RemoteChangedError extends Error {
   }
 }
 
+/** GitHub refused to move a branch because it is no longer where the commit
+ *  was built (422 "Update is not a fast forward"). Nothing was changed. */
+function isNotFastForward(err: unknown): boolean {
+  return (
+    err instanceof GitHubError &&
+    err.status === 422 &&
+    /fast[ -]?forward/i.test(`${err.detail ?? ""} ${err.message}`)
+  );
+}
+
 export class GitHubClient {
   private readonly tokens: TokenSource;
   private readonly retry: Partial<RetryPolicy> | undefined;
@@ -310,6 +320,26 @@ export class GitHubClient {
    * 300 files) refuses too — fail closed. Null/omitted: no check.
    */
   async createCommitOnBranch(input: {
+    coords: RepoCoords;
+    branch?: string;
+    message: string;
+    files: Array<{ path: string; content: string | null; encoding?: "utf-8" | "base64" }>;
+    unchangedSince?: string | null;
+  }): Promise<{ commitSha: string; parentSha: string }> {
+    // Loop r4 (R4-1): the branch can move between reading its head and moving
+    // it (another tab's save landed in between). GitHub then refuses the
+    // fast-forward with 422 and nothing was changed. Build the commit again
+    // on the new head — the outside-change guard runs again, against it —
+    // and try once more, instead of failing a save that would land cleanly.
+    try {
+      return await this.commitOnce(input);
+    } catch (err) {
+      if (!isNotFastForward(err)) throw err;
+      return this.commitOnce(input);
+    }
+  }
+
+  private async commitOnce(input: {
     coords: RepoCoords;
     branch?: string;
     message: string;
@@ -653,6 +683,43 @@ export class GitHubClient {
       entries: blobs.map((e) => ({ path: e.path, sha: e.sha ?? "" })),
       truncated: data.truncated === true,
     };
+  }
+
+  /**
+   * A file's exact bytes at a ref, or null if absent (loop r4, P5.B.3.k). The
+   * contents API inlines files up to 1 MB only — a larger file comes back
+   * with `encoding: "none"` and no content — so a file it does not inline is
+   * read through the git blobs API (up to 100 MB), by the blob id the
+   * contents answer names (or, failing that, the tree at `ref`).
+   */
+  async getFileBytesAtRef(coords: RepoCoords, path: string, ref: string): Promise<Uint8Array | null> {
+    let data: { content?: string; encoding?: string; sha?: string; size?: number };
+    try {
+      data = await this.request("GET", `/repos/${coords.owner}/${coords.repo}/contents/${path}?ref=${ref}`);
+    } catch (e) {
+      if (e instanceof GitHubError && e.status === 404) return null;
+      throw e;
+    }
+    if (data.encoding === "base64" && typeof data.content === "string") {
+      return Buffer.from(data.content, "base64");
+    }
+    let sha = data.sha;
+    if (!sha) {
+      const tree = await this.listTree(coords, ref);
+      sha = tree.entries.find((e) => e.path === path)?.sha;
+      if (!sha) throw new Error(`no blob id for ${path} at ${ref}`);
+    }
+    return this.getBlob(coords, sha);
+  }
+
+  /** A blob's bytes by its id (git blobs API: up to 100 MB, always base64). */
+  async getBlob(coords: RepoCoords, sha: string): Promise<Uint8Array> {
+    const data = await this.request<{ content: string; encoding: string }>(
+      "GET",
+      `/repos/${coords.owner}/${coords.repo}/git/blobs/${sha}`,
+    );
+    if (data.encoding !== "base64") throw new Error(`unexpected blob encoding ${data.encoding}`);
+    return Buffer.from(data.content, "base64");
   }
 
   /** Read a UTF-8 file at a ref (commit/branch). Returns null if absent. */

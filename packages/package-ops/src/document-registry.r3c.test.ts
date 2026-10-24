@@ -200,6 +200,10 @@ describe("H3-1 every uid's permalink follows its bytes under any shift, swap or 
     });
     await expectUidsFollowBytes(registry, store, new Set(uids));
     expect((await registry.listByPackage(PKG)).filter((r) => r.tombstoned)).toEqual([]);
+    // Loop r4 (auditor: unasserted): the whole > 500-row chain is ONE call.
+    const moves = registry.calls.filter((c) => c.upserts > 0);
+    expect(moves).toHaveLength(1);
+    expect(moves[0]!.upserts).toBe(N);
   });
 
   it("[P5.B.1.x] kept: a byte-copy next to its untouched original still gets its own id (HIGH-A / copy rule)", async () => {

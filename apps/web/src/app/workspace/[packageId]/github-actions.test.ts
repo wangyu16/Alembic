@@ -11,6 +11,7 @@ import {
   MemoryPackageStore,
   createSandboxPackage,
   updateManifest,
+  writeThrough,
   type CommitPlanInput,
   type PackageFile,
   type PackageRecord,
@@ -213,3 +214,65 @@ describe("publishing keeps what changed meanwhile (loop r3, P5.B.3.i)", () => {
     expect(await state.store.readFile(packageId, "public", "alembic.json")).toBe(before);
   });
 });
+
+describe("saves made while publishing reach the online copy (loop r4, P5.B.3.o)", () => {
+  it("[P5.B.3.o] a save, a new file and a deletion made in another tab while publishing are committed once the course is published", async () => {
+    const packageId = await seed();
+    await writeThrough(state.store, null, packageId, {
+      summary: "s",
+      changes: [
+        { repo: "public", path: "study-guide/01.md", content: "# One\n" },
+        { repo: "public", path: "study-guide/02.md", content: "# Two\n" },
+      ],
+    });
+    state.duringPublicCommit = async () => {
+      // A trial save (the course is not recorded as published yet).
+      await writeThrough(state.store, null, packageId, {
+        summary: "other tab",
+        changes: [
+          { repo: "public", path: "study-guide/01.md", content: "# One, edited meanwhile\n" },
+          { repo: "public", path: "study-guide/03.md", content: "# Three, new meanwhile\n" },
+          { repo: "public", path: "study-guide/02.md", content: null },
+          { repo: "private", path: "private-instructor/notes.md", content: "notes\n" },
+        ],
+      });
+    };
+    const res = await publishToGitHubAction(packageId);
+    expect(res.ok).toBe(true);
+    const late = state.committerPlans.filter((p) => p.summary.startsWith("Save changes made while publishing"));
+    const pub = late.find((p) => p.repo === "public")!;
+    expect(pub.changes).toEqual(
+      expect.arrayContaining([
+        { path: "study-guide/01.md", content: "# One, edited meanwhile\n" },
+        { path: "study-guide/03.md", content: "# Three, new meanwhile\n" },
+        { path: "study-guide/02.md", content: null },
+      ]),
+    );
+    expect(pub.changes.map((c) => c.path)).not.toContain("alembic.json");
+    expect(late.find((p) => p.repo === "private")!.changes).toEqual([{ path: "private-instructor/notes.md", content: "notes\n" }]);
+  });
+
+  it("[P5.B.3.o] a catch-up that a newer save has superseded is skipped, not written over it", async () => {
+    const { commitLateSaves } = await import("@/lib/publish-catchup");
+    const store = new MemoryPackageStore();
+    await store.putFiles("p", [{ repo: "public", path: "study-guide/01.md", content: "# Meanwhile\n" }]);
+    const plans: CommitPlanInput[] = [];
+    const done = await commitLateSaves({
+      store,
+      packageId: "p",
+      committed: new Map([["public:study-guide/01.md", "# Published\n"]]),
+      committer: {
+        async commit(plan) {
+          plans.push(plan);
+          // The educator saves again before this commit is made.
+          await store.putFiles("p", [{ repo: "public", path: "study-guide/01.md", content: "# Newer\n" }]);
+          await plan.recheck!();
+          return { commitSha: "x" };
+        },
+      },
+    });
+    expect(plans).toHaveLength(1);
+    expect(done).toEqual([]);
+  });
+});
+

@@ -32,6 +32,7 @@ describe("reconcile reports only real differences (loop r3, P5.B.3.g)", () => {
       { repo: "public", path: "study-guide/ch2.md", content: "# Old\n" },
     ]);
     const put = vi.spyOn(store, "putFiles");
+    const cas = vi.spyOn(store, "replaceFileIf"); // loop r4: absorbs are compare-and-set
     const out = await reconcilePublicRepo(store, PKG, {
       lastSyncedSha: "sha-1",
       reader: reader(
@@ -44,7 +45,10 @@ describe("reconcile reports only real differences (loop r3, P5.B.3.g)", () => {
     });
     expect(out.status).toBe("absorbed");
     if (out.status === "absorbed") expect(out.changedPaths).toEqual(["study-guide/ch2.md"]);
-    expect(put.mock.calls.map((c) => c[1].map((f) => f.path))).toEqual([["study-guide/ch2.md"]]);
+    expect([
+      ...put.mock.calls.flatMap((c) => c[1].map((f) => f.path)),
+      ...cas.mock.calls.map((c) => c[1].path),
+    ]).toEqual(["study-guide/ch2.md"]);
     expect(await store.readFile(PKG, "public", "study-guide/ch2.md")).toBe("# New\n");
   });
 

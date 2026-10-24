@@ -29,6 +29,7 @@ import { recordedPrivateRepo, recordedPublicRepo, repoUrl } from "@/lib/recorded
 import { flushDiscovery } from "@/lib/discovery-flush";
 import { committerFor } from "@/lib/committer";
 import { finishPublishedManifest, type PublishedRepos } from "@/lib/publish-finish";
+import { commitLateSaves, snapshotOf } from "@/lib/publish-catchup";
 
 /**
  * Create a repo from a template, but tolerate a re-run after a partial publish:
@@ -319,6 +320,27 @@ export async function publishToGitHubAction(
     });
     if (!recorded.ok) {
       throw new Error(`Could not record the published course (${recorded.reason}).`);
+    }
+    // Loop r4 (MEDIUM-5, P5.B.3.o): a save made in another tab while this
+    // ran was a trial save (Alembic's copy only) and is not in the publish
+    // commits. Now that the course is published, commit it through the
+    // committer. Best effort: the course IS published; a save left behind
+    // reaches the online copy with that file's next save.
+    try {
+      const resolved = await committerFor(supabase, store, user.id, packageId);
+      if (resolved.kind === "github") {
+        await commitLateSaves({
+          store,
+          packageId,
+          committed: snapshotOf([
+            ...publicChanges.map((c) => ({ repo: "public" as const, ...c })),
+            ...privateChanges.map((c) => ({ repo: "private" as const, ...c })),
+          ]),
+          committer: resolved.committer,
+        });
+      }
+    } catch (e) {
+      console.warn(`[publish] ${packageId}: saves made while publishing not committed yet:`, e instanceof Error ? e.message : e);
     }
     // Keep the trial store's alembic.json in step with what the publish
     // commit carried — through the ONE manifest writer, as a MERGE (loop r3,

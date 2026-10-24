@@ -20,6 +20,7 @@
 import {
   CommitFailedError,
   CommitUnavailableError,
+  FileChangedSinceOpenedError,
   ManifestConflictError,
   writeThrough,
   type PackageStore,
@@ -40,7 +41,8 @@ export function writeErrorMessage(err: unknown): string | null {
   if (
     err instanceof CommitUnavailableError ||
     err instanceof CommitFailedError ||
-    err instanceof ManifestConflictError
+    err instanceof ManifestConflictError ||
+    err instanceof FileChangedSinceOpenedError // loop r4, P5.B.3.m
   ) {
     return err.message;
   }

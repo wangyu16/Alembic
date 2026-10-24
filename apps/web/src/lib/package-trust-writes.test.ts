@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { PackageManifest } from "@alembic/package-contract";
 import { packageTrustWriter } from "./package-trust-writes";
+import type { ListingSnapshot } from "./package-trust-writes";
 
 interface Call {
   table: string;
@@ -157,4 +158,28 @@ describe("NEW-5 the listing row is written by the server, scoped to the owner", 
     expect(register.indexOf("releaseGates(")).toBeLessThan(register.indexOf("recordListing("));
     expect(register.indexOf("if (!attestation)")).toBeLessThan(register.indexOf("recordListing("));
   });
+
+  it("[P5.S.3.h] registerPackageAction no longer sends the accessibility field: not in its code, not in the listing snapshot", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { resolve } = await import("node:path");
+    const src = readFileSync(resolve(__dirname, "../app/workspace/[packageId]/portal-actions.ts"), "utf8");
+    const register = src
+      .slice(src.indexOf("export async function registerPackageAction"), src.indexOf("export async function unregisterPackageAction"))
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/\/\/.*$/gm, "");
+    expect(register).toContain(".recordListing(");
+    expect(register).not.toMatch(/accessibility|a11y/i);
+    // The snapshot type has no such field (a compile-time refusal)…
+    const withField: ListingSnapshot = {
+      ...snapshot,
+      // @ts-expect-error — the listing snapshot carries no accessibility status
+      accessibility_status: "pass",
+    };
+    // …and what recordListing upserts is exactly the snapshot it was given.
+    const { client, calls } = listingService(true);
+    await packageTrustWriter(() => client).recordListing("pkg-1", "user-1", snapshot);
+    expect(Object.keys((calls[1]!.arg as { row: object }).row)).not.toContain("accessibility_status");
+    void withField;
+  });
 });
+

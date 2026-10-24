@@ -6,6 +6,7 @@ import { extractSource, embedSource, getKindByExtension } from "@alembic/carrier
 import type { EditorKind } from "@alembic/package-contract";
 import { ModuleMount } from "@/lib/editor-modules/module-mount";
 import { useUnsavedGuard } from "@/lib/use-unsaved-guard";
+import { baseHashOf } from "@/lib/base-hash";
 import { saveCollectionFileAction } from "../collection-actions";
 import { resolveIncludeAction } from "../include-actions";
 
@@ -70,10 +71,16 @@ export function CollectionEditorPane({
     onDirty?.(d);
   };
 
+  // Loop r4 (P5.B.3.m): the version this editor opened; each save is based on
+  // it and moves it forward. Computed once per mount (the pane is never re-keyed).
+  const base = useRef<Promise<string | null | undefined> | null>(null);
+  if (base.current === null) base.current = baseHashOf(isNew ? null : initialContent);
+
   const persist = (content: string) =>
     new Promise<{ ok: boolean; error?: string }>((resolve) => {
       start(async () => {
-        const r = await saveCollectionFileAction(packageId, space, path, content);
+        const r = await saveCollectionFileAction(packageId, space, path, content, await base.current!);
+        if (r.ok && r.contentHash) base.current = Promise.resolve(r.contentHash);
         if (r.ok) {
           markDirty(false);
           setSavedTick(true);

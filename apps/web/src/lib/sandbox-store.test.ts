@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { SupabaseSandboxStore } from "./sandbox-store";
@@ -276,7 +277,9 @@ describe("SupabaseSandboxStore.replaceFileIf — compare-and-swap", () => {
       { column: "package_id", value: "pkg-1" },
       { column: "repo", value: "public" },
       { column: "path", value: "alembic.json" },
-      { column: "content", value: "old content" },
+      // By the stored digest, not the content (a content filter rides in the
+      // request URL, which a large file overflows — loop r4).
+      { column: "content_sha256", value: createHash("sha256").update("old content", "utf8").digest("hex") },
     ]);
     // .select() is what reveals how many rows the conditional UPDATE hit.
     expect(stub.selected).not.toBeNull();

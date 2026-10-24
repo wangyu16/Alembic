@@ -233,3 +233,29 @@ describe("alembic.json has one writer, in any spelling (loop r3, L3-2)", () => {
     expect(writesManifestViaPutFiles(`const DETAILS = "alembic" + ".json";\nconst raw = await store.readFile(id, "public", DETAILS);`)).toBe(false);
   });
 });
+
+describe("the one other commit of alembic.json is the first publish (loop r4, P5.B.1.y)", () => {
+  /** Calls that commit to a repository directly, around the committer. */
+  const RAW_COMMIT = /\b(?:commitFiles|createCommitOnBranch|publishToBranch)\s*\(/;
+  it("[P5.B.1.y] outside package-ops, only the first publish commits alembic.json directly — before the course is published, into its new repository", () => {
+    const committing = srcDirs()
+      .flatMap((d) => walk(join(ROOT, d)))
+      .filter((f) => !f.includes("packages/github-bridge/")) // the transport itself
+      .filter((f) => {
+        const code = stripComments(readFileSync(f, "utf8"));
+        if (!RAW_COMMIT.test(code)) return false;
+        const me: Source = { path: f, code, local: new Map() };
+        const global = resolveConstants([me, ...packageOpsSources()]);
+        addConst(global, "MANIFEST_PATH", MANIFEST);
+        return namesManifest(code, (n) => me.local.get(n) ?? global.get(n));
+      })
+      .map((f) => relative(ROOT, f));
+    expect(committing).toEqual(["apps/web/src/app/workspace/[packageId]/github-actions.ts"]);
+    // …and there, only in the publish commit, built before the course is recorded as published.
+    const src = readFileSync(join(ROOT, committing[0]!), "utf8");
+    const publishCommit = src.indexOf('summary: "Publish from Alembic", changes: publicChanges');
+    expect(publishCommit).toBeGreaterThan(-1);
+    expect(publishCommit).toBeLessThan(src.indexOf("recordPublished(packageId"));
+  });
+});
+

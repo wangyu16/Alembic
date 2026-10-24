@@ -26,6 +26,25 @@ on `phase5/loop-r4b`. Decisions:
   this course) rewrites the header's `uid:` line along with the `#orz-meta` island. Consequence: the extracted
   source of such a copy differs from its source's in that one line, so its source hash differs (objects — the only
   files "copy into this course" takes — carry no such header today).
+- **An editor save names its base (P5.B.3.m).** The base is the stored copy's SHA-256 (`content_sha256`), sent by
+  the client and checked by `writeThrough` before any IO, then by the committer after it reads the synced pointer
+  and before the post-reconcile retry. Chosen over GitHub-side blob preconditions (the bridge would need the base's
+  blob id per path and every caller to carry it) — the stored copy is what the editor showed, and the committer's
+  guard covers the online side. Accepted residual: a published save whose pointer read falls inside another tab's
+  pointer-write → projection window (milliseconds) is not caught; without Web Crypto the client sends no base.
+- **A held-back change blocks only what it involves (P5.B.3.l).** The committer retries on the head reconcile saw
+  when its files are neither violation paths nor clean differences held back with them; the pointer's
+  compare-and-set from the commit's parent keeps it before the held-back commit. "Keep Alembic's version" is the
+  one deliberate overwrite: it commits with `overwriteSeenAt = <head shown>`, so a change made after the educator
+  looked still refuses. Private-space files are never "kept" (removal + the leak runbook).
+- **Reconcile reads by blob id, writes by compare-and-set (P5.B.3.k).** Binary vs text by file name (the upload
+  door's `isBinaryPath`); non-UTF-8 text is held back, never stored with U+FFFD. The store's compare-and-set moved
+  from content equality to the `content_sha256` generated column (no migration; content filters ride in the URL).
+- **Saves during publish (P5.B.3.o)** are caught up after the course is recorded as published (store vs the publish
+  commits' snapshot), commit-only through the committer, each re-checking the store; best effort.
+- **The first publish commit writes `alembic.json` directly (P5.B.1.y, reworded).** It is the creation of the
+  repository, made before the course is published (no committer exists yet); routing it through `updateManifest`
+  would need a published course. The claim now says so, and a scan pins it to that one call.
 
 ## 2026-10-24 — Closed loop r3: identity is a whole-run matching; no lockout by our own commits; drained, aged queue; identities frozen
 

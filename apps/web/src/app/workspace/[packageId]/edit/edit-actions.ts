@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { writeThrough } from "@alembic/package-ops";
-import type { RepoKind } from "@alembic/package-contract";
+import { sha256Hex, type RepoKind } from "@alembic/package-contract";
 import { editFile } from "@alembic/ai-assist";
 import { operationById, PLATFORM_SCOPE } from "@alembic/ai-operations";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -38,6 +38,8 @@ export interface FileSaveResult {
   error?: string;
   committed?: boolean;
   retryable?: boolean;
+  /** Loop r4 (P5.B.3.m): the digest of what is now stored (the next save's base). */
+  contentHash?: string;
 }
 
 /**
@@ -57,6 +59,9 @@ export async function saveFileAction(
   path: string,
   repo: RepoKind,
   content: string,
+  /** Loop r4 (P5.B.3.m): the SHA-256 of the stored copy the editor loaded
+   *  (null = no file yet). The save is refused if the stored copy moved on. */
+  baseHash?: string | null,
 ): Promise<FileSaveResult> {
   const { supabase, user } = await requireUser();
   const store = new SupabaseSandboxStore(supabase);
@@ -76,11 +81,14 @@ export async function saveFileAction(
       store,
       resolution.kind === "github" ? resolution.committer : null,
       packageId,
-      { changes: [write], summary: `Update ${write.path}` },
+      {
+        changes: [baseHash === undefined ? write : { ...write, baseHash }],
+        summary: `Update ${write.path}`,
+      },
     );
 
     revalidatePath(`/workspace/${packageId}/edit`);
-    return { ok: true, committed: result.committed };
+    return { ok: true, committed: result.committed, contentHash: await sha256Hex(write.content) };
   } catch (e) {
     const { message, retryable } = saveFailureMessage(e);
     return { ok: false, error: message, retryable };

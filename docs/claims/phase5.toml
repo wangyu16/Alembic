@@ -1843,7 +1843,7 @@ bound_to = [
   "apps/web/src/lib/loop-r3c-registry.sql.test.ts :: two carriers swap paths in one write, and a three-way rotation, each in ONE documents_apply (swap, cycle)",
   "apps/web/src/lib/loop-r3c-registry.sql.test.ts :: documents_apply parks moving rows: a swap in one call lands; a move onto a location still held by an unmoved row is refused, nothing changes",
 ]
-note = "Loop r3 correctness H3-1 (repros /tmp/p5r3/shift.mts, swap.mts). Migration 0030_loop_r3c_1 (either order with the code). Uid-less files keep location identity (an exact location match wins over a cross-path hash), as before. A chain longer than 500 rows is one larger call (rare: a renumbering of > 500 carriers)."
+note = "Loop r3 correctness H3-1 (repros /tmp/p5r3/shift.mts, swap.mts). Migration 0030_loop_r3c_1 (either order with the code). Uid-less files keep location identity (an exact location match wins over a cross-path hash), as before. A chain longer than 500 rows is one larger call (rare: a renumbering of > 500 carriers). Loop r4: the one-call clause is asserted (call count) in the 600-file rotation test."
 
 [[claim]]
 id = "P5.S.16"
@@ -1884,6 +1884,7 @@ claim = "The anon-readable listing row's accessibility status is always the serv
 oracle = "probe"
 bound_to = [
   "apps/web/src/lib/loop-r3c-listing.sql.test.ts :: the listing row's accessibility status is the server's check, whatever the writer sends, and follows a new check",
+  "apps/web/src/lib/package-trust-writes.test.ts :: registerPackageAction no longer sends the accessibility field: not in its code, not in the listing snapshot",
 ]
 note = "Security loop r3 LOW-3. Migration 0030_loop_r3c_4 (§1); code drops accessibility_status from the listing snapshot."
 
@@ -1944,7 +1945,7 @@ note = "Security loop r3 LOW-1. Code only (ServiceDocumentRegistryStore). Residu
 
 [[claim]]
 id = "P5.B.3.g"
-claim = "A published course is never locked against saves by Alembic's own commits and the educator always has a way out: the synced pointer advances by compare-and-set from the commit's parent (two tabs saving at once keep it current; a commit on an outside commit never moves it past); a save refused as changed outside reconciles at once and is retried when the overlapping files equal Alembic's stored copy (Alembic's own commit, or a failed pointer write), else refused with the outside version brought in, or — held back — naming the reachable “Check for outside changes” control; when GitHub's comparison cannot list everything, reconcile compares blob SHA-1s of the head tree with the stored copy."
+claim = "A published course is never locked against saves by Alembic's own commits and the educator always has a way out: the synced pointer advances by compare-and-set from the commit's parent (two tabs saving at once keep it current; a commit on an outside commit never moves it past); a save refused as changed outside reconciles at once and is retried exactly once when the overlapping files equal Alembic's stored copy (Alembic's own commit, or a failed pointer write), else refused with the outside version brought in; refused again after that reconcile, or when the reconcile itself fails, it is a plain refusal that writes nothing; a held-back change refuses only saves of the files it involves (P5.B.3.l), naming the reachable “Check for outside changes” control; when GitHub's comparison cannot list everything, reconcile compares blob SHA-1s of the head tree with the stored copy."
 oracle = "scenario"
 bound_to = [
   "apps/web/src/lib/committer.lockout.test.ts :: two tabs saving different files at once: the pointer follows both saves and both files stay savable",
@@ -1960,8 +1961,12 @@ bound_to = [
   "packages/package-ops/src/reconcile.changed-only.test.ts :: a listed path whose content equals the stored copy is neither written nor reported",
   "packages/package-ops/src/reconcile.changed-only.test.ts :: a listed removal of a file the store does not have is not reported",
   "packages/package-ops/src/reconcile.changed-only.test.ts :: an unchanged course details file is not re-absorbed",
+  "apps/web/src/lib/committer.r4.test.ts :: a save refused only because of Alembic's own commit is retried exactly once after one reconcile",
+  "apps/web/src/lib/committer.r4.test.ts :: refused again after reconcile (the course changed again meanwhile): plain refusal, nothing written",
+  "apps/web/src/lib/committer.r4.test.ts :: when bringing outside changes in fails, the save is refused plainly and nothing is written",
+  "apps/web/src/lib/committer.r4.test.ts :: a real outside edit to the saved file is brought in and named, never retried",
 ]
-note = "Loop r3 correctness H3-2 (probe /tmp/p5r3b/cas-lockout.test.ts). Code only. Residuals: a truncated head tree (very large repo) still ends in a plain refusal; if two tabs' pointer writes land out of order the pointer trails by one commit until the next save (one extra reconcile)."
+note = "Loop r3 correctness H3-2 (probe /tmp/p5r3b/cas-lockout.test.ts). Code only. Residuals: a truncated head tree (very large repo) still ends in a plain refusal; if two tabs' pointer writes land out of order the pointer trails by one commit until the next save (one extra reconcile). Loop r4: the auditor's unasserted clauses (retried once, refused again after reconcile, reconcile failure) are bound in committer.r4.test.ts; the held-back branch narrowed by P5.B.3.l."
 
 [[claim]]
 id = "P5.B.3.j"
@@ -1972,12 +1977,13 @@ bound_to = [
   "packages/github-bridge/src/compare-status.test.ts :: a \"${status}\" comparison makes the save guard refuse as unverifiable, writing nothing",
   "packages/github-bridge/src/compare-status.test.ts :: an \\\"ahead\\\" comparison is trusted as before",
   "packages/github-bridge/src/compare-status.test.ts :: a comparison listing GitHub's maximum of files is incomplete, not trusted",
+  "apps/web/src/lib/committer.r4.test.ts :: a \\\"diverged\\\" comparison: the save guard refuses as unverifiable, writing nothing, and reconcile brings the change in by comparing trees",
 ]
-note = "Loop r3 correctness LOW (compare status). Code only."
+note = "Loop r3 correctness LOW (compare status). Code only. Loop r4: its own end-to-end test (guard + reconcile fallback) in committer.r4.test.ts."
 
 [[claim]]
 id = "P5.B.1.y"
-claim = "The course details file has one writer: the editor save refuses alembic.json, writeThrough refuses an invalid, schema-invalid, foreign or deleted alembic.json before any commit (a valid whole-course upload still passes), and no code outside package-ops writes it — the scan resolves constants, aliases, concatenations and template strings."
+claim = "The course details file has one writer: the editor save refuses alembic.json, writeThrough refuses an invalid, schema-invalid, foreign or deleted alembic.json before any commit (a valid whole-course upload still passes), and no code outside package-ops writes the stored copy — the scan resolves constants, aliases, concatenations and template strings; the one other commit of alembic.json is the first publish, which commits the stored details plus the repository pair into the newly created repository before the course is recorded as published (the stored copy then gains the pair through updateManifest)."
 oracle = "invariant"
 bound_to = [
   "packages/package-ops/src/manifest-gate.r3c.test.ts :: the editor save refuses alembic.json — course details change only through the manifest owner",
@@ -1986,12 +1992,13 @@ bound_to = [
   "apps/web/src/lib/editor-save.test.ts :: the editor save refuses alembic.json in plain words, not retryable",
   "apps/web/src/lib/manifest-writers.scan.test.ts :: the scan resolves constants, aliases, concatenations and template strings to alembic.json",
   "apps/web/src/lib/manifest-writers.scan.test.ts :: the scan does not flag other files written next to a manifest read",
+  "apps/web/src/lib/manifest-writers.scan.test.ts :: outside package-ops, only the first publish commits alembic.json directly — before the course is published, into its new repository",
 ]
-note = "Loop r3 correctness L3-2 (repro /tmp/p5r3a/manifest-bypass.mts). Code only; the dead renamePackageTitle bypass is removed."
+note = "Loop r3 correctness L3-2 (repro /tmp/p5r3a/manifest-bypass.mts). Code only; the dead renamePackageTitle bypass is removed. Loop r4 LOW: the claim no longer says no code outside package-ops writes alembic.json at all — the first publish commit does (into the new repository, before the course is published); the scan pins it to that one place."
 
 [[claim]]
 id = "P5.B.3.h"
-claim = "A refused save never leaves Alembic's stored copy recording a file the course does not have: the LICENSE backfill and the single-chapter restore commit first and write the stored copy only after the commit succeeded, so a refused backfill is retried by the next publish."
+claim = "A refused save never leaves Alembic's stored copy recording a file the course does not have: the LICENSE backfill and the single-chapter restore commit first and write the stored copy only after the commit succeeded, so a refused backfill is retried by the next publish; a restore that saves also registers the restored file."
 oracle = "probe"
 bound_to = [
   "apps/web/src/lib/mirror-after-commit.scan.test.ts :: the website publish backfills LICENSE through backfillLicenseFile, never ensureLicenseFile",
@@ -2000,6 +2007,7 @@ bound_to = [
   "packages/package-ops/src/license-file.backfill.test.ts :: a licence change is saved online first, and only then recorded",
   "packages/package-ops/src/restore-file.test.ts :: a refused restore leaves Alembic's copy unchanged",
   "packages/package-ops/src/restore-file.test.ts :: a restore that saves records exactly what was saved online",
+  "packages/package-ops/src/restore-file.test.ts :: a restore registers the restored file (its permalink records the restored version)",
 ]
 note = "Loop r3 correctness M3-4. Code only. Not the same class: CITATION.cff never writes the stored copy (it drifts until reconcile); its error wording still says “GitHub” (open)."
 
@@ -2063,4 +2071,71 @@ bound_to = [
   "packages/package-ops/src/fork.r4.test.ts :: remintEmbeddedUid rewrites only the header's uid line; a source without a header is left as it was",
 ]
 note = "Loop r4 MEDIUM-6 (probe /tmp/p5r4/fork/p7-uidheader.mts). Code only."
+
+[[claim]]
+id = "P5.B.3.k"
+claim = "Reconcile never stores a mangled or truncated file: it compares blob ids with the stored copy before reading (an unchanged file, a large binary above all, is never downloaded), reads binaries as the base64 of their exact bytes and files over the contents API's 1 MB limit whole through the git blobs API, holds back (never stores) text that is not UTF-8, and absorbs each path by compare-and-set against the copy it read, so a save landing meanwhile is kept; a store compare-and-set works for files of any size (by the stored digest)."
+oracle = "probe"
+bound_to = [
+  "apps/web/src/lib/committer.r4.test.ts :: Alembic's own picture in a reconcile range stays the same base64 bytes, and is never downloaded (R4-6)",
+  "apps/web/src/lib/committer.r4.test.ts :: a picture changed outside is brought in as the base64 of its new bytes",
+  "apps/web/src/lib/committer.r4.test.ts :: a file over the 1 MB inline limit changed outside is brought in whole, never as an empty file (R4-5)",
+  "apps/web/src/lib/committer.r4.test.ts :: a text file whose bytes are not text is held back, never stored with replacement characters",
+  "apps/web/src/lib/committer.r4.test.ts :: text keeps a leading byte-order mark, so it re-encodes to the same bytes; binaries are base64 by name",
+  "packages/package-ops/src/reconcile.r4.test.ts :: a file whose blob id matches the stored copy is never read",
+  "packages/package-ops/src/reconcile.r4.test.ts :: a save that lands while reconcile runs is kept: every absorb is compare-and-set against the copy it read",
+  "packages/package-ops/src/reconcile.r4.test.ts :: text that is not text is held back by path; nothing is written",
+  "packages/github-bridge/src/commit.r4.test.ts :: a file the contents API does not inline is read through the blobs API, by the blob id it names",
+  "apps/web/src/lib/store-cas-conformance.test.ts :: a 2 MB file is compared and set like any other; a stale large expectation conflicts",
+  "apps/web/src/lib/store-cas-conformance.test.ts :: deleteFileIf removes the file only while it still holds the expected content",
+]
+note = "Loop r4 HIGH-3 (probes /tmp/p5r4/commit/r4.test.ts R4-5, R4-6) + the r3 store-regression LOW. Code only: SupabaseSandboxStore compares by sandbox_files.content_sha256 (generated column, 0027) instead of the content (which rides in the request URL). Binary vs text is decided by the file name (isBinaryPath, the upload door's rule)."
+
+[[claim]]
+id = "P5.B.3.l"
+claim = "A held-back (quarantined) outside change never locks the course progressively: a save whose files are neither the ones the violations are about nor ones whose outside version was held back with them commits on the head reconcile saw — repeatedly, new files too — while the synced pointer stays before the held-back change; a save of an involved file is refused, writing nothing; “Keep Alembic's version” commits Alembic's copy of the flagged files over exactly the outside state the educator was shown (a later outside change still refuses), after which the course reconciles cleanly; the control names only the blocked files and says the rest of the course saves as usual."
+oracle = "scenario"
+bound_to = [
+  "apps/web/src/lib/committer.r4.test.ts :: other files keep saving, again and again, new ones too; only the held-back file is refused, and the synced point stays before it (R4-7)",
+  "apps/web/src/lib/committer.r4.test.ts :: a clean outside edit held back WITH a broken one blocks its own file too (its outside version can't be brought in yet)",
+  "apps/web/src/lib/committer.r4.test.ts :: keeping Alembic's version overwrites exactly the change that was seen; the course is then in step and the file saves",
+  "apps/web/src/lib/committer.r4.test.ts :: keeping Alembic's version never overwrites a change made after the one that was seen",
+  "apps/web/src/lib/committer.r4.test.ts :: the outside-changes control says what is blocked and offers to keep Alembic's version",
+  "packages/package-ops/src/reconcile.r4.test.ts :: a quarantine names the files it is about and the clean differences it held back with them",
+]
+note = "Loop r4 HIGH-4 (probe /tmp/p5r4/commit/r4.test.ts R4-7). Code only. A private-space file in the public course is not offered for “keep” (it must be removed where it was added; the leak runbook applies). The keep action is keepAlembicVersionAction (reconcile-actions.ts); its server-action shell is pinned by source, its core (writeThrough with overwriteSeenAt) by scenario."
+
+[[claim]]
+id = "P5.B.3.m"
+claim = "Every editor save (hosted study guide and slides, the block editor, the file editor, the collection editor, an AI rewrite applied) sends the digest of the stored version it opened, and writeThrough refuses it — writing nothing, in plain words (“This file changed since you opened it — reload to see the newer version”), not retryable — when the stored copy is no longer that version: another tab's earlier or concurrent save, or an outside change brought in since; the committer re-checks after reading the synced pointer and before any retry after a reconcile, and a trial save lands by compare-and-set."
+oracle = "scenario"
+bound_to = [
+  "apps/web/src/lib/committer.r4.test.ts :: two tabs, one file, one after the other: the tab that never saw the other's save is refused (R4-2)",
+  "apps/web/src/lib/committer.r4.test.ts :: two tabs at once: the refused save's retry after reconcile is refused too, never written over the other (R4-3)",
+  "apps/web/src/lib/committer.r4.test.ts :: an outside fix brought in by another tab's save is never overwritten by a tab opened before it (R4-4)",
+  "apps/web/src/lib/committer.r4.test.ts :: a save based on the current version goes through, a new file is based on none, and a trial course refuses a stale save too",
+  "apps/web/src/lib/committer.r4.test.ts :: every editor save sends the base it opened: hosted study guide and slides, the block editor, the file editor, the collection editor and an AI rewrite",
+]
+note = "Loop r4 MEDIUM-2/3 (probes R4-2, R4-3, R4-4). Code only. The digest is the stored content_sha256 (SHA-256 of the UTF-8 text); generate/load actions return it, each successful save returns the new one. Residual: on a published course, a save whose synced-pointer read falls between another tab's pointer write and that tab's projection (milliseconds) is not caught by the store check; a browser without Web Crypto sends no base (unchecked, as before r4)."
+
+[[claim]]
+id = "P5.B.3.n"
+claim = "When the branch moves between building a commit and moving the branch (GitHub's 422 “not a fast forward”), the commit is rebuilt on the new head and tried once more with the outside-change guard run again: two tabs saving different files truly at once both land; the same file is refused, never written over the other; a second 422 fails."
+oracle = "probe"
+bound_to = [
+  "apps/web/src/lib/committer.r4.test.ts :: two tabs saving different files truly at once: the later one is rebuilt on the new head and lands (R4-1)",
+  "apps/web/src/lib/committer.r4.test.ts :: the rebuild runs the outside-change guard again: the same file is refused, nothing written over the other tab",
+  "packages/github-bridge/src/commit.r4.test.ts :: a 422 not-a-fast-forward is rebuilt on the new head once; a second one fails",
+]
+note = "Loop r4 R4-1 (probe /tmp/p5r4/commit/r4.test.ts). Code only (createCommitOnBranch)."
+
+[[claim]]
+id = "P5.B.3.o"
+claim = "A save made in another tab while a course is being published reaches the online copy: once the course is recorded as published, every stored file that differs from what the publish committed — edited, added or deleted meanwhile, in either repository, the course details excepted (merged by finishPublishedManifest) — is committed through the committer, and a catch-up a newer save has superseded is skipped, never written over it."
+oracle = "probe"
+bound_to = [
+  "apps/web/src/app/workspace/[packageId]/github-actions.test.ts :: a save, a new file and a deletion made in another tab while publishing are committed once the course is published",
+  "apps/web/src/app/workspace/[packageId]/github-actions.test.ts :: a catch-up that a newer save has superseded is skipped, not written over it",
+]
+note = "Loop r4 MEDIUM-5. Code only (lib/publish-catchup.ts). Best effort: a failed catch-up is logged and the publish still succeeds; that file reaches the online copy with its next save. Not re-run by a later Publish click (the snapshot is gone; the store could be older than the online copy by then)."
 

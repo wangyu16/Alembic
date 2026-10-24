@@ -79,11 +79,13 @@ import {
   type WorkspaceView,
 } from "./nav";
 import {
+  peekEditorBase,
   peekEditorHtml,
   touchEditorHtml,
   storeEditorHtml,
   recordEditorSave,
 } from "@/lib/editor-html-cache";
+import { baseHashOf } from "@/lib/base-hash";
 import type { EditorHandle } from "@alembic/editor-kit";
 import { ModuleMount } from "@/lib/editor-modules/module-mount";
 import { ManageDialog } from "../chapter-nav";
@@ -275,7 +277,7 @@ export function StudioShell({
   activePath: string | null;
   view: WorkspaceView;
   category: StudioCategory | "course";
-  content: { preamble: string; blocks: StudyGuideBlock[] } | null;
+  content: { preamble: string; blocks: StudyGuideBlock[]; baseHash?: string | null } | null;
   courseConceptMap: string | null;
   courseInfo: CourseInfo;
   categoryFile: { path: string; repo: "public" | "private"; content: string } | null;
@@ -1543,7 +1545,7 @@ function HostedStudyGuideEditor(props: {
   packageId: string;
   path: string;
   chapterTitle: string;
-  initial: { preamble: string; blocks: StudyGuideBlock[] };
+  initial: { preamble: string; blocks: StudyGuideBlock[]; baseHash?: string | null };
   /** Which document this is, for the empty state's label and one-liner. */
   doc: ChapterDoc;
   /** Outline offered (never inserted automatically) when the document is empty. */
@@ -1567,11 +1569,16 @@ function HostedStudyGuideEditor(props: {
     return cached ? { s: "hosted", html: cached } : { s: "loading" };
   });
 
+  // Loop r4 (P5.B.3.m): the stored version this editor shows; every save is
+  // based on it (refused if the stored copy moved on) and moves it forward.
+  const baseRef = useRef<string | null | undefined>(peekEditorBase(packageId, path, chapterTitle));
+
   useEffect(() => {
     let cancelled = false;
     const cached = peekEditorHtml(packageId, path, chapterTitle);
     if (cached) {
       touchEditorHtml(packageId, path, chapterTitle);
+      baseRef.current = peekEditorBase(packageId, path, chapterTitle);
       setState({ s: "hosted", html: cached });
       return () => {
         cancelled = true;
@@ -1584,7 +1591,8 @@ function HostedStudyGuideEditor(props: {
         if (r.ok && r.empty) {
           setState({ s: "empty" });
         } else if (r.ok && r.editable && r.html) {
-          storeEditorHtml(packageId, path, chapterTitle, r.html, r.theme);
+          baseRef.current = r.contentHash;
+          storeEditorHtml(packageId, path, chapterTitle, r.html, r.theme, r.contentHash);
           setState({ s: "hosted", html: r.html });
         } else {
           setState({ s: "fallback" });
@@ -1641,7 +1649,9 @@ function HostedStudyGuideEditor(props: {
           const r = await hostSaveStudyGuideAction(packageId, path, {
             source: payload.source,
             theme: payload.theme,
+            baseHash: baseRef.current,
           });
+          if (r.ok && r.contentHash) baseRef.current = r.contentHash;
           // …but keep `rendered` CLIENT-side: it's the file's own serialization
           // of the just-saved state, so caching it makes switching away and back
           // mount the SAVED document (not a stale pre-save one). Also invalidates
@@ -1653,6 +1663,7 @@ function HostedStudyGuideEditor(props: {
               title: chapterTitle,
               rendered: payload.rendered,
               theme: payload.theme,
+              baseHash: r.contentHash,
             });
           }
           return { ok: r.ok, error: r.error };
@@ -1711,11 +1722,16 @@ function HostedSlidesEditor(props: {
     return cached ? { s: "hosted", html: cached } : { s: "loading" };
   });
 
+  // Loop r4 (P5.B.3.m): the stored version this editor shows; every save is
+  // based on it (refused if the stored copy moved on) and moves it forward.
+  const baseRef = useRef<string | null | undefined>(peekEditorBase(packageId, path, chapterTitle));
+
   useEffect(() => {
     let cancelled = false;
     const cached = peekEditorHtml(packageId, path, chapterTitle);
     if (cached) {
       touchEditorHtml(packageId, path, chapterTitle);
+      baseRef.current = peekEditorBase(packageId, path, chapterTitle);
       setState({ s: "hosted", html: cached });
       return () => {
         cancelled = true;
@@ -1728,7 +1744,8 @@ function HostedSlidesEditor(props: {
         if (r.ok && r.empty) {
           setState({ s: "empty" });
         } else if (r.ok && r.editable && r.html) {
-          storeEditorHtml(packageId, path, chapterTitle, r.html, r.theme);
+          baseRef.current = r.contentHash;
+          storeEditorHtml(packageId, path, chapterTitle, r.html, r.theme, r.contentHash);
           setState({ s: "hosted", html: r.html });
         } else {
           setState({ s: "unavailable" });
@@ -1792,7 +1809,9 @@ function HostedSlidesEditor(props: {
           const r = await hostSaveSlidesAction(packageId, path, {
             source: payload.source,
             theme: payload.theme,
+            baseHash: baseRef.current,
           });
+          if (r.ok && r.contentHash) baseRef.current = r.contentHash;
           // Keep `rendered` CLIENT-side as the fresh cache entry (the deck's own
           // serialization of the just-saved state), so switching back is instant
           // and shows the SAVED deck. Invalidates the memo on a theme change.
@@ -1803,6 +1822,7 @@ function HostedSlidesEditor(props: {
               title: chapterTitle,
               rendered: payload.rendered,
               theme: payload.theme,
+              baseHash: r.contentHash,
             });
           }
           return { ok: r.ok, error: r.error };
@@ -1839,7 +1859,7 @@ function ContentEditor({
   packageId: string;
   path: string;
   chapterTitle: string;
-  initial: { preamble: string; blocks: StudyGuideBlock[] };
+  initial: { preamble: string; blocks: StudyGuideBlock[]; baseHash?: string | null };
   onDirty?: (d: boolean) => void;
   aiAccess: AiAccess;
 }) {
@@ -1896,15 +1916,22 @@ function ContentEditor({
     setDirty(true);
   };
 
+  // Loop r4 (P5.B.3.m): the stored version this editor opened (from the page).
+  const baseRef = useRef<string | null | undefined>(initial.baseHash);
   const save = () => {
     setError(null);
     setWarning(null);
     start(async () => {
-      const r = await saveStudyGuideAction(packageId, {
-        path,
-        preamble: initial.preamble,
-        blocks: blocks.map((b) => ({ id: b.id, title: b.title, body: b.body })),
-      });
+      const r = await saveStudyGuideAction(
+        packageId,
+        {
+          path,
+          preamble: initial.preamble,
+          blocks: blocks.map((b) => ({ id: b.id, title: b.title, body: b.body })),
+        },
+        baseRef.current,
+      );
+      if (r.ok && r.contentHash) baseRef.current = r.contentHash;
       if (!r.ok) setError(r.error ?? "Save failed.");
       else {
         if (r.blocks) setBlocks(r.blocks.map((b, i) => ({ ...b, key: `b${i}` })));
@@ -1932,7 +1959,15 @@ function ContentEditor({
               {allCollapsed ? "Expand all" : "Collapse all"}
             </button>
           )}
-          <AIAssistant packageId={packageId} category="content" path={path} repo="public" current={assembled} aiAccess={aiAccess} />
+          <AIAssistant
+            packageId={packageId}
+            category="content"
+            path={path}
+            repo="public"
+            current={assembled}
+            aiAccess={aiAccess}
+            baseRef={baseRef}
+          />
           <a
             href={`/workspace/${packageId}/export/study-guide?chapter=${path.replace(/^.*\//, "").replace(/\.md$/, "")}`}
             className="btn btn-ghost btn-sm"
@@ -2087,6 +2122,15 @@ function FileEditor({
   const [dirty, setDirty] = useState(false);
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  // Loop r4 (P5.B.3.m): the stored version this editor opened; each save is
+  // based on it (refused if the stored copy moved on) and moves it forward.
+  const baseRef = useRef<string | null | undefined>(undefined);
+  const basePending = useRef<Promise<void> | null>(null);
+  if (basePending.current === null) {
+    basePending.current = baseHashOf(hasFile ? file.content : null).then((h) => {
+      baseRef.current = h;
+    });
+  }
   // The minimal .md editor (document-model.md §5): source with a
   // rendered-view toggle. Preview renders on switch, not per keystroke.
   const [mode, setMode] = useState<"source" | "preview">("source");
@@ -2123,7 +2167,9 @@ function FileEditor({
   const save = () => {
     setError(null);
     start(async () => {
-      const r = await saveFileAction(packageId, file.path, file.repo, text);
+      await basePending.current;
+      const r = await saveFileAction(packageId, file.path, file.repo, text, baseRef.current);
+      if (r.ok && r.contentHash) baseRef.current = r.contentHash;
       if (!r.ok) setError(r.error ?? "Save failed.");
       else setDirty(false);
     });
@@ -2151,7 +2197,15 @@ function FileEditor({
               Preview
             </button>
           </div>
-          <AIAssistant packageId={packageId} category={category} path={file.path} repo={file.repo} current={text} aiAccess={aiAccess} />
+          <AIAssistant
+            packageId={packageId}
+            category={category}
+            path={file.path}
+            repo={file.repo}
+            current={text}
+            aiAccess={aiAccess}
+            baseRef={baseRef}
+          />
           {file.repo === "public" && (
             <DocumentActionsBar packageId={packageId} path={file.path} hasFile={hasFile} />
           )}
@@ -2262,6 +2316,7 @@ function AIAssistant({
   onApply,
   gateContext,
   aiAccess,
+  baseRef,
 }: {
   packageId: string;
   category: OperationCategory;
@@ -2271,6 +2326,9 @@ function AIAssistant({
   onApply?: (proposed: string) => void;
   gateContext?: OperationGateContext;
   aiAccess: AiAccess;
+  /** Loop r4 (P5.B.3.m): the host editor's base — a direct save is based on
+   *  the version the host opened, and moves it forward. */
+  baseRef?: { current: string | null | undefined };
 }) {
   const router = useRouter();
   const ops = operationsForCategory(category).filter((o) => o.surface === "assistant");
@@ -2325,7 +2383,8 @@ function AIAssistant({
     }
     setError(null);
     start(async () => {
-      const r = await saveFileAction(packageId, path!, repo!, proposed);
+      const r = await saveFileAction(packageId, path!, repo!, proposed, baseRef?.current);
+      if (r.ok && r.contentHash && baseRef) baseRef.current = r.contentHash;
       if (!r.ok) setError(r.error ?? "Couldn't apply.");
       else {
         reset();

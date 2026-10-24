@@ -23,6 +23,7 @@ import {
   assertPathAllowedInEitherContract,
   assertPublicMarkdownReferences,
   parseManifest,
+  sha256Hex,
   type RepoKind,
 } from "@alembic/package-contract";
 import type { RegistrationRecord } from "@alembic/package-contract";
@@ -47,6 +48,33 @@ export interface WriteThroughChange {
    * by guessing from content hashes (loop r1b, P5.B.1.m).
    */
   movedFrom?: string;
+  /**
+   * Loop r4 (P5.B.3.m): the SHA-256 (hex, of the UTF-8 text — the stored
+   * `content_sha256`) of the stored copy the editor LOADED; `null` = the file
+   * did not exist when it was opened. When given, the write is refused
+   * (`FileChangedSinceOpenedError`, nothing written) if the stored copy is no
+   * longer that version — another tab's save, or an outside change brought
+   * in since. Omitted = no check (writers that do not edit a loaded copy).
+   */
+  baseHash?: string | null;
+}
+
+/** Educator-facing: the stored copy moved on since the editor opened it. */
+export const FILE_CHANGED_SINCE_OPENED =
+  "This file changed since you opened it \u2014 reload to see the newer version. " +
+  "Nothing from this save was written.";
+
+/**
+ * Loop r4 (P5.B.3.m): a save was based on a version of a file that is no
+ * longer the stored one. Not retryable with the same content — the educator
+ * reloads first. Nothing was written anywhere.
+ */
+export class FileChangedSinceOpenedError extends Error {
+  readonly retryable = false;
+  constructor(readonly paths: string[], message = FILE_CHANGED_SINCE_OPENED) {
+    super(message);
+    this.name = "FileChangedSinceOpenedError";
+  }
 }
 
 export interface CommitPlanInput {
@@ -58,6 +86,20 @@ export interface CommitPlanInput {
     content: string | null;
     encoding?: "utf-8" | "base64";
   }>;
+  /**
+   * Loop r4 (P5.B.3.m): re-verifies the save's preconditions (the stored
+   * copies its edits were based on). Throws `FileChangedSinceOpenedError`.
+   * A committer calls it after reading its synced point and again before any
+   * retry, so a retry after bringing outside changes in can never write over
+   * a version the educator has not seen.
+   */
+  recheck?: () => Promise<void>;
+  /**
+   * Loop r4 (P5.B.3.l): the head the educator has SEEN and chosen to
+   * overwrite ("keep Alembic's version"): changes up to it are not a reason to
+   * refuse; anything after it still is.
+   */
+  overwriteSeenAt?: string;
 }
 
 /**
@@ -234,6 +276,8 @@ export interface WriteThroughInput {
   /** Which door the files came through, for their registration (default
    *  "created"; the whole-package upload passes "uploaded"). */
   origin?: RegistrationRecord["origin"];
+  /** See `CommitPlanInput.overwriteSeenAt` (public commit only). */
+  overwriteSeenAt?: string;
 }
 
 export interface WriteThroughResult {
@@ -296,6 +340,29 @@ export async function registerWritten(
 }
 
 /**
+ * Loop r4 (P5.B.3.m): the stored copy of every change that names a `baseHash`
+ * is still that version. Returns what is stored now, per change key, so a
+ * trial write can compare-and-set against exactly it.
+ */
+async function assertBases(
+  store: PackageStore,
+  packageId: string,
+  changes: ReadonlyArray<WriteThroughChange>,
+): Promise<Map<string, string | null>> {
+  const now = new Map<string, string | null>();
+  const stale: string[] = [];
+  for (const c of changes) {
+    if (c.baseHash === undefined) continue;
+    const stored = await store.readFile(packageId, c.repo, c.path);
+    now.set(`${c.repo}:${c.path}`, stored);
+    const hash = stored === null ? null : await sha256Hex(stored);
+    if (hash !== c.baseHash) stale.push(c.path);
+  }
+  if (stale.length > 0) throw new FileChangedSinceOpenedError(stale);
+  return now;
+}
+
+/**
  * The single validated write path.
  *
  * Ordering is the whole point: validate → (published) commit → project.
@@ -318,12 +385,40 @@ export async function writeThrough(
     return { committed: committer !== null };
   }
 
-  // 2a. Trial package: the trial store IS the truth. DB only.
+  // Loop r4 (P5.B.3.m): an edit is refused when the copy it was based on is
+  // no longer the stored one — checked before any IO, and again by the
+  // committer before it commits and before any retry.
+  const based = input.changes.filter((c) => c.baseHash !== undefined);
+  const stored = based.length > 0 ? await assertBases(store, packageId, based) : null;
+
+  // 2a. Trial package: the trial store IS the truth. DB only — and an edit
+  // based on a loaded copy lands by compare-and-set against it.
   if (committer === null) {
-    await projectIntoStore(store, packageId, input.changes);
+    for (const c of based) {
+      const expected = stored!.get(`${c.repo}:${c.path}`) ?? null;
+      const outcome =
+        c.content === null
+          ? expected === null
+            ? "ok"
+            : store.deleteFileIf
+              ? await store.deleteFileIf(packageId, { repo: c.repo, path: c.path }, { content: expected })
+              : (await store.deleteFiles(packageId, [{ repo: c.repo, path: c.path }]), "ok" as const)
+          : await store.replaceFileIf(
+              packageId,
+              { repo: c.repo, path: c.path, content: c.content },
+              expected === null ? null : { content: expected },
+            );
+      if (outcome === "conflict") throw new FileChangedSinceOpenedError([c.path]);
+    }
+    await projectIntoStore(
+      store,
+      packageId,
+      input.changes.filter((c) => c.baseHash === undefined),
+    );
     await registerWritten(store, packageId, input.changes, input.origin);
     return { committed: false };
   }
+  const recheck = based.length > 0 ? async () => void (await assertBases(store, packageId, based)) : undefined;
 
   // 2b. Published package: permanence first. Group by repo — public before
   // private, so the sha callers care about is produced deterministically —
@@ -340,6 +435,8 @@ export async function writeThrough(
         content: c.content,
         ...(c.encoding ? { encoding: c.encoding } : {}),
       })),
+      ...(recheck ? { recheck } : {}),
+      ...(repo === "public" && input.overwriteSeenAt ? { overwriteSeenAt: input.overwriteSeenAt } : {}),
     });
     if (repo === "public") publicSha = commitSha;
   }

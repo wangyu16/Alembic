@@ -9,7 +9,7 @@ import {
   type CollectionScopeTree,
   type TermInfo,
 } from "@alembic/package-ops";
-import { currentSpaceDir, isValidTermId } from "@alembic/package-contract";
+import { currentSpaceDir, isValidTermId, sha256Hex } from "@alembic/package-contract";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
 import { clientForUser, githubConfig, installUrl } from "@/lib/github";
@@ -114,6 +114,12 @@ export default async function EditShellPage({
   // Load only what the active pane needs. The study guide loads only for the
   // `content` DOCUMENT — never for a chapter's landing list (which shows no
   // editor), so a bare `?chapter=` costs no study-guide read.
+  // Loop r4 (P5.B.3.m): the digest of the stored chapter, read BEFORE the
+  // chapter itself — the block editor's save is based on it.
+  const docBase =
+    view.kind === "doc" && view.doc === "content" && activeChapter
+      ? await store.readFile(packageId, "public", activeChapter.path).then((raw) => (raw === null ? null : sha256Hex(raw)))
+      : null;
   const doc =
     view.kind === "doc" && view.doc === "content" && activeChapter
       ? await loadStudyGuide(store, packageId, activeChapter.path)
@@ -309,7 +315,7 @@ export default async function EditShellPage({
       view={view}
       category={category}
       content={
-        doc ? { preamble: doc.preamble, blocks: doc.blocks } : null
+        doc ? { preamble: doc.preamble, blocks: doc.blocks, baseHash: docBase } : null
       }
       courseConceptMap={courseConceptMap}
       courseInfo={{

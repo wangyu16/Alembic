@@ -36,8 +36,28 @@ export interface RepoReader {
     baseSha: string | null,
     headSha: string,
   ): Promise<Array<{ path: string; status: "added" | "modified" | "removed" }>>;
-  /** UTF-8 file content at a ref, or null if absent. */
+  /**
+   * A file's content at a ref in the form Alembic stores it — UTF-8 text, or
+   * base64 for a binary — or null if absent. Loop r4 (P5.B.3.k): never text
+   * decoded with replacement characters, never "" for a file too large to be
+   * inlined; text that is not valid UTF-8 throws `UnreadableFileError`.
+   */
   readFileAtRef(path: string, ref: string): Promise<string | null>;
+  /**
+   * Optional (loop r4, P5.B.3.k): does the file at `ref` hold exactly the
+   * stored copy's bytes? Compared by blob id, so an unchanged file — a large
+   * binary above all — is never downloaded. False when it cannot tell.
+   */
+  sameAsStored?(path: string, stored: string, ref: string): Promise<boolean>;
+}
+
+/** A file whose bytes are not the text its name says (invalid UTF-8): it is
+ *  held back, never stored with replacement characters (loop r4, P5.B.3.k). */
+export class UnreadableFileError extends Error {
+  constructor(readonly path: string) {
+    super(`${path}: not readable as text`);
+    this.name = "UnreadableFileError";
+  }
 }
 
 export type ReconcileOutcome =
@@ -58,7 +78,16 @@ export type ReconcileOutcome =
        */
       manifest?: PackageManifest;
     }
-  | { status: "quarantined"; headSha: string; violations: string[] };
+  | {
+      status: "quarantined";
+      headSha: string;
+      violations: string[];
+      /** The paths the violations are about (loop r4, P5.B.3.l). */
+      violationPaths: string[];
+      /** Clean paths that really differ from the stored copy but were NOT
+       *  brought in (a quarantine absorbs nothing) — loop r4, P5.B.3.l. */
+      changedPaths: string[];
+    };
 
 /** A study-guide file whose block IDs we must keep intact — v1 `.md` or v2
  *  `.md.html` (source embedded in the carrier). */
@@ -108,35 +137,55 @@ export async function reconcilePublicRepo(
   // (typically Alembic's own save, already projected) is no change at all —
   // the committer relies on this to retry a save that was refused only
   // because the synced point lagged behind Alembic's own commit.
-  const changed: Array<{ path: string; status: "added" | "modified" | "removed"; content: string | null }> = [];
+  const changed: Array<{
+    path: string;
+    status: "added" | "modified" | "removed";
+    content: string | null;
+    /** The stored copy this change replaces (compare-and-set, loop r4). */
+    ours: string | null;
+  }> = [];
+  const violationPaths = new Set<string>();
+  const violate = (path: string, message: string) => {
+    violations.push(`${path}: ${message}`);
+    violationPaths.add(path);
+  };
 
   for (const change of listed) {
     const ours = await store.readFile(packageId, "public", change.path);
+    // Loop r4 (P5.B.3.k): the same bytes by blob id — nothing to read.
+    if (
+      ours !== null &&
+      change.status !== "removed" &&
+      reader.sameAsStored &&
+      (await reader.sameAsStored(change.path, ours, head))
+    ) {
+      continue;
+    }
 
     // The course details file is the package's identity: a foreign deletion
     // would leave a course with no manifest. Keep ours and report it.
     if (change.path === MANIFEST_PATH) {
       if (change.status === "removed") {
-        violations.push(`${MANIFEST_PATH}: the course details file was deleted outside Alembic`);
+        violate(MANIFEST_PATH, "the course details file was deleted outside Alembic");
         continue;
       }
-      const content = await reader.readFileAtRef(change.path, head);
-      if (content !== null && content === ours) continue; // unchanged
       try {
+        const content = await reader.readFileAtRef(change.path, head);
+        if (content !== null && content === ours) continue; // unchanged
         if (content === null) throw new Error(`expected content at ${head} but file was absent`);
         foreignManifest = parseManifest(JSON.parse(content));
-        changed.push({ path: change.path, status: change.status, content });
+        changed.push({ path: change.path, status: change.status, content, ours });
       } catch (err) {
         // Invalid foreign manifest: never let it reach the projection (or the
         // packages.manifest cache). Keep the old one; quarantine and report.
         const message = err instanceof Error ? err.message : String(err);
-        violations.push(`${MANIFEST_PATH}: not a valid course details file: ${message}`);
+        violate(MANIFEST_PATH, `not a valid course details file: ${message}`);
       }
       continue;
     }
 
     if (change.status === "removed") {
-      if (ours !== null) changed.push({ path: change.path, status: "removed", content: null });
+      if (ours !== null) changed.push({ path: change.path, status: "removed", content: null, ours });
       continue;
     }
 
@@ -148,15 +197,23 @@ export async function reconcilePublicRepo(
       assertPathAllowedInEitherContract(change.path, "public");
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      violations.push(`${change.path}: ${message}`);
+      violate(change.path, message);
       // Do not read/parse a path that should not exist in this repo.
       continue;
     }
 
-    const content = await reader.readFileAtRef(change.path, head);
+    let content: string | null;
+    try {
+      content = await reader.readFileAtRef(change.path, head);
+    } catch (err) {
+      // Text that is not text: hold it back rather than store it mangled.
+      if (!(err instanceof UnreadableFileError)) throw err;
+      violate(change.path, "not readable as text");
+      continue;
+    }
     if (content === null) {
       if (isStudyGuideMarkdown(change.path)) {
-        violations.push(`${change.path}: expected content at ${head} but file was absent`);
+        violate(change.path, `expected content at ${head} but file was absent`);
       }
       // Otherwise defensive: a path reported added/modified but missing at
       // head. Skip rather than write a null projection.
@@ -175,30 +232,45 @@ export async function reconcilePublicRepo(
       // ids — the corruption that actually breaks block identity.
       const integrity = validateBlockIds(blocks.map((b) => ({ id: b.id })));
       if (!integrity.ok) {
-        for (const e of integrity.errors) {
-          violations.push(`${change.path}: ${e}`);
-        }
+        for (const e of integrity.errors) violate(change.path, e);
         continue;
       }
     }
-    changed.push({ path: change.path, status: change.status, content });
+    changed.push({ path: change.path, status: change.status, content, ours });
   }
 
   // Bad foreign state: refuse to absorb. Write NOTHING.
   if (violations.length > 0) {
-    return { status: "quarantined", headSha: head, violations };
+    return {
+      status: "quarantined",
+      headSha: head,
+      violations,
+      violationPaths: [...violationPaths],
+      changedPaths: changed.map((c) => c.path),
+    };
   }
 
-  // Clean: absorb the real differences into the projection.
+  // Clean: absorb the real differences into the projection — each path by
+  // compare-and-set against the stored copy read above (loop r4, P5.B.3.k):
+  // a save that landed while this ran is newer than `head`, and is kept.
   for (const change of changed) {
     if (change.path === MANIFEST_PATH) continue; // through the write path, below
     if (change.content === null) {
-      await store.deleteFiles(packageId, [{ repo: "public", path: change.path }]);
+      if (store.deleteFileIf) {
+        await store.deleteFileIf(packageId, { repo: "public", path: change.path }, { content: change.ours! });
+      } else if ((await store.readFile(packageId, "public", change.path)) === change.ours) {
+        await store.deleteFiles(packageId, [{ repo: "public", path: change.path }]);
+      }
       continue;
     }
-    await store.putFiles(packageId, [
+    const outcome = await store.replaceFileIf(
+      packageId,
       { repo: "public", path: change.path, content: change.content },
-    ]);
+      change.ours === null ? null : { content: change.ours },
+    );
+    if (outcome === "conflict") {
+      console.warn(`[reconcile] ${packageId}: ${change.path} changed in Alembic meanwhile; kept that version`);
+    }
   }
 
   // The manifest goes through the ONE manifest write path (validate → CAS the

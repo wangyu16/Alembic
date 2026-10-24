@@ -25,6 +25,7 @@ import {
   BlockIdIntegrityError,
   CommitFailedError,
   CommitUnavailableError,
+  FileChangedSinceOpenedError,
   ManifestFileRefusedError,
   prepareEditorEdit,
   prepareSlidesSave as prepareSlidesFile,
@@ -136,7 +137,12 @@ export function saveFailureMessage(err: unknown): {
   message: string;
   retryable: boolean;
 } {
-  if (err instanceof EditorSaveValidationError || err instanceof ManifestFileRefusedError) {
+  if (
+    err instanceof EditorSaveValidationError ||
+    err instanceof ManifestFileRefusedError ||
+    // Loop r4 (P5.B.3.m): reload first — saving the same text again can't help.
+    err instanceof FileChangedSinceOpenedError
+  ) {
     return { message: err.message, retryable: false };
   }
   if (err instanceof CommitUnavailableError || err instanceof CommitFailedError) {

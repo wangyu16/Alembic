@@ -11,13 +11,14 @@
  * and compares each file's git blob id with Alembic's stored copy.
  */
 import { gitBlobSha, type GitHubClient, type RepoCoords } from "@alembic/github-bridge";
-import type { PackageStore, RepoReader } from "@alembic/package-ops";
+import { UnreadableFileError, type PackageStore, type RepoReader } from "@alembic/package-ops";
+import { isBinaryPath } from "./collection-upload";
 
 type Changed = Array<{ path: string; status: "added" | "modified" | "removed" }>;
 
 /** Does the stored text equal the blob `sha`? Binaries are stored base64, and
  *  the stored copy carries no encoding flag, so both readings are tried. */
-function sameBlob(stored: string, sha: string): boolean {
+export function sameBlob(stored: string, sha: string): boolean {
   if (gitBlobSha(Buffer.from(stored, "utf8")) === sha) return true;
   if (/^[A-Za-z0-9+/]*={0,2}$/.test(stored) && stored.length % 4 === 0) {
     return gitBlobSha(Buffer.from(stored, "base64")) === sha;
@@ -69,11 +70,40 @@ export async function treeChangedPaths(
   return out;
 }
 
+/**
+ * A file's bytes in the form Alembic stores them (loop r4, P5.B.3.k): base64
+ * for a binary (by its name — the rule the upload door uses), UTF-8 text for
+ * everything else. Text that is not valid UTF-8 is refused
+ * (`UnreadableFileError`) rather than stored with replacement characters.
+ */
+export function storedForm(path: string, bytes: Uint8Array): string {
+  if (isBinaryPath(path)) return Buffer.from(bytes).toString("base64");
+  try {
+    // ignoreBOM: keep a leading BOM, so the text re-encodes to the same blob.
+    return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
+  } catch {
+    throw new UnreadableFileError(path);
+  }
+}
+
 export function githubRepoReader(
   client: GitHubClient,
   coords: RepoCoords,
   fallback?: { store: PackageStore; packageId: string },
 ): RepoReader {
+  // Blob ids per ref, listed once per reader (one reconcile run).
+  const trees = new Map<string, Promise<Map<string, string> | null>>();
+  const blobIds = (ref: string) => {
+    let t = trees.get(ref);
+    if (!t) {
+      t = client
+        .listTree(coords, ref)
+        .then((l) => (l.truncated ? null : new Map(l.entries.map((e) => [e.path, e.sha]))))
+        .catch(() => null);
+      trees.set(ref, t);
+    }
+    return t;
+  };
   return {
     getHeadSha: async () => (await client.getBranchHead(coords)).commitSha,
     async listChangedPaths(base, head) {
@@ -92,6 +122,16 @@ export function githubRepoReader(
         return treeChangedPaths(client, coords, fallback.store, fallback.packageId, base, head);
       }
     },
-    readFileAtRef: (path, ref) => client.getFileAtRef(coords, path, ref),
+    // Loop r4 (P5.B.3.k): compare blob ids BEFORE reading, so an unchanged
+    // binary or large file is never downloaded; read the rest as exact bytes
+    // (the blobs API past the contents API's 1 MB) in the stored form.
+    async sameAsStored(path, stored, ref) {
+      const sha = (await blobIds(ref))?.get(path);
+      return sha !== undefined && sameBlob(stored, sha);
+    },
+    async readFileAtRef(path, ref) {
+      const bytes = await client.getFileBytesAtRef(coords, path, ref);
+      return bytes === null ? null : storedForm(path, bytes);
+    },
   };
 }

@@ -11,7 +11,7 @@
 import { parseStudyGuide } from "@alembic/package-contract";
 import { prepareStudyGuideSave } from "./study-guide";
 import type { PackageStore } from "./store";
-import type { Committer } from "./write-through";
+import { registerWritten, type Committer } from "./write-through";
 
 export async function restoreStudyGuideFile(
   store: PackageStore,
@@ -33,5 +33,9 @@ export async function restoreStudyGuideFile(
     changes: [{ path: file.path, content: file.content }],
   });
   await store.putFiles(packageId, [file]);
+  // Loop r4 (LOW): register the restored bytes like every other save (the
+  // registry is part of the projection) — before r4 the permalink kept the
+  // pre-restore version's digest until a page load healed it.
+  await registerWritten(store, packageId, [file]);
   return out;
 }

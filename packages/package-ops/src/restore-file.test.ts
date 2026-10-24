@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 import { CommitFailedError, type Committer, type CommitPlanInput } from "./write-through";
 import { MemoryPackageStore } from "./memory-store";
 import { restoreStudyGuideFile } from "./restore-file";
+import { MemoryDocumentRegistryStore, computeSourceHash } from "./document-registry";
 
 const PKG = "pkg-1";
 const PATH = "study-guide/ch01.md";
@@ -44,5 +45,16 @@ describe("single-chapter restore (loop r3, P5.B.3.h)", () => {
     expect(committed.path).toBe(PATH);
     expect(await store.readFile(PKG, "public", PATH)).toBe(committed.content);
     expect(committed.content).toContain("Old words.");
+  });
+
+  it("[P5.B.3.h] a restore registers the restored file (its permalink records the restored version)", async () => {
+    const registry = new MemoryDocumentRegistryStore();
+    const store = new MemoryPackageStore(registry);
+    await store.putFiles(PKG, [{ repo: "public", path: PATH, content: "# Current\n" }]);
+    const ok: Committer = { commit: async () => ({ commitSha: "c1" }) };
+    await restoreStudyGuideFile(store, ok, PKG, { path: PATH, content: OLD, summary: "Restore" });
+    const row = (await registry.listLiveByPackage(PKG)).find((r) => r.path === PATH);
+    expect(row).toBeDefined();
+    expect(row!.sourceHash).toBe(computeSourceHash((await store.readFile(PKG, "public", PATH))!));
   });
 });
