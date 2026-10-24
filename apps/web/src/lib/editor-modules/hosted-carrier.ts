@@ -1,5 +1,6 @@
 import type { EditorContext, EditorHandle, EditorModule } from "@alembic/editor-kit";
 import { createHostSaveClient, createHostAIClient, createHostIncludeClient } from "@alembic/editor-kit";
+import { oneAtATime } from "./save-queue";
 
 /**
  * The generic hosted-carrier editor (E1): mounts a self-contained orz file
@@ -54,14 +55,17 @@ export function hostedCarrierModule(
 
       const client = createHostSaveClient({
         post: (m) => frame.contentWindow?.postMessage(m, "*"),
-        save: async ({ source, rendered, theme }) => {
+        // Loop r5 (P5.B.3.w): one save at a time, so a save pressed again
+        // after the file's 10 s acknowledgement wait carries the base the
+        // slow first save moved forward (./save-queue.ts).
+        save: oneAtATime(async ({ source, rendered, theme }: { source: string; rendered: string; theme?: string }) => {
           if (ctx.readOnly) return { ok: false, error: "This view is read-only." };
           const result = ctx.hostSave
             ? await ctx.hostSave({ source, rendered, theme })
             : (ctx.onChange({ source, rendered }), { ok: true as const });
           if (result.ok) latest = rendered;
           return result;
-        },
+        }),
         onDirty: (d) => ctx.onDirty?.(d),
         onHelloTimeout: () => {
           // Pre-protocol file: it keeps working as a standalone viewer/editor

@@ -91,19 +91,59 @@ interface Span {
 /** The source-island ids an HTML carrier keeps its markdown in (carriers/html.ts). */
 const SOURCE_ISLAND_IDS = new Set(["orz-carrier", "md-source", "orz-src", "orz-deck"]);
 
+export interface OpenTag {
+  /** Offset of the `<`. */
+  index: number;
+  /** Offset just past the tag's `>`. */
+  end: number;
+  /** The tag name as written. */
+  tag: string;
+}
+
+const SCRIPT_OPEN = /<(script)\b/gi;
+const CODE_OPEN = /<(code|pre)\b/gi;
+
+/**
+ * The next open tag `<name …>` at or after `from` — what `/<(name)\b[^>]*>/gi`
+ * matches, without its rescans (round 5, P5.B.1.ad): that pattern scanned to
+ * the end of the file for every tag left without a `>`, so 120 KB of
+ * `<code ` took seconds. When no `>` follows a tag, no later tag can close
+ * either, so the scan stops.
+ */
+function nextOpenTag(text: string, open: RegExp, from: number): OpenTag | null {
+  open.lastIndex = from;
+  const m = open.exec(text);
+  if (m === null) return null;
+  const gt = text.indexOf(">", m.index + m[0].length);
+  if (gt === -1) return null;
+  return { index: m.index, end: gt + 1, tag: m[1]! };
+}
+
+/** Every open tag of the given names, left to right (for tests). */
+export function openTags(text: string, names: readonly string[], from = 0): OpenTag[] {
+  const open = new RegExp(`<(${names.join("|")})\\b`, "gi");
+  const out: OpenTag[] = [];
+  let m: OpenTag | null;
+  while ((m = nextOpenTag(text, open, from)) !== null) {
+    out.push(m);
+    from = m.end;
+  }
+  return out;
+}
+
 /** [start, end) of each markdown source island body in an HTML file. */
 function sourceIslands(text: string, lower: string): Span[] {
   const out: Span[] = [];
-  const open = /<script\b([^>]*)>/gi;
-  let m: RegExpExecArray | null;
-  while ((m = open.exec(text)) !== null) {
-    const bodyStart = m.index + m[0].length;
+  let from = 0;
+  let m: OpenTag | null;
+  while ((m = nextOpenTag(text, SCRIPT_OPEN, from)) !== null) {
+    const bodyStart = m.end;
     const close = lower.indexOf("</script", bodyStart);
-    const id = /\bid\s*=\s*(?:"([^"]*)"|'([^']*)')/i.exec(m[1] ?? "");
+    const id = /\bid\s*=\s*(?:"([^"]*)"|'([^']*)')/i.exec(text.slice(m.index + 1 + m.tag.length, m.end - 1));
     const end = close === -1 ? text.length : close;
     if (id && SOURCE_ISLAND_IDS.has(id[1] ?? id[2] ?? "")) out.push({ start: bodyStart, end });
     if (close === -1) break;
-    open.lastIndex = end;
+    from = end;
   }
   return out;
 }
@@ -115,18 +155,18 @@ function sourceIslands(text: string, lower: string): Span[] {
  */
 function htmlCodeSpans(text: string, lower: string, from: number, to: number, holes: Span[]): Span[] {
   const out: Span[] = [];
-  const open = /<(code|pre)\b[^>]*>/gi;
-  open.lastIndex = from;
+  let at = from;
   const nextClose = new Map<string, number>();
-  let m: RegExpExecArray | null;
-  while ((m = open.exec(text)) !== null && m.index < to) {
+  let m: OpenTag | null;
+  while ((m = nextOpenTag(text, CODE_OPEN, at)) !== null && m.index < to) {
+    at = m.end;
     if (holes.some((h) => m!.index >= h.start && m!.index < h.end)) {
       const hole = holes.find((h) => m!.index >= h.start && m!.index < h.end)!;
-      open.lastIndex = hole.end;
+      at = hole.end;
       continue;
     }
-    const tag = m[1]!.toLowerCase();
-    const after = m.index + m[0].length;
+    const tag = m.tag.toLowerCase();
+    const after = m.end;
     let close = nextClose.get(tag);
     if (close === undefined || (close !== -1 && close < after)) {
       close = lower.indexOf(`</${tag}`, after);
@@ -136,15 +176,13 @@ function htmlCodeSpans(text: string, lower: string, from: number, to: number, ho
     const gt = text.indexOf(">", close);
     const end = gt === -1 ? text.length : gt + 1;
     out.push({ start: m.index, end });
-    open.lastIndex = end;
+    at = end;
   }
   return out;
 }
 
 const PARSER_FENCE = /^(```|~~~)/; // parseStudyGuide's FENCE_RE
 const PARSER_H2 = /^##\s/; // parseStudyGuide's H2_RE
-const CONTAINER_FENCE =
-  /^((?:[ \t]{0,3}>[ \t]?)*)([ \t]*)((?:[-*+]|\d{1,9}[.)])[ \t]+)?([ \t]*)(`{3,}|~{3,})(.*)$/;
 const LIST_ITEM = /^[ \t]{0,3}(?:[-*+]|\d{1,9}[.)])(?:[ \t]|$)/;
 const ATX_OR_BREAK = /^(?:#{1,6}(?:[ \t]|$)|(?:-[ \t]*){3,}$|(?:\*[ \t]*){3,}$|(?:_[ \t]*){3,}$)/;
 
@@ -156,6 +194,69 @@ function indentWidth(s: string): number {
     else break;
   }
   return w;
+}
+
+export interface ContainerFence {
+  /** The block-quote markers before the fence, with their spacing. */
+  quotes: string;
+  /** Spaces and tabs after the quote markers. */
+  lead: string;
+  /** A list marker with the spacing after it, when there is one. */
+  marker: string | undefined;
+  /** The run of backticks or tildes. */
+  fence: string;
+  /** The rest of the line (the info string). */
+  info: string;
+}
+
+const QUOTE_MARKER = /[ \t]{0,3}>[ \t]?/y;
+const isBlank = (c: string | undefined) => c === " " || c === "\t";
+const isDigit = (c: string | undefined) => c !== undefined && c >= "0" && c <= "9";
+
+/**
+ * A fence opening inside block quotes and/or a list item — what the round-4
+ * pattern
+ *   /^((?:[ \t]{0,3}>[ \t]?)*)([ \t]*)((?:[-*+]|\d{1,9}[.)])[ \t]+)?([ \t]*)(`{3,}|~{3,})(.*)$/
+ * matched, read by one left-to-right scan (round 5, P5.B.1.ad). The pattern's
+ * nested and adjacent quantifiers backtracked exponentially on a line of
+ * quote markers and quadratically on a run of spaces; every step here is
+ * decided by the next character, so the scan is linear. Quote markers are
+ * taken greedily like `stripQuotes`; the pattern's second space run was
+ * always empty (the first takes every space), so it is not kept.
+ */
+export function matchContainerFence(line: string): ContainerFence | null {
+  let i = 0;
+  for (;;) {
+    QUOTE_MARKER.lastIndex = i;
+    if (!QUOTE_MARKER.test(line)) break;
+    i = QUOTE_MARKER.lastIndex;
+  }
+  let j = i;
+  while (isBlank(line[j])) j++;
+  let f = j; // where the fence starts
+  let marker: string | undefined;
+  let k = j; // past a list marker's bullet or number
+  if (line[j] === "-" || line[j] === "*" || line[j] === "+") k = j + 1;
+  else if (isDigit(line[j])) {
+    let d = j;
+    while (isDigit(line[d])) d++;
+    if (d - j <= 9 && (line[d] === "." || line[d] === ")")) k = d + 1;
+  }
+  if (k > j) {
+    let w = k;
+    while (isBlank(line[w])) w++;
+    if (w === k) return null; // a bullet with no space is not a marker, and not a fence
+    marker = line.slice(j, w);
+    f = w;
+  }
+  const ch = line[f];
+  if (ch !== "`" && ch !== "~") return null;
+  let e = f;
+  while (line[e] === ch) e++;
+  if (e - f < 3) return null;
+  const info = line.slice(e);
+  if (/[\n\r\u2028\u2029]/.test(info)) return null; // the pattern's `.` stopped there
+  return { quotes: line.slice(0, i), lead: line.slice(i, j), marker, fence: line.slice(f, e), info };
 }
 
 /** Strip up to `depth` block-quote markers; null when the line has fewer. */
@@ -312,18 +413,18 @@ export function markdownCodeSpans(text: string, from = 0, to = text.length): Spa
         flushPara();
         prevBlank = true;
       } else {
-        const cf = line.includes("```") || line.includes("~~~") ? CONTAINER_FENCE.exec(line) : null;
-        const quotes = cf ? (cf[1]!.match(/>/g) ?? []).length : 0;
-        const marker = cf?.[3];
-        const lead = cf ? indentWidth(cf[2]!) : 0;
+        const cf = line.includes("```") || line.includes("~~~") ? matchContainerFence(line) : null;
+        const quotes = cf ? (cf.quotes.match(/>/g) ?? []).length : 0;
+        const marker = cf?.marker;
+        const lead = cf ? indentWidth(cf.lead) : 0;
         const isFence =
           cf !== null &&
-          !(cf[5]![0] === "`" && cf[6]!.includes("`")) &&
+          !(cf.fence[0] === "`" && cf.info.includes("`")) &&
           (quotes > 0 || marker !== undefined || lead <= 3 || inList);
         if (isFence) {
           flushPara();
           const indent = marker !== undefined ? lead + marker.length : quotes === 0 && !inList ? 0 : lead;
-          fence = { char: cf![5]![0]!, len: cf![5]!.length, indent, quotes, start: lineStart };
+          fence = { char: cf!.fence[0]!, len: cf!.fence.length, indent, quotes, start: lineStart };
           if (marker !== undefined) inList = true;
         } else if (!inList && prevBlank && indentWidth(line) >= 4) {
           flushPara();

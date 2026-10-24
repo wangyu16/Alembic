@@ -12,7 +12,7 @@ import {
   writeThrough,
   type Committer,
 } from "@alembic/package-ops";
-import type { PackageManifest } from "@alembic/package-contract";
+import { sha256Hex, type PackageManifest } from "@alembic/package-contract";
 import { discoveryChanged } from "@/lib/discovery-cache";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SupabaseSandboxStore } from "@/lib/sandbox-store";
@@ -84,6 +84,8 @@ async function refreshManifestColumn(
 export interface DescriptionResult {
   ok: boolean;
   markdown?: string;
+  /** Loop r5 (P5.B.3.p): the saved file's digest — the editor's next base. */
+  contentHash?: string;
   error?: string;
 }
 
@@ -272,6 +274,9 @@ export async function loadCourseConceptMapAction(
 export async function saveCourseConceptMapAction(
   packageId: string,
   markdown: string,
+  /** Loop r5 (P5.B.3.p): the stored version the editor opened (null = no
+   *  file yet; undefined = unchecked, as before r4). Refused if it moved on. */
+  baseHash?: string | null,
 ): Promise<DescriptionResult> {
   const { supabase, user } = await requireUser();
   const store = new SupabaseSandboxStore(supabase);
@@ -280,13 +285,18 @@ export async function saveCourseConceptMapAction(
     if ("error" in writePath) return { ok: false, error: writePath.error };
     await writeThrough(store, writePath.committer, packageId, {
       changes: [
-        { repo: "public", path: COURSE_CONCEPT_MAP_PATH, content: markdown },
+        {
+          repo: "public",
+          path: COURSE_CONCEPT_MAP_PATH,
+          content: markdown,
+          ...(baseHash !== undefined ? { baseHash } : {}),
+        },
       ],
       summary: "Update course concept map (Alembic)",
     });
     revalidatePath(`/workspace/${packageId}`);
     discoveryChanged();
-    return { ok: true, markdown };
+    return { ok: true, markdown, contentHash: await sha256Hex(markdown) };
   } catch (e) {
     return {
       ok: false,

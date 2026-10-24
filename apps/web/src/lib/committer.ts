@@ -99,6 +99,23 @@ export const CHANGED_OUTSIDE_HELD_BACK =
   "\u201cCheck for outside changes\u201d at the top of the course page to see " +
   "what needs fixing, or to keep Alembic's version.";
 
+/** Loop r5 (P5.B.3.v): this file's outside change is fine, but it waits for
+ *  another file's outside change that can't be brought in automatically. */
+export const CHANGED_OUTSIDE_WAITING =
+  "This file was changed outside Alembic. That change is fine, but it is " +
+  "waiting behind a change to another file that can't be brought in " +
+  "automatically, so this change wasn't saved \u2014 nothing was changed. Use " +
+  "\u201cCheck for outside changes\u201d at the top of the course page to " +
+  "resolve the other file (fix it where it was made, or keep Alembic's " +
+  "version); this file's outside version then comes in, and you can save it.";
+
+/** Loop r5 (P5.B.3.q): the same file was saved somewhere else at the same
+ *  moment (another tab), so this save was not written over it. */
+export const CHANGED_AT_ONCE =
+  "This file was saved somewhere else at the same moment, so this change " +
+  "wasn't saved \u2014 nothing was changed. Reload to see the newer version, " +
+  "then make your change again.";
+
 const SAVE_FAILED =
   "We couldn't save this change to the package's online home. " +
   "Nothing was changed — please try again in a moment.";
@@ -243,6 +260,14 @@ export function githubCommitter(args: {
           `[commit] ${coords.owner}/${coords.repo}: refused, changed outside Alembic (${err.reason}):`,
           err.paths.join(", "),
         );
+        // Loop r5 (P5.B.3.q): the private repository has no synced point and
+        // no reconcile; its only refusal is the bridge's rebuild guard (the
+        // same file was saved meanwhile). Never retried: if this save's base
+        // is stale say so, else refuse in plain words.
+        if (plan.repo === "private") {
+          await recheck();
+          throw new CommitFailedError(CHANGED_AT_ONCE, err);
+        }
         // Loop r3 (P5.B.3.g): never a dead end. Bring the outside change in
         // now; if none of THIS save's files really differ from what Alembic
         // already has (the "outside" commit was Alembic's own — a second tab,
@@ -269,8 +294,11 @@ export function githubCommitter(args: {
         // course locked up file by file.
         let since: string | null;
         if (outcome.status === "quarantined") {
-          const blocked = [...outcome.violationPaths, ...outcome.changedPaths];
-          if (blocked.some((p) => ours.has(p))) throw new CommitFailedError(CHANGED_OUTSIDE_HELD_BACK, err);
+          if (outcome.violationPaths.some((p) => ours.has(p))) throw new CommitFailedError(CHANGED_OUTSIDE_HELD_BACK, err);
+          // Loop r5 (P5.B.3.v): a clean outside change of this file, waiting
+          // behind another file's held-back one — say so, not "can't be
+          // brought in" (that is the other file).
+          if (outcome.changedPaths.some((p) => ours.has(p))) throw new CommitFailedError(CHANGED_OUTSIDE_WAITING, err);
           since = outcome.headSha;
         } else {
           if (outcome.status === "absorbed" && outcome.changedPaths.some((p) => ours.has(p))) {

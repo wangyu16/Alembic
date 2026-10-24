@@ -13,6 +13,7 @@
  * | `preview`   | 60 per minute per signed-in USER     | Postgres, in-process fallback  |
  * | `reconcile` | 10 per 10 minutes and 60 per day per USER ("Check for outside changes") | Postgres, in-process fallback |
  * | `a11yAuto`  | 30 per hour and 200 per day per COURSE (the automatic accessibility check) | Postgres, in-process fallback |
+ * | `a11yCheck` | 10 per 10 minutes and 60 per day per USER ("Check now" on a published course) | Postgres, in-process fallback |
  *
  * Why these numbers: a class behind one NAT opening a document with dozens of
  * embedded figures makes hundreds of `/d` requests a minute, most of them
@@ -59,6 +60,15 @@ export const RATE_LIMITS = {
   a11yAuto: [
     { limit: 30, windowMs: 60 * 60_000 },
     { limit: 200, windowMs: 24 * 60 * 60_000 },
+  ],
+  // "Check now" on a PUBLISHED course (closed loop r5, P5.R.5.j): per USER.
+  // Each check reads every chapter from GitHub through the educator's own
+  // installation, like the automatic one, but nothing coalesced or bounded a
+  // person (or a script) pressing it. A person checks a handful of times;
+  // these bound a loop, across all of that account's courses.
+  a11yCheck: [
+    { limit: 10, windowMs: 10 * 60_000 },
+    { limit: 60, windowMs: 24 * 60 * 60_000 },
   ],
 } as const satisfies Record<string, readonly RateRule[]>;
 

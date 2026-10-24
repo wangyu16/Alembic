@@ -34,6 +34,9 @@ describe("bridge, loop r4", () => {
         if (method === "GET" && url.includes("/git/ref/heads/")) return (heads++, ok({ object: { sha: headSha } }));
         if (method === "GET" && url.includes("/git/commits/")) return ok({ tree: { sha: `t-${headSha}` } });
         if (method === "POST" && url.endsWith("/git/trees")) return ok({ sha: `nt-${heads}` });
+        // Loop r5 (P5.B.3.q): the rebuild compares the plan's blob ids; a.md is unchanged.
+        if (method === "GET" && url.includes("/git/trees/"))
+          return ok({ tree: [{ path: "a.md", type: "blob", sha: "blob-a" }], truncated: false });
         if (method === "POST" && url.endsWith("/git/commits")) return ok({ sha: `c-${heads}` });
         if (method === "PATCH") {
           patches++;

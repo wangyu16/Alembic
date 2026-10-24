@@ -17,6 +17,32 @@ export const OUTSIDE_CHANGES_LABEL = "Check for outside changes";
 /** Loop r4 (P5.B.3.l): replace a held-back outside change with Alembic's copy. */
 export const KEEP_ALEMBIC_LABEL = "Keep Alembic's version";
 
+/**
+ * Loop r5 (P5.B.3.r): what "Keep Alembic's version" will do, truthfully. A
+ * file Alembic has no copy of (added outside Alembic, or removed in Alembic)
+ * is REMOVED from the online course, not replaced — the confirmation says so
+ * and why.
+ */
+export function keepConfirmText(files: string[], removedOnKeep: string[]): string {
+  const removed = files.filter((f) => removedOnKeep.includes(f));
+  const replaced = files.filter((f) => !removedOnKeep.includes(f));
+  const parts: string[] = [];
+  if (replaced.length > 0) {
+    parts.push(
+      `Keep Alembic's version of ${replaced.join(", ")}? This replaces the change made outside Alembic with the copy in Alembic.`,
+    );
+  }
+  if (removed.length > 0) {
+    parts.push(
+      `${replaced.length > 0 ? "And remove" : "Remove"} ${removed.join(", ")} from the online course? ` +
+        "Alembic has no copy of " + (removed.length === 1 ? "this file" : "these files") +
+        " (added outside Alembic, or removed in Alembic), so keeping Alembic's version removes " +
+        (removed.length === 1 ? "it" : "them") + ".",
+    );
+  }
+  return parts.join("\n\n");
+}
+
 export function OutsideChangesControl({
   packageId,
   onChanged,
@@ -30,6 +56,8 @@ export function OutsideChangesControl({
   const [files, setFiles] = useState<string[]>([]);
   const [outside, setOutside] = useState<string[]>([]);
   const [seenAt, setSeenAt] = useState<string | null>(null);
+  const [removedOnKeep, setRemovedOnKeep] = useState<string[]>([]);
+  const [reasons, setReasons] = useState<Record<string, string>>({});
 
   const show = (r: ReconcileResult) => {
       if (!r.ok) {
@@ -52,10 +80,13 @@ export function OutsideChangesControl({
         setFiles(r.keepable ?? []);
         setOutside(r.removeOutside ?? []);
         setSeenAt(r.seenAt ?? null);
+        setRemovedOnKeep(r.removedOnKeep ?? []);
+        setReasons(r.reasons ?? {});
         const canKeep = (r.keepable ?? []).length > 0;
+        // Loop r5 (P5.B.3.r): the real reason is listed per file below.
         setProblem(
           "Some files were changed outside Alembic in a way Alembic can't bring in " +
-            "(for example, damaged section markers). Until that is fixed where it was " +
+            "(the reason is under each file). Until that is fixed where it was " +
             `made${canKeep ? ", or you keep Alembic's version" : ""}, these files can't be ` +
             "saved here \u2014 and other outside changes wait until then. Every other " +
             "file saves as usual.",
@@ -69,6 +100,8 @@ export function OutsideChangesControl({
     setFiles([]);
     setOutside([]);
     setSeenAt(null);
+    setRemovedOnKeep([]);
+    setReasons({});
   };
 
   const check = () => {
@@ -78,9 +111,7 @@ export function OutsideChangesControl({
 
   const keep = () => {
     if (!seenAt || files.length === 0) return;
-    const ok = window.confirm(
-      "Keep Alembic's version of these files? This replaces the change made outside Alembic with the copy in Alembic.",
-    );
+    const ok = window.confirm(keepConfirmText(files, removedOnKeep));
     if (!ok) return;
     const kept = files;
     const at = seenAt;
@@ -105,7 +136,13 @@ export function OutsideChangesControl({
         <>
           <ul className="max-w-sm list-disc pl-4 text-left text-xs text-danger">
             {files.map((f) => (
-              <li key={f}>{f}</li>
+              <li key={f}>
+                {f}
+                {reasons[f] && <span className="text-muted">{" \u2014 "}{reasons[f]}</span>}
+                {removedOnKeep.includes(f) && (
+                  <span className="text-muted"> Alembic has no copy of this file, so keeping Alembic's version removes it.</span>
+                )}
+              </li>
             ))}
           </ul>
           <button

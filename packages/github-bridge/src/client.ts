@@ -331,26 +331,71 @@ export class GitHubClient {
     // fast-forward with 422 and nothing was changed. Build the commit again
     // on the new head — the outside-change guard runs again, against it —
     // and try once more, instead of failing a save that would land cleanly.
+    //
+    // Loop r5 (P5.B.3.q): the rebuild is guarded for EVERY repository, not
+    // only by the public repo's synced-point comparison (a private repository
+    // has none). Before rebuilding, each path this commit writes or deletes
+    // must have the same blob id at the new head as in the tree the first
+    // attempt was built on; otherwise the branch moved in one of our own
+    // files (another tab's save of the same file, say) and the commit is
+    // refused (`RemoteChangedError`, "overlap"), never written over it.
+    let firstTree: string | null = null;
     try {
-      return await this.commitOnce(input);
+      return await this.commitOnce(input, (_parent, tree) => {
+        firstTree = tree;
+      });
     } catch (err) {
-      if (!isNotFastForward(err)) throw err;
-      return this.commitOnce(input);
+      if (!isNotFastForward(err) || firstTree === null) throw err;
+      const builtOn: string = firstTree;
+      return this.commitOnce(input, (_parent, tree) => this.assertPlanUnchanged(input, builtOn, tree));
     }
   }
 
-  private async commitOnce(input: {
-    coords: RepoCoords;
-    branch?: string;
-    message: string;
-    files: Array<{ path: string; content: string | null; encoding?: "utf-8" | "base64" }>;
-    unchangedSince?: string | null;
-  }): Promise<{ commitSha: string; parentSha: string }> {
+  /**
+   * Loop r5 (P5.B.3.q): every path of the plan has the same blob id (or is
+   * absent in both) in `beforeTree` and `afterTree`. A listing that may be
+   * incomplete (truncated) or cannot be read refuses — fail closed.
+   */
+  private async assertPlanUnchanged(
+    input: { coords: RepoCoords; files: Array<{ path: string }> },
+    beforeTree: string,
+    afterTree: string,
+  ): Promise<void> {
+    if (beforeTree === afterTree) return;
+    let before: Awaited<ReturnType<GitHubClient["listTree"]>>;
+    let after: Awaited<ReturnType<GitHubClient["listTree"]>>;
+    try {
+      [before, after] = await Promise.all([
+        this.listTree(input.coords, beforeTree),
+        this.listTree(input.coords, afterTree),
+      ]);
+    } catch (cause) {
+      throw new RemoteChangedError([], "unverifiable", cause);
+    }
+    if (before.truncated || after.truncated) throw new RemoteChangedError([], "unverifiable");
+    const was = new Map(before.entries.map((e) => [e.path, e.sha]));
+    const now = new Map(after.entries.map((e) => [e.path, e.sha]));
+    const moved = [...new Set(input.files.map((f) => f.path))].filter((p) => was.get(p) !== now.get(p));
+    if (moved.length > 0) throw new RemoteChangedError(moved, "overlap");
+  }
+
+  private async commitOnce(
+    input: {
+      coords: RepoCoords;
+      branch?: string;
+      message: string;
+      files: Array<{ path: string; content: string | null; encoding?: "utf-8" | "base64" }>;
+      unchangedSince?: string | null;
+    },
+    /** Called with the head this attempt builds on, before anything is written. */
+    onHead?: (parentSha: string, treeSha: string) => void | Promise<void>,
+  ): Promise<{ commitSha: string; parentSha: string }> {
     const branch = input.branch ?? "main";
     const { commitSha: parentSha, treeSha: baseTree } = await this.getBranchHead(
       input.coords,
       branch,
     );
+    if (onHead) await onHead(parentSha, baseTree);
 
     const since = input.unchangedSince;
     if (since && since !== parentSha) {

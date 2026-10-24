@@ -56,16 +56,55 @@ same commit as the work it tracks. Statuses: ✅ done · 🔄 partially shipped 
 `phase5/decisions` ef2ded8, not merged; migrations `0033_loop_r5_*` NOT applied).** One narrow audit of round 4's
 changes (+ the decisions-diff audit); each finding became a claim + a probe that fails before + a fix of the class
 ([DecisionLog](DecisionLog.md) 2026-10-24 "Closed loop r5"). No new review round follows (owner ruling).
+- ✅ **HIGH (a) — an existing whitespace-only or empty concept map / assessment guide could never be saved
+  (P5.B.3.p).** The editor took "is there a file" from `content.trim()` (and the edit page turned "no file" into
+  ""), so such a file was opened with base "no file" and every save was refused as changed (R5-1, published and
+  trial). Class fix: every editor's base is the file's real existence or a digest computed where it was read — the
+  single-file documents get an `OpenedFile` (`lib/base-hash.ts`) from the page; the file editor no longer hashes its
+  text; the private file editor and every collection editor use the load action's digest; the course concept map
+  editor, which sent no base at all, is now based on `concepts/course.md`'s digest. (Hosted editors and the block
+  editor already used server digests.)
+- ✅ **MEDIUM (b) — a private-repository save rebuilt after a 422 wrote over another tab's save of the same file
+  (P5.B.3.q).** The rebuild re-ran only the public synced-point guard (R5-4). Now, for every repository, the bridge
+  checks that the plan's paths have the same blob ids at the new head as in the tree the first attempt was built on,
+  else nothing is written; the committer never retries a refused private save (stale base → "changed since you
+  opened it", otherwise "saved somewhere else at the same moment"). Different files still land; the public
+  same-file case is still refused (R5-5).
 - ✅ **MEDIUM (b) — a held id that kept failing stopped a whole discovery drain for good (P5.A.1.w).**
   `discovery_flush_one` returned as soon as the held retry failed, so the cursor never moved and later edits merged
   into the entry were never projected (repro `/tmp/p5r5/sql/held.test.ts`). `0033_loop_r5_1_discovery_held` records
   what is still held (one attempt, one back-off per drain) and falls through to the pass / scoped work; the pass
   reaches the course row and leaves exactly the failing ids as a scoped entry. Composition: from 0031_loop_r4b_1's
   definition, every earlier rule kept (P5.A.1.r extended).
+- ✅ **LOW–MEDIUM (a) — "Keep Alembic's version" removed a file online without saying so (P5.B.3.r).** When
+  Alembic has no copy (the file was added outside, or removed in Alembic) the keep deletes it; the confirmation now
+  asks to *remove* it and says why, and every held-back file shows its real reason (e.g. text not saved as UTF-8,
+  damaged section markers). Non-UTF-8 text (a Windows-1252 CSV) stays held back, worded truthfully: storing it as
+  base64 is not consistent with the stored form, which every reader decides by the file's name.
+- ✅ **LOWs.** A keep counts against the check bound like one check — refused up front at the bound, and a keep
+  that went through never comes back as "checked too many times" (P5.B.3.s). An AI rewrite applied from the file
+  editor now shows the applied text and is based on it; the block editor keeps its base (its sections still show
+  the old text), so a later manual save is refused rather than written over the assistant's version (P5.B.3.t).
+  The tree fallback reads a stored copy by its name, so a text file whose words are valid base64 is not mistaken
+  for unchanged (P5.B.3.u). A clean outside change waiting behind a held-back one is refused with words that say so
+  (P5.B.3.v). Hosted saves run one at a time: a save pressed again after the in-file 10 s acknowledgement wait (a
+  family protocol constant) carries the base the slow first save moved forward and lands (P5.B.3.w).
 - ✅ **Decisions-diff audit, LOW (b) — a failed accessibility check could be escaped by saving (P5.R.5.h).** Only
   pass/warn expire when the recorded head moves; a fail stays (badge "needs work", `fail` facet, ranked as fail, also
   on the listing row) until a newer completed check (`0033_loop_r5_2_a11y_fail_sticks`, no code change). Gap: a
   fail that already expired under 0030 stays neutral until its next check (pre-check query in the header).
+- ✅ **MEDIUM (b) — the fork's fence pattern backtracked exponentially (P5.B.1.ad).** One crafted line of nested
+  quote markers, spaces or tabs made `CONTAINER_FENCE` backtrack exponentially or quadratically (quote depth 26: 45 s
+  per scan). Replaced by a left-to-right scan (quote markers stripped in a loop, one blank run) that a differential
+  test pins to the old pattern. The regex review found the same class in three more places, all fixed: the HTML
+  open-tag patterns in `fork-remint.ts` (200 KB of unclosed `<code `: 20 s), `parseStudyGuide`'s H2 pattern (6 s) and
+  its tolerant block marker (53 s). Each crafted input now takes under 50 ms. Code only.
+- ✅ **Decisions-diff audit, LOW (a) — the published site's accessibility metadata read the stale manifest field
+  (P5.R.5.i).** It now uses the server's current check (`packages.a11y_status`); with no current check the field is
+  omitted. Closes decision 2's "Open" note. Code only.
+- ✅ **Decisions-diff audit, LOW (b) — "Check now" was unbounded (P5.R.5.j).** A published course's manual check
+  reads every chapter through the educator's GitHub access; it now goes through a per-user bucket `a11yCheck` (10 per
+  10 minutes, 60 per day, counted in Postgres), refused in plain words before any read. Code only.
 - **Deploy order (round 5):** the round-5 code, `0032_decisions_1_a11y_neutral` (owner decision 2) and
   `0033_loop_r5_1_discovery_held` + `0033_loop_r5_2_a11y_fail_sticks` in any order (0033 after 0032 by file order;
   each needs 0022–0031, which production has). No new environment variable.
@@ -84,8 +123,8 @@ changes (+ the decisions-diff audit); each finding became a claim + a probe that
   "Not checked" facet, and ranks the course neutral (accessibility term left out, rest ÷ 0.70 — migration
   **`0032_decisions_1_a11y_neutral` NOT applied**). "Check now" no longer commits into the course details. The
   publish header shows the latest result. **Deploy:** code and `0032` in either order (the UI also hides the facet
-  value); `0032` needs `0022`–`0031` applied (main has them). **Open:** the published site's schema.org
-  accessibility still reads `manifest.accessibility` (no longer refreshed for published courses).
+  value); `0032` needs `0022`–`0031` applied (main has them). ~~**Open:** the published site's schema.org
+  accessibility still reads `manifest.accessibility`~~ ✅ loop r5 (P5.R.5.i).
 
 **Phase 5 closed-loop verification — round 4, part B: SQL, discovery and `/d` fixes (2026-10-24, branch
 `phase5/loop-r4b` on `main` 03bcb00, not merged, migrations `0031_loop_r4b_*` NOT applied).** Each finding became a

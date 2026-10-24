@@ -2305,8 +2305,92 @@ bound_to = [
 ]
 note = "Loop r4 security LOW-5, the bounded half. OPEN: the tree fallback itself (lib/repo-reader.ts, reconcile) still reads every stored file's content to compute blob SHA-1s; using stored hashes (a generated git-blob-sha column, or listPaths + content_sha) belongs to the reconcile code part A owns in round 4 — left for it / the next round. The save path's own reconcile on a refused save (committer) is not rate-limited (it runs only on a refusal)."
 
-
 # ─── Closed loop round 5 — the final fix pass (2026-10-24, branch phase5/loop-r5) ───
+
+[[claim]]
+id = "P5.B.3.p"
+claim = "Every editor's base comes from the file's real existence or a digest computed where the file was read, never from the text it shows: an existing whitespace-only or empty concept map or assessment guide opens as an existing file (Download offered, its digest as the base) and saves, on a published and a trial course; a file that does not exist opens with base “no file” and the save creates it; the private file editor, every collection editor and the course concept map are based on the server's read too."
+oracle = "scenario"
+bound_to = [
+  "apps/web/src/lib/committer.r5.test.ts :: an existing whitespace-only or empty concept map can be saved, published and trial (R5-1)",
+  "apps/web/src/lib/committer.r5.test.ts :: the base the r4 editor derived from the text (no file) is refused for an existing file — the bug, pinned",
+  "apps/web/src/lib/committer.r5.test.ts :: every editor takes its base from the server's read, never from the text it shows",
+]
+note = "Loop r5 HIGH (a) (probe /tmp/p5r5/commit/r5.test.ts R5-1). Code only. The single-file documents get an OpenedFile (lib/base-hash.ts openedFile: exists = raw !== null, baseHash = SHA-256 of the stored text) from the edit page; FileEditor no longer hashes its text; collection/private editors take loadCollectionFileAction's contentHash; the course concept map editor (no base at all before r5) is based on concepts/course.md's digest. The empty state is still shown for a whitespace-only document (UI choice); starting it keeps the real base. Hosted editors and the block editor already used server digests (r4)."
+
+[[claim]]
+id = "P5.B.3.q"
+claim = "A commit rebuilt after GitHub's 422 “not a fast forward” is guarded in every repository: before rebuilding, each path it writes or deletes must have the same blob id at the new head as in the tree the first attempt was built on, else nothing is written (RemoteChangedError, an incomplete listing refuses too); the committer never retries a refused private save (the private repository has no synced point or reconcile) — a stale base says “changed since you opened it”, otherwise a plain “saved somewhere else at the same moment” — and a different file saved meanwhile still lands; the public same-file case stays refused."
+oracle = "probe"
+bound_to = [
+  "packages/github-bridge/src/commit.r5.test.ts :: the same file saved meanwhile is refused on rebuild, with no outside-change point (private repository, R5-4)",
+  "packages/github-bridge/src/commit.r5.test.ts :: a different file saved meanwhile: the rebuild lands on the new head",
+  "packages/github-bridge/src/commit.r5.test.ts :: a deletion is guarded too, and a listing that may be incomplete refuses",
+  "apps/web/src/lib/committer.r5.test.ts :: a private file saved in another tab at the same moment is never written over (R5-4)",
+  "apps/web/src/lib/committer.r5.test.ts :: without a base (an older client) the private rebuild is refused in plain words, never retried over the other save",
+  "apps/web/src/lib/committer.r5.test.ts :: a different private file saved meanwhile still lands on the rebuilt commit",
+  "apps/web/src/lib/committer.r5.test.ts :: the public same-file case is still refused (R5-5)",
+]
+note = "Loop r5 MEDIUM (b) (probes R5-4, R5-5). Code only (createCommitOnBranch → assertPlanUnchanged; committer CHANGED_AT_ONCE). Two extra tree listings only on a 422."
+
+[[claim]]
+id = "P5.B.3.r"
+claim = "“Keep Alembic's version” says truthfully what it will do: a held-back file Alembic has no copy of is named (removedOnKeep) and the confirmation asks to REMOVE it from the online course and says why (added outside Alembic, or removed in Alembic), while the rest are “replaced”; every held-back file carries its real reason in plain words — text not saved as UTF-8 (held back, never stored: the stored form is decided by the file's name, so storing such a file as base64 would not be consistent), damaged section markers, an unreadable course details file."
+oracle = "probe"
+bound_to = [
+  "apps/web/src/app/workspace/[packageId]/reconcile-actions.r5.test.ts :: a held-back file Alembic has no copy of is named as removed on keep, and every file carries its real reason",
+  "apps/web/src/app/workspace/[packageId]/reconcile-actions.r5.test.ts :: the confirmation says remove for a file Alembic has no copy of, and why; replace for the rest",
+  "apps/web/src/app/workspace/[packageId]/reconcile-actions.r5.test.ts :: keeping removes exactly the file Alembic has no copy of and writes Alembic's copy of the other",
+]
+note = "Loop r5 LOW–MEDIUM (a) (P5.B.3.l/k follow-up). Code only. Non-UTF-8 text stays held back (DecisionLog 2026-10-24 “Closed loop r5”): every reader decides binary vs text by name (isBinaryPath), so a base64 .csv would be shown and re-committed as base64 text."
+
+[[claim]]
+id = "P5.B.3.s"
+claim = "“Keep Alembic's version” counts against the per-user check bound like one check: at the bound it is refused up front in plain words, before any reconcile or write; its own checks before and after the keep run past the gate, so a keep that went through never comes back as “checked too many times”."
+oracle = "probe"
+bound_to = [
+  "apps/web/src/app/workspace/[packageId]/reconcile-actions.r5.test.ts :: a keep at the bound is refused before anything runs; a keep that went through never comes back as checked too many times",
+]
+note = "Loop r5 LOW. Before r5 the keep's first reconcile bypassed the gate and its closing re-check went through it. Code only."
+
+[[claim]]
+id = "P5.B.3.t"
+claim = "An AI rewrite applied directly from a host editor can't be silently overwritten by a later manual save: the assistant leaves the base to its host — the file editor shows the applied text and moves its base to it; the block editor (whose sections still show the old text) keeps its base, so a later save of the old text is refused as out of date and it says to reload."
+oracle = "scenario"
+bound_to = [
+  "apps/web/src/lib/committer.r5.test.ts :: a later manual save of the old text is refused, never written over the applied version",
+  "apps/web/src/lib/committer.r5.test.ts :: the assistant leaves the base to its host: FileEditor shows the applied text, ContentEditor keeps its base",
+]
+note = "Loop r5 LOW. Code only (AIAssistant onSaved). The UI wiring is pinned by source (no React test harness in apps/web)."
+
+[[claim]]
+id = "P5.B.3.u"
+claim = "The reconcile tree fallback compares a stored copy with a blob in the form the file's name decides (base64 for a binary by isBinaryPath, UTF-8 text otherwise), so a text file whose words happen to be valid base64 is never mistaken for an unchanged blob of the decoded bytes."
+oracle = "probe"
+bound_to = [
+  "apps/web/src/lib/committer.r5.test.ts :: a text file whose words are valid base64 is compared as text: an outside change to it is not missed",
+]
+note = "Loop r5 LOW. Code only (repo-reader.ts sameBlob(path, stored, sha))."
+
+[[claim]]
+id = "P5.B.3.v"
+claim = "A save of a file whose clean outside change is waiting behind another file's held-back change is refused with words that say so (the change is fine, it waits for the other file; resolve that one via “Check for outside changes”), not with the “can't be brought in” refusal meant for the held-back file itself."
+oracle = "probe"
+bound_to = [
+  "apps/web/src/lib/committer.r5.test.ts :: saving it is refused with words that say it is waiting, not that it can't be brought in (R5-7)",
+]
+note = "Loop r5 LOW (probe R5-7). Code only (committer CHANGED_OUTSIDE_WAITING)."
+
+[[claim]]
+id = "P5.B.3.w"
+claim = "A hosted editor's saves run one at a time, so a save pressed again after the in-file editor's 10 s acknowledgement wait (a family protocol constant, orz-host-save@1) starts only when the slow first save finished and carries the base it moved forward — it lands instead of being refused as stale; a failed save does not block the next."
+oracle = "probe"
+bound_to = [
+  "apps/web/src/lib/editor-modules/save-queue.test.ts :: a save pressed again while a slow save runs carries the new base and lands",
+  "apps/web/src/lib/editor-modules/save-queue.test.ts :: without the queue the second save carried the stale base and was refused (the r4 behaviour, pinned)",
+  "apps/web/src/lib/editor-modules/save-queue.test.ts :: a failed save does not stop the next one; the hosted carrier uses the queue",
+]
+note = "Loop r5 LOW. Code only (lib/editor-modules/save-queue.ts in hosted-carrier.ts). The 10 s wait itself is the family protocol's (orz-markdown spec/host-protocols.md §3) and is not changed here; a late acknowledgement of the first save may reach the file while the second is in flight (the second's own acknowledgement follows)."
 
 [[claim]]
 id = "P5.A.1.w"
@@ -2328,3 +2412,36 @@ bound_to = [
   "apps/web/src/lib/loop-r5-sql.sql.test.ts :: (kept) a pass or warn that a new head expired, and a never-checked course, are not checked (neutral)",
 ]
 note = "Loop r5 LOW (class b) on owner decision 2 (decisions-diff audit). Migration 0033_loop_r5_2_a11y_fail_sticks (after 0032; no code change). packages_a11y_expires expires only pass/warn. Gap: a fail that already expired to 'unknown' under 0030 before this migration cannot be told apart from an expired pass/warn (the old result is not stored) and stays neutral until its next completed check."
+
+[[claim]]
+id = "P5.B.1.ad"
+claim = "A fork's code detection and parseStudyGuide run in linear time on any line: crafted quote-marker, space or tab runs, unclosed HTML open tags, a heading of spaces before a stray return, or a heading of unclosed block markers are read in under 50 ms each; fences in quotes and lists, headings, block ids and titles are read exactly as before."
+oracle = "probe"
+bound_to = [
+  "packages/package-ops/src/fork.r5.test.ts :: crafted quote / space / tab lines are read in under 50 ms each, by markdownCodeSpans and by a whole fork",
+  "packages/package-ops/src/fork.r5.test.ts :: HTML with thousands of unclosed <code / <pre / <script tags is read in linear time",
+  "packages/package-ops/src/fork.r5.test.ts :: the fence scan agrees with the round-4 pattern on every short line",
+  "packages/package-ops/src/fork.r5.test.ts :: the open-tag scan agrees with the round-4 patterns",
+  "packages/package-ops/src/fork.r5.test.ts :: fences inside quotes and lists are still code; a parser heading never is",
+  "packages/package-contract/src/block-source.r5.test.ts :: parseStudyGuide reads a crafted heading (32k spaces before a stray return, 20k unclosed markers) in under 50 ms",
+  "packages/package-contract/src/block-source.r5.test.ts :: headings, ids and titles are read exactly as the round-4 patterns read them",
+]
+note = "Loop r5 MEDIUM, class b (probes /tmp/p5r5/fork/cf2.mts, p20-quote.mts: quote depth 26 took 45 s per scan). CONTAINER_FENCE -> matchContainerFence scan; the regex review found the same class in the HTML open-tag patterns (fork-remint) and in parseStudyGuide's H2 pattern and tolerant block marker. Code only. Kept: the old patterns' stray-\\r quirk."
+
+[[claim]]
+id = "P5.R.5.i"
+claim = "The published site's schema.org accessibility metadata follows the server's own current check (packages.a11y_status): with no current check it carries no accessibility field, whatever manifest.accessibility says; a recorded fail is never published as pass."
+oracle = "probe"
+bound_to = [
+  "apps/web/src/app/workspace/[packageId]/site-actions.a11y.test.ts :: the site carries the server's current check; with no current check it omits accessibility, whatever the manifest says",
+]
+note = "Loop r5 LOW, class a (decisions-diff audit); closes the 'Open' line of owner decision 2. Code only; reads the column the 0030/0033 triggers keep current."
+
+[[claim]]
+id = "P5.R.5.j"
+claim = "“Check now” on a published course is bounded per user (a11yCheck: 10 per 10 minutes, 60 per day): past it the check is refused before anything is read, in plain educator words; another user is unaffected."
+oracle = "probe"
+bound_to = [
+  "apps/web/src/app/workspace/[packageId]/a11y-actions.rate.test.ts :: the 11th check within 10 minutes is refused before any check runs, in plain words; another user is unaffected",
+]
+note = "Loop r5 LOW, class b (decisions-diff audit). New bucket a11yCheck (per USER, Postgres with in-process fallback; rate_limit_hit from 0023, no migration). Trial-course checks read the stored copy only and are not gated."

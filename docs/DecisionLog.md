@@ -6,11 +6,20 @@ design, and what is deferred to the future. Complements [Status.md](Status.md)
 
 ---
 
-## 2026-10-24 — Closed loop r5 (final): a held failure falls through; a fail sticks (SQL)
+## 2026-10-24 — Closed loop r5 (final): bases from real existence, guarded rebuilds, a held failure falls through; the loop closes
 
 Round 5 was the owner's narrow last round: one auditor on round 4's changes, plus the decisions-diff audit. Branch
 `phase5/loop-r5` on `phase5/decisions`. Every finding: claim + probe that fails before + fix of the class.
 
+- **An editor's base is the file's real existence (P5.B.3.p).** The class was "the client infers whether a file
+  exists from what it shows". Fixed at the source: the server says (`OpenedFile`: `exists = raw !== null`, the
+  SHA-256 of the stored text), and no editor in the shell hashes its own text any more. The empty state is still
+  shown for a whitespace-only document — a UI choice, independent of the base. The course concept map editor had no
+  base at all and now has one.
+- **A 422 rebuild is guarded by blob ids, in every repository (P5.B.3.q).** The synced-point comparison only exists
+  for the public repository. Comparing the plan's blob ids between the first attempt's tree and the new head is the
+  same question for both and costs two tree listings, only on a 422. A refused private save is never retried by the
+  committer (it has nothing to reconcile).
 - **A held failure falls through (P5.A.1.w).** A failure in one part of a drain must not stop the other parts. The
   held retry records its failure and the drain continues; at the end what is owed becomes a scoped entry. One
   attempt and one back-off per drain, however many steps fail. Not changed: held ids are still retried at each
@@ -20,6 +29,23 @@ Round 5 was the owner's narrow last round: one auditor on round 4's changes, plu
   a separate last-completed-result column used for ranking only (the listing row and badge would say "not checked"
   while ranking said fail). The fail is shown everywhere: it describes earlier bytes, but it can only understate a
   course, and the automatic re-check after each save replaces it.
+- **Non-UTF-8 text stays held back (P5.B.3.r).** Asked: store it as base64 if simple and consistent. It is not
+  consistent: the store has no encoding flag and every reader (editors, publish, the reconcile comparison, the
+  committer's encoding) decides binary vs text by the file's name (`isBinaryPath`), so a base64 `.csv` would be shown
+  and re-committed as base64 text. The hold-back stays; the control now says why ("not saved as UTF-8 — save it as
+  UTF-8 where it was changed, or keep Alembic's version") and that keeping removes a file Alembic has no copy of.
+- **The 10 s acknowledgement wait is the family protocol's (P5.B.3.w).** `orz-host-save@1` fixes it (orz-markdown
+  `spec/host-protocols.md` §3); a lower layer is not changed for one host. Alembic serializes its host saves instead,
+  so the re-save after a timeout carries the new base.
+- **Linear scans instead of ambiguous regexes (P5.B.1.ad).** Where a regex had adjacent or nested quantifiers over
+  the same characters (`[ \t]` runs, optional quote markers), or rescanned `[^x]*` from every candidate start, it is
+  replaced by a deterministic scan or a regex whose quantifiers are separated by disjoint classes (`\s+(\S.*)?`). Line
+  length is not capped: behaviour must stay identical, and a cap would change what counts as code. Each replacement is
+  pinned by a differential test against the old regex on bounded random input (the old patterns' `\r` quirk kept).
+- **Published accessibility follows the server's record only (P5.R.5.i).** The owner-written manifest field stays a
+  trial-course preview; not checked means say nothing, never a default.
+- **"Check now" gets its own per-user bucket (P5.R.5.j).** The protected cost is the educator's installation quota,
+  which is per account, not per course; and a manual check should not use up the automatic check after a save.
 ## 2026-10-24 — Owner decision 2: the accessibility badge follows an automatic check; no check is neutral
 
 The owner ruled that the badge must not depend on an educator remembering to re-run a check that every save expires

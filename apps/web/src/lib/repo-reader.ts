@@ -16,14 +16,15 @@ import { isBinaryPath } from "./collection-upload";
 
 type Changed = Array<{ path: string; status: "added" | "modified" | "removed" }>;
 
-/** Does the stored text equal the blob `sha`? Binaries are stored base64, and
- *  the stored copy carries no encoding flag, so both readings are tried. */
-export function sameBlob(stored: string, sha: string): boolean {
-  if (gitBlobSha(Buffer.from(stored, "utf8")) === sha) return true;
-  if (/^[A-Za-z0-9+/]*={0,2}$/.test(stored) && stored.length % 4 === 0) {
-    return gitBlobSha(Buffer.from(stored, "base64")) === sha;
-  }
-  return false;
+/** Does the stored copy of `path` equal the blob `sha`? Loop r5 (P5.B.3.u):
+ *  the stored form is decided by the file's name, as everywhere else
+ *  (`storedForm`, the upload door's isBinaryPath) — base64 for a binary,
+ *  UTF-8 text otherwise. Before r5 both readings were tried, so a text file
+ *  whose words happen to be valid base64 ("QUJD") matched a blob of the
+ *  decoded bytes ("ABC"), and an outside change to it was missed. */
+export function sameBlob(path: string, stored: string, sha: string): boolean {
+  const bytes = isBinaryPath(path) ? Buffer.from(stored, "base64") : Buffer.from(stored, "utf8");
+  return gitBlobSha(bytes) === sha;
 }
 
 /**
@@ -59,7 +60,7 @@ export async function treeChangedPaths(
     atHead.add(path);
     const ours = stored.get(path);
     if (ours !== undefined) {
-      if (!sameBlob(ours, sha)) out.push({ path, status: "modified" });
+      if (!sameBlob(path, ours, sha)) out.push({ path, status: "modified" });
     } else if (baseShas === null || baseShas.get(path) !== sha) {
       out.push({ path, status: "added" });
     }
@@ -127,7 +128,7 @@ export function githubRepoReader(
     // (the blobs API past the contents API's 1 MB) in the stored form.
     async sameAsStored(path, stored, ref) {
       const sha = (await blobIds(ref))?.get(path);
-      return sha !== undefined && sameBlob(stored, sha);
+      return sha !== undefined && sameBlob(path, stored, sha);
     },
     async readFileAtRef(path, ref) {
       const bytes = await client.getFileBytesAtRef(coords, path, ref);

@@ -29,7 +29,13 @@ export interface ParsedStudyGuide {
   blocks: StudyGuideBlock[];
 }
 
-const H2_RE = /^##\s+(.*)$/;
+/**
+ * An H2 heading line; capture its text. Equivalent to `/^##\s+(.*)$/` (the
+ * first `\s+` takes every space, so the text starts at a non-space) but
+ * without that pattern's backtracking: on `## ` + 32k spaces + `x\r` it tried
+ * every split of the spaces — 6 s (round 5, P5.B.1.ad).
+ */
+const H2_RE = /^##\s+(\S.*)?$/;
 const FENCE_RE = /^(```|~~~)/;
 /** The canonical (well-formed) block-ID marker; capture the ID. */
 export const BLOCK_MARKER_RE = /\{\{attrs\[#(blk-[a-z0-9]+)\]\}\}/;
@@ -42,7 +48,28 @@ export const BLOCK_MARKER_RE = /\{\{attrs\[#(blk-[a-z0-9]+)\]\}\}/;
  * id silently lost. A non-conforming id is treated as anonymous (null) — the
  * save path then re-mints a fresh valid id for it.
  */
-const ANY_BLOCK_MARKER_RE = /\{\{attrs\[#(blk-[^\]]*)\]\}\}/;
+const ANY_MARKER_OPEN = "{{attrs[#blk-";
+
+/**
+ * The first match of `/\{\{attrs\[#(blk-[^\]]*)\]\}\}/` (the tolerant
+ * detector) in linear time (round 5, P5.B.1.ad): the pattern rescanned to the
+ * next `]` from every `{{attrs[#blk-`, so a heading of many unclosed openers
+ * took seconds. Openers that share the same next `]` share one look-up.
+ */
+function findAnyBlockMarker(text: string): { index: number; length: number; id: string } | null {
+  let close = -1; // the next `]` at or after the current opener's id
+  for (let at = text.indexOf(ANY_MARKER_OPEN); at !== -1; at = text.indexOf(ANY_MARKER_OPEN, at + 1)) {
+    const idStart = at + ANY_MARKER_OPEN.length - 4; // the id starts at `blk-`
+    if (close < idStart) {
+      close = text.indexOf("]", idStart);
+      if (close === -1) return null;
+    }
+    if (text.startsWith("]}}", close)) {
+      return { index: at, length: close + 3 - at, id: text.slice(idStart, close) };
+    }
+  }
+  return null;
+}
 
 /** Render the canonical marker for a block ID. */
 export function formatBlockMarker(id: string): string {
@@ -50,10 +77,12 @@ export function formatBlockMarker(id: string): string {
 }
 
 function blockFromHeading(headingText: string, bodyLines: string[]): StudyGuideBlock {
-  const markerMatch = headingText.match(ANY_BLOCK_MARKER_RE);
-  const raw = markerMatch?.[1];
+  const marker = findAnyBlockMarker(headingText);
+  const raw = marker?.id;
   const id = raw && BLOCK_ID_PATTERN.test(raw) ? raw : null;
-  const title = headingText.replace(ANY_BLOCK_MARKER_RE, "").trim();
+  const title = (
+    marker ? headingText.slice(0, marker.index) + headingText.slice(marker.index + marker.length) : headingText
+  ).trim();
   const body = bodyLines.join("\n").trim();
   return { id, title, body };
 }

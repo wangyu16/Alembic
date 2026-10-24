@@ -22,16 +22,14 @@
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { GitHubClient, gitBlobSha, type FetchLike, type FetchResponse } from "@alembic/github-bridge";
-import { parseManifest, sha256Hex } from "@alembic/package-contract";
+import type { GitHubClient } from "@alembic/github-bridge";
+import { sha256Hex } from "@alembic/package-contract";
 import {
   CommitFailedError,
   FILE_CHANGED_SINCE_OPENED,
   FileChangedSinceOpenedError,
   MemoryPackageStore,
   writeThrough,
-  type Committer,
-  type PackageRecord,
   type PackageStore,
 } from "@alembic/package-ops";
 
@@ -65,216 +63,31 @@ import {
   CHANGED_OUTSIDE,
   CHANGED_OUTSIDE_BROUGHT_IN,
   CHANGED_OUTSIDE_HELD_BACK,
+  CHANGED_OUTSIDE_WAITING,
   committerFor,
 } from "./committer";
 // eslint-disable-next-line import/first
 import { saveFailureMessage } from "./editor-save";
+// eslint-disable-next-line import/first
+import {
+  BROKEN,
+  INITIAL,
+  NO_DEV_WORDS,
+  PNG,
+  clientFor,
+  course,
+  editorSave,
+  foreign,
+  head,
+  opened,
+  packagesTable,
+  rec,
+  refusal,
+  save,
+  type RepoState,
+} from "./repo-sim.testkit";
 
-/* ── a simulated public repository with contents ───────────────────────── */
-
-type Snapshot = Map<string, string>;
-type CompareMode = "ok" | "fails" | "too-many" | "diverged";
-
-function repoState(initial: Record<string, string>) {
-  const commits = new Map<string, { parent: string | null; files: Snapshot }>([
-    ["c0", { parent: null, files: new Map(Object.entries(initial)) }],
-  ]);
-  return {
-    head: "c0",
-    n: 0,
-    commits,
-    trees: new Map<string, Snapshot>(),
-    compare: "ok" as CompareMode,
-    writes: 0,
-    /** Paths whose bytes were downloaded (contents or blobs API). */
-    reads: [] as string[],
-    blobs: new Map<string, string>(),
-    /** Called (and awaited) before each PATCH of the branch. */
-    beforePatch: null as null | (() => Promise<void>),
-  };
-}
-type RepoState = ReturnType<typeof repoState>;
-
-function isAncestor(s: RepoState, base: string, tip: string): boolean {
-  for (let at: string | null = tip; at; at = s.commits.get(at)?.parent ?? null) if (at === base) return true;
-  return false;
-}
-
-/** A file's bytes: "B64:…" is a binary written as base64, anything else UTF-8. */
-function bytesOf(c: string): Buffer {
-  return c.startsWith("B64:") ? Buffer.from(c.slice(4), "base64") : Buffer.from(c, "utf8");
-}
-
-/** A change made directly on the hosting site, outside Alembic. */
-function foreign(s: RepoState, edits: Record<string, string | null>): string {
-  const files = new Map(s.commits.get(s.head)!.files);
-  for (const [p, c] of Object.entries(edits)) (c === null ? files.delete(p) : files.set(p, c));
-  const sha = `f${++s.n}`;
-  s.commits.set(sha, { parent: s.head, files });
-  s.head = sha;
-  return sha;
-}
-
-/** A client over the shared repo state; `gate` delays this client's first request. */
-function clientFor(s: RepoState, gate?: Promise<void>) {
-  let gated = !!gate;
-  const ok = (json: unknown): FetchResponse => ({ ok: true, status: 200, json: async () => json, text: async () => "" });
-  const nf: FetchResponse = { ok: false, status: 404, json: async () => ({}), text: async () => "Not Found" };
-  const snapshotOf = (ref: string): Snapshot | undefined =>
-    s.commits.get(ref)?.files ?? s.trees.get(ref) ?? s.commits.get(ref.replace(/^tree-/, ""))?.files;
-  const fetchImpl: FetchLike = async (url, init) => {
-    if (gated) {
-      gated = false;
-      await gate;
-    }
-    const method = init?.method ?? "GET";
-    const body = init?.body ? (JSON.parse(init.body) as Record<string, unknown>) : {};
-    const path = url.replace(/^https:\/\/api\.github\.com\/repos\/prof\/thermo/, "");
-    if (method === "GET" && path.startsWith("/git/ref/heads/")) return ok({ object: { sha: s.head } });
-    if (method === "GET" && path.startsWith("/git/commits/")) return ok({ tree: { sha: `tree-${path.split("/").pop()}` } });
-    if (method === "GET" && path.startsWith("/git/trees/")) {
-      const snap = snapshotOf(path.slice("/git/trees/".length).split("?")[0]!);
-      if (!snap) return nf;
-      return ok({
-        tree: [...snap].map(([p, c]) => ({ path: p, type: "blob", sha: gitBlobSha(bytesOf(c)) })),
-        truncated: false,
-      });
-    }
-    if (method === "GET" && path.startsWith("/contents/")) {
-      const [p, q] = path.slice("/contents/".length).split("?ref=") as [string, string];
-      const c = snapshotOf(q)?.get(p);
-      if (c === undefined) return nf;
-      const bytes = bytesOf(c);
-      const sha = gitBlobSha(bytes);
-      s.blobs.set(sha, c);
-      // Real GitHub: the contents API inlines files up to 1 MB only.
-      if (bytes.length > 1_000_000) return ok({ content: "", encoding: "none", sha, size: bytes.length });
-      s.reads.push(p);
-      return ok({ content: bytes.toString("base64"), encoding: "base64", sha, size: bytes.length });
-    }
-    if (method === "GET" && path.startsWith("/git/blobs/")) {
-      const c = s.blobs.get(path.slice("/git/blobs/".length));
-      if (c === undefined) return nf;
-      s.reads.push(`blob:${path.slice("/git/blobs/".length)}`);
-      return ok({ content: bytesOf(c).toString("base64"), encoding: "base64" });
-    }
-    if (method === "POST" && path === "/git/blobs") {
-      const c = `B64:${body["content"] as string}`;
-      const sha = gitBlobSha(bytesOf(c));
-      s.blobs.set(sha, c);
-      return ok({ sha });
-    }
-    if (method === "GET" && path.startsWith("/compare/")) {
-      const [base, tip] = path.slice("/compare/".length).split("...") as [string, string];
-      if (s.compare === "fails" || !s.commits.has(base)) return nf;
-      const a = s.commits.get(base)!.files;
-      const b = s.commits.get(tip)!.files;
-      const files: Array<{ filename: string; status: string }> = [];
-      for (const [p, c] of b) if (a.get(p) !== c) files.push({ filename: p, status: a.has(p) ? "modified" : "added" });
-      for (const p of a.keys()) if (!b.has(p)) files.push({ filename: p, status: "removed" });
-      if (s.compare === "too-many")
-        for (let i = files.length; i < 300; i++) files.push({ filename: `padding/${i}.md`, status: "modified" });
-      const status = s.compare === "diverged" || !isAncestor(s, base, tip) ? "diverged" : "ahead";
-      // A diverged comparison lists the diff from the merge base: model it as "nothing".
-      return ok({ status, files: status === "diverged" ? [] : files });
-    }
-    if (method === "POST" && path === "/git/trees") {
-      s.writes++;
-      const files = new Map(snapshotOf(body["base_tree"] as string)!);
-      for (const e of body["tree"] as Array<{ path: string; content?: string; sha?: string | null }>) {
-        if (e.sha === null) files.delete(e.path);
-        else files.set(e.path, e.content ?? s.blobs.get(e.sha!) ?? "");
-      }
-      const id = `newtree-${++s.n}`;
-      s.trees.set(id, files);
-      return ok({ sha: id });
-    }
-    if (method === "POST" && path === "/git/commits") {
-      s.writes++;
-      const sha = `a${++s.n}`;
-      s.commits.set(sha, { parent: (body["parents"] as string[])[0]!, files: s.trees.get(body["tree"] as string)! });
-      return ok({ sha });
-    }
-    if (method === "PATCH" && path.startsWith("/git/refs/heads/")) {
-      if (s.beforePatch) {
-        const hook = s.beforePatch;
-        s.beforePatch = null;
-        await hook();
-      }
-      s.writes++;
-      const sha = body["sha"] as string;
-      // Real GitHub: fast-forward only.
-      if (s.commits.get(sha)?.parent !== s.head)
-        return { ok: false, status: 422, json: async () => ({}), text: async () => "Update is not a fast forward" };
-      s.head = sha;
-      return ok({});
-    }
-    throw new Error(`unexpected ${method} ${url}`);
-  };
-  return new GitHubClient("ghs_x", fetchImpl, { retry: { maxRetries: 0 } });
-}
-
-/* ── the `packages` row (last_synced_sha) ──────────────────────────────── */
-
-function packagesTable(initial: string | null, opts: { failUpdates?: number } = {}) {
-  const row = { id: "pkg-1", last_synced_sha: initial };
-  let failsLeft = opts.failUpdates ?? 0;
-  const supabase = {
-    from() {
-      const filters: Array<(r: typeof row) => boolean> = [];
-      let patch: Partial<typeof row> | null = null;
-      const run = () => {
-        if (patch && failsLeft > 0) {
-          failsLeft--;
-          return { data: null, error: { message: "network" } };
-        }
-        const hit = filters.every((f) => f(row));
-        if (patch && hit) Object.assign(row, patch);
-        return { data: hit ? [{ id: row.id, last_synced_sha: row.last_synced_sha }] : [], error: null };
-      };
-      const q = {
-        select: () => q,
-        update: (p: Partial<typeof row>) => ((patch = p), q),
-        eq: (c: keyof typeof row, v: unknown) => (filters.push((r) => r[c] === v), q),
-        is: (c: keyof typeof row, v: null) => (filters.push((r) => r[c] === v), q),
-        maybeSingle: async () => ({ data: run().data?.[0] ?? null, error: null }),
-        then: (res: (v: unknown) => unknown, rej?: (e: unknown) => unknown) => Promise.resolve(run()).then(res, rej),
-      };
-      return q;
-    },
-  } as unknown as SupabaseClient;
-  return { supabase, pointer: () => row.last_synced_sha };
-}
-
-/* ── fixtures ──────────────────────────────────────────────────────────── */
-
-const m = parseManifest({
-  schemaVersion: 2,
-  packageId: "pkg-1",
-  title: "T",
-  license: "CC-BY-4.0",
-  createdAt: "2026-08-28T00:00:00.000Z",
-  publicRepo: { owner: "prof", name: "thermo" },
-});
-const rec: PackageRecord = {
-  packageId: "pkg-1",
-  ownerId: "u",
-  title: "T",
-  storage: "github",
-  manifest: m,
-  repos: { public: { owner: "prof", name: "thermo" }, private: null },
-};
-const INITIAL = { "study-guide/ch1.md": "# One\n", "study-guide/ch2.md": "# Two\n" };
-
-async function course(initial: Record<string, string> = INITIAL) {
-  const s = repoState(initial);
-  const store = new MemoryPackageStore();
-  await store.createPackage(
-    rec,
-    Object.entries(initial).map(([path, content]) => ({ repo: "public" as const, path, content })),
-  );
-  return { s, store };
-}
+/* ── the simulated repository: ./repo-sim.testkit.ts (extracted, loop r5) ── */
 
 async function committer(table: ReturnType<typeof packagesTable>, store: PackageStore, client: GitHubClient) {
   mocks.client = client;
@@ -282,23 +95,6 @@ async function committer(table: ReturnType<typeof packagesTable>, store: Package
   if (r.kind !== "github") throw new Error(r.kind);
   return r.committer;
 }
-
-/** A save through the one write path: commit first, then project. */
-const save = (store: PackageStore, c: Committer, path: string, content: string) =>
-  writeThrough(store, c, "pkg-1", { summary: "Save", changes: [{ repo: "public", path, content }] });
-
-/** An editor's save: based on the stored version it opened (loop r4, P5.B.3.m). */
-const editorSave = (store: PackageStore, c: Committer, path: string, content: string, baseHash: string | null) =>
-  writeThrough(store, c, "pkg-1", { summary: "Save", changes: [{ repo: "public", path, content, baseHash }] });
-
-/** What an editor opening `path` now is based on. */
-async function opened(store: PackageStore, path: string): Promise<string | null> {
-  const c = await store.readFile("pkg-1", "public", path);
-  return c === null ? null : sha256Hex(c);
-}
-
-const refusal = (p: Promise<unknown>) => p.then(() => null, (e: unknown) => e as Error);
-const NO_DEV_WORDS = /\b(git|github|commit|branch|repo|repository|sha|merge|push)\b/i;
 
 beforeEach(() => {
   vi.spyOn(console, "warn").mockImplementation(() => {});
@@ -311,11 +107,6 @@ async function reconcileNow(table: ReturnType<typeof packagesTable>, store: Pack
   mocks.client = clientFor(s);
   return reconcilePackage(table.supabase, store, "u", "pkg-1");
 }
-
-const head = (s: RepoState, p: string) => s.commits.get(s.head)!.files.get(p);
-const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0xff, 0xfe, 0x00, 0x80, 0x90]).toString("base64");
-/** A block-id corruption the reconcile holds back (duplicate ids). */
-const BROKEN = "# Two\n\n## A {{attrs[#blk-aaaa1111]}}\n\nx\n\n## B {{attrs[#blk-aaaa1111]}}\n\ny\n";
 
 describe("reconcile reads exactly, by blob id first (loop r4, P5.B.3.k)", () => {
   it("[P5.B.3.k] Alembic's own picture in a reconcile range stays the same base64 bytes, and is never downloaded (R4-6)", async () => {
@@ -399,7 +190,8 @@ describe("a held-back outside change does not lock the course (loop r4, P5.B.3.l
     await save(store, A, "study-guide/ch3.md", "# Three\n"); // untouched: saves
     await save(store, A, "study-guide/ch3.md", "# Three v2\n");
     const err = await refusal(save(store, A, "study-guide/ch1.md", "# One, mine\n"));
-    expect(err?.message).toBe(CHANGED_OUTSIDE_HELD_BACK);
+    // Loop r5 (P5.B.3.v): the refusal says this file's change is waiting, not that it can't come in.
+    expect(err?.message).toBe(CHANGED_OUTSIDE_WAITING);
     expect(head(s, "study-guide/ch1.md")).toBe("# One, co-author\n");
   });
 

@@ -130,6 +130,8 @@ export function CurrentCollectionView({
     editorKind: EditorKind;
     initialContent: string;
     isNew: boolean;
+    /** Loop r5 (P5.B.3.p): the base, from the server's read (null = new). */
+    baseHash: string | null | undefined;
   } | null>(null);
 
   const hasCurrentTerm = terms.some((t) => t.isCurrent);
@@ -190,7 +192,7 @@ export function CurrentCollectionView({
         setError(r.error ?? "Couldn't open that file.");
         return;
       }
-      setEditing({ path, name, editorKind, initialContent: r.content ?? "", isNew: false });
+      setEditing({ path, name, editorKind, initialContent: r.content ?? "", isNew: false, baseHash: r.contentHash });
     });
   };
 
@@ -217,7 +219,7 @@ export function CurrentCollectionView({
           return;
         }
         const c = await loadCollectionFileAction(packageId, "public", r.path);
-        setEditing({ path: r.path, name: filename, editorKind: kind, initialContent: c.content ?? "", isNew: false });
+        setEditing({ path: r.path, name: filename, editorKind: kind, initialContent: c.content ?? "", isNew: false, baseHash: c.contentHash });
       });
     } else {
       let path: string;
@@ -227,7 +229,7 @@ export function CurrentCollectionView({
         setError("That name or folder isn't allowed.");
         return;
       }
-      setEditing({ path, name: filename, editorKind: kind, initialContent: "", isNew: true });
+      setEditing({ path, name: filename, editorKind: kind, initialContent: "", isNew: true, baseHash: null });
     }
   };
 
@@ -241,6 +243,7 @@ export function CurrentCollectionView({
         editorKind={editing.editorKind}
         initialContent={editing.initialContent}
         isNew={editing.isNew}
+        baseHash={editing.baseHash}
         onClose={() => setEditing(null)}
         onSaved={refresh}
         onDirty={onDirty}
@@ -379,7 +382,7 @@ export function CurrentCollectionView({
           return;
         }
         const c = await loadCollectionFileAction(packageId, "public", r.path);
-        setEditing({ path: r.path, name: filename, editorKind: kind, initialContent: c.content ?? "", isNew: false });
+        setEditing({ path: r.path, name: filename, editorKind: kind, initialContent: c.content ?? "", isNew: false, baseHash: c.contentHash });
       });
     } else {
       let path: string;
@@ -389,7 +392,7 @@ export function CurrentCollectionView({
         setError("Couldn't create the syllabus.");
         return;
       }
-      setEditing({ path, name: filename, editorKind: kind, initialContent: "", isNew: true });
+      setEditing({ path, name: filename, editorKind: kind, initialContent: "", isNew: true, baseHash: null });
     }
   };
 

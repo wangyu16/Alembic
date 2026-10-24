@@ -40,31 +40,73 @@ export interface ReconcileResult {
    */
   keepable?: string[];
   removeOutside?: string[];
+  /**
+   * Loop r5 (P5.B.3.r): the keepable files Alembic has NO copy of (added
+   * outside Alembic, or removed in Alembic) — keeping Alembic's version
+   * REMOVES them from the online course, and the confirmation says so.
+   */
+  removedOnKeep?: string[];
+  /** Loop r5 (P5.B.3.r): why each held-back file can't be brought in, in
+   *  plain words (keyed by path). */
+  reasons?: Record<string, string>;
   /** The outside state the educator is shown (the "keep" action overwrites
    *  exactly this, never a later change). */
   seenAt?: string;
   error?: string;
 }
 
+/** Plain words for why an outside change was held back (loop r5,
+ *  P5.B.3.r) — from the reconcile's violation messages. */
+function reasonFor(message: string): string {
+  if (/not readable as text/.test(message)) {
+    return "its text isn't saved in the encoding Alembic reads (UTF-8) \u2014 for example a spreadsheet exported in an older Windows encoding. Save it as UTF-8 where it was changed, or keep Alembic's version.";
+  }
+  if (/course details file/.test(message)) return "the course details file was changed in a way Alembic can't read.";
+  if (/private|instructor|not allowed|public repo/i.test(message)) return "it holds instructor-only material, which never belongs in the public course.";
+  return "its section markers were damaged (for example, two sections with the same marker).";
+}
+
 /** Which held-back files Alembic's version can replace (loop r4, P5.B.3.l). */
-function heldBack(outcome: Extract<ReconcileOutcome, { status: "quarantined" }>): {
-  keepable: string[];
-  removeOutside: string[];
-} {
+async function heldBack(
+  outcome: Extract<ReconcileOutcome, { status: "quarantined" }>,
+  store: Pick<SupabaseSandboxStore, "readFile">,
+  packageId: string,
+): Promise<{ keepable: string[]; removeOutside: string[]; removedOnKeep: string[]; reasons: Record<string, string> }> {
   const keepable: string[] = [];
   const removeOutside: string[] = [];
+  const removedOnKeep: string[] = [];
+  const reasons: Record<string, string> = {};
+  for (const v of outcome.violations) {
+    const path = outcome.violationPaths.find((p) => v.startsWith(`${p}: `));
+    if (path && reasons[path] === undefined) reasons[path] = reasonFor(v.slice(path.length + 2));
+  }
   // Only the files the violations are about: once they are resolved, the
   // course's other outside changes (held back with them) are brought in by
   // the next check, so keeping Alembic's version never reverts a clean edit.
   for (const path of new Set(outcome.violationPaths)) {
     try {
       assertPathAllowedInEitherContract(path, "public");
-      keepable.push(path);
     } catch {
       removeOutside.push(path);
+      continue;
     }
+    keepable.push(path);
+    // Loop r5 (P5.B.3.r): no copy in Alembic → keeping its version removes the file.
+    if ((await store.readFile(packageId, "public", path)) === null) removedOnKeep.push(path);
   }
-  return { keepable: keepable.sort(), removeOutside: removeOutside.sort() };
+  return { keepable: keepable.sort(), removeOutside: removeOutside.sort(), removedOnKeep: removedOnKeep.sort(), reasons };
+}
+
+/** The per-user bound on checks (closed loop r4, security LOW-5): a check may
+ *  compare the whole course file by file. Null when allowed (and counted). */
+async function reconcileGate(userId: string): Promise<ReconcileResult | null> {
+  const gate = await checkUserRateLimit("reconcile", userId);
+  if (gate.ok) return null;
+  const minutes = Math.max(1, Math.ceil(gate.retryAfterSeconds / 60));
+  return {
+    ok: false,
+    error: `You've checked for outside changes many times in a short while. Please try again in ${minutes} minute${minutes === 1 ? "" : "s"}.`,
+  };
 }
 
 /**
@@ -77,30 +119,31 @@ export async function reconcilePackageAction(
   packageId: string,
 ): Promise<ReconcileResult> {
   const { supabase, user } = await requireUser();
-  // Per-user bound (closed loop r4, security LOW-5): a check may compare the
-  // whole course file by file.
-  const gate = await checkUserRateLimit("reconcile", user.id);
-  if (!gate.ok) {
-    const minutes = Math.max(1, Math.ceil(gate.retryAfterSeconds / 60));
-    return {
-      ok: false,
-      error: `You've checked for outside changes many times in a short while. Please try again in ${minutes} minute${minutes === 1 ? "" : "s"}.`,
-    };
-  }
+  const refused = await reconcileGate(user.id);
+  if (refused) return refused;
+  return checkForOutsideChanges(supabase, user.id, packageId);
+}
+
+/** The check itself, after the gate (shared with keepAlembicVersionAction). */
+async function checkForOutsideChanges(
+  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
+  userId: string,
+  packageId: string,
+): Promise<ReconcileResult> {
   const store = new SupabaseSandboxStore(supabase);
   const events = supabaseEventLogger(supabase);
   try {
-    const outcome = await reconcilePackage(supabase, store, user.id, packageId);
+    const outcome = await reconcilePackage(supabase, store, userId, packageId);
     if (!outcome) return { ok: true, status: "not-connected" };
 
     if (outcome.status === "absorbed") {
       // Owner decision 2 (2026-10-24): an absorbed outside change moved the
       // recorded head (expiring the accessibility check) — check again,
       // after the response, best-effort.
-      scheduleA11yCheck(user.id, packageId);
+      scheduleA11yCheck(userId, packageId);
       await events.log({
         type: "reconcile.completed",
-        userId: user.id,
+        userId,
         packageId,
         detail: { changed: outcome.changedPaths.length },
         occurredAt: new Date().toISOString(),
@@ -112,7 +155,7 @@ export async function reconcilePackageAction(
     if (outcome.status === "quarantined") {
       await events.log({
         type: "reconcile.quarantined",
-        userId: user.id,
+        userId,
         packageId,
         detail: { violations: outcome.violations.length },
         occurredAt: new Date().toISOString(),
@@ -121,7 +164,7 @@ export async function reconcilePackageAction(
         ok: true,
         status: "quarantined",
         violations: outcome.violations,
-        ...heldBack(outcome),
+        ...(await heldBack(outcome, store, packageId)),
         seenAt: outcome.headSha,
       };
     }
@@ -140,6 +183,11 @@ export async function reconcilePackageAction(
  * to check again. A file that never belongs in the public course is not
  * touched here (it has to be removed where it was added). Then the course is
  * checked again, so a now-clean course is fully in step.
+ *
+ * Loop r5 (P5.B.3.s): one keep counts as one check against the per-user
+ * bound — refused up front like a check when the bound is reached, and its
+ * own checks (before and after) run past the gate, so a keep that went
+ * through never comes back as "checked too many times".
  */
 export async function keepAlembicVersionAction(
   packageId: string,
@@ -147,16 +195,18 @@ export async function keepAlembicVersionAction(
   paths: string[],
 ): Promise<ReconcileResult> {
   const { supabase, user } = await requireUser();
+  const refused = await reconcileGate(user.id);
+  if (refused) return refused;
   const store = new SupabaseSandboxStore(supabase);
   const again = "This course was changed outside Alembic again since you checked. Check again, then decide.";
   try {
     const now = await reconcilePackage(supabase, store, user.id, packageId);
     if (!now) return { ok: true, status: "not-connected" };
-    if (now.status !== "quarantined") return reconcilePackageAction(packageId);
+    if (now.status !== "quarantined") return checkForOutsideChanges(supabase, user.id, packageId);
     if (now.headSha !== seenAt) return { ok: false, error: again };
-    const { keepable } = heldBack(now);
+    const { keepable } = await heldBack(now, store, packageId);
     const chosen = paths.filter((p) => keepable.includes(p));
-    if (chosen.length === 0) return reconcilePackageAction(packageId);
+    if (chosen.length === 0) return checkForOutsideChanges(supabase, user.id, packageId);
 
     const resolved = await committerFor(supabase, store, user.id, packageId);
     if (resolved.kind !== "github") {
@@ -188,7 +238,7 @@ export async function keepAlembicVersionAction(
       /* research logging never breaks an educator workflow */
     }
     revalidatePath(`/workspace/${packageId}`);
-    return reconcilePackageAction(packageId);
+    return checkForOutsideChanges(supabase, user.id, packageId);
   } catch (e) {
     const { message } = saveFailureMessage(e);
     return { ok: false, error: message };

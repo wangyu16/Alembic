@@ -164,6 +164,8 @@ export function AssetsCollectionView({
     editorKind: EditorKind;
     initialContent: string;
     isNew: boolean;
+    /** Loop r5 (P5.B.3.p): the base, from the server's read (null = new). */
+    baseHash: string | null | undefined;
   } | null>(null);
 
   const openEditor = (path: string, name: string, editorKind: EditorKind) => {
@@ -174,7 +176,7 @@ export function AssetsCollectionView({
         setError(r.error ?? "Couldn't open that file.");
         return;
       }
-      setEditing({ path, name, editorKind, initialContent: r.content ?? "", isNew: false });
+      setEditing({ path, name, editorKind, initialContent: r.content ?? "", isNew: false, baseHash: r.contentHash });
     });
   };
 
@@ -201,7 +203,7 @@ export function AssetsCollectionView({
           return;
         }
         const c = await loadCollectionFileAction(packageId, "public", r.path);
-        setEditing({ path: r.path, name: filename, editorKind: kind, initialContent: c.content ?? "", isNew: false });
+        setEditing({ path: r.path, name: filename, editorKind: kind, initialContent: c.content ?? "", isNew: false, baseHash: c.contentHash });
       });
     } else {
       // ketcher/plot: no server seed — open an empty editor; first save writes it.
@@ -216,7 +218,7 @@ export function AssetsCollectionView({
         setError("That name or folder isn't allowed.");
         return;
       }
-      setEditing({ path, name: filename, editorKind: kind, initialContent: "", isNew: true });
+      setEditing({ path, name: filename, editorKind: kind, initialContent: "", isNew: true, baseHash: null });
     }
   };
 
@@ -230,6 +232,7 @@ export function AssetsCollectionView({
         editorKind={editing.editorKind}
         initialContent={editing.initialContent}
         isNew={editing.isNew}
+        baseHash={editing.baseHash}
         onClose={() => setEditing(null)}
         onSaved={refresh}
         onDirty={onDirty}

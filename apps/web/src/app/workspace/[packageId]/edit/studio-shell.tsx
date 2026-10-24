@@ -85,7 +85,7 @@ import {
   storeEditorHtml,
   recordEditorSave,
 } from "@/lib/editor-html-cache";
-import { baseHashOf } from "@/lib/base-hash";
+import type { OpenedFile } from "@/lib/base-hash";
 import type { EditorHandle } from "@alembic/editor-kit";
 import { ModuleMount } from "@/lib/editor-modules/module-mount";
 import { ManageDialog } from "../chapter-nav";
@@ -251,6 +251,7 @@ export function StudioShell({
   category,
   content,
   courseConceptMap,
+  courseConceptMapBase,
   courseInfo,
   categoryFile,
   privateTree,
@@ -279,8 +280,10 @@ export function StudioShell({
   category: StudioCategory | "course";
   content: { preamble: string; blocks: StudyGuideBlock[]; baseHash?: string | null } | null;
   courseConceptMap: string | null;
+  /** Loop r5 (P5.B.3.p): the stored course concept map's digest (null = none). */
+  courseConceptMapBase: string | null;
   courseInfo: CourseInfo;
-  categoryFile: { path: string; repo: "public" | "private"; content: string } | null;
+  categoryFile: OpenedFile | null;
   privateTree: CollectionScopeTree[] | null;
   assetsTree: CollectionScopeTree[] | null;
   /** The dir convention this package uses for the asset space (`assets` v2 /
@@ -575,6 +578,7 @@ export function StudioShell({
               packageId={packageId}
               title={title}
               initial={courseConceptMap}
+              initialBase={courseConceptMapBase}
               courseInfo={courseInfo}
               published={published}
               onDirty={setDirty}
@@ -1166,6 +1170,7 @@ function CourseHome({
   packageId,
   title,
   initial,
+  initialBase,
   courseInfo,
   published,
   onDirty,
@@ -1174,6 +1179,7 @@ function CourseHome({
   packageId: string;
   title: string;
   initial: string | null;
+  initialBase: string | null;
   courseInfo: CourseInfo;
   published: boolean;
   onDirty?: (d: boolean) => void;
@@ -1251,11 +1257,18 @@ function CourseHome({
   // through AIAssistant's own onApply, not through here). saveCourseConceptMapAction
   // echoes `markdown` back on every success — it is not a signal that the save
   // is somehow still unsaved, so a successful save always clears `dirty`.
-  const run = (fn: () => Promise<{ ok: boolean; markdown?: string; error?: string }>, label: string) => {
+  // Loop r5 (P5.B.3.p): the stored version this editor opened (from the
+  // server's read); each save is based on it and moves it forward.
+  const baseRef = useRef<string | null>(initialBase);
+  const run = (
+    fn: () => Promise<{ ok: boolean; markdown?: string; contentHash?: string; error?: string }>,
+    label: string,
+  ) => {
     setNote(null);
     setError(null);
     start(async () => {
       const r = await fn();
+      if (r.ok && r.contentHash) baseRef.current = r.contentHash;
       if (!r.ok) setError(r.error ?? "That didn't complete.");
       else {
         setDirty(false);
@@ -1429,7 +1442,7 @@ function CourseHome({
             aiAccess={aiAccess}
           />
           <button
-            onClick={() => run(() => saveCourseConceptMapAction(packageId, md), "Saved.")}
+            onClick={() => run(() => saveCourseConceptMapAction(packageId, md, baseRef.current), "Saved.")}
             disabled={pending}
             className="btn btn-primary btn-sm"
           >
@@ -1967,6 +1980,13 @@ function ContentEditor({
             current={assembled}
             aiAccess={aiAccess}
             baseRef={baseRef}
+            onSaved={() => {
+              // Loop r5 (P5.B.3.t): the sections still show the old text, so
+              // the base is NOT moved — a later save of them is refused as out
+              // of date, never written over the assistant's version.
+              setDirty(false);
+              setWarning("The assistant's version is saved. Reload the page to keep editing it here.");
+            }}
           />
           <a
             href={`/workspace/${packageId}/export/study-guide?chapter=${path.replace(/^.*\//, "").replace(/\.md$/, "")}`}
@@ -2057,7 +2077,7 @@ function SingleFileDocument({
 }: {
   packageId: string;
   doc: ChapterDoc;
-  file: { path: string; repo: "public" | "private"; content: string };
+  file: OpenedFile;
   help: string;
   /** Outline offered (never inserted automatically) when the document is empty. */
   starterText?: string;
@@ -2088,8 +2108,12 @@ function SingleFileDocument({
       help={help}
       // The stored bytes win; `starter` only ever fills a document that has none.
       file={stored.trim() ? file : { ...file, content: starter ?? "" }}
-      // Nothing is on disk until a save lands, so Download stays inert.
-      hasFile={stored.trim().length > 0}
+      // Loop r5 (P5.B.3.p): whether a file exists, and the base its saves are
+      // checked against, come from the file itself (read on the server) —
+      // never from its text. An existing whitespace-only or empty file is a
+      // file: Download serves it, and a save replaces it.
+      hasFile={file.exists}
+      baseHash={file.baseHash}
       {...(onDirty ? { onDirty } : {})}
       aiAccess={aiAccess}
     />
@@ -2104,6 +2128,7 @@ function FileEditor({
   help,
   file,
   hasFile = true,
+  baseHash,
   onDirty,
   aiAccess,
 }: {
@@ -2112,6 +2137,9 @@ function FileEditor({
   label: string;
   help: string;
   file: { path: string; repo: "public" | "private"; content: string };
+  /** Loop r5 (P5.B.3.p): the stored version this editor opened, as the
+   *  server read it (null = no file yet; undefined = unknown, unchecked). */
+  baseHash: string | null | undefined;
   /** False while this document has no file on disk yet — Download has nothing
    *  to serve, but Replace (create-or-replace) stays available. */
   hasFile?: boolean;
@@ -2124,13 +2152,9 @@ function FileEditor({
   const [error, setError] = useState<string | null>(null);
   // Loop r4 (P5.B.3.m): the stored version this editor opened; each save is
   // based on it (refused if the stored copy moved on) and moves it forward.
-  const baseRef = useRef<string | null | undefined>(undefined);
-  const basePending = useRef<Promise<void> | null>(null);
-  if (basePending.current === null) {
-    basePending.current = baseHashOf(hasFile ? file.content : null).then((h) => {
-      baseRef.current = h;
-    });
-  }
+  // Loop r5 (P5.B.3.p): given by the caller from the server's read — never
+  // re-derived here from the text shown.
+  const baseRef = useRef<string | null | undefined>(baseHash);
   // The minimal .md editor (document-model.md §5): source with a
   // rendered-view toggle. Preview renders on switch, not per keystroke.
   const [mode, setMode] = useState<"source" | "preview">("source");
@@ -2167,7 +2191,6 @@ function FileEditor({
   const save = () => {
     setError(null);
     start(async () => {
-      await basePending.current;
       const r = await saveFileAction(packageId, file.path, file.repo, text, baseRef.current);
       if (r.ok && r.contentHash) baseRef.current = r.contentHash;
       if (!r.ok) setError(r.error ?? "Save failed.");
@@ -2205,6 +2228,12 @@ function FileEditor({
             current={text}
             aiAccess={aiAccess}
             baseRef={baseRef}
+            onSaved={(applied, contentHash) => {
+              // Loop r5 (P5.B.3.t): show what was saved, based on it.
+              setText(applied);
+              setDirty(false);
+              if (contentHash) baseRef.current = contentHash;
+            }}
           />
           {file.repo === "public" && (
             <DocumentActionsBar packageId={packageId} path={file.path} hasFile={hasFile} />
@@ -2317,6 +2346,7 @@ function AIAssistant({
   gateContext,
   aiAccess,
   baseRef,
+  onSaved,
 }: {
   packageId: string;
   category: OperationCategory;
@@ -2327,8 +2357,18 @@ function AIAssistant({
   gateContext?: OperationGateContext;
   aiAccess: AiAccess;
   /** Loop r4 (P5.B.3.m): the host editor's base — a direct save is based on
-   *  the version the host opened, and moves it forward. */
+   *  the version the host opened. */
   baseRef?: { current: string | null | undefined };
+  /**
+   * Loop r5 (P5.B.3.t): the host's part after a direct save landed. The host
+   * either shows the applied version and moves its base to it (FileEditor),
+   * or keeps its base (ContentEditor: its sections still show the old text,
+   * so a later manual save is refused as out of date instead of silently
+   * writing the old text over the assistant's version). Required with a
+   * direct save: before r5 the assistant moved the host's base forward while
+   * the host kept showing the old text.
+   */
+  onSaved?: (applied: string, contentHash: string | undefined) => void;
 }) {
   const router = useRouter();
   const ops = operationsForCategory(category).filter((o) => o.surface === "assistant");
@@ -2384,9 +2424,9 @@ function AIAssistant({
     setError(null);
     start(async () => {
       const r = await saveFileAction(packageId, path!, repo!, proposed, baseRef?.current);
-      if (r.ok && r.contentHash && baseRef) baseRef.current = r.contentHash;
       if (!r.ok) setError(r.error ?? "Couldn't apply.");
       else {
+        onSaved?.(proposed, r.contentHash);
         reset();
         router.refresh();
       }
@@ -2831,7 +2871,13 @@ function PrivateCollectionView({
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
-  const [open, setOpen] = useState<{ path: string; repo: "public" | "private"; content: string } | null>(null);
+  const [open, setOpen] = useState<{
+    path: string;
+    repo: "public" | "private";
+    content: string;
+    /** Loop r5 (P5.B.3.p): the base, from the server's read of the file. */
+    baseHash: string | null | undefined;
+  } | null>(null);
   // CF6: the rich carrier editor (md.html/slides.html/paged.html/ketcher/plot).
   // Plain text (incl. `.md`) keeps the FileEditor path above (AI + preview).
   const [editing, setEditing] = useState<{
@@ -2840,6 +2886,8 @@ function PrivateCollectionView({
     editorKind: EditorKind;
     initialContent: string;
     isNew: boolean;
+    /** Loop r5 (P5.B.3.p): the base, from the server's read (null = new). */
+    baseHash: string | null | undefined;
   } | null>(null);
   // Upload target.
   const [scopeIdx, setScopeIdx] = useState(0); // 0 = course, else chapters[idx-1]
@@ -2867,7 +2915,7 @@ function PrivateCollectionView({
         setError(r.error ?? "Couldn't open that file.");
         return;
       }
-      setEditing({ path, name, editorKind, initialContent: r.content ?? "", isNew: false });
+      setEditing({ path, name, editorKind, initialContent: r.content ?? "", isNew: false, baseHash: r.contentHash });
     });
   };
 
@@ -2895,7 +2943,7 @@ function PrivateCollectionView({
           return;
         }
         const c = await loadCollectionFileAction(packageId, "private", r.path);
-        setOpen({ path: r.path, repo: "private", content: c.content ?? "" });
+        setOpen({ path: r.path, repo: "private", content: c.content ?? "", baseHash: c.contentHash });
       });
     } else if (isSeededOnCreate(kind)) {
       // md.html / slides.html / paged.html → seed then open the carrier pane.
@@ -2911,7 +2959,7 @@ function PrivateCollectionView({
           return;
         }
         const c = await loadCollectionFileAction(packageId, "private", r.path);
-        setEditing({ path: r.path, name: filename, editorKind: kind, initialContent: c.content ?? "", isNew: false });
+        setEditing({ path: r.path, name: filename, editorKind: kind, initialContent: c.content ?? "", isNew: false, baseHash: c.contentHash });
       });
     } else {
       // ketcher / plot → open empty; first save writes the file.
@@ -2922,7 +2970,7 @@ function PrivateCollectionView({
         setError("That name or folder isn't allowed.");
         return;
       }
-      setEditing({ path, name: filename, editorKind: kind, initialContent: "", isNew: true });
+      setEditing({ path, name: filename, editorKind: kind, initialContent: "", isNew: true, baseHash: null });
     }
   };
 
@@ -2955,7 +3003,7 @@ function PrivateCollectionView({
     start(async () => {
       const r = await loadCollectionFileAction(packageId, "private", leaf.path);
       if (!r.ok) setError(r.error ?? "Couldn't open that file.");
-      else setOpen({ path: leaf.path, repo: "private", content: r.content ?? "" });
+      else setOpen({ path: leaf.path, repo: "private", content: r.content ?? "", baseHash: r.contentHash });
     });
   };
 
@@ -2999,6 +3047,7 @@ function PrivateCollectionView({
         editorKind={editing.editorKind}
         initialContent={editing.initialContent}
         isNew={editing.isNew}
+        baseHash={editing.baseHash}
         onClose={() => setEditing(null)}
         onSaved={refresh}
         onDirty={onDirty}
@@ -3023,6 +3072,7 @@ function PrivateCollectionView({
             label={open.path.split("/").pop() ?? open.path}
             help="A private file — never published, never included when others adapt your course."
             file={open}
+            baseHash={open.baseHash}
             onDirty={onDirty}
             aiAccess={aiAccess}
           />

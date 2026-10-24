@@ -5,6 +5,7 @@ import {
   listTerms,
   loadStudyGuide,
   loadCourseConceptMap,
+  COURSE_CONCEPT_MAP_PATH,
   packageAwaitsUpload,
   type CollectionScopeTree,
   type TermInfo,
@@ -21,6 +22,7 @@ import { SupabaseDocumentRegistryStore } from "@/lib/document-registry-store";
 import { canOfferShare } from "@/lib/share-policy";
 import { recordedPublicRepo } from "@/lib/recorded-repo";
 import { flushDiscovery } from "@/lib/discovery-flush";
+import { openedFile, type OpenedFile } from "@/lib/base-hash";
 
 /**
  * Server actions invoked from this page inherit its time budget, and publishing
@@ -124,11 +126,17 @@ export default async function EditShellPage({
     view.kind === "doc" && view.doc === "content" && activeChapter
       ? await loadStudyGuide(store, packageId, activeChapter.path)
       : null;
+  // Loop r5 (P5.B.3.p): the course concept map editor's base — the digest of
+  // the file its save writes (the canonical path), read BEFORE the content.
+  const courseConceptMapBase =
+    category === "course"
+      ? await store.readFile(packageId, "public", COURSE_CONCEPT_MAP_PATH).then((raw) => (raw === null ? null : sha256Hex(raw)))
+      : null;
   const courseConceptMap =
     category === "course" ? await loadCourseConceptMap(store, packageId) : null;
 
   // Single-file-per-chapter markdown categories (read the file's current content).
-  let categoryFile: { path: string; repo: "public" | "private"; content: string } | null = null;
+  let categoryFile: OpenedFile | null = null;
   const single =
     category === "assessment-guide" && activeChapter
       ? { path: chapterDocPath("assessment-guide", activeChapter.slug), repo: "public" as const }
@@ -138,8 +146,10 @@ export default async function EditShellPage({
   if (single) {
     // ONE row. Reading the whole package to find one document is what made a
     // real course crawl on every navigation.
+    // Loop r5 (P5.B.3.p): the editor's base is the file's real existence and
+    // digest, never inferred from its (possibly whitespace-only) text.
     const content = await store.readFile(packageId, single.repo, single.path);
-    categoryFile = { path: single.path, repo: single.repo, content: content ?? "" };
+    categoryFile = await openedFile(single.path, single.repo, content);
   }
 
   // Assets/Private live under either the v1 dir (`materials`/`private-instructor`,
@@ -335,6 +345,7 @@ export default async function EditShellPage({
         doc ? { preamble: doc.preamble, blocks: doc.blocks, baseHash: docBase } : null
       }
       courseConceptMap={courseConceptMap}
+      courseConceptMapBase={courseConceptMapBase}
       courseInfo={{
         instructor: record.manifest.courseContext.instructor,
         courseNumber: record.manifest.courseContext.courseNumber,

@@ -34,6 +34,7 @@ export function CollectionEditorPane({
   editorKind,
   initialContent,
   isNew,
+  baseHash,
   theme,
   onClose,
   onSaved,
@@ -51,6 +52,9 @@ export function CollectionEditorPane({
   initialContent: string;
   /** True when this file does not exist yet (first save creates it). */
   isNew?: boolean;
+  /** Loop r5 (P5.B.3.p): the base, from the server's read of the file (null =
+   *  new). Omitted: derived from `isNew` (never from the text). */
+  baseHash?: string | null;
   theme?: EditorTheme;
   onClose: () => void;
   /** Called after a successful save (parent refreshes the tree). */
@@ -74,7 +78,9 @@ export function CollectionEditorPane({
   // Loop r4 (P5.B.3.m): the version this editor opened; each save is based on
   // it and moves it forward. Computed once per mount (the pane is never re-keyed).
   const base = useRef<Promise<string | null | undefined> | null>(null);
-  if (base.current === null) base.current = baseHashOf(isNew ? null : initialContent);
+  if (base.current === null) {
+    base.current = baseHash !== undefined ? Promise.resolve(baseHash) : baseHashOf(isNew ? null : initialContent);
+  }
 
   const persist = (content: string) =>
     new Promise<{ ok: boolean; error?: string }>((resolve) => {

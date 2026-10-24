@@ -164,6 +164,30 @@ async function gatherCurrentTerm(
   };
 }
 
+/**
+ * The course's CURRENT accessibility check for the published site's schema.org
+ * metadata (closed loop r5, P5.R.5.i): `packages.a11y_status`, the result the
+ * server records itself after every save and publish (owner decision 2,
+ * 2026-10-24; `lib/a11y-auto.ts`) and expires when the published copy moves
+ * on (0030_loop_r3c_4, a `fail` kept since 0033_loop_r5_2). It used to read
+ * `manifest.accessibility`, which is owner-written and no longer refreshed for
+ * a published course, so a site could claim a check nobody made of these
+ * bytes. Not checked ("unknown"), or the record unreadable → undefined, and
+ * the site says nothing about accessibility.
+ */
+async function currentA11yCheck(
+  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
+  packageId: string,
+): Promise<"pass" | "warn" | "fail" | undefined> {
+  try {
+    const { data } = await supabase.from("packages").select("a11y_status").eq("id", packageId).maybeSingle();
+    const status = (data as { a11y_status?: unknown } | null)?.a11y_status;
+    return status === "pass" || status === "warn" || status === "fail" ? status : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export interface PublishSiteResult {
   ok: boolean;
   siteUrl?: string;
@@ -362,6 +386,7 @@ export async function publishSiteAction(
     // The CURRENT term's "This term" area (announcements + assignments + other
     // materials). Absent current term → omit the section entirely.
     const currentTermBundle = await gatherCurrentTerm(store, packageId, record!);
+    const accessibility = await currentA11yCheck(supabase, packageId);
 
     const files = [
       ...courseSiteFiles({
@@ -387,7 +412,8 @@ export async function publishSiteAction(
           discipline: record!.manifest.discipline || undefined,
           educationalLevel: record!.manifest.courseContext?.level,
           url: `https://${repo.owner}.github.io/${repo.name}/`,
-          accessibility: record!.manifest.accessibility?.status,
+          // The server's own current check, never the manifest field (P5.R.5.i).
+          ...(accessibility ? { accessibility } : {}),
           keywords: record!.manifest.keywords?.length ? record!.manifest.keywords : undefined,
         },
       }),

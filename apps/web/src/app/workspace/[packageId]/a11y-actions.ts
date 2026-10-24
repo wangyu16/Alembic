@@ -20,6 +20,7 @@ import { recordChange } from "@/lib/changes";
 import type { FixableRule } from "@/lib/a11y";
 import { a11yAuditSource, auditPackageA11y } from "@/lib/a11y-audit";
 import { recordPublishedA11yCheck } from "@/lib/a11y-auto-server";
+import { checkUserRateLimit } from "@/lib/rate-limit-server";
 import { flushDiscovery } from "@/lib/discovery-flush";
 
 async function requireUser() {
@@ -72,6 +73,16 @@ export async function recheckA11yAction(packageId: string): Promise<RecheckResul
   try {
     const record = await store.getPackage(packageId);
     if (record?.storage === "github") {
+      // Bounded per user before anything is read (closed loop r5, P5.R.5.j):
+      // each check reads every chapter through the educator's GitHub access.
+      const gate = await checkUserRateLimit("a11yCheck", user.id);
+      if (!gate.ok) {
+        const minutes = Math.max(1, Math.ceil(gate.retryAfterSeconds / 60));
+        return {
+          ok: false,
+          error: `You've checked accessibility many times in a short while. Please try again in ${minutes} minute${minutes === 1 ? "" : "s"}.`,
+        };
+      }
       const outcome = await recordPublishedA11yCheck(user.id, packageId);
       if (outcome.kind === "unavailable" || outcome.kind === "failed") {
         return {
