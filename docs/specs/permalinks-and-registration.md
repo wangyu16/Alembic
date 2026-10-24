@@ -96,7 +96,8 @@ file the visitor may not read.
 |---|---|---|
 | public, live | `public, max-age=60, s-maxage=240, stale-while-revalidate=60` | `ETag: W/"{source_hash}"`; `If-None-Match` → 304 with no GitHub read |
 | public, pinned to the current hash | `private, max-age=31536000, immutable`, plus `CDN-Cache-Control` and `Vercel-CDN-Cache-Control: public, max-age=300` | same ETag |
-| public, bytes not matching the registry hash (repo ahead of reconcile) | `public, max-age=60` | none — never labelled with a hash it does not have |
+| public, unpinned, bytes not matching the registry hash (repo ahead of reconcile, or the raw CDN lagging a save) | `private, no-store` (closed loop r3) | none — never labelled with a hash it does not have; the row is healed from the mirror |
+| public, pinned, neither the origin nor the mirror holds the pinned bytes | 404, `no-store` (closed loop r4) | none — a pin is never answered with other bytes; the row is healed |
 | owner-only (private repo, trial package) | `private, no-store` | none; never 304, no CORS, never in a shared or server cache |
 | not found / no access / older pin / malformed address (bad `%` escape — same 404, after the rate limit) | `no-store` | — |
 | tombstone (410) | `public, max-age=3600, s-maxage=300` | — |

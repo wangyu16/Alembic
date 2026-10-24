@@ -169,4 +169,19 @@ describe("DocBytesCache verification record (closed loop r3, LOW)", () => {
     await cache.revalidate(key("# w299", "doc-299"), async () => (reads++, text("# w299")));
     expect(reads).toBe(0);
   });
+
+  it("[P5.A.6.q] by default it holds at most 10,000 verification records", async () => {
+    const now = 1_000_000;
+    const cache = new DocBytesCache({ now: () => now, maxBytes: 1024 });
+    for (let i = 0; i <= 10_000; i++) {
+      const c = `# d${i}`;
+      await cache.revalidate(key(c, `doc-${i}`), async () => text(c));
+    }
+    expect(verified(cache)).toBe(10_000);
+    let reads = 0;
+    await cache.revalidate(key("# d0", "doc-0"), async () => (reads++, text("# d0")));
+    expect(reads).toBe(1); // the oldest went out: re-read, not 'fresh' on its say-so
+    await cache.revalidate(key("# d10000", "doc-10000"), async () => (reads++, text("# d10000")));
+    expect(reads).toBe(1); // the newest is still verified
+  });
 });

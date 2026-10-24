@@ -37,6 +37,12 @@ fixed on branch `phase5/loop-r4b` (on `main` 03bcb00; not merged; migrations `00
   0030_loop_r3c_4 have no listing row to seed their first-listing time; `research_events` ('portal.registered',
   owner-attributed) could, but it is research instrumentation (data-handling-review) and a product signal derived
   from it is a secondary use — left to the owner. 0031_loop_r4b_3 repeats the listing-row back-fill idempotently.
+- **A pin is a promise of exact bytes (P5.A.6.s).** When neither origin nor mirror hashes to it, `/d` answers 404
+  (`no-store`) and heals the row, instead of r3's unlabelled other bytes: an unpinned link may show the newest bytes
+  it can, a pinned one may not. The pin hash scheme (8 hex) is untouched — that is a separate owner decision.
+- **The `/d` heal reads the mirror once and backs off on failure.** Bytes + digest from one row read, passed to the
+  registration explicitly (a null there means "deleted" and would tombstone). A failed heal holds that doc for an hour
+  in the same bounded gate (10,000 entries) — chosen over a separate failure map (one bound, one eviction rule).
 
 ## 2026-10-24 — Closed loop r3: identity is a whole-run matching; no lockout by our own commits; drained, aged queue; identities frozen
 

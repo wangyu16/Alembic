@@ -177,8 +177,12 @@ describe("/d plain answers are verified against the current bytes", () => {
     notShared(await servePermalink("doc-p6yeztm4k2k7", new Headers(), deps(() => NEW).d), "stale 200");
     // stale conditional GET
     notShared(await servePermalink("doc-p6yeztm4k2k7", conditional, deps(() => NEW).d), "stale conditional");
-    // pinned miss whose bytes do not verify
-    notShared(await servePermalink(`doc-p6yeztm4k2k7@${H_OLD}`, new Headers(), deps(() => NEW).d), "pinned unverified");
+    // pinned miss whose bytes do not verify: not found, never stored (closed loop r4, LOW-2)
+    const pinnedMiss = await servePermalink(`doc-p6yeztm4k2k7@${H_OLD}`, new Headers(), deps(() => NEW).d);
+    expect(pinnedMiss.status).toBe(404);
+    expect(pinnedMiss.headers.get("etag")).toBeNull();
+    expect(pinnedMiss.headers.get("cache-control")).toBe(CACHE.none);
+    expect(pinnedMiss.headers.get("cdn-cache-control")).toBeNull();
     // a row without a hash
     const noHash = deps(() => NEW);
     const inner = noHash.d.access;
@@ -212,13 +216,7 @@ describe("/d plain answers are verified against the current bytes", () => {
     expect(plainAfter.headers.get("etag")).toBeNull();
     expect((await servePermalink("doc-p6yeztm4k2k7", conditional, a.d)).status).toBe(200);
 
-        // the mirror does not hold the pinned version either → today's answer
-    const b = deps(() => NEW);
-    (b.d as PermalinkDeps & { readMirror?: unknown }).readMirror = async () => Buffer.from("# something else", "utf8");
-    const no = await servePermalink(pinned, new Headers(), b.d);
-    expect(await no.text()).toBe(NEW);
-    expect(no.headers.get("etag")).toBeNull();
-    expect(no.headers.get("cache-control")).toBe(CACHE.unverified);
+    // (the mirror not holding the pinned version either: P5.A.6.s, below)
 
     // an unpinned stale answer never consults the mirror
     const c = deps(() => NEW);
@@ -227,5 +225,39 @@ describe("/d plain answers are verified against the current bytes", () => {
     const plain = await servePermalink("doc-p6yeztm4k2k7", new Headers(), c.d);
     expect(await plain.text()).toBe(NEW);
     expect(unpinnedMirror).toBe(0);
+  });
+
+  it("[P5.A.6.s] a pin that neither the origin nor the mirror holds answers 404, never stored, never other bytes; the row is healed (pin)", async () => {
+    const pinned = `doc-p6yeztm4k2k7@${H_OLD}`;
+    const V3 = "# Ch1\n\nyet another\n";
+    for (const mirror of [V3, null] as const) {
+      const b = deps(() => NEW);
+      let stale = 0;
+      let served = 0;
+      b.d.readMirror = async () => (mirror === null ? null : Buffer.from(mirror, "utf8"));
+      b.d.onStale = () => {
+        stale++;
+      };
+      b.d.onPublicServed = () => {
+        served++;
+      };
+      const res = await servePermalink(pinned, new Headers(), b.d);
+      const body = await res.text();
+      expect(res.status, String(mirror)).toBe(404); // was: 200 with NEW, bytes that are not the pinned version
+      expect(body).not.toContain("NEW text");
+      expect(body).not.toContain("yet another");
+      expect(res.headers.get("cache-control")).toBe(CACHE.none);
+      expect(res.headers.get("etag")).toBeNull();
+      expect(res.headers.get("cdn-cache-control")).toBeNull();
+      expect(stale).toBe(1); // was: 0 — the pinned branch never asked for a heal
+      expect(served).toBe(0);
+      expect(b.cache.has({ docId: "doc-p6yeztm4k2k7", hash: H_OLD, path: "study-guide/ch1.md" })).toBe(false);
+    }
+    // a throwing onStale never changes the answer
+    const c = deps(() => NEW);
+    c.d.onStale = () => {
+      throw new Error("boom");
+    };
+    expect((await servePermalink(pinned, new Headers(), c.d)).status).toBe(404);
   });
 });

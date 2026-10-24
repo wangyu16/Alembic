@@ -225,7 +225,7 @@ describe("/d pins during raw-CDN lag (closed loop r3, M3-3 residual)", () => {
     expect(pin.headers.get("cache-control")).toBe("private, max-age=31536000, immutable");
   });
 
-  it("[P5.A.6.p] when neither the origin nor the mirror holds the pinned version, today's unlabelled answer stands", async () => {
+  it("[P5.A.6.s] when neither the origin nor the mirror holds the pinned version, the pin answers 404 (never stored) and the row is healed", async () => {
     const pkg = await seedPackage(db, { owner });
     const path = "study-guide/pin2.md";
     const v1 = "# Pin2\nsaved\n";
@@ -236,10 +236,13 @@ describe("/d pins during raw-CDN lag (closed loop r3, M3-3 residual)", () => {
     await mirrorOnly(pkg, path, "# Pin2\nnewer, unregistered\n"); // mirror moved on
 
     const pin = await view(`${docId}@${h1}`);
-    expect(pin.status).toBe(200);
-    expect(pin.body).toBe("# Pin2\nolder\n");
+    expect(pin.status).toBe(404); // was: 200 with the lagging origin's bytes under a pin on another version
+    expect(pin.body).not.toContain("older");
     expect(pin.headers.get("etag")).toBeNull();
-    expect(pin.headers.get("cache-control")).toBe("private, no-store");
+    expect(pin.headers.get("cache-control")).toBe("no-store");
+    // the heal ran (after the response): the row follows the mirror
+    expect((await rowAt(pkg, path))!.source_hash).toBe(computeSourceHash("# Pin2\nnewer, unregistered\n"));
+    expect((await rowAt(pkg, path))!.doc_id).toBe(docId);
   });
 });
 
@@ -379,5 +382,49 @@ describe("healFromMirror (closed loop r3)", () => {
     await db.query(`delete from public.sandbox_files where package_id = $1 and path = $2`, [pkg, path]);
     expect(await healFromMirror(svc, doc)).toBe("no-mirror");
     expect((await rowAt(pkg, path))!.doc_id).toBe(row.doc_id); // still live
+  });
+});
+
+describe("healFromMirror reads the mirror once (closed loop r4, security LOW-3)", () => {
+  it("[P5.A.6.p] a file deleted from the mirror while a heal runs is never tombstoned: the bytes read once are the ones registered", async () => {
+    const pkg = await seedPackage(db, { owner });
+    const path = "study-guide/race.md";
+    await save(pkg, path, "# Race\nv1\n");
+    const row = (await rowAt(pkg, path))!;
+    const doc = { doc_id: row.doc_id, package_id: pkg, repo: "public" as const, path, source_hash: row.source_hash, tombstoned: false };
+    await mirrorOnly(pkg, path, "# Race\nv2\n");
+
+    // The service client, except that the first read of this file's mirror row
+    // is followed at once by a concurrent delete of the file.
+    const base = pgliteClient(db, "service_role");
+    let mirrorReads = 0;
+    const racing = new Proxy(base, {
+      get(target, prop, recv) {
+        if (prop !== "from") return Reflect.get(target, prop, recv);
+        return (table: string) => {
+          const q = target.from(table);
+          if (table !== "sandbox_files") return q;
+          return new Proxy(q, {
+            get(t, p, r) {
+              if (p !== "then") return Reflect.get(t, p, r);
+              return (ok: (v: unknown) => unknown, bad: (e: unknown) => unknown) =>
+                (t as unknown as PromiseLike<unknown>).then(async (v) => {
+                  if (mirrorReads++ === 0) {
+                    await db.query(`delete from public.sandbox_files where package_id = $1 and path = $2`, [pkg, path]);
+                  }
+                  return v;
+                }).then(ok, bad);
+            },
+          });
+        };
+      },
+    }) as typeof base;
+
+    expect(await healFromMirror(racing, doc)).toBe("healed");
+    const after = await rowAt(pkg, path);
+    expect(after).not.toBeNull(); // was: tombstoned — the second read found the file gone
+    expect(after!.doc_id).toBe(row.doc_id);
+    expect(after!.source_hash).toBe(computeSourceHash("# Race\nv2\n")); // the bytes that were read
+    expect(mirrorReads).toBe(1);
   });
 });

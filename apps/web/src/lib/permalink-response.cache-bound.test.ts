@@ -56,7 +56,7 @@ const CASES: Case[] = [
   { kind: "public live", param: "doc-pub", access: ok(doc()), status: 200 },
   { kind: "public live 304", param: "doc-pub", access: ok(doc()), headers: { "if-none-match": `W/"${H1}"` }, status: 304 },
   { kind: "public, bytes ahead of registry", param: "doc-pub", access: ok(doc()), bytes: "# v2", status: 200 },
-  { kind: "public pinned, bytes ahead of registry", param: `doc-pub@${H1}`, access: ok(doc()), bytes: "# v2", status: 200 },
+  { kind: "public pinned, bytes ahead of registry", param: `doc-pub@${H1}`, access: ok(doc()), bytes: "# v2", status: 404 }, // r4 LOW-2
   { kind: "public, no registry hash", param: "doc-pub", access: ok(doc({ source_hash: null })), status: 200 },
   { kind: "public, bytes missing", param: "doc-pub", access: ok(doc()), bytes: null, status: 404 },
   { kind: "public, no hash, bytes missing", param: "doc-pub", access: ok(doc({ source_hash: null })), bytes: null, status: 404 },

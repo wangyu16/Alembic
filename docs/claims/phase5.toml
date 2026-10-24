@@ -576,7 +576,7 @@ bound_to = [
 
 [[claim]]
 id = "P5.A.6.e"
-claim = "Only bytes that hash to the registry's source_hash (text, or either binary registration form) are cached or labelled; otherwise they are served uncached, without ETag, never immutable, and a new version never gets the old bytes."
+claim = "Only bytes that hash to the registry's source_hash (text, or either binary registration form) are cached or labelled; otherwise an unpinned request is served them uncached, without ETag, never immutable (a pinned one is a 404 — P5.A.6.s), and a new version never gets the old bytes."
 oracle = "invariant"
 bound_to = [
   "apps/web/src/lib/permalink-response.adversarial.test.ts :: repo ahead of the registry: served uncached, no ETag, never immutable",
@@ -1933,18 +1933,18 @@ note = "Security loop r3 LOW-5. Migration 0030_loop_r3c_4 (§3), back-filled fro
 
 [[claim]]
 id = "P5.A.6.p"
-claim = "/d never re-registers a document from bytes that may lag a save (raw.githubusercontent.com serves the previous version for minutes): a stale answer heals that one file from the trial mirror the write path updated (never tombstoning, writing nothing when the row already matches the mirror), so a fresh save is never rolled back, a pin on the saved version keeps resolving — served from the mirror while the origin lags, only when the mirror's bytes hash to the pin — and old bytes are never labelled."
+claim = "/d never re-registers a document from bytes that may lag a save (raw.githubusercontent.com serves the previous version for minutes): a stale answer heals that one file from the trial mirror the write path updated — its bytes and digest from ONE read, handed to the registration explicitly, so a file deleted meanwhile is never tombstoned (never tombstoning, writing nothing when the row already matches the mirror), so a fresh save is never rolled back, a pin on the saved version keeps resolving — served from the mirror while the origin lags, only when the mirror's bytes hash to the pin — and old bytes are never labelled."
 oracle = "probe"
 bound_to = [
   "apps/web/src/lib/permalink-heal.sql.test.ts :: a view during raw-CDN lag after a save keeps the registry on the saved version, the pin on it works, old bytes are never labelled",
   "apps/web/src/lib/permalink-heal.sql.test.ts :: a pin on the version just saved serves that version during the raw-CDN lag, from the mirror",
-  "apps/web/src/lib/permalink-heal.sql.test.ts :: when neither the origin nor the mirror holds the pinned version, today's unlabelled answer stands",
   "apps/web/src/lib/permalink-heal.sql.test.ts :: writes nothing when the row already records the mirror's digest, never tombstones a file missing from the mirror, and heals a row behind the mirror",
+  "apps/web/src/lib/permalink-heal.sql.test.ts :: a file deleted from the mirror while a heal runs is never tombstoned: the bytes read once are the ones registered",
   "apps/web/src/lib/permalink-heal.test.ts :: heals after the response, never with the bytes read, once per window; failures are logged, not thrown",
   "apps/web/src/lib/permalink-heal.test.ts :: without a service client nothing is attempted",
   "apps/web/src/lib/permalink-response.freshness.test.ts :: a pin whose origin bytes lag is served from the mirror only when the mirror's bytes hash to the pin",
 ]
-note = "Loop r3 correctness M3-3 (repro /tmp/p5r3b/d-regress.test.ts). Code only. Residual: a commit made directly on GitHub that the mirror has not absorbed is not registered by /d (reconcile and the page-load sync absorb it)."
+note = "Loop r3 correctness M3-3 (repro /tmp/p5r3b/d-regress.test.ts). Code only. Loop r4 security LOW-3: the mirror was read twice (digest, then content inside registerChangedFiles), and a delete between the reads registered a null — a tombstone; now one read, content passed explicitly. Residual: a commit made directly on GitHub that the mirror has not absorbed is not registered by /d (reconcile and the page-load sync absorb it)."
 
 [[claim]]
 id = "P5.A.6.q"
@@ -1953,20 +1953,23 @@ oracle = "probe"
 bound_to = [
   "apps/web/src/lib/doc-bytes-cache.test.ts :: entries older than the window are dropped, so the record does not grow with every version ever viewed",
   "apps/web/src/lib/doc-bytes-cache.test.ts :: within the window it holds at most maxVerified entries (oldest first out), via revalidate and get",
+  "apps/web/src/lib/doc-bytes-cache.test.ts :: by default it holds at most 10,000 verification records",
   "apps/web/src/lib/permalink-response.freshness.test.ts :: an unlabelled answer is never shared-cacheable: private, no-store in every unverified branch",
 ]
 note = "Loop r3 correctness LOWs (verifiedAt trim; cache header matches its comment). Code only."
 
 [[claim]]
 id = "P5.A.6.r"
-claim = "The service-role /d heal never throws on an embedded uid the package does not hold: its foreign-id check reads documents and retired_ids directly (documents_foreign_doc_ids is closed to service_role), a retired or another package's uid is never adopted (fresh id), a known uid is kept, and a heal runs at most once per doc per window per instance with a bounded gate."
+claim = "The service-role /d heal never throws on an embedded uid the package does not hold: its foreign-id check reads documents and retired_ids directly (documents_foreign_doc_ids is closed to service_role), a retired or another package's uid is never adopted (fresh id), a known uid is kept, and a heal runs at most once per doc per window per instance with a bounded gate — and not again for that doc for an hour after one failed, so anonymous views never repeat a full registry read."
 oracle = "probe"
 bound_to = [
   "apps/web/src/lib/permalink-heal.sql.test.ts :: the stale path re-registers from the mirror without throwing; a retired or another package's uid is never adopted, a known uid is kept",
   "apps/web/src/lib/permalink-heal.sql.test.ts :: the service-role store: a retired or another package's uid at a new location gets a fresh id, a known uid is kept, no throw",
   "apps/web/src/lib/permalink-heal.test.ts :: once per doc per window, and bounded in memory",
+  "apps/web/src/lib/permalink-heal.test.ts :: a doc whose heal failed is left alone for an hour; others are not, and the gate stays bounded",
+  "apps/web/src/lib/permalink-heal.test.ts :: a heal that failed is not attempted again for that doc for an hour (no repeated full registry read)",
 ]
-note = "Security loop r3 LOW-1. Code only (ServiceDocumentRegistryStore). Residual: a heal reads the package's live registry once per doc per window, only when the digests differ."
+note = "Security loop r3 LOW-1. Code only (ServiceDocumentRegistryStore). Residual: a heal reads the package's live registry once per doc per window, only when the digests differ; after a failure, once per doc per hour (loop r4 security LOW-3)."
 
 [[claim]]
 id = "P5.B.3.g"
@@ -2071,3 +2074,13 @@ bound_to = [
   "apps/web/src/lib/loop-r4b-listing.sql.test.ts :: the check is real: the r3c form of the listing trigger is flagged",
 ]
 note = "Loop r4 security LOW-1 (class a). Generic catalogue test over every public table (pg_trigger.tgattr × BEFORE UPDATE row-trigger sources assigning new.<col>). Migration 0031_loop_r4b_3 removed the one instance."
+
+[[claim]]
+id = "P5.A.6.s"
+claim = "A pinned /d/{doc}@{hash} is answered only with bytes that hash to the pin: when neither the origin nor the mirror holds the pinned version the answer is a 404 (no-store, no ETag, nothing cached or counted as a view) and the row is healed (onStale), never another version's bytes."
+oracle = "probe"
+bound_to = [
+  "apps/web/src/lib/permalink-response.freshness.test.ts :: a pin that neither the origin nor the mirror holds answers 404, never stored, never other bytes; the row is healed (pin)",
+  "apps/web/src/lib/permalink-heal.sql.test.ts :: when neither the origin nor the mirror holds the pinned version, the pin answers 404 (never stored) and the row is healed",
+]
+note = "Loop r4 security LOW-2 (repro /tmp/alembic-r4/pin.test.ts). Code only. The 8-hex pin scheme is unchanged (the owner is deciding separately on SHA-256 pins; DecisionLog 2026-10-23). Supersedes r3's 'today's unlabelled answer stands' for pins."

@@ -82,6 +82,15 @@ r4, part B"). Part A (fork / reconcile / committer / editor save) runs in parall
   0030_loop_r3c_4 back-fills (checked-at head; first listing time). Documented, not closed: a course unlisted
   before 0030_loop_r3c_4 has no row to back-fill from (its next listing counts as first); research_events would
   close it but is research data — owner decision.
+- ✅ **Security LOW-2 — a pinned `/d` link served bytes that were not the pinned version (P5.A.6.s).** When neither
+  the origin nor the mirror hashed to the pin, the answer was the origin's other bytes (unlabelled; repro
+  `/tmp/alembic-r4/pin.test.ts`). Now a 404 (`no-store`), and the row is healed. The 8-hex pin scheme is unchanged
+  (owner deciding on SHA-256 pins separately). Code only.
+- ✅ **Security LOW-3 — the `/d` heal could tombstone in a race and repeat failing registry reads (P5.A.6.p,
+  P5.A.6.r).** The heal read the mirror's digest, then let the registration read the file again: a delete in
+  between registered a null (a tombstone). Now one read; the bytes are passed explicitly. A doc whose heal failed is
+  left alone for an hour (bounded gate), so anonymous views never repeat a full registry read. Code only.
+- ✅ **LOW — P5.A.6.q's default cap unasserted.** Bound: by default the `/d` verification record holds ≤ 10,000.
 - **Deploy order (round 4, part B):** code and `0031_loop_r4b_*` in either order (each file's header). After
   `0031_loop_r4b_1`, check `cron.job_run_details` for `alembic-discovery-drain` (fallback in the header).
 

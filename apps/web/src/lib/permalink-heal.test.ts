@@ -39,6 +39,25 @@ describe("HealGate", () => {
   });
 });
 
+describe("HealGate after a failure", () => {
+  it("[P5.A.6.r] a doc whose heal failed is left alone for an hour; others are not, and the gate stays bounded", () => {
+    let now = 0;
+    const gate = new HealGate(60_000, 100, () => now);
+    expect(gate.admit("doc-a")).toBe(true);
+    gate.failed("doc-a");
+    now += 61_000;
+    expect(gate.admit("doc-a")).toBe(false); // was: true — every window repeated the failing heal
+    expect(gate.admit("doc-b")).toBe(true);
+    now += 60 * 60_000 - 61_000 - 1;
+    expect(gate.admit("doc-a")).toBe(false);
+    now += 2;
+    expect(gate.admit("doc-a")).toBe(true);
+    for (let i = 0; i < 1_000; i++) gate.failed(`doc-${i}`);
+    expect(gate.size).toBe(100);
+    expect(HealGate.FAILURE_HOLD_MS).toBe(3_600_000);
+  });
+});
+
 describe("createStaleHealer", () => {
   it("[P5.A.6.p] heals after the response, never with the bytes read, once per window; failures are logged, not thrown", async () => {
     const runs: Array<() => Promise<void>> = [];
@@ -75,5 +94,36 @@ describe("createStaleHealer", () => {
     onStale(doc("doc-a"));
     await runs[0]!();
     expect(heal).not.toHaveBeenCalled();
+  });
+});
+
+describe("createStaleHealer after a failure", () => {
+  it("[P5.A.6.r] a heal that failed is not attempted again for that doc for an hour (no repeated full registry read)", async () => {
+    const runs: Array<() => Promise<void>> = [];
+    let now = 0;
+    let attempts = 0;
+    const onStale = createStaleHealer({
+      service: () => ({}) as never,
+      schedule: (run) => runs.push(run),
+      gate: new HealGate(60_000, 100, () => now),
+      heal: async () => {
+        attempts++;
+        throw new Error("registry unavailable");
+      },
+    });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    onStale(doc("doc-a"));
+    await runs.shift()!();
+    for (let i = 0; i < 30; i++) {
+      now += 61_000; // a view every minute or so
+      onStale(doc("doc-a"));
+      while (runs.length) await runs.shift()!();
+    }
+    expect(attempts).toBe(1); // was: 31 — one full registry read per window
+    now += 60 * 60_000;
+    onStale(doc("doc-a"));
+    while (runs.length) await runs.shift()!();
+    expect(attempts).toBe(2);
+    warn.mockRestore();
   });
 });
