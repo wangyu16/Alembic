@@ -1758,6 +1758,8 @@ bound_to = [
   "apps/web/src/lib/loop-r3c-registry.sql.test.ts :: documents_apply keeps r1b atomicity/scope, r2c owner-set rules, and parks moving rows (r3c)",
   "apps/web/src/lib/loop-r3c-identity.sql.test.ts :: every trigger of rounds r1b, r2, r2c and this r3c migration is installed",
   "apps/web/src/lib/loop-r3c-identity.sql.test.ts :: the internal functions stay closed to the API roles",
+  "apps/web/src/lib/loop-r3c-queue.sql.test.ts :: the queue functions keep r2c rules and carry r3c's (cursor restart, lock first, back-off, age)",
+  "apps/web/src/lib/loop-r3c-queue.sql.test.ts :: the internal functions stay closed to the API roles",
 ]
 note = "Loop r2 correctness, the composition rule (round 1's 0026 silently reverted 0025_2). A future migration that redefines one of these functions must keep the markers or update this test deliberately."
 
@@ -1851,3 +1853,25 @@ bound_to = [
   "apps/web/src/lib/loop-r3c-identity.sql.test.ts :: every primary-key / foreign-key column the signed-in role can UPDATE is frozen by an identity trigger, or is a listed role column",
 ]
 note = "Security loop r3 HIGH-1 (repros /tmp/alembic-r3/r3db.test.ts H1, r3b.test.ts H1 variant). Migration 0030_loop_r3c_2 (either order with the code). Role columns listed in the test: documents.author (owner-asserted, like adapted_from), sandbox_files.repo/path (a stored file's location)."
+
+[[claim]]
+id = "P5.A.1.s"
+claim = "A queued discovery refresh is never lost: a scoped refresh merged into a whole-package entry whose drain is under way restarts the drain when any merged id is at or behind its cursor, and discovery_flush_one takes the package's advisory lock (try, never wait) before it reads the entry, so the refreshes it runs can never queue into the entry it is draining; when it cannot take the lock the entry is left untouched."
+oracle = "probe"
+bound_to = [
+  "apps/web/src/lib/loop-r3c-queue.sql.test.ts :: a doc edit queued while a whole-package drain is half-way is re-projected (lostref)",
+  "apps/web/src/lib/loop-r3c-queue.sql.test.ts :: the drain takes the package's lock before it touches the entry; an entry it does not finish keeps its first-queued age",
+]
+note = "Loop r3 correctness M3-1 (repro /tmp/p5r3/lostref.mts). Migration 0030_loop_r3c_3. PGlite is one connection: the losing side of the lock is pinned by the composition test (try-lock precedes every read of the entry)."
+
+[[claim]]
+id = "P5.A.1.t"
+claim = "Every queued discovery refresh has a scheduled drain and an observable age: with pg_cron enabled the migration schedules discovery_flush_pending(25, 25 s) every 5 minutes, which drains entries oldest first by their first-queued time (kept across merges); discovery_pending_health() / discovery_pending_overdue (service role only) report pending, overdue (> 1 h) and failing entries, shown on the admin page; an entry whose drain failed backs off (1, 2, 4 … minutes, at most an hour) for every drain, so an edit-page load is not charged again."
+oracle = "probe"
+bound_to = [
+  "apps/web/src/lib/loop-r3c-queue.sql.test.ts :: with pg_cron enabled the migration schedules the drain every 5 minutes; the scheduled command drains overdue entries oldest first",
+  "apps/web/src/lib/loop-r3c-queue.sql.test.ts :: the health view and function are closed to the API roles",
+  "apps/web/src/lib/loop-r3c-queue.sql.test.ts :: an entry that keeps failing backs off: the edit-page flush is not charged again until its time",
+  "apps/web/src/lib/discovery-flush.test.ts :: reads the queue's age with the service client for the admin page; unavailable is null, never 0",
+]
+note = "Loop r3 correctness M3-2 + security LOW-2. Migration 0030_loop_r3c_3. OWNER ACTION: enable pg_cron in Supabase (Database → Extensions) — the migration schedules the job only when cron.schedule exists; the header carries the one-line schedule statement for enabling it later."

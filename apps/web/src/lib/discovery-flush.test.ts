@@ -7,7 +7,7 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it, vi } from "vitest";
-import { flushDiscovery } from "./discovery-flush";
+import { discoveryQueueHealth, flushDiscovery } from "./discovery-flush";
 
 const SRC = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -45,5 +45,17 @@ describe("flushDiscovery", () => {
     expect(readFileSync(join(SRC, "lib/github.ts"), "utf8")).toMatch(
       /refreshManifestAfterReconcile\([^)]*\);\s*await flushDiscovery\(/,
     );
+  });
+});
+
+describe("discoveryQueueHealth", () => {
+  it("[P5.A.1.t] reads the queue's age with the service client for the admin page; unavailable is null, never 0", async () => {
+    const rpc = vi.fn(async () => ({ data: [{ pending: 3, overdue: 1, failing: 1, oldest_queued_at: "2026-10-24T00:00:00Z" }], error: null }));
+    expect(await discoveryQueueHealth({ rpc } as never)).toEqual({ pending: 3, overdue: 1, failing: 1, oldestQueuedAt: "2026-10-24T00:00:00Z" });
+    expect(rpc).toHaveBeenCalledWith("discovery_pending_health");
+    expect(await discoveryQueueHealth({ rpc: async () => ({ data: null, error: { message: "does not exist" } }) } as never)).toBeNull();
+    expect(await discoveryQueueHealth({ rpc: async () => { throw new Error("x"); } } as never)).toBeNull();
+    const page = readFileSync(join(SRC, "app/admin/page.tsx"), "utf8");
+    expect(page).toMatch(/discoveryQueueHealth\(service\)/);
   });
 });

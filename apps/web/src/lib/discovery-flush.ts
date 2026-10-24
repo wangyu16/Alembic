@@ -26,3 +26,40 @@ export async function flushDiscovery(
     console.warn(`[discovery] flush of ${packageId} failed:`, err instanceof Error ? err.message : err);
   }
 }
+
+/** The discovery queue's age, for operators (0030_loop_r3c_3, P5.A.1.t). */
+export interface DiscoveryQueueHealth {
+  pending: number;
+  /** Entries first queued more than an hour ago (the scheduled drain should have taken them). */
+  overdue: number;
+  /** Entries whose last drain failed (backing off). */
+  failing: number;
+  oldestQueuedAt: string | null;
+}
+
+/**
+ * Read the queue's health with the SERVICE client (the function is closed to
+ * the API roles). Null when it cannot be read — before the migration, or
+ * without the service key — so the admin page says "unavailable" rather
+ * than "0".
+ */
+export async function discoveryQueueHealth(
+  service: Pick<SupabaseClient, "rpc">,
+): Promise<DiscoveryQueueHealth | null> {
+  try {
+    const { data, error } = await service.rpc("discovery_pending_health");
+    const row = (Array.isArray(data) ? data[0] : data) as
+      | { pending: number; overdue: number; failing: number; oldest_queued_at: string | null }
+      | null
+      | undefined;
+    if (error || !row) return null;
+    return {
+      pending: Number(row.pending) || 0,
+      overdue: Number(row.overdue) || 0,
+      failing: Number(row.failing) || 0,
+      oldestQueuedAt: row.oldest_queued_at ?? null,
+    };
+  } catch {
+    return null;
+  }
+}

@@ -77,6 +77,17 @@ fixed here too (its later fixes build on this branch).
   portal_registrations.package_id, suggestions' sender/target, sandbox_files.package_id, package_changes' package/user;
   `0030_loop_r3c_2`), and the P5.S.15 inventory treats every PK/FK column the signed-in role can update as sensitive
   by default (documents.doc_id moved from harmless to sensitive). H3-1's parking step changes path only.
+- ✅ **M3-1 — a queued discovery refresh could be lost (P5.A.1.s).** A doc edit queued while a whole-package drain
+  was half-way merged into the entry but kept its cursor, so the doc was never re-projected (repro
+  `/tmp/p5r3/lostref.mts`); and the drain's chunks could queue into the entry being drained. Now a merge at or behind
+  the cursor restarts it, and `discovery_flush_one` takes the package lock (try-only) before reading its entry
+  (`0030_loop_r3c_3`).
+- ✅ **M3-2 + security LOW-2 — nothing drained the queue on a schedule; no age was visible; a failing entry was
+  retried on every edit-page load (P5.A.1.t).** Now: a pg_cron job `alembic-discovery-drain` (every 5 min,
+  `discovery_flush_pending(25, 25 s)`, oldest first-queued first), scheduled by the migration when pg_cron is
+  enabled; `discovery_pending_health()` / `discovery_pending_overdue` (service role) and an admin-page line; failures
+  back off 1, 2, 4 … min (≤ 1 h) for every drain. 🔴 **OWNER ACTION:** enable pg_cron in Supabase (Database →
+  Extensions) before applying `0030_loop_r3c_3`, or run the `cron.schedule(…)` line from its header afterwards.
 
 **Phase 5 closed-loop verification — round 2, steps 4–5: correctness audit probes and class fixes (2026-10-23,
 branch `phase5/loop-r2-cor`, built on `phase5/loop-r2-sec`, not merged, migrations `0029_loop_r2c_*` NOT applied).**

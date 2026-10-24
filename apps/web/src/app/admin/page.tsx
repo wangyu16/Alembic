@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { summarizeUsage, type InvocationRow } from "@alembic/research-events";
 import { requireAdmin } from "@/lib/admin";
+import { discoveryQueueHealth } from "@/lib/discovery-flush";
 import { Reports, type ReportItem } from "./admin-client";
 
 export const dynamic = "force-dynamic";
@@ -27,10 +28,11 @@ export default async function AdminPage() {
     );
   }
 
-  const [packages, registrations, events] = await Promise.all([
+  const [packages, registrations, events, queue] = await Promise.all([
     count(service, "packages"),
     count(service, "portal_registrations"),
     count(service, "research_events"),
+    discoveryQueueHealth(service),
   ]);
 
   const { data: errorRows } = await service
@@ -88,6 +90,20 @@ export default async function AdminPage() {
             <div className="text-xs text-muted">{s.label}</div>
           </div>
         ))}
+      </section>
+
+      <section>
+        <h2 className="font-serif text-xl text-ink">Discover search updates</h2>
+        <p className="mt-1 text-sm text-muted">
+          {queue === null
+            ? "Unavailable (needs migration 0030_loop_r3c_3)."
+            : queue.pending === 0
+              ? "Nothing waiting."
+              : `${queue.pending} course${queue.pending === 1 ? "" : "s"} waiting` +
+                (queue.overdue > 0 ? ` — ${queue.overdue} for over an hour (is the scheduled drain enabled?)` : "") +
+                (queue.failing > 0 ? ` — ${queue.failing} failing, retried with back-off` : "") +
+                "."}
+        </p>
       </section>
 
       <section>
