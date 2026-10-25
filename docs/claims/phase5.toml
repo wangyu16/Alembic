@@ -2445,3 +2445,13 @@ bound_to = [
   "apps/web/src/app/workspace/[packageId]/a11y-actions.rate.test.ts :: the 11th check within 10 minutes is refused before any check runs, in plain words; another user is unaffected",
 ]
 note = "Loop r5 LOW, class b (decisions-diff audit). New bucket a11yCheck (per USER, Postgres with in-process fallback; rate_limit_hit from 0023, no migration). Trial-course checks read the stored copy only and are not gated."
+
+[[claim]]
+id = "P5.S.18"
+claim = "Every rate limit counts each window separately: rate_limit_hit stores its counter under the key and the window size, so an hourly and a daily window of one key never share a counter, even when both start at midnight UTC."
+oracle = "invariant"
+bound_to = [
+  "apps/web/src/lib/rate-limit-window.sql.test.ts :: an hourly and a daily window of one key are counted in separate rows, at any time of day",
+  "apps/web/src/lib/rate-limit-window.sql.test.ts :: two windows that start at the same instant still never share a counter",
+]
+note = "Found 2026-10-25 00:40 UTC: CI failed P5.S.5.b (30 reports instead of 60) because the hour and day windows of 'report:all' shared one row in the first hour of the UTC day. Every hour+day cap was halved for that hour. Migration 0034_rate_limit_window_key.sql."
