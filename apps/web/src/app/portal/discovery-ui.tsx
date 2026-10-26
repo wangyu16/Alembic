@@ -14,6 +14,7 @@ import {
   A11Y_FACET_LABELS,
   A11Y_LABELS,
   capitalize,
+  elementDescription,
   kindLabel,
   licenseLabelOf,
   plural,
@@ -226,6 +227,7 @@ export function CourseResult({
 }
 
 export function ElementResult({ e, targets }: { e: ElementHit; targets: AdaptTarget[] }) {
+  const description = elementDescription(e);
   return (
     <li className="flex items-center justify-between gap-3 py-4">
       <div className="min-w-0">
@@ -235,6 +237,7 @@ export function ElementResult({ e, targets }: { e: ElementHit; targets: AdaptTar
         >
           {e.title}
         </Link>
+        {description && <p className="mt-0.5 line-clamp-2 text-xs leading-relaxed text-muted">{description}</p>}
         <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-faint">
           <span className="chip">{kindLabel(e.kind)}</span>
           <span>{spaceLabel(e.space)}</span>

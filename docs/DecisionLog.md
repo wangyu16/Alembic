@@ -30,6 +30,19 @@ Branch `blindcritique/r2-fixes`. The round's verifiers and free-roam critic drov
   0.33, "titartion" 0.30) to the edge of matching. Fallbacks never add to a non-empty result. Tiers are chosen before
   the facet filters (signatures unchanged); "-word" exclusion stays as leaky as before. Relevance within a tier is
   unchanged.
+- **Course "Topics" are hidden, not re-derived.** The projection's `topics` are `discovery_headings(concept map)`.
+  In every listed course (and in the coursewerk concept-map format) those headings are structure — "Source and
+  Scope", "Course Summary", "Keywords and Tags", numbered section headings — and there are no separate topic
+  entries to derive from. So the course page shows no Topics list; keywords and chapters already say what the course
+  covers. The headings stay in the search text (they still help matching). Revisit if the concept-map format gains
+  real topic entries.
+- **Chapter links read the slugs with the service client.** The index carries chapter titles only. Rather than add a
+  column to the projection (a migration of the 0026 projector), the course page reads `manifest -> chapters` for a
+  course `cachedCourse` already returned as listed, through the same 120 s cache. A link is shown only when the
+  manifest's chapters match the listed titles one-to-one and the site is https; otherwise the list stays plain.
+  Known gap: a chapter added since the last publish is listed (titles come from the same manifest) and its link
+  may 404 on the student site until the next publish.
+- **US "license" everywhere in the UI.** The owner is US-based and the guide/README already said "license".
 - **Past-the-end harvest pages are 404 (P10).** PostgREST answers a range past the rows with 416 (PGRST103); that
   is now an empty page, so the routes say "not found". Page 1 of an empty index stays a valid empty feed.
 

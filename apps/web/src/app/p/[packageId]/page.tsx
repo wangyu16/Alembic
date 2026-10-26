@@ -9,7 +9,9 @@ import {
   cachedAdaptations,
   cachedCourse,
   cachedCourseElements,
+  cachedListedCourseChapters,
 } from "@/lib/discovery-cache";
+import { chapterLinks } from "@/lib/course-chapter-links";
 import {
   A11Y_LABELS,
   capitalize,
@@ -59,11 +61,14 @@ export default async function CoursePage({
   const course = await cachedCourse(packageId);
   if (!course) notFound();
 
-  const [elements, adaptations, source] = await Promise.all([
+  const [elements, adaptations, source, manifestChapters] = await Promise.all([
     cachedCourseElements(course.package_id),
     cachedAdaptations(course.package_id),
     course.adapted_from_package_id ? cachedCourse(course.adapted_from_package_id) : null,
+    course.chapter_titles.length > 0 ? cachedListedCourseChapters(course.package_id) : null,
   ]);
+  // Each chapter's page on the student site, when it can be trusted.
+  const chapterHrefs = chapterLinks(course.site_url, course.chapter_titles, manifestChapters);
 
   const session = await createSupabaseServerClient();
   recordDiscoveryEvent({ type: "course.viewed", packageId: course.package_id, surface: "course-page" }, { session });
@@ -178,25 +183,30 @@ export default async function CoursePage({
         </h2>
         {course.chapter_titles.length > 0 ? (
           <ol className="list-decimal space-y-1 pl-6 text-sm text-ink">
-            {course.chapter_titles.map((t, i) => (
-              <li key={`${i}-${t}`}>{t}</li>
-            ))}
+            {course.chapter_titles.map((t, i) => {
+              const href = chapterHrefs[i];
+              return (
+                <li key={`${i}-${t}`}>
+                  {href ? (
+                    <a href={href} target="_blank" rel="noreferrer" className="link">
+                      {t}
+                      <span className="sr-only"> (opens the course site in a new tab)</span>
+                    </a>
+                  ) : (
+                    t
+                  )}
+                </li>
+              );
+            })}
           </ol>
         ) : (
           <p className="text-sm text-muted">One chapter — open the course site to read it.</p>
         )}
-        {course.topics.length > 0 && (
-          <div>
-            <h3 className="mb-1 text-xs uppercase tracking-wide text-faint">Topics</h3>
-            <ul className="flex flex-wrap gap-1.5">
-              {course.topics.map((t, i) => (
-                <li key={`${i}-${t}`} className="chip">
-                  {t}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
+        {/* No "Topics" list: the projection's topics are the concept map's
+            headings, which are structure ("Source and Scope", "Course
+            Summary", numbered sections), not topics; no concept map has
+            separate topic entries today (DecisionLog 2026-10-26). They still
+            help search. */}
         {course.keywords.length > 0 && (
           <p className="text-xs text-faint">Keywords: {course.keywords.join(", ")}</p>
         )}
@@ -235,11 +245,11 @@ export default async function CoursePage({
         <h2 id="cite" className="font-serif text-2xl text-ink">
           How to cite
         </h2>
-        <blockquote className="rounded-lg border border-edge bg-[var(--surface-2,transparent)] p-3 text-sm text-ink select-all">
+        <blockquote className="rounded-lg border border-edge bg-[var(--surface-2,transparent)] p-3 text-sm text-ink select-all [overflow-wrap:anywhere]">
           {citation}
         </blockquote>
         <p className="text-sm text-muted">
-          Licence:{" "}
+          License:{" "}
           {deed ? (
             <a href={deed} target="_blank" rel="noreferrer license" className="link">
               {licenseLabelOf(course.license)}
@@ -301,7 +311,7 @@ export default async function CoursePage({
         </h2>
         <p className="text-sm text-muted">
           Copy the sections of one of its chapters into one of your own chapters, then make them
-          fit your students. Attribution and the licence travel with them.
+          fit your students. Attribution and the license travel with them.
         </p>
         {!user ? (
           <p className="text-sm">

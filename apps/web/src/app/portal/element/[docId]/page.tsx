@@ -7,10 +7,12 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { cachedCourse, cachedElement } from "@/lib/discovery-cache";
 import {
   capitalize,
-  isImageKind,
+  elementAlt,
+  elementDescription,
   kindLabel,
   licenseLabelOf,
   plural,
+  previewOf,
   spaceLabel,
 } from "@/lib/discovery-labels";
 import { appBaseUrl } from "@/lib/app-url";
@@ -61,6 +63,8 @@ export default async function ElementPage({ params }: Params) {
     targets = (data as AdaptTarget[] | null) ?? [];
   }
 
+  const preview = previewOf(el.kind);
+  const description = elementDescription(el);
   const origin = appBaseUrl();
   const permalink = `${origin}/d/${el.doc_id}`;
   const author = course?.course_context["instructor"] ?? "";
@@ -121,24 +125,42 @@ export default async function ElementPage({ params }: Params) {
 
       <section aria-labelledby="preview" className="flex flex-col gap-2">
         <h2 id="preview" className="sr-only">
-          Preview
+          Preview and description
         </h2>
-        {isImageKind(el.kind) ? (
-          // eslint-disable-next-line @next/next/no-img-element -- the permalink serves the file itself
-          <img
-            src={`/d/${el.doc_id}`}
-            alt={el.alt_text ?? el.description ?? el.title}
-            className="max-h-[28rem] w-auto self-start rounded-lg border border-edge bg-white object-contain"
-          />
+        {/* A real preview through the file's own stable link (P7): images
+            (including chemical structures and plots, which are SVG) sized to
+            the column with alt text; audio and video with a player. */}
+        {preview === "image" && (
+          <figure className="m-0 self-start rounded-lg border border-edge bg-white p-3">
+            {/* eslint-disable-next-line @next/next/no-img-element -- the permalink serves the file itself */}
+            <img
+              src={`/d/${el.doc_id}`}
+              alt={elementAlt(el)}
+              className="block h-auto max-h-[28rem] w-[min(36rem,100%)] max-w-full object-contain"
+            />
+          </figure>
+        )}
+        {preview === "audio" && (
+          <audio controls preload="none" src={`/d/${el.doc_id}`} className="w-full max-w-xl">
+            <a href={`/d/${el.doc_id}`}>Download the audio</a>
+          </audio>
+        )}
+        {preview === "video" && (
+          <video controls preload="metadata" src={`/d/${el.doc_id}`} className="w-full max-w-xl rounded-lg">
+            <a href={`/d/${el.doc_id}`}>Download the video</a>
+          </video>
+        )}
+        {description ? (
+          <p className="text-sm leading-relaxed text-ink">{description}</p>
         ) : (
-          el.description && <p className="text-sm leading-relaxed text-ink">{el.description}</p>
+          <p className="text-sm text-muted">Its author hasn&rsquo;t added a description yet.</p>
         )}
         <div className="flex flex-wrap items-center gap-4 text-sm">
           <a href={`/d/${el.doc_id}`} target="_blank" rel="noreferrer" className="btn btn-primary btn-sm">
             Open<span className="sr-only"> (opens in a new tab)</span> ↗
           </a>
           <span className="text-muted">
-            Permalink: <code className="select-all text-ink">{permalink}</code>
+            Permalink: <code className="select-all break-all text-ink">{permalink}</code>
           </span>
         </div>
       </section>
@@ -147,11 +169,11 @@ export default async function ElementPage({ params }: Params) {
         <h2 id="cite" className="font-serif text-2xl text-ink">
           How to cite
         </h2>
-        <blockquote className="rounded-lg border border-edge p-3 text-sm text-ink select-all">
+        <blockquote className="rounded-lg border border-edge p-3 text-sm text-ink select-all [overflow-wrap:anywhere]">
           {citation}
         </blockquote>
         <p className="text-sm text-muted">
-          Licence:{" "}
+          License:{" "}
           {deed ? (
             <a href={deed} target="_blank" rel="noreferrer license" className="link">
               {licenseLabelOf(el.license)}
@@ -191,7 +213,7 @@ export default async function ElementPage({ params }: Params) {
             Use it in your course
           </h2>
           <p className="text-sm text-muted">
-            Add a copy to one of your courses&rsquo; Assets; it keeps its attribution and licence,
+            Add a copy to one of your courses&rsquo; Assets; it keeps its attribution and license,
             and gets its own permalink there.
           </p>
           {!user ? (

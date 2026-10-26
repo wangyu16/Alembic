@@ -9,6 +9,7 @@ import {
   type DiscoveryElement,
 } from "@alembic/package-contract";
 import { createPublicClient } from "@/lib/supabase/public";
+import { createServiceClient } from "@/lib/supabase/service";
 import {
   searchCourses,
   searchElements,
@@ -183,5 +184,33 @@ export async function cachedCourseElements(
     });
   } catch {
     return [];
+  }
+}
+
+/**
+ * The manifest's chapter list (`chapters[]`: slug + title) of a course the
+ * caller has ALREADY confirmed is listed (`cachedCourse` returned it) — the
+ * slugs the course page needs to link each chapter to its page on the
+ * student site (`lib/course-chapter-links.ts`). The discovery index carries
+ * titles only, so this reads `packages.manifest -> chapters` with the service
+ * client: one column path of one listed course, public course structure that
+ * its student site already shows. Never throws; null when unavailable.
+ */
+export async function cachedListedCourseChapters(packageId: string): Promise<unknown> {
+  const client = createServiceClient();
+  if (!client) return null;
+  try {
+    return await cached(["course-chapters", packageId], async () => {
+      const { data, error } = await client
+        .from("packages")
+        .select("chapters:manifest->chapters")
+        .eq("id", packageId)
+        .limit(1);
+      if (error) throw new Unavailable();
+      const row = (data as Array<{ chapters?: unknown }> | null)?.[0];
+      return row?.chapters ?? null;
+    });
+  } catch {
+    return null;
   }
 }
