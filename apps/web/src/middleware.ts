@@ -1,8 +1,42 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { supabaseEnv } from "@/lib/supabase/env";
+import {
+  PUBLIC_NOT_FOUND_REWRITE,
+  isClientNavigation,
+  isListed,
+  listingTargetOf,
+} from "@/lib/public-not-found";
+
+function configuredEnv(): { url: string; anonKey: string } | null {
+  try {
+    return supabaseEnv();
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * `/p/{id}` and `/portal/element/{id}`: an unknown course or shared file gets
+ * the server-rendered site 404 (readable without JavaScript) instead of the
+ * page's script-only not-found (`lib/public-not-found.ts`). No session work
+ * here — these are public pages.
+ */
+async function publicNotFound(request: NextRequest): Promise<NextResponse | null> {
+  const target = listingTargetOf(request.nextUrl.pathname);
+  if (!target) return null;
+  if (isClientNavigation(request.headers)) return NextResponse.next();
+  const listed = await isListed(target, { env: configuredEnv() });
+  if (listed === false) {
+    return NextResponse.rewrite(new URL(PUBLIC_NOT_FOUND_REWRITE, request.url));
+  }
+  return NextResponse.next();
+}
 
 export async function middleware(request: NextRequest) {
+  const publicAnswer = await publicNotFound(request);
+  if (publicAnswer) return publicAnswer;
+
   let response = NextResponse.next({ request });
   const { url, anonKey } = supabaseEnv();
 
@@ -63,5 +97,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/workspace/:path*", "/auth/:path*"],
+  matcher: ["/workspace/:path*", "/auth/:path*", "/p/:packageId", "/portal/element/:docId"],
 };

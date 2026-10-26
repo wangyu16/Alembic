@@ -19,11 +19,13 @@ export default function SharePage() {
         <p>
           Publishing makes your course a live website;{" "}
           <strong>List publicly</strong>{" "}puts it on the map. It is a separate,
-          deliberate step: choose <strong>List publicly</strong>{" "}and your course —
-          or a single asset — joins <Link href="/portal">Discover</Link>,
+          deliberate step: choose <strong>List publicly</strong>{" "}and your course
+          joins <Link href="/portal">Discover</Link>,
           Alembic&rsquo;s public index, where other educators can search for it,
           adapt it, and build on it. You decide what goes out, and you can unlist
-          at any time.
+          at any time. A single file from your <strong>Assets</strong>{" "}can be
+          shared on its own: tick <strong>Discoverable</strong>{" "}in its details
+          and it appears under <strong>Shared files</strong>{" "}on Discover.
         </p>
       </GuideSection>
 
@@ -34,7 +36,7 @@ export default function SharePage() {
       >
         <p>
           Anything on <Link href="/portal">Discover</Link>{" "}can be{" "}
-          <strong>adapted</strong>: take a course, a module, or a single figure,
+          <strong>adapted</strong>: take a course, a module, or a single shared file,
           and make it fit your students. Attribution travels automatically, so
           credit is never lost. If you fix or improve something you adapted, you
           can <strong>suggest the change back</strong>{" "}— the original author
@@ -47,8 +49,8 @@ export default function SharePage() {
           You don&rsquo;t need a finished course to contribute. A single clear
           illustration, a well-worked derivation, a clean explanation of one
           stubborn concept — small pieces like these are exactly what other
-          educators search for. <strong>List publicly</strong>{" "}works at that
-          scale too: a single asset can join Discover on its own, for others to
+          educators search for. Sharing works at that scale too: a single{" "}
+          <strong>shared file</strong>{" "}joins Discover on its own, for others to
           find and build on.
         </p>
       </GuideSection>

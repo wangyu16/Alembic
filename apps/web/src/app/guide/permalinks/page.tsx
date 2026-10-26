@@ -20,7 +20,7 @@ export default function PermalinksPage() {
         figureCaption="Rename or move a document and its permalink keeps pointing to it — the citation still works."
       >
         <p>
-          Every document and every asset has a <strong>permalink</strong>{" "}— a
+          Every document and every file in your Assets has a <strong>permalink</strong>{" "}— a
           stable web address that belongs to it for good. Rename the file,
           reorganize your course, move a figure from one chapter to another: the
           permalink keeps pointing to the right thing. A colleague who cited your

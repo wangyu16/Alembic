@@ -35,7 +35,7 @@ type Params = { params: Promise<{ docId: string }> };
 export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const { docId } = await params;
   const e = await cachedElement(docId);
-  if (!e) return { title: "Element not found — Alembic" };
+  if (!e) return { title: "Shared file not found — Alembic" };
   return { title: `${e.title} — ${e.package_title} — Alembic`, description: e.description ?? undefined };
 }
 
@@ -88,7 +88,7 @@ export default async function ElementPage({ params }: Params) {
     <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-8 px-6 py-12">
       <nav aria-label="Breadcrumb" className="text-sm">
         <Link href="/portal?scope=elements" className="text-muted hover:text-ink">
-          ← Shared elements
+          ← Shared files
         </Link>
       </nav>
 
@@ -198,7 +198,7 @@ export default async function ElementPage({ params }: Params) {
                   {source.title}
                 </Link>
               ) : (
-                "an element of another course"
+                "a shared file from another course"
               )}
               .
             </p>

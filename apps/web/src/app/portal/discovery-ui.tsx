@@ -84,7 +84,7 @@ export function SearchForm({ query, facets }: { query: DiscoveryQuery; facets: F
       {query.scope === "elements" && <input type="hidden" name="scope" value="elements" />}
       <div className="flex flex-wrap items-center gap-2">
         <label htmlFor="discover-q" className="sr-only">
-          {query.scope === "elements" ? "Search shared elements" : "Search courses"}
+          {query.scope === "elements" ? "Search shared files" : "Search courses"}
         </label>
         <input
           id="discover-q"
@@ -143,7 +143,7 @@ export function SearchForm({ query, facets }: { query: DiscoveryQuery; facets: F
 }
 
 export function ResultCount({ query, total }: { query: DiscoveryQuery; total: number }) {
-  const noun = query.scope === "elements" ? "shared element" : "course";
+  const noun = query.scope === "elements" ? "shared file" : "course";
   const page = pageNumber(query);
   return (
     <p role="status" className="text-xs text-faint">
@@ -206,7 +206,7 @@ export function CourseResult({
         {c.discipline && <Meta>{capitalize(c.discipline)}</Meta>}
         {c.level && <Meta>{capitalize(c.level)}</Meta>}
         <Meta>{plural(c.chapter_count, "chapter")}</Meta>
-        {c.element_count > 0 && <Meta>{plural(c.element_count, "shared element")}</Meta>}
+        {c.element_count > 0 && <Meta>{plural(c.element_count, "shared file")}</Meta>}
         {c.adaptation_count > 0 && <Meta>Adapted by {plural(c.adaptation_count, "course")}</Meta>}
         {badge && <span className={`text-xs ${badge.className}`}>{badge.label}</span>}
       </div>

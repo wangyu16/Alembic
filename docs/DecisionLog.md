@@ -6,6 +6,35 @@ design, and what is deferred to the future. Complements [Status.md](Status.md)
 
 ---
 
+## 2026-10-26 — Blind-critique round, final pass: one name ("shared file"), not-found pages without scripts
+
+Branch `blindcritique/r2-final` (after the re-verification of `blindcritique/r2-fixes`).
+
+- **One visitor-facing name: "shared file".** An individually shared item had three names — the guide said
+  "asset", Discover said "Elements" / "shared element", the `/d` not-found page said "Browse shared files". Chosen:
+  **shared file** (the plainest, and what the `/d` pages already said). Discover's tab is **Shared files**; result
+  counts, the course page's list, the file page ("← Shared files", "a shared file from another course"), the adapt
+  messages ("That file isn't shared", "Couldn't add that file"), the workspace's paste-a-link control and the
+  guide's visitor-facing sentences follow. **Assets** stays: it is the name of a course's file collection in the
+  workspace (spec: "Assets, Current term, Private"), not of a shared item; the guide says "a file from your
+  Assets". Code identifiers, URLs (`/portal?scope=elements`, `/portal/element/{id}`, `elements-N.xml`) and the
+  database (`discovery_elements`) keep "element" — renaming them would break links and harvesters for no visitor
+  benefit. Also corrected: Discover's empty state told educators to choose "Share this", a control that does not
+  exist; the real control is the **Discoverable** tick in a file's details.
+- **Not-found pages are rendered on the server (H4).** Next 16 renders a page's `notFound()` through a client error
+  boundary; server rendering has none, so `/p/{unknown}` and `/portal/element/{unknown}` sent 404 with an empty
+  document (`<html id="__next_error__">`) and the message appeared only after the scripts ran. Reproduced locally
+  with a minimal two-file Next app, so it is the framework's behaviour, not ours; a `not-found.tsx` beside the page
+  does not help, and a Suspense fallback gives the content but status 200. Chosen: the middleware asks the same
+  anon question the page asks (is this course / file listed?) on full page loads of those two routes and, on a
+  definite "no", rewrites to an address no route matches, so Next serves the site 404 — status 404, heading,
+  message, Home and Discover in the HTML. In-app navigations are not checked (the browser renders their
+  not-found). Cost: one extra indexed read per page load, with "listed" answers remembered per instance for the
+  same 120 s the page's own cache uses; "not listed" is never remembered (a course listed a moment ago is never
+  hidden). Any failure falls through to the page — never a false 404. `lib/public-not-found.ts`.
+
+---
+
 ## 2026-10-26 — Blind-critique round (public surfaces): fixes and the choices behind them
 
 Branch `blindcritique/r2-fixes`. The round's verifiers and free-roam critic drove the deployed site signed out

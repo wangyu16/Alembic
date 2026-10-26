@@ -33,7 +33,7 @@ export function ElementAdapt({
     start(async () => {
       const r = await adaptElementAction(target, docId);
       if (!r.ok) {
-        setDone({ ok: false, text: r.error ?? "Couldn't add that element." });
+        setDone({ ok: false, text: r.error ?? "Couldn't add that file." });
         return;
       }
       setOpen(false);
@@ -63,7 +63,7 @@ export function ElementAdapt({
       <button
         onClick={() => setOpen(true)}
         className="link shrink-0 text-sm"
-        title="Copy this element into one of your packages"
+        title="Copy this file into one of your courses"
       >
         Adapt →
       </button>

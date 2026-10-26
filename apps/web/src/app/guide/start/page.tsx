@@ -72,7 +72,7 @@ export default function StartPage() {
           Publishing makes your course a live website, but it doesn&rsquo;t put it
           on the map. To let other educators find and adapt your work, choose{" "}
           <strong>List publicly</strong>{" "}— a separate, deliberate step that adds
-          your course (or a single asset) to <Link href="/portal">Discover</Link>,
+          your course (or a single shared file) to <Link href="/portal">Discover</Link>,
           the public index. You decide what goes on the market, and you can unlist
           at any time. More in <Link href="/guide/share">Share &amp; adapt</Link>.
         </p>

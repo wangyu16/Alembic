@@ -137,7 +137,7 @@ export default async function PortalPage({
           ))}
         </ol>
       ) : (
-        <ol className="divide-y divide-[var(--edge-soft)]" aria-label="Shared elements">
+        <ol className="divide-y divide-[var(--edge-soft)]" aria-label="Shared files">
           {(page.hits as ElementHit[]).map((e) => (
             <ElementResult key={e.doc_id} e={e} targets={targets} />
           ))}
@@ -148,7 +148,7 @@ export default async function PortalPage({
           <Link href={signInHref(here)} className="link">
             Sign in
           </Link>{" "}
-          to add shared elements to your own courses.
+          to add shared files to your own courses.
         </p>
       )}
       <Pager query={query} next={page.next} />
@@ -179,7 +179,7 @@ function Shell({ query, children }: { query: DiscoveryQuery; children: React.Rea
       </header>
 
       {/* Two search scopes (document-model.md §4): whole courses, and
-          individual shared elements (per-file "share this"). */}
+          individual shared files (per-file "Discoverable"). */}
       <nav aria-label="What to search" className="flex items-center gap-2 text-sm">
         <Link
           href={`/portal${keepText ? `?${keepText.slice(1)}` : ""}`}
@@ -192,9 +192,9 @@ function Shell({ query, children }: { query: DiscoveryQuery; children: React.Rea
           href={`/portal?scope=elements${keepText}`}
           aria-current={query.scope === "elements" ? "page" : undefined}
           className={tab(query.scope === "elements")}
-          title="Individual shared elements — figures, plots, explanations"
+          title="Individual shared files — figures, plots, explanations"
         >
-          Elements
+          Shared files
         </Link>
       </nav>
       {children}
@@ -205,9 +205,9 @@ function Shell({ query, children }: { query: DiscoveryQuery; children: React.Rea
 function EmptyIndex({ scope }: { scope: DiscoveryQuery["scope"] }) {
   return scope === "elements" ? (
     <p className="text-muted">
-      No shared elements yet — in your workspace, open a package&rsquo;s Assets
-      and choose <span className="text-ink">Share this</span> on any figure,
-      plot, or explanation worth reusing.
+      No shared files yet — in your workspace, open a course&rsquo;s Assets,
+      open a figure, plot, or explanation worth reusing, and tick{" "}
+      <span className="text-ink">Discoverable</span>.
     </p>
   ) : (
     <p className="text-muted">

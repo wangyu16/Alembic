@@ -215,7 +215,7 @@ export default async function CoursePage({
       {elements.length > 0 && (
         <section aria-labelledby="shared" className="flex flex-col gap-2">
           <h2 id="shared" className="font-serif text-2xl text-ink">
-            Shared elements
+            Shared files
           </h2>
           <p className="text-sm text-muted">
             Figures, plots and explanations from this course that its author shared for reuse.
@@ -236,7 +236,7 @@ export default async function CoursePage({
             ))}
           </ul>
           {moreElements > 0 && (
-            <p className="text-xs text-faint">and {plural(moreElements, "more shared element")}</p>
+            <p className="text-xs text-faint">and {plural(moreElements, "more shared file")}</p>
           )}
         </section>
       )}

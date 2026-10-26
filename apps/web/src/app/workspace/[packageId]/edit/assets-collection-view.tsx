@@ -796,7 +796,7 @@ function AdaptControl({
     start(async () => {
       const r = await adaptElementAction(packageId, link);
       if (!r.ok) {
-        setMsg({ ok: false, text: r.error ?? "Couldn't add that element." });
+        setMsg({ ok: false, text: r.error ?? "Couldn't add that file." });
         return;
       }
       setLink("");
@@ -812,7 +812,7 @@ function AdaptControl({
         <button
           onClick={() => setOpen(true)}
           className="btn btn-ghost btn-sm"
-          title="Paste a shared element's permalink (from Discover) to copy it into this package"
+          title="Paste a shared file's permalink (from Discover) to copy it into this course"
         >
           Adapt…
         </button>
@@ -827,7 +827,7 @@ function AdaptControl({
         value={link}
         onChange={(e) => setLink(e.target.value)}
         placeholder="Paste a shared link (/d/…)"
-        aria-label="Shared element permalink"
+        aria-label="Shared file permalink"
         className="field w-56 text-xs"
         autoFocus
         onKeyDown={(e) => e.key === "Enter" && !pending && link.trim() && submit()}

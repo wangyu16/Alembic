@@ -175,7 +175,7 @@ export async function adaptChapterAction(
   try {
     const target = await store.getPackage(packageId);
     const sourceRec = await store.getPackage(sourcePackageId);
-    if (!target || !sourceRec) return { ok: false, error: "Package not found." };
+    if (!target || !sourceRec) return { ok: false, error: "Course not found." };
 
     // Refuse before adapting anything if this package's permanent home is out of
     // reach — an adaptation that can't be made permanent isn't made at all.
@@ -308,7 +308,7 @@ export async function adaptFromPortalAction(
   const store = new SupabaseSandboxStore(supabase);
   try {
     const target = await store.getPackage(packageId);
-    if (!target) return { ok: false, error: "Package not found." };
+    if (!target) return { ok: false, error: "Course not found." };
     // Only into one of the target's own chapters (never an arbitrary path).
     if (!chaptersOfManifest(target.manifest).some((c) => c.path === targetPath)) {
       return { ok: false, error: "Choose one of your chapters to add the sections to." };
@@ -478,7 +478,7 @@ export async function adaptElementAction(
 
   try {
     const target = await store.getPackage(packageId);
-    if (!target) return { ok: false, error: "Package not found." };
+    if (!target) return { ok: false, error: "Course not found." };
 
     // Read the source doc — service client for cross-owner public reads,
     // falling back to the session (owners can always read their own).
@@ -489,20 +489,20 @@ export async function adaptElementAction(
       .eq("doc_id", docId)
       .maybeSingle();
     const doc = data as SourceDocRow | null;
-    if (!doc || doc.tombstoned) return { ok: false, error: "That element isn't available." };
+    if (!doc || doc.tombstoned) return { ok: false, error: "That file isn't available." };
     if (doc.package_id === packageId) {
-      return { ok: false, error: "That element is already in this package." };
+      return { ok: false, error: "That file is already in this course." };
     }
     if (doc.repo !== "public" || doc.permalink_class !== "object") {
       return {
         ok: false,
-        error: "Only shared objects (structures, plots, figures) can be added this way.",
+        error: "Only shared figures, structures and plots can be added this way.",
       };
     }
     // Must be shared, or a package the educator owns (getPackage is RLS-scoped).
     const ownsSource = Boolean(await store.getPackage(doc.package_id));
     if (!doc.discoverable && !ownsSource) {
-      return { ok: false, error: "That element isn't shared." };
+      return { ok: false, error: "That file isn't shared." };
     }
 
     // Source license from the source package manifest (gates `canAdapt`).
@@ -514,14 +514,14 @@ export async function adaptElementAction(
     // An unpublished (trial) course's files reach nobody but its owner — the
     // same rule as its permalinks (S1, lib/permalink-access.ts), shared or not.
     if (!ownsSource && srcPkg?.storage !== "github") {
-      return { ok: false, error: "That element isn't shared." };
+      return { ok: false, error: "That file isn't shared." };
     }
     const sourceLicense = (srcPkg?.manifest as { license?: License } | null)?.license;
     if (!sourceLicense) return { ok: false, error: "Couldn't read the source's license." };
 
     // A carrier is a self-contained HTML doc (text); decode the bytes as UTF-8.
     const sourceBytes = (await fetchDocBytes(db, doc))?.toString("utf8") ?? null;
-    if (sourceBytes == null) return { ok: false, error: "Couldn't read that element." };
+    if (sourceBytes == null) return { ok: false, error: "Couldn't read that file." };
     // The copy is its own document: never carry the source's embedded uid
     // (loop r1b, P5.B.1.n — it would claim the source's docId).
     const carrier = remintEmbeddedUid(sourceBytes);
@@ -581,7 +581,7 @@ export async function adaptElementAction(
     if (e instanceof AdaptationNotAllowedError) return { ok: false, error: e.reason };
     const commit = commitError(e);
     if (commit) return { ok: false, error: commit };
-    return { ok: false, error: "Couldn't add that element. Please try again." };
+    return { ok: false, error: "Couldn't add that file. Please try again." };
   }
 }
 
