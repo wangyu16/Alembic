@@ -9,7 +9,7 @@ import {
 export const metadata = {
   title: "Core ideas — Alembic Guide",
   description:
-    "The three ideas Alembic is built on: you get versioning and publishing without ever touching Git, you lead while AI handles the tedious details, and every document is a self-editing file that carries its own editor.",
+    "The three ideas Alembic is built on: every version kept and your course published without any technical setup, you lead while AI handles the tedious details, and every document is a self-editing file that carries its own editor.",
 };
 
 export default function CoreIdeasPage() {
@@ -20,7 +20,7 @@ export default function CoreIdeasPage() {
       lede="Alembic turns your teaching materials into open, reusable resources — and does the technical work quietly, so you stay focused on the knowledge. Three ideas make the rest of the guide obvious."
     >
       <GuideSection
-        heading="Versioning and publishing, without Git"
+        heading="Versions and publishing, done for you"
         figure={<PackageFigure />}
         figureCaption="One package, two halves: a public side for students and a private side, under lock, for answer keys and notes."
       >
@@ -33,14 +33,14 @@ export default function CoreIdeasPage() {
           to switch: private material simply cannot cross into the public side.
         </p>
         <p>
-          Behind the scenes this is professional version control — the same
-          machinery software teams use to track history and never lose work. But you
-          never see any of it. You <strong>save</strong>, <strong>preview</strong>,{" "}
+          Behind the scenes Alembic keeps every version of your work, so nothing is
+          ever lost — and you never have to manage any of it. You{" "}
+          <strong>save</strong>, <strong>preview</strong>,{" "}
           <strong>publish</strong>, take a named <strong>snapshot</strong> each term
-          (&ldquo;Fall&nbsp;2026&rdquo;), <strong>restore</strong> exactly what you
-          taught, <strong>cite</strong> a fixed version, <strong>adapt</strong>{" "}
-          someone else&rsquo;s work, and <strong>share</strong> — never a branch, a
-          commit, or a merge.
+          (&ldquo;Fall&nbsp;2026&rdquo;), <strong>restore</strong> an earlier
+          version of a chapter, <strong>cite</strong> your course,{" "}
+          <strong>adapt</strong>{" "}someone else&rsquo;s work, and{" "}
+          <strong>share</strong> — nothing more technical than that.
         </p>
         <p>
           When you publish, Alembic moves your course out of its temporary storage

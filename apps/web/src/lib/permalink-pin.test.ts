@@ -71,3 +71,16 @@ describe("P5.B.1.q a pin is satisfied only by the doc's known current hash", () 
     expect(fn).toMatch(/if \(pinKind !== null && !bytesMatchSha256\(doc\.path, bytes, doc\.content_sha256 \?\? ""\)\) return null;/);
   });
 });
+
+describe("blind-critique 2026-10-26: the version-link message is neutral", () => {
+  it("a non-version pin like @latest is not called an older version", async () => {
+    const doc: PermalinkDoc = { doc_id: "doc-cited1", package_id: "pkg-a", repo: "public", path: "f.md", source_hash: "5d5e142d", content_sha256: S, tombstoned: false };
+    const r = await servePermalink("doc-cited1@latest", new Headers(), deps(doc));
+    expect(r.status).toBe(404);
+    const html = await r.text();
+    expect(html).toContain("That version link isn't available");
+    expect(html).not.toMatch(/older version/i);
+    expect(html).toContain('href="/d/doc-cited1"');
+    expect(html).toContain('<a href="/">Home</a>');
+  });
+});

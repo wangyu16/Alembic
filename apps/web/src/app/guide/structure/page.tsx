@@ -83,8 +83,8 @@ export default function StructurePage() {
           format, and layout — is done by <strong>AI agents following agent
           skills</strong>, which makes the result far cleaner than editing each
           document by hand.{" "}
-          <a href="https://github.com/wangyu16/coursewerk" target="_blank" rel="noreferrer">
-            coursewerk
+          <a href="https://github.com/wangyu16/orz-coursewerk" target="_blank" rel="noreferrer">
+            Coursewerk
           </a>{" "}
           is the pipeline that guides an agent to assemble a whole course package
           from your blueprint, ready to upload.

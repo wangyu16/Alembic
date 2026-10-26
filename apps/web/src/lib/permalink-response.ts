@@ -153,11 +153,22 @@ function cacheHeaders(pinned: boolean): Record<string, string> {
     : { "cache-control": CACHE.live };
 }
 
+/**
+ * A plain message page for `/d` answers that are not the file. It carries a
+ * minimal header and links back into the site (blind-critique 2026-10-26: the
+ * not-found page was a dead end). `title`/`body` are fixed strings plus a
+ * validated doc id — never user text.
+ */
 function page(status: number, title: string, body: string, cache: string): Response {
   return new Response(
-    `<!doctype html><meta charset="utf-8"><title>${title}</title>` +
-      `<body style="font-family:system-ui;max-width:36rem;margin:4rem auto;padding:0 1rem">` +
-      `<h1 style="font-size:1.2rem">${title}</h1><p>${body}</p></body>`,
+    `<!doctype html><html lang="en"><meta charset="utf-8">` +
+      `<meta name="viewport" content="width=device-width, initial-scale=1">` +
+      `<meta name="robots" content="noindex"><title>${title} — Alembic</title>` +
+      `<body style="font-family:system-ui;max-width:36rem;margin:2rem auto;padding:0 1rem;line-height:1.5">` +
+      `<header style="margin-bottom:3rem"><a href="/" style="font-weight:600;color:inherit;text-decoration:none">Alembic</a></header>` +
+      `<main><h1 style="font-size:1.2rem">${title}</h1><p>${body}</p>` +
+      `<p><a href="/">Home</a> · <a href="/portal?scope=elements">Browse shared files</a> · <a href="/portal">Discover courses</a></p>` +
+      `</main></body></html>`,
     { status, headers: { "content-type": "text/html; charset=utf-8", "cache-control": cache } },
   );
 }
@@ -282,9 +293,11 @@ export async function servePermalink(
   if (pin !== null && pinKind === null) {
     return page(
       404,
-      "That exact version isn't available yet",
-      "This link pins an older version of the file. Version history is coming; the current version is at " +
-        `<a href="/d/${docId}">this permalink</a>.`,
+      // Worded neutrally: the pin may be anything after "@" ("@latest", a
+      // typo), not necessarily an older version (blind-critique 2026-10-26).
+      "That version link isn't available",
+      "This link asks for a particular version of the file, and that version can't be shown. " +
+        `The current version is at <a href="/d/${docId}">this permalink</a>.`,
       CACHE.none,
     );
   }
@@ -420,9 +433,9 @@ export async function servePermalink(
     }
     return page(
       404,
-      "That exact version isn't available right now",
-      "This link pins a version of the file that can't be served at the moment. The current version is at " +
-        `<a href="/d/${docId}">this permalink</a>.`,
+      "That version link isn't available right now",
+      "This link asks for a particular version of the file, and it can't be shown at the moment. " +
+        `The current version is at <a href="/d/${docId}">this permalink</a>.`,
       CACHE.none,
     );
   }

@@ -62,7 +62,7 @@ export const GUIDE_GROUPS: GuideGroup[] = [
         slug: "permalinks",
         href: "/guide/permalinks",
         title: "Citing, versions & links",
-        blurb: "Stable links that survive edits, inserting a figure, and snapshots you can cite.",
+        blurb: "Stable links that survive edits, inserting a figure, and naming each term's version.",
         status: "live",
       },
     ],

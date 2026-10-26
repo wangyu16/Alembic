@@ -38,9 +38,6 @@ export default function Home() {
     <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col justify-center gap-10 px-6 py-16 sm:py-24">
       <div className="flex flex-col gap-6">
         <h1 className="font-serif text-4xl leading-[1.05] tracking-tight text-ink text-balance sm:text-5xl">
-          <span aria-hidden className="mr-3 font-mono text-[0.7em] text-faint select-none">
-            #
-          </span>
           Turn your teaching materials into{" "}
           <mark className="rounded-[0.18em] bg-[var(--accent-soft)] px-[0.12em] text-inherit">
             open and reusable
@@ -49,12 +46,10 @@ export default function Home() {
           <span className="caret-blink" aria-hidden />
         </h1>
         <p className="max-w-2xl text-lg leading-relaxed text-ink text-pretty">
-          Manage your teaching materials the way developers manage{" "}
-          <em className="font-serif">open-source software</em> — versioned,
-          provenance-tracked, and published to GitHub —{" "}
-          <span className="text-muted">
-            without ever learning Git or a developer workflow.
-          </span>
+          Every version of your course is kept, where each piece came from is
+          recorded, and it&rsquo;s published as a website{" "}
+          <em className="font-serif">you own</em> —{" "}
+          <span className="text-muted">with nothing technical to learn.</span>
         </p>
         <p className="max-w-2xl text-lg leading-relaxed text-ink text-pretty">
           You stay on the high ground —{" "}
@@ -66,15 +61,17 @@ export default function Home() {
         </p>
       </div>
 
+      {/* Two ways in, equally prominent: authors open their workspace;
+          visitors browse the shared courses (blind-critique 2026-10-26, A1). */}
       <div className="flex flex-wrap items-center gap-4">
         <Link href="/workspace" className="btn btn-primary">
           Open your workspace
         </Link>
-        <Link href="/guide" className="btn btn-ghost">
-          Read the guide
+        <Link href="/portal" className="btn btn-primary">
+          Browse courses
         </Link>
-        <Link href="/portal" className="btn btn-ghost">
-          Browse Discover
+        <Link href="/guide" className="link text-sm">
+          Read the guide
         </Link>
       </div>
 

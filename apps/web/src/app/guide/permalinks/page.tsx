@@ -4,7 +4,7 @@ import { PermalinkFigure } from "../guide-figures";
 export const metadata = {
   title: "Citing, versions & links — Alembic Guide",
   description:
-    "How Alembic keeps references stable: permalinks that survive edits and moves, inserting a figure once and reusing it, and named term snapshots you can cite.",
+    "How Alembic keeps references stable: permalinks that survive edits and moves, inserting a figure once and reusing it, and naming each term's version of your course.",
 };
 
 export default function PermalinksPage() {
@@ -12,7 +12,7 @@ export default function PermalinksPage() {
     <GuidePageShell
       slug="permalinks"
       title="Citing, versions & links"
-      lede="Open resources are only useful if references to them hold. Alembic gives every document and figure a stable address, lets you insert once and reuse anywhere, and lets you freeze a term you can cite."
+      lede="Open resources are only useful if references to them hold. Alembic gives every document and figure a stable address, lets you insert once and reuse anywhere, and lets you name each term's version of your course."
     >
       <GuideSection
         heading="A link that doesn't break"
@@ -40,18 +40,25 @@ export default function PermalinksPage() {
         <p>
           The same mechanism is how you <strong>cite</strong>: copy a
           document&rsquo;s permalink and it resolves to exactly that resource, for
-          anyone, without an account.
+          anyone, without an account. A permalink always shows the{" "}
+          <strong>current</strong>{" "}version of the file; links to one particular
+          earlier version are planned, not yet available.
         </p>
       </GuideSection>
 
-      <GuideSection heading="Snapshots — freeze a term you can cite">
+      <GuideSection heading="Snapshots — name a term's version">
         <p>
-          Teaching evolves, but sometimes you need to point at{" "}
-          <strong>exactly what you taught</strong>. Take a named{" "}
+          Teaching evolves, but sometimes you want to mark{" "}
+          <strong>what you taught</strong>. Take a named{" "}
           <strong>snapshot</strong>{" "}each term — &ldquo;Fall&nbsp;2026&rdquo; — and
-          Alembic freezes the whole course at that moment. You can cite it,
-          compare it against a later version, or restore it. Your day-to-day
-          edits keep moving forward; the snapshot stays put as a citable record.
+          Alembic records the whole published course as it stood at that moment,
+          under that name, and you can add a citation file to the course. Your
+          day-to-day edits keep moving forward; every earlier version is kept.
+        </p>
+        <p>
+          To undo changes to one chapter, open its <strong>History</strong>{" "}and
+          restore an earlier version. Comparing two snapshots, or restoring a whole
+          course from one, is planned but not yet available.
         </p>
       </GuideSection>
     </GuidePageShell>

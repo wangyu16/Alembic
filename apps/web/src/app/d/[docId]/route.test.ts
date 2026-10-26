@@ -268,3 +268,13 @@ describe("/d re-registers a file whose registry row is stale (loop r2, MEDIUM-2)
     expect(await r.text()).toBe("# edited again");
   });
 });
+
+describe("/d message pages (blind-critique 2026-10-26)", () => {
+  it("not found has a way back into the site", async () => {
+    const r = await get("doc-doesnotexist");
+    expect(r.status).toBe(404);
+    const html = await r.text();
+    expect(html).toContain('<a href="/">Home</a>');
+    expect(html).toContain('href="/portal?scope=elements"');
+  });
+});

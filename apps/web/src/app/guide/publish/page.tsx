@@ -5,7 +5,7 @@ import { PublishFigure } from "../guide-figures";
 export const metadata = {
   title: "Publishing — Alembic Guide",
   description:
-    "What publishing does: builds a course website under your own account that works without Alembic, plus this-term materials and citable snapshots.",
+    "What publishing does: builds a course website under your own account that works without Alembic, plus this-term materials and named term snapshots.",
 };
 
 export default function PublishPage() {
@@ -24,7 +24,7 @@ export default function PublishPage() {
           Until you publish, your course lives in Alembic&rsquo;s{" "}
           <strong>temporary storage</strong>. Publishing moves it{" "}
           <strong>out of Alembic and into your own space on GitHub</strong>{" "}— the
-          same account you signed in with. Those repositories belong to you and are
+          same account you signed in with. Those files belong to you and are
           entirely independent of Alembic; <strong>GitHub Pages</strong>{" "}—
           GitHub&rsquo;s own free website hosting — turns them into a live course
           website.
@@ -56,9 +56,9 @@ export default function PublishPage() {
       <GuideSection heading="Snapshots — cite exactly what you taught">
         <p>
           Take a named <strong>snapshot</strong>{" "}each term
-          (&ldquo;Fall&nbsp;2026&rdquo;) and Alembic freezes the whole course at
-          that moment. You can cite it, compare it against a later version, or
-          restore it — while your everyday edits keep moving forward. See{" "}
+          (&ldquo;Fall&nbsp;2026&rdquo;) and Alembic records the whole published
+          course as it stood at that moment, under that name — while your everyday
+          edits keep moving forward. See{" "}
           <Link href="/guide/permalinks">Citing, versions &amp; links</Link>.
         </p>
       </GuideSection>

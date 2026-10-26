@@ -43,6 +43,17 @@ Branch `blindcritique/r2-fixes`. The round's verifiers and free-roam critic drov
   Known gap: a chapter added since the last publish is listed (titles come from the same manifest) and its link
   may 404 on the student site until the next publish.
 - **US "license" everywhere in the UI.** The owner is US-based and the guide/README already said "license".
+- **Home page copy (A1) — owner may veto.** Old second paragraph: "Manage your teaching materials the way
+  developers manage *open-source software* — versioned, provenance-tracked, and published to GitHub — without ever
+  learning Git or a developer workflow." New: "Every version of your course is kept, where each piece came from is
+  recorded, and it's published as a website *you own* — with nothing technical to learn." Old buttons: "Open your
+  workspace" (primary), "Read the guide", "Browse Discover" (ghost). New: "Open your workspace" and "Browse courses"
+  (both primary), "Read the guide" as a text link. The literal "#" before the home headline is removed; the same
+  motif on Discover/guide/workspace is left for the owner to decide.
+- **Guide promises match the product.** Snapshots exist (named, listed, plus an "add citation file" action);
+  per-chapter restore exists (History); comparing snapshots, whole-course restore from a snapshot, and permalinks to
+  a particular earlier version (R3 version store) do not — the guide now says "planned" for those instead of
+  promising them.
 - **Past-the-end harvest pages are 404 (P10).** PostgREST answers a range past the rows with 416 (PGRST103); that
   is now an empty page, so the routes say "not found". Page 1 of an empty index stays a valid empty feed.
 

@@ -5,7 +5,7 @@ import { RoundTripFigure, PackageFigure } from "../guide-figures";
 export const metadata = {
   title: "Work offline & upload — Alembic Guide",
   description:
-    "Edit a single document offline and upload it back, or build a whole course package offline with an AI agent (coursewerk) and import it as a .zip.",
+    "Edit a single document offline and upload it back, or build a whole course package offline with an AI agent (Coursewerk) and import it as a .zip.",
 };
 
 export default function OfflinePage() {
@@ -68,9 +68,9 @@ export default function OfflinePage() {
           tells you exactly what to fix.
         </p>
         <p>
-          Because the course is already published, <strong>everything commits at
-          once — study guides, slides, and images and all</strong>; nothing is left
-          for later. (Upload fills an <em>empty</em> course; replacing a course that
+          Because the course is already published, <strong>everything is saved to
+          it at once — study guides, slides, and images and all</strong>; nothing is
+          left for later. (Upload fills an <em>empty</em> course; replacing a course that
           already has content is coming later.)
         </p>
       </GuideSection>
