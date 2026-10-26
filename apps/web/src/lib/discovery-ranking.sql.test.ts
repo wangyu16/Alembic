@@ -114,6 +114,25 @@ describe("A.3 ranking", () => {
     expect(ids.indexOf(title)).toBeLessThan(ids.indexOf(desc));
   });
 
+  it("[P5.A.3.b] all words first: a course with every word is returned alone, even against a better one-word match (0035)", async () => {
+    const both = await seedPackage(db, { owner, title: "Quasar Plasma", listed: true });
+    const one = await seedPackage(db, {
+      owner,
+      title: "Quasar",
+      manifest: { description: LONG, keywords: ["x", "y", "z"], courseContext: { level: "graduate" }, accessibility: PASS },
+      listed: true,
+    });
+    await age(both, "2024-01-01T00:00:00Z");
+    await age(one, "2026-10-22T00:00:00Z");
+    const ids = await order("quasar plasma");
+    expect(ids).toContain(both);
+    expect(ids).not.toContain(one);
+    // no course has every word: the one-word matches come back, ranked as before
+    const fallback = await order("quasar nebulium");
+    expect(fallback).toEqual(expect.arrayContaining([both, one]));
+    expect(fallback.indexOf(one)).toBeLessThan(fallback.indexOf(both)); // exact title, higher quality
+  });
+
   it("[P5.A.3.d] elements: a described element ranks above an undescribed one with the same match", async () => {
     const pkg = await seedPackage(db, { owner, title: "Omega Figures" });
     const bare = await seedDoc(db, { packageId: pkg, description: null, path: "assets/omega-plot.svg" });

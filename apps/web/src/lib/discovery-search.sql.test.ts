@@ -156,6 +156,54 @@ describe("A.2 matching", () => {
     expect(chem).toEqual(expect.arrayContaining([gen, organic]));
   });
 
+  // Blind critique r2, P1 "Search" (0035_bc_1): tiered matching.
+  it("[P5.A.2.a] transposed letters: 'entorpy' finds 'Information Entropy' (last-resort tier)", async () => {
+    const info = await seedPackage(db, { owner, title: "Information Entropy", listed: true });
+    const ids = (await courses("entorpy")).map((h) => h.package_id);
+    expect(ids).toContain(info);
+    expect(ids).not.toContain(gen);
+    expect(ids).not.toContain(physics);
+  });
+
+  it("[P5.A.2.a] a junk word finds nothing: 'xyzzyq'", async () => {
+    expect(await courses("xyzzyq")).toEqual([]);
+    expect(await elements("xyzzyq")).toEqual([]);
+    const f = await facets("discovery_course_facets", `p_q => 'xyzzyq'`);
+    expect(f["total"]!["*"]).toBe(0);
+  });
+
+  it("[P5.A.2.a] all words: 'organic chemistry' returns Organic Chemistry and NOT General Chemistry", async () => {
+    const ids = (await courses("organic chemistry")).map((h) => h.package_id);
+    expect(ids).toContain(organic);
+    expect(ids).not.toContain(gen);
+    // the facet counts follow the same match set
+    const f = await facets("discovery_course_facets", `p_q => 'organic chemistry'`);
+    expect(f["total"]!["*"]).toBe(ids.length);
+  });
+
+  it("[P5.A.2.a] all words, each fuzzily: 'organic chemstry' still finds Organic Chemistry, not General Chemistry", async () => {
+    const ids = (await courses("organic chemstry")).map((h) => h.package_id);
+    expect(ids).toContain(organic);
+    expect(ids).not.toContain(gen);
+  });
+
+  it("[P5.A.2.a] any-word fallback: when no course has every word, the courses matching some word are returned", async () => {
+    const ids = (await courses("chemistry zyzzogeton")).map((h) => h.package_id);
+    expect(ids).toEqual(expect.arrayContaining([gen, organic]));
+    expect(ids).not.toContain(physics);
+  });
+
+  it("[P5.A.2.l] elements follow the same tiers: all words, any-word fallback, transposition, junk", async () => {
+    const pkg = await seedPackage(db, { owner, title: "Tiered Figures" });
+    const both = await seedDoc(db, { packageId: pkg, description: "Benzene ring resonance diagram" });
+    const one = await seedDoc(db, { packageId: pkg, description: "Benzene vapour pressure plot" });
+    const all = (await elements("benzene resonance")).map((e) => e.doc_id);
+    expect(all).toContain(both);
+    expect(all).not.toContain(one);
+    expect((await elements("benzene zyzzogeton")).map((e) => e.doc_id)).toEqual(expect.arrayContaining([both, one]));
+    expect((await elements("bnezene")).map((e) => e.doc_id)).toEqual(expect.arrayContaining([both, one]));
+  });
+
   it("[P5.A.2.a] no query lists every listed course", async () => {
     expect((await courses(null)).length).toBeGreaterThanOrEqual(5);
     expect((await courses("   ")).length).toBe((await courses(null)).length);

@@ -156,6 +156,32 @@ by the database.
    keywords / chapters / topics (courses) or title / tags / file name
    (elements), so "stoichiometery" and "chemstry" still match.
 
+**Tiers (0035, blind critique 2026-10-26).** The three tests above decide
+whether a row matches *at all*; which matches are returned is tiered, and
+only the best non-empty tier is returned:
+
+- **Tier 1 — all words:** test 1 matches, or every meaningful word of `q`
+  (stop words dropped) matches the row on its own — as a full word, a
+  prefix, or by word similarity ≥ 0.45 for that word alone ("organic
+  chemstry" still finds Organic Chemistry). The whole-phrase trigram (test 3)
+  alone is not enough: "organic chemistry" scored 0.56 against General
+  Chemistry and let a one-word match in.
+- **Tier 2 — any word:** the old rule (any of tests 1–3) or any single word
+  matching; used only when tier 1 is empty.
+- **Tier 3 — a typo:** each word of 4–30 letters with one pair of adjacent
+  letters swapped, as stemmed full words ("entorpy" → "entropy", whose word
+  similarity is only 0.375); used only when tiers 1 and 2 are both empty, so
+  it never adds noise to a search that works. The 0.45 threshold is kept on
+  purpose (≈0.35 would bring "stats" and "titartion" to the edge of matching
+  unrelated courses).
+
+Relevance within a tier is unchanged (§3.1; typo-tier rows are scored with
+the swapped query). The tier is chosen before the filters, so "organic
+chemistry" with an unrelated subject filter shows nothing rather than
+one-word matches. `-word` exclusion is as leaky as before (the prefix test
+ignores the minus sign). Cost: a text query now scores every listed row,
+like a query-less browse (see the scale notes).
+
 Weights: **A** title; **B** keywords, chapter titles and concept-map topics
 (courses) or tags (elements); **C** description, discipline, level, course
 identity (courses) or description, alt text, file name, course title,

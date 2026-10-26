@@ -468,6 +468,51 @@ describe("composition: no migration silently reverted an earlier fix", () => {
     }
   });
 
+  it("[P5.A.1.r] the matches functions keep 0022/0025's listability, definer, search_path and threshold, and match in tiers (0035)", async () => {
+    const cfg = async (name: string) =>
+      (await db.query<{ cfg: string[] | null }>(
+        `select proconfig cfg from pg_proc where pronamespace = 'public'::regnamespace and proname = $1`, [name])).rows[0]!.cfg;
+    const tiered = [
+      "websearch_to_tsquery('english', v.q)", "public.discovery_prefix_query(v.q)",
+      "q.q operator(extensions.<%) l.search_text", // the old whole-phrase test (tier 2)
+      "public.discovery_query_words(", "t.tok operator(extensions.<%) l.search_text", // per word
+      "m.n_hit = q.n_words", "h.tier = (select min(tier) from hits)", // all words first
+      "not exists (select 1 from hits)", "l.search_vector @@ q.transposed", // last resort
+      "public.discovery_relevance(",
+    ];
+    const [course] = await src("discovery_course_matches");
+    expect(course!.definer).toBe(true);
+    for (const marker of [
+      ...tiered,
+      "p.storage = 'github'", "p.archived_at is null", "public.discovery_open_license(p.manifest ->> 'license')",
+      "coalesce(p.public_repo ->> 'owner', '') <> ''", "coalesce(p.public_repo ->> 'name', '') <> ''", // r1 M2
+      "r.package_id = c.package_id and r.owner_id = p.owner_id", // r1 consent: the owner's own registration
+    ]) expect(course!.s, marker).toContain(marker);
+    expect(course!.s).not.toContain("manifest -> 'publicRepo'");
+    const [el] = await src("discovery_element_matches");
+    expect(el!.definer).toBe(true);
+    for (const marker of [
+      ...tiered,
+      "d.discoverable", "not d.tombstoned", "d.repo = 'public'", "d.space not in ('private', 'current')",
+      "p.storage = 'github'", "p.archived_at is null",
+    ]) expect(el!.s, marker).toContain(marker);
+    for (const fn of ["discovery_course_matches", "discovery_element_matches"]) {
+      expect(await cfg(fn), fn).toEqual(expect.arrayContaining(['search_path=""', "pg_trgm.word_similarity_threshold=0.45"]));
+    }
+  });
+
+  it("[P5.A.1.r] the search helpers stay closed to the API roles (0022, 0035)", async () => {
+    for (const fn of [
+      "discovery_course_matches(text)", "discovery_element_matches(text)", "discovery_prefix_query(text)",
+      "discovery_query_words(text)", "discovery_transposed_query(text)",
+    ]) {
+      for (const role of ["anon", "authenticated"]) {
+        const ok = (await db.query<{ ok: boolean }>(`select has_function_privilege($1, $2, 'execute') ok`, [role, `public.${fn}`])).rows[0]!.ok;
+        expect(ok, `${role} ${fn}`).toBe(false);
+      }
+    }
+  });
+
   it("[P5.A.1.r] the internal projector functions stay closed to the API roles", async () => {
     for (const fn of [
       "discovery_refresh_package(text, boolean, text[])", "discovery_refresh_bounded(text, boolean, text[])",

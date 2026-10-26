@@ -21,6 +21,15 @@ Branch `blindcritique/r2-fixes`. The round's verifiers and free-roam critic drov
   The route refuses a cross-site Origin itself (server actions get that check from Next). The wording of "what
   happens" is the governance spec's truth, nothing more: operators read reports, may take the course off
   Discover; no reply is promised.
+- **Discover search matches in tiers (P1 "Search"; 0035_bc_1).** Multi-word queries require every word (tier 1:
+  the websearch match, or every non-stop word matching on its own — full word, prefix, or per-word trigram ≥ 0.45).
+  Tier 2 (any word, including the old whole-phrase trigram) only when tier 1 is empty; tier 3 (each word with one
+  adjacent-letter swap, as full words) only when both are empty. Fixes "organic chemistry" → General Chemistry (the
+  whole-phrase trigram scored 0.56 and let a one-word match in) and "entorpy" missing Information Entropy (a
+  transposition only reaches 0.375). The 0.45 threshold is kept: ≈0.35 would bring short unrelated words ("stats"
+  0.33, "titartion" 0.30) to the edge of matching. Fallbacks never add to a non-empty result. Tiers are chosen before
+  the facet filters (signatures unchanged); "-word" exclusion stays as leaky as before. Relevance within a tier is
+  unchanged.
 - **Past-the-end harvest pages are 404 (P10).** PostgREST answers a range past the rows with 416 (PGRST103); that
   is now an empty page, so the routes say "not found". Page 1 of an empty index stays a valid empty feed.
 
