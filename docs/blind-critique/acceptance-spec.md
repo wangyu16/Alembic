@@ -226,11 +226,63 @@ is simply what the product does — judge it.
 
 ## Out of scope for this review (planned, not yet promised)
 
-Per-file element sharing/permalinks on Discover, a unified review Inbox,
+A unified review Inbox (per-file sharing and stable links moved into scope: Block P, 2026-10-26),
 the in-workspace AI course-builder (hosted coursewerk), LMS export polish,
 print/paged output. Complaints here are welcome as product feedback but are
 not FAILs.
 
 ## Amendment log
 
-*(empty at freeze)*
+**2026-10-26 — Block P added: public discovery and stable links (signed-out visitor).**
+Reason: the platform now promises things this spec, frozen 2026-08-28, did
+not cover. Per-file sharing and stable file links moved from "Out of scope"
+into scope, and Discover now has its own course and file pages. The items
+below are written in user language and judged like every other item. They
+need no sign-in: drive them as a signed-out visitor, and never submit a form
+that changes anything (report, list, adapt). F2 may also be checked as a
+signed-out visitor; "another signed-in educator" was the frozen wording,
+and Discover is public.
+
+- **P1 — Discover finds by topic.** Searching Discover for a topic word
+  finds the matching listed course, and so does a common misspelling or the
+  first few letters of a word. Each result shows the course title, a short
+  description, its licence and its subject.
+- **P2 — Filters narrow honestly.** Choosing a filter (subject, level,
+  licence, file type) narrows the results. Any count shown next to a filter
+  matches what you then see. Removing the filter brings everything back.
+- **P3 — Pages and shareable results.** When there are more results than
+  fit, moving through the pages shows each course or file exactly once, with
+  no repeats and no gaps. A results page's address can be copied, and
+  opening it later shows the same search, filters and page.
+- **P4 — Discover without scripts.** With JavaScript turned off, searching,
+  filtering and paging still work and show results.
+- **P5 — A course's own page.** Each listed course has its own page showing:
+  - what is inside (its chapters or topics);
+  - its licence;
+  - how to cite it, as copyable plain text;
+  - where it came from, if it was adapted from another course;
+  - a link to its live student website.
+- **P6 — Adapt, signed out.** On a course page, "Adapt" tells a signed-out
+  visitor that they need to sign in, and leads there without losing which
+  course they wanted. Nothing changes until they are signed in.
+- **P7 — Shared files.** Discover's file listing shows individually shared
+  files with a description. Each has its own detail page, and a stable link
+  that opens the file for a signed-out visitor.
+- **P8 — Stable links behave.** A file's stable link keeps working when you
+  open it directly, reload it, or open it in a fresh browser. A mistyped or
+  unknown link gives a plain "not found" page, never a technical error. A
+  link to a specific older version never quietly shows different content.
+- **P9 — Only what was shared is public.** Everything Discover shows (its
+  courses, files, pages, feed and sitemap) belongs to published,
+  openly licensed courses or files that were deliberately shared. Nothing
+  else appears, and the machine-readable lists and the visible listing
+  agree.
+- **P10 — Readable by machines.** A public feed of listed courses and a
+  sitemap exist, so search engines and other portals can find the courses
+  without the website.
+- **P11 — A way to raise a concern.** Each course page offers a way to
+  report a problem with it, and says what happens to a report. Do not submit
+  one.
+- **P12 — Discover on a phone, and the Back button.** Discover, course pages
+  and file pages are usable at about 375px wide without sideways scrolling.
+  Back returns you to the same results, filters and page you came from.
