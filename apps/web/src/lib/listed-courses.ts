@@ -23,7 +23,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { learningResource } from "@alembic/renderer";
-import type { License } from "@alembic/package-contract";
+import { isListableElementRow, type License } from "@alembic/package-contract";
 
 /** On since Track A.4 shipped `/p/{packageId}`. */
 export const COURSE_PAGES_LIVE = true;
@@ -83,6 +83,9 @@ export async function listListedCourses(
     .order("listed_at", { ascending: false })
     .order("package_id", { ascending: true })
     .range(offset, offset + limit - 1);
+  // A page past the end is an empty page, not an outage (PostgREST answers
+  // 416 / PGRST103 for a range beyond the rows; blind-critique 2026-10-26 P10).
+  if (error && isRangePastEnd(error)) return { total: count ?? 0, items: [] };
   if (error) throw new Error("listed courses unavailable");
   const rows = (data as ListedRow[] | null) ?? [];
   return {
@@ -103,6 +106,48 @@ export async function listListedCourses(
     })),
   };
 }
+
+/** PostgREST's "range not satisfiable" (a page beyond the last row). */
+export function isRangePastEnd(error: unknown): boolean {
+  const e = error as { code?: unknown; status?: unknown } | null;
+  return !!e && (e.code === "PGRST103" || e.status === 416);
+}
+
+/** One shared element for the sitemap (the elements' own pages). */
+export interface SharedElementLink {
+  docId: string;
+  updatedAt: string;
+}
+
+/**
+ * One page of shared elements for `/sitemaps/elements-{n}.xml`, through the
+ * same public read as Discover's element listing (`discovery_elements`, its
+ * read policy: shared, published, public-repo elements only), so the
+ * machine-readable lists and the visible listing agree (P9). Each row is
+ * re-checked against the boundary (`isListableElementRow`).
+ */
+export async function listSharedElements(
+  db: SupabaseClient,
+  { offset, limit }: { offset: number; limit: number },
+): Promise<{ total: number; items: SharedElementLink[] }> {
+  const { data, count, error } = await db
+    .from("discovery_elements")
+    .select("doc_id, repo, space, updated_at", { count: "exact" })
+    .order("listed_at", { ascending: false })
+    .order("doc_id", { ascending: true })
+    .range(offset, offset + limit - 1);
+  if (error && isRangePastEnd(error)) return { total: count ?? 0, items: [] };
+  if (error) throw new Error("shared elements unavailable");
+  const rows = (data as Array<{ doc_id: string; repo: string; space: string; updated_at: string }> | null) ?? [];
+  return {
+    total: count ?? rows.length,
+    items: rows
+      .filter((r) => typeof r.doc_id === "string" && /^doc-/.test(r.doc_id) && isListableElementRow(r))
+      .map((r) => ({ docId: r.doc_id, updatedAt: r.updated_at })),
+  };
+}
+
+export const elementPagePath = (docId: string) => `/portal/element/${encodeURIComponent(docId)}`;
 
 /** A course as a schema.org LearningResource (no inner @context). */
 export function courseLearningResource(c: ListedCourse, origin: string): Record<string, unknown> {
@@ -194,12 +239,14 @@ export function sitemapIndex(locs: string[]): string {
 export const STATIC_PAGES = ["/", "/portal", "/guide"];
 
 /** The sitemap files `/sitemap.xml` indexes. */
-export function sitemapFiles(totalCourses: number, origin: string): string[] {
+export function sitemapFiles(totalCourses: number, origin: string, totalElements = 0): string[] {
   const files = [`${origin}/sitemaps/static.xml`];
   if (COURSE_PAGES_LIVE) {
     const pages = Math.ceil(totalCourses / SITEMAP_PAGE_SIZE);
     for (let n = 1; n <= pages; n++) files.push(`${origin}/sitemaps/courses-${n}.xml`);
   }
+  const elementPages = Math.ceil(totalElements / SITEMAP_PAGE_SIZE);
+  for (let n = 1; n <= elementPages; n++) files.push(`${origin}/sitemaps/elements-${n}.xml`);
   return files;
 }
 

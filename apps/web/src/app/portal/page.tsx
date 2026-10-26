@@ -6,6 +6,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { cachedSearch } from "@/lib/discovery-cache";
 import {
   discoveryHref,
+  encodeCursor,
   pageNumber,
   parseDiscoveryQuery,
   type CourseHit,
@@ -15,6 +16,8 @@ import {
 import { checkRateLimit } from "@/lib/rate-limit-server";
 import { recordDiscoveryEvent } from "@/lib/record-discovery-event";
 import { appBaseUrl } from "@/lib/app-url";
+import { signInHref } from "@/lib/safe-next";
+import { reportOutcomeFor } from "@/lib/report-return";
 import type { AdaptTarget } from "./element-adapt";
 import { CourseResult, ElementResult, Pager, ResultCount, SearchForm } from "./discovery-ui";
 
@@ -33,7 +36,11 @@ export default async function PortalPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const query = parseDiscoveryQuery(await searchParams);
+  const sp = await searchParams;
+  const query = parseDiscoveryQuery(sp);
+  // This page's own address (with its page), to come back to after signing
+  // in or after a no-script report.
+  const here = discoveryHref(query, query.cursor ? { after: encodeCursor(query.cursor) } : {});
   const session = await createSupabaseServerClient();
 
   // Searching (text, filters or a later page) is rate limited per address
@@ -121,7 +128,12 @@ export default async function PortalPage({
       ) : query.scope === "courses" ? (
         <ol className="divide-y divide-[var(--edge-soft)]" aria-label="Courses">
           {(page.hits as CourseHit[]).map((c) => (
-            <CourseResult key={c.package_id} c={c} />
+            <CourseResult
+              key={c.package_id}
+              c={c}
+              back={here}
+              reportOutcome={reportOutcomeFor(sp, c.package_id)}
+            />
           ))}
         </ol>
       ) : (
@@ -133,7 +145,7 @@ export default async function PortalPage({
       )}
       {query.scope === "elements" && page.hits.length > 0 && !signedIn && (
         <p className="text-xs text-faint">
-          <Link href="/signin" className="link">
+          <Link href={signInHref(here)} className="link">
             Sign in
           </Link>{" "}
           to add shared elements to your own courses.

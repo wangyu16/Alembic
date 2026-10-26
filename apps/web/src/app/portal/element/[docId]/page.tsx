@@ -14,6 +14,7 @@ import {
   spaceLabel,
 } from "@/lib/discovery-labels";
 import { appBaseUrl } from "@/lib/app-url";
+import { signInHref } from "@/lib/safe-next";
 import { ElementAdapt, type AdaptTarget } from "../../element-adapt";
 
 export const dynamic = "force-dynamic";
@@ -195,7 +196,7 @@ export default async function ElementPage({ params }: Params) {
           </p>
           {!user ? (
             <p className="text-sm">
-              <Link href="/signin" className="link">
+              <Link href={signInHref(`/portal/element/${encodeURIComponent(el.doc_id)}`)} className="link">
                 Sign in
               </Link>{" "}
               to add it to your own course.

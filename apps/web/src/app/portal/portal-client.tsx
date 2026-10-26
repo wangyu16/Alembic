@@ -6,8 +6,9 @@
  * clamped to two lines with a "Show more" toggle, and the report control.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { reportPackageAction } from "@/app/portal/actions";
+import { REPORT_EXPLAINER, REPORT_MESSAGES, type ReportCode } from "@/lib/report-return";
 
 /**
  * A course description clamped to 2 lines with a "Show more" toggle that
@@ -53,53 +54,125 @@ export function ClampedDescription({ text }: { text: string }) {
   );
 }
 
-/** Minimal report affordance (M33): a reason field → portal_reports. */
-export function ReportControl({ packageId, title }: { packageId: string; title?: string }) {
-  const [open, setOpen] = useState(false);
+/**
+ * Report a course (M33; blind-critique 2026-10-26, P11). A `<details>`
+ * disclosure holding a plain POST form, so it opens and sends with
+ * JavaScript off (`/portal/report` files it and comes back here with the
+ * outcome — `lib/report-return.ts`). With JavaScript the form is sent in place
+ * through the server action, and Cancel or Escape closes it. It says what
+ * happens to a report before anything is sent.
+ */
+export function ReportControl({
+  packageId,
+  title,
+  back,
+  outcome = null,
+}: {
+  packageId: string;
+  title?: string;
+  /** This page's own address, to come back to after a no-script report. */
+  back: string;
+  /** The outcome of a no-script report of this course, from the address. */
+  outcome?: ReportCode | null;
+}) {
+  const detailsRef = useRef<HTMLDetailsElement>(null);
+  const summaryRef = useRef<HTMLElement>(null);
+  const [hydrated, setHydrated] = useState(false);
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
-  const [done, setDone] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState(outcome === "sent");
+  const [error, setError] = useState<string | null>(
+    outcome && outcome !== "sent" ? REPORT_MESSAGES[outcome] : null,
+  );
+  const uid = useId();
+  useEffect(() => setHydrated(true), []);
 
-  if (done) return <span role="status" className="text-xs text-faint">Reported — thank you.</span>;
-  if (!open) {
+  const close = () => {
+    if (detailsRef.current) detailsRef.current.open = false;
+    setError(null);
+    summaryRef.current?.focus();
+  };
+
+  if (done) {
     return (
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        aria-label={title ? `Report “${title}”` : undefined}
-        className="text-xs text-faint hover:text-ink"
-      >
-        Report
-      </button>
+      <span id={`report-${packageId}`} role="status" className="text-xs text-faint">
+        {REPORT_MESSAGES.sent}
+      </span>
     );
   }
   return (
-    <span className="flex items-center gap-1">
-      <input
-        value={reason}
-        onChange={(e) => setReason(e.target.value)}
-        placeholder="Reason…"
-        aria-label="Report reason"
-        className="field text-xs"
-        autoFocus
-      />
-      <button
-        type="button"
-        onClick={async () => {
+    <details
+      id={`report-${packageId}`}
+      ref={detailsRef}
+      open={outcome !== null && outcome !== "sent" ? true : undefined}
+      onKeyDown={(e) => {
+        if (e.key === "Escape") {
+          e.preventDefault();
+          close();
+        }
+      }}
+      className="text-xs open:basis-full"
+    >
+      <summary
+        ref={summaryRef}
+        aria-label={title ? `Report a problem with “${title}”` : "Report a problem"}
+        className="cursor-pointer list-none text-faint hover:text-ink [&::-webkit-details-marker]:hidden"
+      >
+        Report
+      </summary>
+      <form
+        method="post"
+        action="/portal/report"
+        onSubmit={async (e) => {
+          e.preventDefault();
           setBusy(true);
           setError(null);
           const r = await reportPackageAction(packageId, reason);
           if (r.ok) setDone(true);
-          else setError(r.error ?? "Couldn't report.");
+          else setError(r.error ?? REPORT_MESSAGES.error);
           setBusy(false);
         }}
-        disabled={busy || !reason.trim()}
-        className="text-xs text-danger hover:underline disabled:opacity-50"
+        className="mt-2 flex max-w-xl flex-col gap-2 rounded-lg border border-edge p-3 text-left"
       >
-        Send
-      </button>
-      {error && <span role="alert" className="text-xs text-danger">{error}</span>}
-    </span>
+        <input type="hidden" name="packageId" value={packageId} />
+        <input type="hidden" name="back" value={back} />
+        <p id={`${uid}-about`} className="leading-relaxed text-muted">
+          {REPORT_EXPLAINER}
+        </p>
+        <label htmlFor={`${uid}-reason`} className="text-muted">
+          What&rsquo;s the problem{title ? <> with &ldquo;{title}&rdquo;</> : null}?
+        </label>
+        <textarea
+          id={`${uid}-reason`}
+          name="reason"
+          value={reason}
+          onChange={(e) => setReason(e.target.value)}
+          required
+          maxLength={2000}
+          rows={3}
+          aria-describedby={`${uid}-about`}
+          className="field w-full text-xs"
+        />
+        <div className="flex items-center gap-2">
+          <button
+            type="submit"
+            disabled={busy || (hydrated && !reason.trim())}
+            className="btn btn-sm border border-edge text-danger disabled:opacity-50"
+          >
+            {busy ? "Sending…" : "Send report"}
+          </button>
+          {hydrated && (
+            <button type="button" onClick={close} className="btn btn-ghost btn-sm">
+              Cancel
+            </button>
+          )}
+        </div>
+        {error && (
+          <p role="alert" className="text-danger">
+            {error}
+          </p>
+        )}
+      </form>
+    </details>
   );
 }

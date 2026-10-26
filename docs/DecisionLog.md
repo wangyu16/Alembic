@@ -6,6 +6,26 @@ design, and what is deferred to the future. Complements [Status.md](Status.md)
 
 ---
 
+## 2026-10-26 — Blind-critique round (public surfaces): fixes and the choices behind them
+
+Branch `blindcritique/r2-fixes`. The round's verifiers and free-roam critic drove the deployed site signed out
+(acceptance spec Block P). Choices that are not obvious from the code:
+
+- **Return address after sign-in (P6).** Validated twice: on the sign-in page (before it goes into the GitHub
+  round trip) and authoritatively in `/auth/callback`. Rule: a same-site path or nothing (`/workspace`) — no
+  "allow-list of pages", because every same-site path is safe to land on and the list would rot. "@" is refused
+  even inside a path (no Alembic page needs it in `next`), so the old `${origin}${next}` concatenation can never
+  become `https://alembic…@evil.example`.
+- **Report without JavaScript (P11).** A plain POST to a route handler that calls the same server action, rather
+  than hiding the control when scripts are off: reporting is a safety affordance and should not need scripts.
+  The route refuses a cross-site Origin itself (server actions get that check from Next). The wording of "what
+  happens" is the governance spec's truth, nothing more: operators read reports, may take the course off
+  Discover; no reply is promised.
+- **Past-the-end harvest pages are 404 (P10).** PostgREST answers a range past the rows with 416 (PGRST103); that
+  is now an empty page, so the routes say "not found". Page 1 of an empty index stays a valid empty feed.
+
+---
+
 ## 2026-10-24 — Closed loop r5 (final): bases from real existence, guarded rebuilds, a held failure falls through; the loop closes
 
 Round 5 was the owner's narrow last round: one auditor on round 4's changes, plus the decisions-diff audit. Branch

@@ -20,6 +20,8 @@ import {
   spaceLabel,
 } from "@/lib/discovery-labels";
 import { appBaseUrl } from "@/lib/app-url";
+import { signInHref } from "@/lib/safe-next";
+import { reportOutcomeFor } from "@/lib/report-return";
 import { recordDiscoveryEvent } from "@/lib/record-discovery-event";
 import { ClampedDescription, ReportControl } from "@/app/portal/portal-client";
 import { CourseAdapt, type CourseAdaptTarget } from "./course-adapt";
@@ -303,10 +305,13 @@ export default async function CoursePage({
         </p>
         {!user ? (
           <p className="text-sm">
-            <Link href="/signin" className="link">
+            <Link
+              href={signInHref(`/p/${encodeURIComponent(course.package_id)}?adapt=1#adapt`)}
+              className="link"
+            >
               Sign in
             </Link>{" "}
-            to adapt it into your own course.
+            to adapt it into your own course. You&rsquo;ll come back here afterwards.
           </p>
         ) : targets.length === 0 ? (
           <p className="text-sm text-muted">
@@ -325,11 +330,16 @@ export default async function CoursePage({
         )}
       </section>
 
-      <footer className="flex items-center justify-between text-xs text-faint">
+      <footer className="flex flex-wrap items-start justify-between gap-2 text-xs text-faint">
         <span>
           Listed <time dateTime={course.listed_at}>{course.listed_at.slice(0, 10)}</time>
         </span>
-        <ReportControl packageId={course.package_id} title={course.title} />
+        <ReportControl
+          packageId={course.package_id}
+          title={course.title}
+          back={`/p/${encodeURIComponent(course.package_id)}`}
+          outcome={reportOutcomeFor(sp, course.package_id)}
+        />
       </footer>
     </main>
   );

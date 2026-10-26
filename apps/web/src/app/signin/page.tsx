@@ -3,6 +3,7 @@
 import { createBrowserClient } from "@supabase/ssr";
 import { Suspense, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { safeNextPath } from "@/lib/safe-next";
 
 function SignInInner() {
   const [busy, setBusy] = useState(false);
@@ -22,7 +23,11 @@ function SignInInner() {
       const { error: oauthError } = await supabase.auth.signInWithOAuth({
         provider: "github",
         options: {
-          redirectTo: `${location.origin}/auth/callback?next=/workspace`,
+          // Where they were (e.g. a course's adapt box); the callback
+          // re-validates it (lib/safe-next.ts, P6).
+          redirectTo: `${location.origin}/auth/callback?next=${encodeURIComponent(
+            safeNextPath(params.get("next")),
+          )}`,
         },
       });
       if (oauthError) throw oauthError;
@@ -54,8 +59,8 @@ function SignInInner() {
         </p>
       )}
       <p className="text-sm text-faint leading-relaxed">
-        Signing in only confirms who you are. Alembic never gets access to your
-        repositories until you explicitly connect publishing later.
+        Signing in only confirms who you are. Alembic can&rsquo;t publish or
+        change anything for you until you choose to connect publishing later.
       </p>
     </main>
   );

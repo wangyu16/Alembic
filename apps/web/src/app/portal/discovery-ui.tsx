@@ -21,6 +21,7 @@ import {
 } from "@/lib/discovery-labels";
 import { ClampedDescription, ReportControl } from "./portal-client";
 import { ElementAdapt, type AdaptTarget } from "./element-adapt";
+import type { ReportCode } from "@/lib/report-return";
 
 /**
  * Server-rendered pieces of Discover (Phase 5 Track A.4). The search form is
@@ -32,7 +33,7 @@ import { ElementAdapt, type AdaptTarget } from "./element-adapt";
 const FILTER_LABELS: Record<string, string> = {
   discipline: "Subject",
   level: "Level",
-  license: "Licence",
+  license: "License",
   a11y: "Accessibility",
   kind: "File kind",
   type: "Type",
@@ -41,7 +42,7 @@ const FILTER_LABELS: Record<string, string> = {
 const ANY_LABELS: Record<string, string> = {
   discipline: "Any subject",
   level: "Any level",
-  license: "Any licence",
+  license: "Any license",
   a11y: "Any accessibility",
   kind: "Any kind",
   type: "Any type",
@@ -66,8 +67,19 @@ export function SearchForm({ query, facets }: { query: DiscoveryQuery; facets: F
   const filters = query.scope === "elements" ? ELEMENT_FILTERS : COURSE_FILTERS;
   const current = query.filters as Record<string, string | undefined>;
   const anyFilter = filters.some((f) => current[f]);
+  // Keyed by the query it shows, so its uncontrolled inputs are rebuilt from
+  // the URL on every navigation — Back/Forward between result pages shows the
+  // search and filters of the page you are on (P12), not what was last typed.
+  // autoComplete="off" stops the browser restoring old values on a reload.
   return (
-    <form role="search" method="get" action="/portal" className="flex flex-col gap-2">
+    <form
+      key={discoveryHref(query)}
+      role="search"
+      method="get"
+      action="/portal"
+      autoComplete="off"
+      className="flex min-w-0 flex-col gap-2"
+    >
       {query.scope === "elements" && <input type="hidden" name="scope" value="elements" />}
       <div className="flex flex-wrap items-center gap-2">
         <label htmlFor="discover-q" className="sr-only">
@@ -99,9 +111,10 @@ export function SearchForm({ query, facets }: { query: DiscoveryQuery; facets: F
           const selected = current[f] ?? "";
           const listed = values.some((v) => v.value.toLowerCase() === selected.toLowerCase());
           return (
-            <label key={f} className="text-xs">
+            <label key={f} className="min-w-0 max-w-full text-xs">
               <span className="sr-only">{FILTER_LABELS[f]}</span>
-              <select name={f} defaultValue={selected} className="field text-xs">
+              {/* Capped to the row: a long option must not widen the page (P12, 375px). */}
+              <select name={f} defaultValue={selected} className="field max-w-full min-w-0 text-xs">
                 <option value="">{ANY_LABELS[f]}</option>
                 {selected && !listed && (
                   <option value={selected}>{facetValueLabel(f, selected)} (0)</option>
@@ -166,7 +179,16 @@ function Meta({ children }: { children: ReactNode }) {
   return <span className="text-xs text-faint">{children}</span>;
 }
 
-export function CourseResult({ c }: { c: CourseHit }) {
+export function CourseResult({
+  c,
+  back,
+  reportOutcome = null,
+}: {
+  c: CourseHit;
+  /** This results page's address (a no-script report comes back to it). */
+  back: string;
+  reportOutcome?: ReportCode | null;
+}) {
   const badge = A11Y_LABELS[c.accessibility_status];
   return (
     <li className="py-5">
@@ -197,7 +219,7 @@ export function CourseResult({ c }: { c: CourseHit }) {
         >
           Adapt<span className="sr-only"> {c.title}</span> →
         </Link>
-        <ReportControl packageId={c.package_id} title={c.title} />
+        <ReportControl packageId={c.package_id} title={c.title} back={back} outcome={reportOutcome} />
       </div>
     </li>
   );

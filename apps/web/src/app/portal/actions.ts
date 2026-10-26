@@ -7,6 +7,7 @@ import { clientIp, rateSecret } from "@/lib/rate-limit";
 import { recordDiscoveryEvent } from "@/lib/record-discovery-event";
 import { fileReport, reporterKey } from "@/lib/report-submit";
 import { createServiceClient } from "@/lib/supabase/service";
+import { REPORT_MESSAGES, type ReportCode } from "@/lib/report-return";
 
 /**
  * M33 — report a listed package. Open to anyone (signed-in or anonymous);
@@ -22,16 +23,13 @@ import { createServiceClient } from "@/lib/supabase/service";
 export async function reportPackageAction(
   packageId: string,
   reason: string,
-): Promise<{ ok: boolean; error?: string }> {
+): Promise<{ ok: boolean; error?: string; code?: ReportCode }> {
   const trimmed = typeof reason === "string" ? reason.trim() : "";
-  if (!trimmed) return { ok: false, error: "Add a brief reason for the report." };
+  if (!trimmed) return { ok: false, code: "empty", error: REPORT_MESSAGES.empty };
   const h = await headers();
   const gate = await checkRateLimit("report", h);
   if (!gate.ok) {
-    return {
-      ok: false,
-      error: "You've sent several reports in a short time. Please try again later.",
-    };
+    return { ok: false, code: "limited", error: REPORT_MESSAGES.limited };
   }
   const supabase = await createSupabaseServerClient();
   const {
@@ -49,13 +47,13 @@ export async function reportPackageAction(
     },
   );
   if (outcome === "rate_limited") {
-    return { ok: false, error: "Many reports have been sent in a short time. Please try again later." };
+    return { ok: false, code: "busy", error: REPORT_MESSAGES.busy };
   }
-  if (outcome === "invalid") return { ok: false, error: "This report couldn't be filed for this course." };
-  if (outcome !== "ok") return { ok: false, error: "Couldn't submit the report. Please try again." };
+  if (outcome === "invalid") return { ok: false, code: "invalid", error: REPORT_MESSAGES.invalid };
+  if (outcome !== "ok") return { ok: false, code: "error", error: REPORT_MESSAGES.error };
   recordDiscoveryEvent(
     { type: "portal.reported", packageId, reasonLength: trimmed.length },
     { userId: user?.id ?? null, session: supabase },
   );
-  return { ok: true };
+  return { ok: true, code: "sent" };
 }

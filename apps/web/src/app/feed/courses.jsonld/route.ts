@@ -31,6 +31,11 @@ export async function GET(req: Request) {
   } catch {
     return new Response("Temporarily unavailable.", { status: 503, headers: { "cache-control": "no-store", "retry-after": "60" } });
   }
+  // A page past the last one does not exist (blind-critique 2026-10-26 P10:
+  // it answered 503). Page 1 of an empty index is still a valid empty feed.
+  if (page > 1 && result.items.length === 0) {
+    return new Response("Not found.", { status: 404, headers: { "cache-control": "no-store" } });
+  }
   const { body, links } = buildCourseFeed(page, result, harvestOrigin(req.url));
   return new Response(JSON.stringify(body, null, 2), {
     headers: {

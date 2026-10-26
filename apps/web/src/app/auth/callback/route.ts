@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { safeNextPath } from "@/lib/safe-next";
 
 /**
  * GitHub OAuth callback. Exchanges the code for a session.
@@ -13,11 +14,16 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
  * Every other failure keeps the generic retry message: we should not narrate why
  * an arbitrary sign-in failed, and for genuinely transient errors retrying is
  * the right advice.
+ *
+ * `next` (where the visitor was before signing in — e.g. a course's adapt box)
+ * is attacker-controlled, so it passes `safeNextPath`: a same-site path only,
+ * otherwise `/workspace` (blind-critique 2026-10-26, P6: `${origin}${next}`
+ * with next="@evil.example" was an open redirect).
  */
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get("code");
-  const next = searchParams.get("next") ?? "/workspace";
+  const next = safeNextPath(searchParams.get("next"));
 
   if (code) {
     const supabase = await createSupabaseServerClient();

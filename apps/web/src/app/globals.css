@@ -119,6 +119,9 @@ html[data-theme="light"] { color-scheme: light; }
     color: var(--ink);
     padding: 0.5rem 0.7rem;
   }
+  /* A select is as wide as its longest option; never let that widen the page
+     (blind-critique 2026-10-26, P12: Discover at 375px). */
+  select.field { max-width: 100%; min-width: 0; text-overflow: ellipsis; }
   .field::placeholder { color: var(--faint); }
   .field:focus { border-color: var(--accent); outline: none; }
 
