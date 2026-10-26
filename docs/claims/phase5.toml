@@ -315,7 +315,7 @@ note = "Loop r1b (MEDIUM-3), migration 0026. PGlite, 333 shared elements: rows r
 
 [[claim]]
 id = "P5.A.2.a"
-claim = "Course search matches stemmed full words, prefixes ('titr' → Titration) and one-letter typos ('chemstry'), weights title > keywords > description, and an empty query lists every listed course."
+claim = "Course search matches stemmed full words, prefixes ('titr' → Titration) and one-letter typos ('chemstry'), weights title > keywords > description, and an empty query lists every listed course. Since 0035 (blind critique 2026-10-26): matching is tiered — all words, else any word, else one adjacent-letter swap ('entorpy') — so 'organic chemistry' does not return General Chemistry when a course has both words."
 oracle = "scenario"
 bound_to = [
   "apps/web/src/lib/discovery-search.sql.test.ts :: full words, stemmed: 'acid' finds the keyword 'acids' and the description",
@@ -324,6 +324,11 @@ bound_to = [
   "apps/web/src/lib/discovery-search.sql.test.ts :: prefixes: 'titr' finds the chapter 'Titration', 'thermo' finds 'Thermodynamics'",
   "apps/web/src/lib/discovery-search.sql.test.ts :: typos: 'stoichiometery' and 'chemstry' still match (trigram)",
   "apps/web/src/lib/discovery-search.sql.test.ts :: no query lists every listed course",
+  "apps/web/src/lib/discovery-search.sql.test.ts :: transposed letters: 'entorpy' finds 'Information Entropy' (last-resort tier)",
+  "apps/web/src/lib/discovery-search.sql.test.ts :: a junk word finds nothing: 'xyzzyq'",
+  "apps/web/src/lib/discovery-search.sql.test.ts :: all words: 'organic chemistry' returns Organic Chemistry and NOT General Chemistry",
+  "apps/web/src/lib/discovery-search.sql.test.ts :: all words, each fuzzily: 'organic chemstry' still finds Organic Chemistry, not General Chemistry",
+  "apps/web/src/lib/discovery-search.sql.test.ts :: any-word fallback: when no course has every word, the courses matching some word are returned",
 ]
 
 [[claim]]
@@ -430,6 +435,7 @@ oracle = "scenario"
 bound_to = [
   "apps/web/src/lib/discovery-search.sql.test.ts :: matches description, tags and the course title; filters by kind, type and course",
   "apps/web/src/lib/discovery-search.sql.test.ts :: returns the live path after a rename",
+  "apps/web/src/lib/discovery-search.sql.test.ts :: elements follow the same tiers: all words, any-word fallback, transposition, junk",
 ]
 
 [[claim]]
@@ -458,6 +464,7 @@ oracle = "invariant"
 bound_to = [
   "packages/package-contract/src/discovery-ranking.test.ts :: relevance first: quality can only reorder matches within a factor of 5/3",
   "apps/web/src/lib/discovery-ranking.sql.test.ts :: relevance first: a title match beats a description-only match of much higher quality",
+  "apps/web/src/lib/discovery-ranking.sql.test.ts :: all words first: a course with every word is returned alone, even against a better one-word match (0035)",
 ]
 
 [[claim]]
@@ -1863,6 +1870,8 @@ bound_to = [
   "apps/web/src/lib/loop-r5-sql.sql.test.ts :: discovery_flush_one (0033_loop_r5_1) keeps r2c/r3c/r4b rules and falls through after a held failure",
   "apps/web/src/lib/loop-r5-sql.sql.test.ts :: packages_a11y_expires (0033_loop_r5_2) keeps r3c's expiry rules and keeps a fail; its trigger and the listing trigger stay",
   "apps/web/src/lib/loop-r5-sql.sql.test.ts :: the functions 0033 redefines stay closed to the API roles",
+  "apps/web/src/lib/loop-r2-cor.sql.test.ts :: the matches functions keep 0022/0025's listability, definer, search_path and threshold, and match in tiers (0035)",
+  "apps/web/src/lib/loop-r2-cor.sql.test.ts :: the search helpers stay closed to the API roles (0022, 0035)",
 ]
 note = "Loop r2 correctness, the composition rule (round 1's 0026 silently reverted 0025_2). A future migration that redefines one of these functions must keep the markers or update this test deliberately."
 
