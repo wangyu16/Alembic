@@ -4,9 +4,16 @@ One file per round: `<date>-report.md`, with per-item verdicts + evidence,
 referee decisions (including findings that did NOT reproduce), fixes applied,
 spec amendments, deferred free-roam findings, and the residue.
 
-**No full round has been run yet.** One partial round covered the public,
-signed-out surfaces only: [2026-08-28-round-1-public.md](2026-08-28-round-1-public.md)
-(everything behind sign-in still needs the staging environment below). See
+**No full round has been run yet.** Two partial rounds covered the public,
+signed-out surfaces only (everything behind sign-in still needs the staging
+environment below):
+
+- [2026-08-28-round-1-public.md](2026-08-28-round-1-public.md): the published
+  course site, its repositories and the public Alembic pages.
+- [2026-10-26-round-2-public.md](2026-10-26-round-2-public.md): Discover,
+  course and shared-file pages, stable links, feed and sitemap (spec Block P,
+  added via the Amendment log), plus A1/A2, D2/D3/D5/D6, H1/H4/H5. One FAIL
+  (P6), fixed and re-verified by a fresh agent. See
 [../README.md](../README.md) for the operator procedure and
 [../acceptance-spec.md](../acceptance-spec.md) for the frozen spec.
 
