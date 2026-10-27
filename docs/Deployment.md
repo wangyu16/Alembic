@@ -203,7 +203,7 @@ RATE_LIMIT_SECRET               = <random secret>            # optional: keys ra
 
 # GitHub App (publishing)
 GITHUB_APP_ID                   = <App ID>
-GITHUB_APP_SLUG                 = <app slug>
+GITHUB_APP_SLUG                 = <app slug>   # 2026-10-27: the app is "Alembic Publisher", slug alembic-publisher (renamed from alembic-dev-yu; commits are signed alembic-publisher[bot] from now on)
 GITHUB_APP_PRIVATE_KEY          = <PEM with literal \n, one line>
 GITHUB_TEMPLATE_OWNER           = <github username/org owning the templates>
 GITHUB_PUBLIC_TEMPLATE          = alembic-public-template
