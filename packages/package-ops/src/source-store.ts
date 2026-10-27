@@ -54,7 +54,7 @@ export class MemorySourceStore implements SourceStore {
   async stat(key: string) {
     const b = this.objects.get(key);
     if (!b) return null;
-    const d = await crypto.subtle.digest("SHA-256", b);
+    const d = await crypto.subtle.digest("SHA-256", new Uint8Array(b));
     return { sha256: [...new Uint8Array(d)].map((x) => x.toString(16).padStart(2, "0")).join(""), sizeBytes: b.length };
   }
   async delete(key: string) {
