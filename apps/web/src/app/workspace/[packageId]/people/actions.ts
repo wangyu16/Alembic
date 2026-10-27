@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { buildInvitation } from "@alembic/notify";
+import { lookupGithubUser } from "@alembic/github-bridge";
 import { appBaseUrl } from "@/lib/app-url";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
@@ -25,8 +26,19 @@ export async function inviteAction(_prev: InviteState, formData: FormData): Prom
   const login = String(formData.get("login") ?? "").trim().replace(/^@/, "");
   if (!isGithubLogin(login)) return { error: "That isn't a GitHub user name." };
 
+  // Invitations are matched on GitHub's numeric id, never the name (names change hands).
+  let gh: Awaited<ReturnType<typeof lookupGithubUser>>;
+  try {
+    gh = await lookupGithubUser(login);
+  } catch {
+    return { error: "Couldn't reach GitHub to check that name. Please try again." };
+  }
+  if (!gh) return { error: "There is no GitHub user with that name." };
+
   const { token, hash } = newInvitationToken();
-  const { data: id, error } = await supabase.rpc("invite_member", { p: packageId, p_login: login, p_token_hash: hash, p_days: INVITE_DAYS });
+  const { data: id, error } = await supabase.rpc("invite_member", {
+    p: packageId, p_login: gh.login, p_github_id: gh.id, p_token_hash: hash, p_days: INVITE_DAYS,
+  });
   if (error || typeof id !== "string") return { error: "Only the course owner can invite." };
   const link = `${appBaseUrl()}/invite/${token}`;
 
@@ -58,7 +70,7 @@ export async function inviteAction(_prev: InviteState, formData: FormData): Prom
     }
   }
   revalidatePath(`/workspace/${packageId}/people`);
-  return { ok: { login, link, emailed } };
+  return { ok: { login: gh.login, link, emailed } };
 }
 
 export async function revokeInvitationAction(formData: FormData): Promise<void> {

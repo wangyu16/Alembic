@@ -117,7 +117,8 @@ revoke all on public.course_removals from anon, authenticated;
 create table public.course_invitations (
   id            uuid primary key default gen_random_uuid(),
   package_id    text not null references public.packages (id) on delete cascade,
-  invitee_login text not null,
+  invitee_login text not null,        -- shown to people; never matched on (logins change and repeat)
+  invitee_github_id text not null check (invitee_github_id ~ '^[1-9][0-9]{0,19}$'),  -- GitHub's numeric user id: what is matched
   role          text not null default 'co-author' check (role = 'co-author'),
   token_hash    text not null unique,
   invited_by    uuid not null references public.profiles (id),
@@ -133,18 +134,20 @@ revoke all on public.course_invitations from anon, authenticated;
 
 -- invite(p, login, token_hash): owner only. The server makes a 32-byte random
 -- token, keeps only its SHA-256 here, and sends the token in the link.
-create function public.invite_member(p text, p_login text, p_token_hash text, p_days int default 14)
+-- The server resolves the GitHub login to GitHub's numeric user id first.
+create function public.invite_member(p text, p_login text, p_github_id text, p_token_hash text, p_days int default 14)
 returns uuid language plpgsql security definer set search_path = '' as $$
 declare v_id uuid;
 begin
   if public.course_role(p) is distinct from 'owner' then
     raise exception 'Only the owner can invite' using errcode = '42501';
   end if;
-  if p_login is null or length(trim(p_login)) = 0 or p_token_hash !~ '^[0-9a-f]{64}$' then
+  if p_login is null or length(trim(p_login)) = 0 or p_token_hash !~ '^[0-9a-f]{64}$'
+     or p_github_id is null or p_github_id !~ '^[1-9][0-9]{0,19}$' then
     raise exception 'Bad invitation' using errcode = '22023';
   end if;
-  insert into public.course_invitations (package_id, invitee_login, token_hash, invited_by, expires_at)
-  values (p, lower(trim(p_login)), p_token_hash, (select auth.uid()), now() + make_interval(days => least(greatest(p_days, 1), 30)))
+  insert into public.course_invitations (package_id, invitee_login, invitee_github_id, token_hash, invited_by, expires_at)
+  values (p, lower(trim(p_login)), p_github_id, p_token_hash, (select auth.uid()), now() + make_interval(days => least(greatest(p_days, 1), 30)))
   returning id into v_id;
   return v_id;
 end $$;
@@ -155,7 +158,6 @@ create function public.accept_invitation(p_token_hash text)
 returns text language plpgsql security definer set search_path = '' as $$
 declare
   inv public.course_invitations;
-  v_login text;
   v_uid uuid := (select auth.uid());
 begin
   if v_uid is null or not public.is_active_user() then
@@ -165,8 +167,10 @@ begin
   if not found or inv.accepted_by is not null or inv.revoked_at is not null or inv.expires_at <= now() then
     raise exception 'This invitation is not valid' using errcode = '42501';
   end if;
-  select lower(github_username) into v_login from public.profiles where id = v_uid;
-  if v_login is distinct from inv.invitee_login then
+  -- Matched on the GitHub sign-in identity's numeric id, never on the
+  -- profile's login (not unique, can be stale; security review 2026-10-27).
+  if not exists (select 1 from auth.identities i
+                  where i.user_id = v_uid and i.provider = 'github' and i.provider_id = inv.invitee_github_id) then
     raise exception 'This invitation is for another account' using errcode = '42501';
   end if;
   if exists (select 1 from public.course_removals r
@@ -188,7 +192,7 @@ begin
   update public.course_invitations set accepted_by = v_uid, accepted_at = now() where id = inv.id;
   -- Other open invitations for the same person to this course are spent too (G1 F1).
   update public.course_invitations set revoked_at = now()
-   where package_id = inv.package_id and invitee_login = inv.invitee_login
+   where package_id = inv.package_id and invitee_github_id = inv.invitee_github_id
      and accepted_by is null and revoked_at is null and id <> inv.id;
   return inv.package_id;
 end $$;
@@ -301,7 +305,7 @@ create trigger course_members_owner_sync
   for each row execute function public.course_members_owner_sync();
 
 -- Every membership definer: never callable by anon or PUBLIC.
-revoke execute on function public.invite_member(text, text, text, int) from public, anon;
+revoke execute on function public.invite_member(text, text, text, text, int) from public, anon;
 revoke execute on function public.accept_invitation(text) from public, anon;
 revoke execute on function public.revoke_invitation(uuid) from public, anon;
 revoke execute on function public.remove_member(text, uuid) from public, anon;
@@ -309,7 +313,7 @@ revoke execute on function public.leave_course(text) from public, anon;
 revoke execute on function public.name_deputy(text, uuid, timestamptz) from public, anon;
 revoke execute on function public.end_deputy(text, uuid) from public, anon;
 revoke execute on function public.transfer_owner(text, uuid) from public, anon;
-grant execute on function public.invite_member(text, text, text, int) to authenticated;
+grant execute on function public.invite_member(text, text, text, text, int) to authenticated;
 grant execute on function public.accept_invitation(text) to authenticated;
 grant execute on function public.revoke_invitation(uuid) to authenticated;
 grant execute on function public.remove_member(text, uuid) to authenticated;

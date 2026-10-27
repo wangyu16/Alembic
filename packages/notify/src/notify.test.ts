@@ -42,6 +42,9 @@ describe("buildDigest", () => {
     // One-click only for simple items.
     expect(e.text).toContain("Confirm: https://alembic.example/act?i=c&a=confirm");
     expect(e.text).not.toContain("act?i=a");
+    // Someone who can see an item but not decide it gets no one-click link.
+    const co = buildDigest(base([{ title: "Chem", url: "https://c", items: [{ ...item("c2", "to-confirm"), canDecide: false }] }]));
+    expect(co.text).not.toContain("act?i=c2");
   });
 });
 

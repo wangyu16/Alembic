@@ -118,6 +118,15 @@ begin
   if n.kind = 'method-version' and v_role <> 'owner' then
     raise exception 'Only the owner can take a new method version' using errcode = '42501';
   end if;
+  -- Matrix "edited-elsewhere.accept-undo": a co-author only for materials paths. The
+  -- platform decides that with editActionForPath when it raises the item and
+  -- records it as payload.materials (security review 2026-10-27).
+  if n.kind = 'edited-elsewhere' and v_role = 'co-author' and coalesce(n.payload ->> 'materials', 'false') <> 'true' then
+    raise exception 'Only the owner (or deputy) can decide this' using errcode = '42501';
+  end if;
+  if jsonb_typeof(p_answer) is distinct from 'object' or length(p_answer::text) > 4096 then
+    raise exception 'Bad answer' using errcode = '22023';
+  end if;
   if n.kind = 'both-changed' and v_role = 'co-author' and not ((select auth.uid()) = any (n.addressed_to)) then
     raise exception 'This item is for someone else' using errcode = '42501';
   end if;

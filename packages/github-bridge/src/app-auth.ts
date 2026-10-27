@@ -213,3 +213,25 @@ export function installationTokenSource(opts: {
     },
   };
 }
+
+/**
+ * GitHub's numeric id for a user name (public data; GET /users/{login}).
+ * Invitations are matched on this id, never on the login, which can change
+ * and be taken by someone else. Returns null for no such user, or an
+ * organization.
+ */
+export async function lookupGithubUser(
+  login: string,
+  fetchImpl: FetchLike = defaultFetch,
+): Promise<{ id: string; login: string } | null> {
+  if (!/^[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38}$/.test(login)) return null;
+  const res = await fetchImpl(`https://api.github.com/users/${encodeURIComponent(login)}`, {
+    method: "GET",
+    headers: { Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" },
+  });
+  if (res.status === 404) return null;
+  if (!res.ok) throw new GitHubError("Could not look up the GitHub user", res.status, await res.text().catch(() => undefined));
+  const data = (await res.json()) as { id?: unknown; login?: unknown; type?: unknown };
+  if (typeof data.id !== "number" || typeof data.login !== "string" || data.type !== "User") return null;
+  return { id: String(data.id), login: data.login };
+}

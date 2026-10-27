@@ -86,3 +86,23 @@ describe("needs you", () => {
     expect(n).toBe(1);
   });
 });
+
+describe("answers follow the matrix (security review 2026-10-27)", () => {
+  it("a co-author answers edited-elsewhere only for materials; answers are small objects", async () => {
+    const o = await seedUser(db, "nyo"); const c = await seedUser(db, "nyc");
+    const p = await seedPackage(db, { owner: o });
+    await db.query(`insert into public.course_members (package_id, user_id, role) values ($1, $2, 'co-author')`, [p, c]);
+    const mk = async (key: string, payload: object) => (await asRole(db, "service_role", () => db.query<{ id: string }>(
+      `select public.needs_you_raise($1, 'edited-elsewhere', 'platform', $2, $3::jsonb) as id`, [p, key, JSON.stringify(payload)]))).rows[0]!.id;
+    const course = await mk("ee1", { materials: false });
+    const materials = await mk("ee2", { materials: true });
+    const tryAnswer = async (u: string, id: string, a: string) => {
+      try { await asRole(db, "authenticated", () => db.query(`select public.needs_you_answer($1, $2::jsonb)`, [id, a]), u); return "ok"; } catch { return "refused"; }
+    };
+    expect(await tryAnswer(c, course, '{"decision":"accept"}')).toBe("refused");
+    expect(await tryAnswer(c, materials, '"accept"')).toBe("refused");
+    expect(await tryAnswer(c, materials, JSON.stringify({ note: "x".repeat(5000) }))).toBe("refused");
+    expect(await tryAnswer(c, materials, '{"decision":"accept"}')).toBe("ok");
+    expect(await tryAnswer(o, course, '{"decision":"undo"}')).toBe("ok");
+  });
+});

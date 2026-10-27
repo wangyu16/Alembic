@@ -32,7 +32,7 @@ export function duePeriods(now: Date): Array<{ every: "week" | "day"; key: strin
 }
 
 interface Person { user_id: string; email: string; name: string }
-interface Row { id: string; package_id: string; course_title: string; kind: NeedsYouKind; chapter: string | null; title: string | null; created_at: string }
+interface Row { id: string; package_id: string; course_title: string; kind: NeedsYouKind; chapter: string | null; title: string | null; created_at: string; can_decide?: boolean }
 
 export async function runDigests(
   rpc: Rpc,
@@ -56,6 +56,7 @@ export async function runDigests(
           const c = courses.get(r.package_id) ?? { title: r.course_title, url: `${base}/workspace/${encodeURIComponent(r.package_id)}`, items: [] };
           const item: DigestItem = { id: r.id, kind: r.kind, chapter: r.chapter, createdAt: r.created_at };
           if (r.title) item.title = r.title;
+          if (r.can_decide === false) item.canDecide = false;
           c.items.push(item);
           courses.set(r.package_id, c);
         }

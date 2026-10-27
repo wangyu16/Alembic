@@ -3,7 +3,7 @@
 -- course_open_invitations: the owner's own list (login, expiry); the token
 --   hash never leaves the database.
 -- invitee_address: service role only. If the invited GitHub account already
---   uses Alembic, its email address, so the invitation can also be emailed.
+--   uses Alembic (matched by GitHub's numeric id), its email address, so the invitation can also be emailed.
 --   Otherwise the owner shares the link themselves.
 --
 -- READ-ONLY PRE-CHECK: none. DEPLOY ORDER: after 0046.
@@ -28,10 +28,9 @@ create function public.invitee_address(p_invitation uuid)
 returns text language sql stable security definer set search_path = '' as $$
   select u.email::text
     from public.course_invitations i
-    join public.profiles pr on lower(pr.github_username) = i.invitee_login
-    join auth.users u on u.id = pr.id
+    join auth.identities g on g.provider = 'github' and g.provider_id = i.invitee_github_id
+    join auth.users u on u.id = g.user_id
    where i.id = p_invitation and u.email is not null and u.email <> ''
-   limit 1
 $$;
 revoke execute on function public.invitee_address(uuid) from public, anon, authenticated;
 grant execute on function public.invitee_address(uuid) to service_role;

@@ -44,19 +44,25 @@ language sql stable security definer set search_path = '' as $$
    where coalesce(n.email_every, 'week') = p_every
      and n.last_period_key is distinct from p_period_key
      and u.email is not null and u.email <> ''
+     and (u.banned_until is null or u.banned_until <= now())  -- suspended accounts get nothing
      and exists (select 1 from public.course_members m where m.user_id = p.id)
 $$;
 
 -- Live items in that person's courses that are for everyone or for them.
 create function public.notify_items(p_user uuid)
-returns table (id uuid, package_id text, course_title text, kind text, chapter text, title text, created_at timestamptz)
+returns table (id uuid, package_id text, course_title text, kind text, chapter text, title text, created_at timestamptz, can_decide boolean)
 language sql stable security definer set search_path = '' as $$
-  select y.id, y.package_id, k.title, y.kind, y.chapter, y.payload ->> 'title', y.created_at
+  -- can_decide mirrors needs_you_answer's owner/deputy kinds, so the email offers
+  -- one-click answers only to people who can give them.
+  select y.id, y.package_id, k.title, y.kind, y.chapter, y.payload ->> 'title', y.created_at,
+         y.kind not in ('approve', 'to-confirm', 'suggestion', 'update', 'method-version', 'reconnect', 'ready')
+           or public.course_role_of(y.package_id, p_user) in ('owner', 'deputy')
     from public.needs_you y
     join public.course_members m on m.package_id = y.package_id and m.user_id = p_user
     join public.packages k on k.id = y.package_id
    where y.state in ('waiting', 'shown')
      and (cardinality(y.addressed_to) = 0 or p_user = any (y.addressed_to))
+     and exists (select 1 from auth.users u where u.id = p_user and (u.banned_until is null or u.banned_until <= now()))
    order by k.title, y.created_at
 $$;
 

@@ -32,7 +32,11 @@ const role = async (user: string, p: string) =>
 
 async function invite(by: string, p: string, login: string): Promise<string> {
   const token = randomBytes(32).toString("hex");
-  await as(by, () => db.query(`select public.invite_member($1, $2, $3)`, [p, login, hash(token)]));
+  // The server resolves the login to GitHub's numeric id; here, from the seeded identities.
+  const gid = (await db.query<{ g: string }>(
+    `select coalesce((select i.provider_id from auth.identities i join public.profiles pr on pr.id = i.user_id
+                       where i.provider = 'github' and lower(pr.github_username) = lower($1) limit 1), '999999999') as g`, [login])).rows[0]!.g;
+  await as(by, () => db.query(`select public.invite_member($1, $2, $3, $4)`, [p, login, gid, hash(token)]));
   return token;
 }
 
@@ -94,7 +98,7 @@ describe("A2.10 invitations", () => {
       ),
     ).rejects.toThrow();
     for (const sql of [
-      `select public.invite_member('${pkg}', 'x', '${hash("y")}')`,
+      `select public.invite_member('${pkg}', 'x', '123', '${hash("y")}')`,
       `select public.accept_invitation('${hash("z")}')`,
       `select public.remove_member('${pkg}', '${coauthor}')`,
       `select public.transfer_owner('${pkg}', '${coauthor}')`,

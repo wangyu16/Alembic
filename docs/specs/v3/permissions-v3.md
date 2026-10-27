@@ -206,3 +206,14 @@ package. Built and tested on PGlite and the testing project first.
 | 2.3–2.8 | §2 trigger direction and creation; §2 no direct writes; §3 deputy rules and root files; invitations co-author only |
 | §4 existing-code conflicts | §6 |
 | T13 scan scope | A2.6 |
+
+> **Amended 2026-10-27 (security review of E1/C8):**
+> - `needs_you_answer` enforces the matrix row
+>   `edited-elsewhere.accept-undo` in SQL. Whoever raises an
+>   `edited-elsewhere` item MUST set `payload.materials` to
+>   `editActionForPath(path) === "edit.materials"`. A co-author can answer
+>   only items marked `true`.
+> - Answers are JSON objects of at most 4 KB.
+> - Invitations are matched on GitHub's numeric user id
+>   (`course_invitations.invitee_github_id`, against `auth.identities`),
+>   never on the login.

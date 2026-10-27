@@ -48,6 +48,8 @@ export interface DigestItem {
   chapter: string | null;
   title?: string;
   createdAt: string;
+  /** False when the person can see the item but not decide it (no one-click link). */
+  canDecide?: boolean;
 }
 
 export interface DigestCourse {
@@ -107,7 +109,7 @@ export function buildDigest(input: DigestInput): Email {
       html.push("<ul>");
       for (const item of items) {
         const line = item.title ? `${LABEL[item.kind]}: ${item.title}` : LABEL[item.kind];
-        const one = ONE_CLICK[item.kind];
+        const one = item.canDecide === false ? undefined : ONE_CLICK[item.kind];
         const link = one ? input.actionLink(item, one.action) : null;
         text.push(`  - ${line}${link ? ` (${one!.label}: ${link})` : ""}`);
         html.push(`<li>${esc(line)}${link ? ` — <a href="${esc(link)}">${esc(one!.label)}</a>` : ""}</li>`);

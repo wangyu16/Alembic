@@ -14,7 +14,11 @@ const role = async (user: string, p: string) =>
   (await as(user, () => db.query<{ r: string | null }>(`select public.course_role($1) as r`, [p]))).rows[0]!.r;
 async function invite(by: string, p: string, login: string): Promise<string> {
   const token = randomBytes(32).toString("hex");
-  await as(by, () => db.query(`select public.invite_member($1, $2, $3)`, [p, login, hash(token)]));
+  // The server resolves the login to GitHub's numeric id; here, from the seeded identities.
+  const gid = (await db.query<{ g: string }>(
+    `select coalesce((select i.provider_id from auth.identities i join public.profiles pr on pr.id = i.user_id
+                       where i.provider = 'github' and lower(pr.github_username) = lower($1) limit 1), '999999999') as g`, [login])).rows[0]!.g;
+  await as(by, () => db.query(`select public.invite_member($1, $2, $3, $4)`, [p, login, gid, hash(token)]));
   return token;
 }
 const accept = (u: string, token: string) => as(u, () => db.query(`select public.accept_invitation($1)`, [hash(token)]));

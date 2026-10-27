@@ -51,6 +51,20 @@ describe("Needs-you email feed", () => {
     expect(forOwner[0]!.course_title).toBeTruthy();
     expect(forCo.map((r) => r.kind)).toEqual(["update"]);
     expect((await svc(`select * from public.notify_items($1)`, [loner])).rows).toHaveLength(0);
+    // Owner-only kinds are marked as not decidable for a co-author (no one-click link).
+    await raise(pkg, "to-confirm", "k3", "Keep figure");
+    const co3 = (await svc<{ kind: string; can_decide: boolean }>(`select * from public.notify_items($1)`, [coauthor])).rows;
+    expect(co3.find((r) => r.kind === "to-confirm")!.can_decide).toBe(false);
+    const own3 = (await svc<{ kind: string; can_decide: boolean }>(`select * from public.notify_items($1)`, [owner])).rows;
+    expect(own3.find((r) => r.kind === "to-confirm")!.can_decide).toBe(true);
+  });
+
+  it("suspended accounts get no email and no items (review L)", async () => {
+    const b = await seedUser(db, "nban");
+    await db.query(`update auth.users set email = 'ban@example.org', banned_until = now() + interval '1 day' where id = $1`, [b]);
+    await db.query(`insert into public.course_members (package_id, user_id, role) values ($1, $2, 'co-author')`, [pkg, b]);
+    expect((await due("week", "2026-W50")).map((r) => r.user_id)).not.toContain(b);
+    expect((await svc(`select * from public.notify_items($1)`, [b])).rows).toHaveLength(0);
   });
 
   it("members can't read addresses or other people's items", async () => {

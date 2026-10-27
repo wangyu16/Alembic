@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createVerify, generateKeyPairSync } from "node:crypto";
 import {
   getInstallationAccount,
+  lookupGithubUser,
   getInstallationToken,
   mintAppJwt,
 } from "./app-auth";
@@ -116,5 +117,18 @@ describe("getInstallationAccount", () => {
     await expect(
       getInstallationAccount({ appId: "1", privateKey: pem, installationId: 9, fetchImpl }),
     ).rejects.toThrow(/HTTP 404/);
+  });
+});
+
+describe("lookupGithubUser", () => {
+  const reply = (status: number, body: unknown): FetchLike => async () => ({
+    ok: status < 300, status, json: async () => body, text: async () => JSON.stringify(body),
+  });
+  it("returns the numeric id of a user; null for nobody, an organization, or a bad name", async () => {
+    expect(await lookupGithubUser("Octo-cat", reply(200, { id: 583231, login: "octocat", type: "User" }))).toEqual({ id: "583231", login: "octocat" });
+    expect(await lookupGithubUser("nobody", reply(404, {}))).toBeNull();
+    expect(await lookupGithubUser("github", reply(200, { id: 9919, login: "github", type: "Organization" }))).toBeNull();
+    expect(await lookupGithubUser("../etc", reply(200, { id: 1, login: "x", type: "User" }))).toBeNull();
+    await expect(lookupGithubUser("rate", reply(403, {}))).rejects.toThrow();
   });
 });
