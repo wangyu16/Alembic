@@ -63,6 +63,7 @@ grant create on schema extensions to ${OWNER_ROLE};
 alter schema public owner to ${OWNER_ROLE};
 create table auth.users (
   id uuid primary key,
+  email text,
   raw_user_meta_data jsonb default '{}',
   banned_until timestamptz
 );

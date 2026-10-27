@@ -7,7 +7,9 @@
 
 import { rendererVersion } from "@alembic/renderer";
 import { createWorkerServer } from "./server";
-import { postgrestRpc, startSchedules } from "./schedules";
+import { ResendMailer } from "@alembic/notify";
+import { SCHEDULES, postgrestRpc, startSchedules, type Schedule } from "./schedules";
+import { runDigests } from "./digest-job";
 
 const port = Number(process.env["WORKER_PORT"] ?? process.env["PORT"] ?? 8787);
 
@@ -25,8 +27,17 @@ createWorkerServer().listen(port, () => {
 const dbUrl = process.env["SUPABASE_URL"]?.trim();
 const dbKey = process.env["SUPABASE_SECRET_KEY"]?.trim();
 if (dbUrl && dbKey) {
-  startSchedules(postgrestRpc(dbUrl, dbKey));
-  console.log("[alembic-worker] schedules on: ledger-orphan-sweep (5 min), ledger-month-end (1 h)");
+  const schedules: Schedule[] = [...SCHEDULES];
+  // The Needs-you email (C8): only with an email service and the app's address.
+  const resendKey = process.env["RESEND_API_KEY"]?.trim();
+  const from = process.env["EMAIL_FROM"]?.trim();
+  const appUrl = process.env["APP_URL"]?.trim();
+  if (resendKey && from && appUrl) {
+    const mailer = new ResendMailer(resendKey, from);
+    schedules.push({ name: "needs-you-email", everyMs: 60 * 60_000, run: (rpc) => runDigests(rpc, { mailer, appUrl }) });
+  }
+  startSchedules(postgrestRpc(dbUrl, dbKey), { schedules });
+  console.log(`[alembic-worker] schedules on: ${schedules.map((s) => s.name).join(", ")}`);
 } else {
   console.log("[alembic-worker] schedules off (SUPABASE_URL / SUPABASE_SECRET_KEY not set)");
 }

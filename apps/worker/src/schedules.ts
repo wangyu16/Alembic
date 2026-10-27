@@ -10,8 +10,10 @@
 export interface Schedule {
   name: string;
   everyMs: number;
-  /** A service-role SQL function with no required arguments. */
-  rpc: string;
+  /** A service-role SQL function with no required arguments… */
+  rpc?: string;
+  /** …or a job of its own (it gets the same rpc). */
+  run?: (rpc: Rpc) => Promise<unknown>;
 }
 
 export const SCHEDULES: readonly Schedule[] = [
@@ -62,7 +64,7 @@ export function startSchedules(
     if (!s || running.has(name)) return;
     running.add(name);
     try {
-      const out = await rpc(s.rpc);
+      const out = s.run ? await s.run(rpc) : s.rpc ? await rpc(s.rpc) : null;
       if (typeof out === "number" && out > 0) log(`${name}: ${out}`);
     } catch (e) {
       log(`${name} failed: ${(e as Error).message}`);

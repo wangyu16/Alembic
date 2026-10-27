@@ -13,7 +13,8 @@
   "dependencies": {
     "@alembic/package-contract": "workspace:*",
     "@alembic/renderer": "workspace:*",
-    "@alembic/generators": "workspace:*"
+    "@alembic/generators": "workspace:*",
+    "@alembic/notify": "workspace:*"
   },
   "devDependencies": {
     "tsx": "^4.22.4"
