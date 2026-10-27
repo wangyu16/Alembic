@@ -38,3 +38,4 @@ export * from "./course-committer";
 export * from "./publisher";
 export * from "./sql-queue-store";
 export * from "./copy-check";
+export * from "./sync-entry";
