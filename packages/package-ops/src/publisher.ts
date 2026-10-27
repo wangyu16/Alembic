@@ -158,7 +158,11 @@ export function assemblePublicTree(i: AssembleInput): AssembledTree {
       if (!i.working.has(path)) {
         // Deleted at W: kept only while a KEPT unit's published text still links to it (G3 H3, r2 M2).
         const usedByKept = [...(i.keptTexts ?? new Map<string, { unit: string; text: string }>())].some(
-          ([from, k]) => !pass(k.unit) && (!k.unit.startsWith("chapter:") || chapters.has(k.unit.slice(8))) && relativeLinks(from, k.text).includes(path),
+          ([from, k]) =>
+            !pass(k.unit) &&
+            // a kept chapter in the course, or a removed one the course map keeps public (G3 r3 L-a)
+            (!k.unit.startsWith("chapter:") || chapters.has(k.unit.slice(8)) || courseMapLinks.has(from)) &&
+            relativeLinks(from, k.text).includes(path),
         );
         if (!usedByKept) continue;
       }
@@ -235,13 +239,25 @@ export function publishWithLinkCheck(
         const atW = assembleIn.working.get(target);
         const pub = tree.files.get(target);
         const stale = !missing && target.startsWith("assets/") && decisions.get(targetUnit)?.result === "kept" && atW !== undefined &&
-          (atW.text !== undefined ? pub?.text !== atW.text : pub?.blobSha !== atW.blobSha); // binary assets compare blobs (G3 r2 L4)
+          (atW.blobSha !== undefined && pub?.blobSha !== undefined
+            ? pub.blobSha !== atW.blobSha // blob to blob (G3 r2 L4, r3 M-b)
+            : pub?.text !== undefined && atW.text !== undefined
+              ? pub.text !== atW.text
+              : false); // can't compare: no finding (the job always supplies blob ids)
         if ((missing || stale) && !findings.some((x) => x.unit === f.unit && x.check === "link" && x.path === target)) {
           added.push({ unit: f.unit, path: target, check: "link", severity: "default", message: missing ? `Links to ${target}, which is not published` : `Links to ${target}, which is published only in an older version` });
         }
       }
     }
-    if (added.length === 0) return { tree, decisions, rounds: round };
+    if (added.length === 0) {
+      // A removed chapter still public because the course map links it is reported as kept (G3 r3 L-b).
+      for (const f of tree.files.values()) {
+        if (f.unit.startsWith("chapter:") && !decisions.has(f.unit) && !assembleIn.manifest.chapters.some((c) => `chapter:${c.slug}` === f.unit)) {
+          decisions.set(f.unit, { unit: f.unit, result: "kept", why: ["Removed from the course, but still public because concepts/course.md links to it"] });
+        }
+      }
+      return { tree, decisions, rounds: round };
+    }
     findings = [...findings, ...added];
     if (round > decideIn.units.length + 1) return { tree, decisions, rounds: round }; // cannot happen: monotone
   }

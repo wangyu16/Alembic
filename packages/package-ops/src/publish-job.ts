@@ -25,8 +25,12 @@ import { publishWithLinkCheck, unitKey, unitOf, type Decision, type Finding, typ
 
 export interface TreeEntry { path: string; mode: string; type?: string; blobSha: string }
 
-/** A file's content, classified by CONTENT (NUL byte or invalid UTF-8 = binary), never by name (G3 r2 M5). */
-export type FileContent = { text: string } | { binary: true };
+/**
+ * A file's content, classified by CONTENT (NUL byte or invalid UTF-8 = binary), never by name (G3 r2 M5).
+ * A binary file still carries a best-effort decoding for the checks (UTF-16 by BOM or NUL pattern,
+ * otherwise windows-1252), so text in another encoding can't skip them (G3 r3 M-a).
+ */
+export type FileContent = { text: string } | { binary: true; decoded: string };
 
 export interface WorkingSide {
   head(): Promise<string>;
@@ -37,12 +41,28 @@ export interface WorkingSide {
 
 /** Classify bytes as text or binary by content (for adapters). */
 export function classifyBytes(bytes: Uint8Array): FileContent {
-  if (bytes.includes(0)) return { binary: true };
-  try {
-    return { text: new TextDecoder("utf-8", { fatal: true }).decode(bytes) };
-  } catch {
-    return { binary: true };
+  if (!bytes.includes(0)) {
+    try {
+      return { text: new TextDecoder("utf-8", { fatal: true }).decode(bytes) };
+    } catch {
+      /* not UTF-8: binary, decoded best-effort below */
+    }
   }
+  return { binary: true, decoded: bestEffortDecode(bytes) };
+}
+
+function bestEffortDecode(b: Uint8Array): string {
+  const le = b[0] === 0xff && b[1] === 0xfe;
+  const be = b[0] === 0xfe && b[1] === 0xff;
+  if (le || be) return new TextDecoder(le ? "utf-16le" : "utf-16be").decode(b.subarray(2));
+  // Every other byte NUL: UTF-16 without a BOM.
+  let oddNul = 0;
+  let evenNul = 0;
+  for (let i = 0; i < Math.min(b.length, 4096); i++) if (b[i] === 0) i % 2 ? oddNul++ : evenNul++;
+  const half = Math.min(b.length, 4096) / 2;
+  if (oddNul > half * 0.8) return new TextDecoder("utf-16le").decode(b);
+  if (evenNul > half * 0.8) return new TextDecoder("utf-16be").decode(b);
+  return new TextDecoder("windows-1252").decode(b);
 }
 
 export interface PublicSide {
@@ -201,9 +221,11 @@ export async function runPublish(i: PublishInput, w: WorkingSide, pub: PublicSid
     const content = await w.readFile(W, e.path);
     if (content === null) return { status: "stopped", reason: `Couldn't read ${e.path} to check it` };
     const text = "text" in content ? content.text : null;
-    working.set(e.path, text === null ? { blobSha: e.blobSha } : { text });
+    // Text files carry their git blob id too, so stale-asset comparisons are blob to blob (G3 r3 M-b).
+    working.set(e.path, text === null ? { blobSha: e.blobSha } : { text, blobSha: await gitBlobSha(text) });
     const key = unitKey(u);
-    byUnit.set(key, [...(byUnit.get(key) ?? []), { path: e.path, text }]);
+    // The checks always see words: a binary file is checked through its best-effort decoding (G3 r3 M-a).
+    byUnit.set(key, [...(byUnit.get(key) ?? []), { path: e.path, text: text ?? ("decoded" in content ? content.decoded : null) }]);
   }
   const units = [...byUnit.keys()];
   const findings: Finding[] = [];
@@ -262,7 +284,11 @@ export async function runPublish(i: PublishInput, w: WorkingSide, pub: PublicSid
   }
 
   // 10. Record pending, then one commit to the public repo (CAS on P, retried).
+  // Every exit after the pending record either marks the run committed or stopped (G3 r3 L-c).
   if (P === null) P = await pub.create();
+  let pendingInserted = false;
+  let finished = false;
+  try {
   for (let attempt = 0; ; attempt++) {
     const current = await pub.listTree(P);
     if (current.truncated) return { status: "stopped", reason: "The public copy is too large to update safely in one run" };
@@ -271,17 +297,18 @@ export async function runPublish(i: PublishInput, w: WorkingSide, pub: PublicSid
       .map((e) => ({ path: e.path, delete: true as const }));
     if (attempt === 0) {
       await store.insertPendingRun({ id: i.runId, packageId: i.packageId, by: i.by, workingSha: W, publicParent: P, choices: i.choices, intendedFiles: records });
+      pendingInserted = true;
     }
     try {
       const publicSha = await pub.commit({ expectedHead: P, message: `Publish\n\n${TRAILER}: ${i.runId}`, files: [...files, ...deletions] });
       // 11. Record committed immediately (before any site build).
       await store.markCommitted(i.runId, publicSha, records, { decisions: [...decisions.values()] });
+      finished = true;
       await store.acknowledge(i.packageId, publicSha);
       return { status: "committed", runId: i.runId, publicSha, decisions: [...decisions.values()], published: [...assembled.publishedChapters] };
     } catch (e) {
       if (!(e instanceof Error && e.name === "HeadMovedError") || attempt >= 2) {
         if (e instanceof Error && e.name === "HeadMovedError") {
-          await store.markStopped?.(i.runId, "the public copy kept changing");
           return { status: "stopped", reason: "The public copy keeps changing; try again in a moment" };
         }
         throw e;
@@ -289,10 +316,17 @@ export async function runPublish(i: PublishInput, w: WorkingSide, pub: PublicSid
       const now = await pub.head();
       const ack = await store.acknowledged(i.packageId);
       if (now === null || now !== ack) {
-        await store.markStopped?.(i.runId, "the public copy changed on GitHub during Publish");
         return { status: "stopped", reason: "The public copy changed on GitHub during Publish; run Publish again" };
       }
       P = now;
+    }
+  }
+  } finally {
+    // A commit that landed but wasn't recorded (crash) is completed by the next run from its trailer;
+    // anything else that ends here after the pending record is marked stopped.
+    if (pendingInserted && !finished) {
+      const landed = (await pub.recentCommits(1).catch(() => []))[0]?.message.includes(`${TRAILER}: ${i.runId}`);
+      if (!landed) await store.markStopped?.(i.runId, "stopped before the public commit").catch(() => undefined);
     }
   }
 }
