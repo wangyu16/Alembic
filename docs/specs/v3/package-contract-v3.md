@@ -138,7 +138,9 @@ stays for the migration helper and for reading others' older public repos.
 | `spaceForPath(path)` | unchanged, plus `orz-site.json` root file |
 | `assertPathAllowedInWorkingRepo(path)` | §2.3 |
 | `assertPathAllowedInPublicRepo(path)` | §2.4 (= today's `assertPathAllowedInRepoV2(path, "public")`) |
-| `isProjectable(path)` | §2.5 |
+| `isProjectable(path)` | §2.5 (`alembic.json` is not projectable: Publish generates the public one) |
+| `isPublishGenerated(path)` | `alembic.json`, `.alembic/`, `.gitignore`, `.github/`, `provenance/coursewerk/` |
+| `assertPublishWritable(path, origin)` | public-repo boundary AND (`unit` ⇒ `isProjectable`; `generated` ⇒ `isPublishGenerated`) |
 | `assertPrivatePath(path)` | §3 |
 | `SourcePointerSchema` | §5 |
 | `PackageManifestSchemaV3` | §6 |

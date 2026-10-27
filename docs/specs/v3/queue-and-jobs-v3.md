@@ -1,6 +1,6 @@
 # Course write queue and worker jobs (v3) — mini-spec
 
-**Status:** draft for gate G0 (round 2 resolutions), 2026-10-27. This spec
+**Status:** draft 2 for gate G0 (round 2 and round 3 resolutions; §9), 2026-10-27. This spec
 **takes precedence** over the queue passages of `write-path-v3.md` and the
 run model of `publisher-v3.md` where they differ. It answers G0 round 2.
 
@@ -28,7 +28,8 @@ create table public.write_queue (
   invoker_id uuid,              -- agent changesets: the person who started the job
   pusher_login text,            -- 'outside': who pushed on GitHub (from the push event)
   payload jsonb not null,
-  idem_key text not null,
+  idem_key text not null,            -- stored prefixed by kind (§2.2)
+  priority smallint not null default 0, -- 1 = front of line (undo rows, §4)
   depends_on uuid references public.write_queue(id),
   status text not null default 'queued'
     check (status in ('queued','processing','retry','done','bounced','refused','failed')),
@@ -37,8 +38,10 @@ create table public.write_queue (
   last_error text,
   result jsonb,
   created_at timestamptz not null default now(),
-  unique (package_id, idem_key)
+  unique (package_id, kind, idem_key),
+  check (depends_on is null or depends_on <> id)
 );
+-- depends_on must be a row of the same course (checked by enqueue functions).
 ```
 
 ### 2.2 Who may insert, and where `actor` comes from
@@ -46,7 +49,8 @@ create table public.write_queue (
 - **Nobody inserts directly.** `revoke insert, update, delete … from anon,
   authenticated`; members may SELECT their course's rows (to see status).
 - `sync`, `restore`: through definer `enqueue_write(p, kind, payload,
-  idem_key)`, which sets `actor_id = auth.uid()`, checks
+  client_uuid)`, which requires a UUID, stores the key as `<kind>:<uuid>`,
+  sets `actor_id = auth.uid()`, checks
   `can(role, editActionForPath(path))` for every path, refuses server-only
   and harness paths, and refuses if the course is read-only.
 - `changeset`: only from the agent hand-over endpoint (service role), which
@@ -57,10 +61,16 @@ create table public.write_queue (
 - `system`: only from Alembic itself (undo of forbidden content, Publish's
   drift bring-in, migration helper).
 
+**Repeated keys.** A repeated insert returns the existing row only if its
+kind **and** actor match; otherwise it is refused. System keys
+(`public:<P>:<n>`, `undo:<head sha>`, `approve:<run>:<part>`) are generated
+only by Alembic and live in the `system` kind, so no member can pre-claim
+them.
+
 ### 2.3 Order and claiming
 
-- **Strict per-course order.** The consumer always takes the **lowest
-  non-terminal `seq`** of the course. If that row is `retry` with
+- **Strict per-course order.** The consumer always takes the course's
+  non-terminal row first by `priority desc`, then by `seq`. If that row is `retry` with
   `next_attempt_at` in the future, the course waits (no overtaking). Head
   of line blocking is per course only.
 - A row whose `depends_on` is not yet `done` is skipped **only** while its
@@ -113,18 +123,31 @@ offered back to their authors).
 
 ## 4. Forbidden content arriving through GitHub (Door C)
 
-When the consumer (or the sweep) sees, at the working repo head, any of:
+When the consumer (or the sweep) sees, at the working repo head `H`, any of:
 - a symlink or submodule entry,
-- a change under `.github/`, `.alembic/`, `.gitignore`,
-  `private/sources/`, `private/coursewerk/`,
+- a change under `.alembic/`, `.gitignore`, `private/sources/`,
+  `private/coursewerk/`,
 - an unclassifiable path,
 
-it enqueues a `system` row **at the front of the course's processing** (it is
-processed before any other non-terminal row) that writes a forward commit
+it enqueues **one** `system` row with key `undo:<H>` and `priority = 1`
+(processed before any other non-terminal row), which writes a forward commit
 restoring those paths to their last Alembic-written state (deleting
-additions). An Edited elsewhere item names the pusher. So no reader is ever
-left stuck on a forbidden tree: Publish (which refuses such a tree) only
-waits for this row.
+additions). An Edited elsewhere item names the pusher.
+
+- **Never re-enqueued for the same head:** if the `undo:<H>` row ends other
+  than `done`, Alembic raises an urgent owner/operator item instead of
+  trying again, and Publish refuses with that reason (it does not wait).
+- **403/404 on an undo row is deterministic** (`refused`), not an outage.
+- **`.github/` is not undone.** The working repo is created with Actions
+  disabled (quiet repos, design §12.3), so a workflow pushed there cannot
+  run; `.github/` is never projectable, so it can never reach the public
+  repo. A change there raises an informational item only. (This keeps the
+  App without the Workflows permission.)
+- **Force-pushes** on the working repo (branch protection is not available
+  on free private repos): detected by the sweep when a recorded Alembic
+  commit is no longer reachable from the head; a `system` row
+  (`undo:<H>`) writes the last recorded tree forward again, and the pusher
+  is named.
 
 ## 5. Publish as a job
 
@@ -143,31 +166,45 @@ waits for this row.
      run's record and treat the commits after it as the drift (if none,
      continue).
    - Drift remains → enqueue **one** `system` row (idem key
-     `public:<P>`) bringing in all changed projectable unit files (never
+     `public:<P>:<n>`, `n` = attempt number for this P) bringing in all changed projectable unit files (never
      `alembic.json`, `.alembic/`, `.github/`, `.gitignore`,
      `provenance/coursewerk/`), each with base = its `published_files`
      version. Wait for that row to be terminal; then record P as
      acknowledged and stop with "the public copy was changed on GitHub —
-     those changes were brought in; run Publish again". If the row didn't
-     land, P is **not** acknowledged and the reason is shown.
+     those changes were brought in; run Publish again".
+   - If the row did not land (refused / failed): P is not acknowledged; the
+     owner gets an item with two actions: **try again** (a new row,
+     `n + 1`) or **discard the public changes** (they are offered for
+     download, and P is acknowledged). Publish never loops silently.
 5. Checks, decisions, assembly, link-check fixpoint: as `publisher-v3.md`
    §3 steps 6–9. **Orphan files** (slot paths or `chapters/<slug>/` for a
    slug not in the manifest at W and never published) belong to no unit and
    are never published.
-6. `approveAndPublish` approvals are written as `system` queue rows (bound
-   to the part's content hash at W) before the commit.
+6. `approveAndPublish` approvals are written as `system` queue rows (key
+   `approve:<run>:<part>`, bound to the part's content hash at W). Publish
+   **waits until they are terminal**; a part whose approval row is not
+   `done` keeps its chapter kept (not published).
 7. **Commit:** insert `publish_runs(…, status 'pending', intended tree)`;
    one commit to the public repo on parent P with compare-and-swap; every
-   file through `assertPublishWritable(path, 'unit' | 'generated')`;
+   file through `assertPublishWritable(path, 'unit' | 'generated')`
+   (package contract §7: the public-repo boundary AND, for unit files,
+   `isProjectable`; for generated files, only `alembic.json`, `.alembic/`,
+   `.gitignore`, `provenance/coursewerk/`, `.github/` — implemented and
+   tested in `contract-v3.ts`);
    trailer `Alembic-Publish-Run: <id>`. CAS lost → back to step 4 (at most
    3 times, then the job fails with "the public copy keeps changing").
 8. Record `committed`, `public_sha`, `published_files`.
-9. Enqueue a **`site-build` job** (`singletonKey = site:<packageId>`) for
-   this run. It builds from the recorded public commit (never from W) and,
-   **just before moving `gh-pages`, checks that its run is still the latest
-   committed run** of the course; if a newer run exists, it does nothing. A
-   failed build leaves the previous site live and marks the run `site
-   failed` with a retry action.
+9. Enqueue a **`site-build` job** for the course (pg-boss with a
+   singleton key that keeps **one queued** job besides the running one).
+   The job builds **the latest committed run of the course, read when the
+   job starts** (never a fixed run id, never W), and just before moving
+   `gh-pages` checks that no newer run was committed meanwhile; if one was,
+   it builds that instead (bounded to 3 rounds). So a dropped duplicate job
+   never leaves the site stale. A failed build leaves the previous site live
+   and marks the run `site failed` with a retry action.
+10. **A second Publish request** while one is queued or running is answered
+    "Publish is already running" (never silently dropped). The Publish job's
+    expiry is longer than its longest wait (2 h); waits re-check every 10 s.
 
 ## 6. Repositories and installations
 
@@ -213,3 +250,18 @@ waits for this row.
 | Q.10 | the 14-day bound fails rows with text kept, makes the course read-only, cancels Publish |
 | Q.11 | repo creation tokens are used only in creation; all other tokens are repo-scoped |
 | Q.12 | the column `sources.storage_key` is not readable by `authenticated` |
+
+## 9. Review resolutions (G0 round 3)
+
+| Finding | Resolution |
+|---|---|
+| H1 a refused drift row blocks Publish forever | §5 step 4: attempt-numbered key; owner chooses try again / discard (download) |
+| H2 members can pre-claim idempotency keys | §2.1 unique `(package, kind, key)`; §2.2 prefixed UUID keys for members, system keys only in the `system` kind; repeats returned only to the same kind and actor |
+| H3 undo row fails or loops; 'front of line' unbuildable | §2.1 `priority`; §4 one row per head, never re-enqueued, 403/404 deterministic, `.github/` ignored (Actions off) |
+| H4 site builds dropped | §5 step 9 build the latest run at start; keep one queued |
+| H5 publish guard undefined; approval rows | §5 steps 6–7; `assertPublishWritable` exists in `contract-v3.ts` with tests |
+| L depends_on cross-course; job expiry; force-push | §2.1 check; §5 step 10; §4 force-push restore |
+
+**Stop rule:** round 3 found only targeted HIGHs in one new spec, each with a
+mechanical fix. These fixes are verified by the G2 closed loop (claims Q.1–Q.12
+bound to tests) rather than a fourth spec round.
