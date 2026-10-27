@@ -287,6 +287,22 @@ describe("course committer", () => {
     expect(await processRow({ ...landedRow, attempts: 10, abandons: 9 }, q, repo)).toMatchObject({ status: "done", result: { recovered: true } });
   });
 
+  it("GitHub errors are classified by status: outage, lost access, deterministic refusal", async () => {
+    const err = (status: number, rateLimited = false) => Object.assign(new Error("gh"), { status, rateLimited });
+    for (const [e, expected] of [
+      [err(502), { status: "retry" }],
+      [err(403, true), { status: "retry" }],
+      [err(401), { status: "retry", access: true }],
+      [err(404), { status: "retry", access: true }],
+      [err(422), { status: "refused" }],
+    ] as const) {
+      const { repo, q } = setup();
+      repo.failWith = e;
+      q.add(sync("r", "owner", "study-guide/gases.md", base, sg("x", "two", "three")));
+      expect(await processRow({ ...q.rows[0]!, attempts: 1 }, q, repo), String(e)).toMatchObject(expected);
+    }
+  });
+
   it("A4.0 a duplicate sync of identical text commits nothing", async () => {
     const { repo, q } = setup();
     q.add(sync("r1", "owner", "study-guide/gases.md", base, base));

@@ -337,15 +337,44 @@ export async function processRow(row: QueueRow, store: QueueStore, repo: Working
       }
     }
     return { status: "retry", error: "the course kept changing; trying again shortly", retryAfterSeconds: 30 };
-  } catch (e) {
+  } catch (caught) {
+    const e = classifyRepoError(caught);
     if (e instanceof RepoUnavailableError) {
       return e.kind === "access"
         ? { status: "retry", error: e.message, retryAfterSeconds: 300, access: true }
         : { status: "retry", error: e.message, retryAfterSeconds: Math.min(900, 60 * 2 ** Math.max(0, row.attempts - 1)) };
     }
+    if (e instanceof DeterministicRefusal) return { status: "refused", reason: e.message };
     const msg = e instanceof Error ? e.message : String(e);
     if (row.attempts >= MAX_ATTEMPTS) return { status: "failed", error: msg };
     return { status: "retry", error: msg, retryAfterSeconds: 60 };
+  }
+}
+
+/**
+ * Map a GitHub client error (it carries `status`, and `rateLimited`) onto the
+ * queue's classes (queue-and-jobs §2.4): outage (5xx, rate limits, network)
+ * → retry; lost access (401, 403 that isn't a rate limit, 404 on the repo)
+ * → retry with "Reconnect GitHub"; a 422 that isn't a head move → refused
+ * as deterministic. Anything else is returned unchanged.
+ */
+export function classifyRepoError(e: unknown): unknown {
+  if (e instanceof RepoUnavailableError) return e;
+  const status = (e as { status?: unknown })?.status;
+  const rateLimited = (e as { rateLimited?: unknown })?.rateLimited === true;
+  if (typeof status === "number") {
+    if (status >= 500 || status === 429 || rateLimited) return new RepoUnavailableError("outage", "GitHub is not responding; trying again shortly");
+    if (status === 401 || status === 403 || status === 404) return new RepoUnavailableError("access", "Alembic can't reach this course's repository; the owner needs to reconnect GitHub");
+    if (status === 422) return new DeterministicRefusal(`GitHub refused the change (${status})`);
+  }
+  if (e instanceof TypeError && /fetch|network/i.test(e.message)) return new RepoUnavailableError("outage", "network error; trying again shortly");
+  return e;
+}
+
+export class DeterministicRefusal extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "DeterministicRefusal";
   }
 }
 
