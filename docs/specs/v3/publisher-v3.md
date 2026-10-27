@@ -1,6 +1,6 @@
 # Publisher v3 (units, pinning, projection, checks) — mini-spec
 
-**Status:** draft for gate G0, 2026-10-27. Modules A11 (+A12 orz-site on the
+**Status:** draft 2 for gate G0, 2026-10-27 (draft 1 reviewed; resolutions in §6). Modules A11 (+A12 orz-site on the
 worker). Design source: `ALEMBIC-WORKSPACE-DESIGN.md` §4.1, §4.3, §6.5,
 §9.4, §18.6; rulings R18, R19, R27.
 
@@ -16,64 +16,87 @@ worker). Design source: `ALEMBIC-WORKSPACE-DESIGN.md` §4.1, §4.3, §6.5,
 
 | Unit | Files (from the pinned working-repo tree) |
 |---|---|
-| **chapter `<slug>`** | the five slot files (`concepts/<slug>.md`, `assessment-support/<slug>.md`, `study-guide/<slug>.md`, `slides/<slug>.slides.md`, `practice/<slug>.md`) plus every file under `<space>/chapters/<slug>/` |
-| **course** | `alembic.json`, `orz-site.json`, `README.md`, `LICENSE`, `CITATION.cff`, `concepts/course.md`, every file under `current/`, `metadata/` and course-scope files of other public spaces |
-| **asset** | each file under `assets/` that is not chapter-scoped (one unit per file) |
+| **chapter `<slug>`** | the five slot files plus every file under `<space>/chapters/<slug>/` |
+| **course** | `alembic.json` (public form, generated), `orz-site.json`, `README.md`, `LICENSE`, `CITATION.cff`, `concepts/course.md`, every file under the `current/` and `metadata/` **directories**, and course-scope files of other public spaces except `assets/` |
+| **asset** | each file directly under `assets/` (not chapter-scoped): one unit per file |
+| **removed chapter `<slug>`** | a chapter that has published files but is no longer in the manifest at W: its public files are deleted when this unit passes (it passes unless the course map at W still links to it) |
 
-Every projectable path (contract v3 `isProjectable`) belongs to exactly one
-unit (claim P.1).
+Not units (never projected; Publish writes them itself): `.github/`,
+`.alembic/` (regenerated from public items), `.gitignore`,
+`provenance/coursewerk/` (publish profile). The chapter slug `course` is
+reserved (contract §6). A renamed chapter is a removed chapter plus a new
+one. Every projectable path belongs to exactly one unit (P.1).
 
 ## 3. A Publish run
 
+Publish is a **queue row** (`kind = 'publish'`) processed by the course
+committer on the worker (write-path spec §3), so it is serialised with
+writes and with other Publish runs for the course (no two runs overlap), and
+it is not bound by Vercel's function time.
+
 ```
-publish({ packageId, by, choices: { publishAnyway: chapterSlug[], approveAndPublish: partPath[] } })
+publish({ packageId, by, choices: { publishAnyway: slug[], approveAndPublish: partPath[], snapshotName?: string } })
 ```
 
-1. **Authorise:** `can(role, isFirstPublish ? 'publish.first' : 'publish.later')`;
-   `publish.anyway` per chosen chapter.
-2. **Sync first:** the publisher's open documents are synced (client step
-   before the call; the server refuses if the publisher's device reports
-   unsynced documents for this course, with "sync first").
-3. **Outbox empty**, else refuse ("changes still waiting for GitHub").
-4. **Pin:** read the working repo head SHA `W` under the course lock;
-   release the lock (Publish reads only from `W`).
-5. **Public drift:** if the public repo head ≠ last recorded `public_sha`,
-   bring the changed public files into the working repo as Edited elsewhere
-   (Door C path) and stop with "public copy changed on GitHub — run Publish
-   again".
-6. **Check each unit at `W`** with the check plug-ins (§4). Each check
-   returns findings `{ unit, path, kind, severity: 'always'|'default'|'never', message }`.
-7. **Decide per unit:**
-   - any `always` finding → **kept** (not published this run);
-   - chapter with unapproved plan parts at `W` → kept, unless listed in
-     `approveAndPublish` (approval rows are written first, then it proceeds);
-   - any `default` finding → kept, unless the chapter is in `publishAnyway`
-     (recorded);
-   - otherwise → **passes**.
-   - Draft-mode chapters → kept, always.
+1. **Authorise** at queue time and again at execution:
+   `can(role, isFirstPublish ? 'publish.first' : 'publish.later')`;
+   `publish.anyway` for each chosen chapter.
+2. **Sync first** (client, before queueing): the publisher's open documents
+   are synced; the row is queued after their sync rows, so it sees them.
+3. **Write queue ahead of it is empty for this course** (it is processed in
+   order), and no row is in `retry` (GitHub unavailable) — else the run
+   waits.
+4. **Pin** `W` = the working repo head SHA. If `listTree(W)` is truncated →
+   refuse ("course too large to publish safely", fail closed). Any symlink
+   or submodule entry → refuse (contract §2 rule 6).
+5. **Public drift:** read the public head `P`.
+   - If `P` = the last recorded `public_sha`, continue.
+   - If `P`'s commit carries `Alembic-Publish-Run: <id>` of a run recorded
+     `pending` (a crash after the commit), complete that run's record from
+     its stored intent and continue.
+   - Otherwise (a genuine edit on GitHub): compute the changed paths between
+     `public_sha` and `P`; for each changed **projectable unit file** (never
+     `alembic.json`, `.alembic/`, `.github/`, `provenance/coursewerk/`),
+     queue an outside-change row into the working repo with base = the
+     `published_files` version; record `P` as the acknowledged public head
+     (so the next run doesn't stop again); stop with "the public copy was
+     changed on GitHub — those changes were brought in; run Publish again".
+6. **Check each unit at W** with the check plug-ins (§4); findings carry
+   `severity: 'always' | 'default' | 'never'`.
+7. **Decide per unit:** any `always` → kept; Draft-mode chapter → kept;
+   unapproved plan parts at W → kept unless listed in `approveAndPublish`
+   (approval rows written now, each **bound to the part's content hash at
+   W**); any `default` → kept unless the chapter is in `publishAnyway`
+   (recorded); else passes.
 8. **Assemble the public tree:**
-   - passing units: their files at `W`;
-   - kept units: their files at their `published_files` version (absent if
-     never published);
-   - assets: passing asset units at `W`; a kept asset keeps its last
-     published version; an asset deleted at `W` but referenced by a kept
-     chapter stays at its last published version;
-   - `alembic.json` (public form: no working-repo name; chapters = published
-     chapters), course map as written;
-   - `provenance/coursewerk/` from Coursewerk's publish profile (empty until
-     FC-16 v1).
-9. **Link check on the assembled tree:** a link from a passing chapter to a
-   path absent from the assembled tree → a `default` finding on that
-   chapter; if it changes the decision, go back to step 7 once (a second
-   change keeps the chapter).
-10. **Write:** every path through `assertPathAllowedInPublicRepo`
-    (fail closed), then **one commit** to the public repo (created at the
-    first Publish, quiet settings), tag if a snapshot is being published.
-11. **Build and push the site** with orz-site (A12; on the worker, falling
-    back to in-process for small courses until the worker queue is proven),
-    `publishToBranch` to `gh-pages`.
-12. **Record** `publish_runs` (W, public SHA, per-unit results, choices) and
-    `published_files`; Activity line; Needs-you items for kept units.
+   - passing units at W; kept units at their `published_files` version (by
+     existing blob SHA: tree entries may reference existing public blobs);
+     never-published kept units absent;
+   - assets: passing at W; kept at last published; deleted-at-W but used by
+     a kept chapter stays at last published;
+   - public `alembic.json` (`PublicManifestV3`): chapters present in the
+     assembled tree, titles and order from W;
+   - `.alembic/` regenerated from public items; `provenance/coursewerk/`
+     from the publish profile (empty until FC-16 v1).
+9. **Link check to a fixpoint:** a link from a passing chapter to a path
+   absent from the assembled tree, or to an asset kept at an older version
+   than the chapter's W reference, is a `default` finding on that chapter;
+   re-decide; repeat until no decision changes (decisions only move from
+   passes to kept, so at most one round per chapter).
+10. **Commit, recorded first:** insert `publish_runs(id, W, intended tree
+    sha, choices, status 'pending')`; then **one commit** to the public repo
+    on parent `P` (compare-and-swap on `P`), every path through
+    `assertPathAllowedInPublicRepo` and `isProjectable` (fail closed), with
+    trailer `Alembic-Publish-Run: <id>`; tag if `snapshotName`; first
+    Publish creates the public repo first (quiet settings).
+11. **Record immediately:** `publish_runs.status = 'committed'`,
+    `public_sha`, per-unit results; `published_files`.
+12. **Build the site from the assembled public tree** (never from W, so
+    kept and draft chapters never reach the site) with orz-site on the
+    worker; `publishToBranch` to `gh-pages` (one ref move). A build failure
+    leaves the previous site live and marks the run `committed, site
+    failed` with a retry action; the public repo is already correct.
+13. Activity line; Needs-you items for kept units.
 
 ## 4. Check plug-ins (interface I8)
 
@@ -111,3 +134,33 @@ interface Check { id: string; run(unit: UnitFiles, ctx: CheckContext): Promise<F
   build leaves the previous site live.
 - **P.10** `published_files` and `publish_runs` describe exactly the public
   commit (rebuildable check).
+- **P.11** crash after the public commit (step 10) → the next run completes
+  the record from the trailer and does not treat its own commit as drift.
+- **P.12** genuine drift → brought in (never `alembic.json` or
+  `provenance/coursewerk/`), acknowledged; the following run proceeds.
+- **P.13** two Publish requests for one course → processed one after the
+  other; records consistent.
+- **P.14** the site is built from the assembled tree: a kept or draft
+  chapter's W content never appears on the site.
+- **P.15** truncated tree, symlink, submodule → refused.
+- **P.16** `approveAndPublish` approvals are bound to the content hash at W.
+- **P.17** the link check reaches a fixpoint (generated chains of links).
+- **P.18** `.github/`, `.alembic/` from the working repo never reach the
+  public repo.
+
+## 6. Review resolutions (G0 round 1)
+
+| Finding | Resolution |
+|---|---|
+| H-7 crash after commit loops | §3 steps 5, 10, 11 (pending row, trailer, record before build) |
+| H-8 drift loops; drift damages manifest | §3 step 5 (acknowledge; projectable unit files only) |
+| H-9 concurrent runs | §3 Publish is a queue row |
+| H-10 approvals not bound | §3 step 7 |
+| H-11 kept assets and links; blob reuse | §3 steps 8, 9 |
+| H-12 truncated tree | §3 step 4 |
+| P-1 unit holes, reserved slug, removed chapters | §2 |
+| P-2 link-check fixpoint | §3 step 9 |
+| P-3 site source, snapshot input | §3 steps 12, `snapshotName` |
+| P-4 public manifest chapters | §3 step 8 |
+| F-4 Vercel time | §3 runs on the worker |
+| contract 3.4/3.5 symlinks, `.github/` | §2, §3 step 4 |

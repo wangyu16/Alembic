@@ -1,133 +1,206 @@
 # Permissions v3 (membership, `can()`, RLS) — mini-spec
 
-**Status:** draft for gate G0, 2026-10-27. Module A2. Design source:
-`ALEMBIC-WORKSPACE-DESIGN.md` §2 (the permission matrix is the only
-authority), §10, §13 (RLS row), R23, R31.
+**Status:** draft 2 for gate G0, 2026-10-27 (draft 1 reviewed; findings
+resolved, §8). Module A2. Design source: `ALEMBIC-WORKSPACE-DESIGN.md` §2
+(the matrix is the only authority), §10, §13, R23, R31.
 
-## 1. Today
+## 1. Today (facts the spec builds on)
 
-- Course data is scoped by RLS `owner_id = auth.uid()` on `packages` and
-  per-table policies derived from it (48 policies, 0001–0035); the app
-  queries mostly without explicit owner filters and relies on RLS.
-- Public reads (Discover, portal, permalinks of published public files) use
-  the service-role client behind explicit checks (`permalink-access.ts`,
-  `share-policy.ts`), plus public-read policies on the discovery tables.
-- Admins: `profiles.is_admin`, `requireAdmin`.
+- `packages.id` is **text** (`pkg-…`). RLS is `owner_id = auth.uid()` on
+  `packages`, derived per table; since 0018 every policy also requires
+  `is_active_user()` (bans).
+- Column grants (0025): `authenticated` may INSERT `packages(id, owner_id,
+  title, manifest, review_all)` and UPDATE `(title, manifest, review_all,
+  last_synced_sha, updated_at)`. `portal_registrations` and `suggestions`
+  writes are already restricted (0028).
+- `documents` (0014) carries per-file `license` and `discoverable`
+  (sharing). Listing is `portal_registrations`; listing consent and
+  suggestions resolution are keyed to `owner_id` (0009, 0025).
+- GitHub calls use the caller's installation (`clientForUser`).
 
 ## 2. Model
 
 ```sql
 create table public.course_members (
-  package_id uuid not null references public.packages(id) on delete cascade,
+  package_id text not null references public.packages(id) on delete cascade,
   user_id    uuid not null references public.profiles(id) on delete cascade,
   role       text not null check (role in ('owner','co-author')),
-  deputy_until timestamptz,          -- non-null and in the future = deputy
+  deputy_until timestamptz,
   added_by   uuid references public.profiles(id),
   added_at   timestamptz not null default now(),
   primary key (package_id, user_id)
 );
--- exactly one owner per course
 create unique index course_members_one_owner on public.course_members(package_id) where role = 'owner';
+revoke all on public.course_members from anon, authenticated;
+grant select on public.course_members to authenticated;   -- row policy: members of the course
 ```
 
-- `packages.owner_id` stays as a denormalised copy of the owner row, kept
-  equal by a trigger (one place to read the owner for GitHub calls).
-- A deputy is a co-author with `deputy_until > now()`. No separate role
-  value: expiry needs no job.
-- Invitations: `course_invitations(id, package_id, email_or_login, role,
-  token_hash, expires_at, accepted_by, accepted_at)`; accepting inserts the
-  member row through a security-definer function that checks the token.
+- **Source of truth:** the owner row in `course_members`. A trigger keeps
+  `packages.owner_id` **and** `portal_registrations.owner_id` equal to it
+  (so a transfer keeps listing consent and suggestion resolution working).
+  `packages.owner_id` loses its INSERT/UPDATE grant.
+- **Creating a course:** only through definer `create_course(id, title,
+  manifest)`, which inserts the package and the owner row in one
+  transaction (the `packages` INSERT grant is revoked).
+- **Deputy:** a co-author with `deputy_until > now()`; set only by the
+  owner (`name_deputy`), never by the deputy (no self-extension, no naming
+  others).
+- **No direct writes:** members have SELECT only; every change goes through
+  definer functions (§4.3), which all `revoke execute … from public, anon`.
 
-## 3. Roles and actions
+## 3. Roles, actions, `can()`
 
-`Role = 'owner' | 'deputy' | 'co-author' | 'agent' | 'operator' | 'none'`.
+`Role = 'owner' | 'deputy' | 'co-author' | 'operator' | 'none'`, derived per
+request from `course_members` + `is_active_user()` (a banned user is
+`none`).
 
-`Action` is a closed union, one value per §2.2 matrix row (31 rows), e.g.
-`edit.materials`, `edit.plan`, `edit.private`, `approve.plan`,
-`publish.first`, `publish.later`, `publish.anyway`, `list`, `share`,
-`license.change`, `members.invite`, `members.remove`, `deputy.name`,
-`member.leave`, `source.upload`, `source.see-file`, `source.use-ai`,
-`source.see-pointer`, `agent.answer`, `correction.keep-undo`,
-`finding.fix`, `obligation.confirm`, `both-changed.decide`,
-`edited-elsewhere.accept-undo`, `suggestion.decide`, `update.take`,
-`history.restore-doc`, `snapshot.create`, `snapshot.restore-course`,
-`steering.change`, `steering.propose`, `coursewerk.update`,
-`handout`, `transfer`, `archive`, `agent.talk`, `history.see`,
-`github.direct`, `allowance.fund`.
+`Action` is a closed union with one value per design §2.2 row. Root files
+and dot-folders get explicit actions:
+
+| Path | Action | Who |
+|---|---|---|
+| `alembic.json` | only through manifest operations, per field (§4.3) | — |
+| `LICENSE`, `CITATION.cff` | generated by the server from the licence (owner) | — |
+| `README.md`, `orz-site.json` | `edit.course-files` | owner, deputy |
+| `.github/…` | never through Alembic (server-generated only; not projectable, contract §2) | — |
+| `.alembic/…` | server-generated only | — |
+| `private/sources/…` | server-written mirror of `sources` rows (contract §5) | — |
+| `private/coursewerk/…` | the harness only (FC-16) | — |
 
 ```ts
-can(role: Role, action: Action, ctx?: {
-  path?: string;            // for edit.* and source.* checks
-  uploaderId?: string;      // for source.see-file
-  actorId?: string;         // the caller
-  sharedWithCourse?: boolean;
-  addressedTo?: string[];   // for both-changed.decide
-  isFirstPublish?: boolean; // publish.first vs publish.later
-}): boolean
+can(role, action, ctx?): boolean
+canAgent(invokerRole, action, ctx?): boolean = can('agent-cap', action, ctx) && can(invokerRole, action, ctx)
 ```
 
-- Pure, in `packages/package-contract/src/access.ts`; the matrix is a
-  literal table in code mirroring design §2.2, with a test that every
-  action has an entry for every role.
-- `roleOf(member | null, isAdmin)` derives the role: member row → owner /
-  deputy / co-author; agent requests carry `agent`; admin pages carry
-  `operator` only for operator actions; otherwise `none`.
+- **The agent never has more rights than the person who started the job**
+  (`canAgent`); automatic jobs (course allowance) run with the owner as
+  invoker. Agent requests are authenticated by a server-minted session token
+  bound to `(package_id, session_id, job_id, invoker_id)`; the role is read
+  from the token's invoker at execution time, never from the request body.
 
 ## 4. Enforcement
 
-Two layers, both required:
+### 4.1 Server
 
-1. **Server**: every server action and API route resolves the caller's role
-   for the course and calls `can()` before any read or write. A helper
-   `requireCan(packageId, action, ctx)` throws a typed `Forbidden`.
-2. **Database (RLS)**: defence in depth. Policies change from
-   `auth.uid() = owner_id` to membership:
+Every server action, API route, worker job and `lib/` entry point that
+touches a course calls `requireCan(packageId, action, ctx)` (typed
+`Forbidden`). **Re-check at execution:** the course committer (write path
+§3) re-reads the actor's role when it processes a queue row; a row from a
+member removed (or banned) since it was queued is refused. Agent jobs of a
+removed member are cancelled at removal.
+
+### 4.2 RLS (defence in depth)
 
 ```sql
-create function public.is_member(p uuid) returns boolean
-  language sql stable security definer set search_path = ''
-  as $$ select exists (select 1 from public.course_members m
-                       where m.package_id = p and m.user_id = (select auth.uid())) $$;
-create function public.is_owner(p uuid) returns boolean … role = 'owner' …;
+create function public.course_role(p text) returns text
+  language sql stable security definer set search_path = '' as $$
+  select case when not public.is_active_user() then null
+              else (select case when m.role = 'owner' then 'owner'
+                                when m.deputy_until > now() then 'deputy'
+                                else 'co-author' end
+                    from public.course_members m
+                    where m.package_id = p and m.user_id = (select auth.uid()))
+         end $$;
 ```
 
-- Read of course rows: `is_member(package_id)`.
-- Writes of course content rows: `is_member(package_id)`; owner-only
-  columns (license, listing, sharing, archive) are changed only through
-  security-definer functions that check the role (column-level intent can't
-  be expressed by row policies alone).
-- `course_members` itself: members read their course's rows; inserts and
-  deletes only through security-definer functions (`invite`, `accept`,
-  `remove_member`, `leave`, `name_deputy`), each checking the role.
-- Public-read policies (discovery tables) and the service-role paths stay
-  as they are.
-- Source pointers: the file link is issued by the server only after
-  `can(role, 'source.see-file', {uploaderId, sharedWithCourse})`.
+- Course tables: SELECT `using (public.course_role(package_id) is not null)`.
+- Content tables the browser may write today keep their write paths only
+  through the server (the write path is queue-based; browser writes to
+  content rows are removed).
+- **Owner-only data is not member-writable at all:**
+  - `packages.manifest`: UPDATE grant revoked from `authenticated`;
+    changed only through `update_manifest(p, patch)`, which checks the role
+    per key: `license`, listing fields → owner; `title`, `description`,
+    `keywords`, chapter list → owner or deputy;
+  - `packages.review_all`: owner via definer;
+  - `documents.license`, `documents.discoverable`: UPDATE grant revoked;
+    changed only through `set_document_sharing(doc, discoverable, license,
+    description)` → owner;
+  - `portal_registrations`: unchanged (already definer-only), now checking
+    `course_role = 'owner'`.
+- Tables keyed differently are enumerated explicitly: `suggestions`
+  (`target_package_id`; resolution by owner or deputy), `package_changes`
+  (member-readable), `ai_invocations` (per user, unchanged).
+- Public-read tables (`discovery_*`, published permalinks) keep their
+  existing policies and service-role paths; the A2.2 test excludes exactly
+  these, by name.
+- Member names: a definer view `course_member_profiles(package_id, user_id,
+  display_name, github_username)` returns only fellow members.
+
+### 4.3 Definer functions (all: `set search_path = ''`, `revoke execute from public, anon`)
+
+`create_course`, `invite(p, login_or_email)`, `accept_invitation(token)`,
+`remove_member(p, user)`, `leave(p)`, `name_deputy(p, user, until)`,
+`end_deputy(p)`, `transfer_owner(p, user)`, `update_manifest(p, patch)`,
+`set_document_sharing(…)`, `set_review_all(p, bool)`.
+
+**Invitations** (`course_invitations(id, package_id, invitee_login,
+invitee_email, role check (role = 'co-author'), token_hash, expires_at,
+accepted_by, accepted_at)`):
+- `accept_invitation` locks the row (`for update`), requires
+  `accepted_by is null`, `expires_at > now()`, and the caller's verified
+  GitHub login or email to equal the invitee; single use.
+- The token is 32 random bytes; only its SHA-256 is stored.
+
+### 4.4 GitHub
+
+`clientForCourse(packageId)` uses the **owner's** installation and mints the
+installation token **scoped to the course's two repositories** (the
+`repositories` parameter), with coordinates taken only from
+`packages.public_repo` / `private_repo`, never from the manifest. If the
+owner added a co-author as a GitHub collaborator (`github.direct`), removing
+the co-author also removes that collaborator through the App.
 
 ## 5. Claims (bound to tests)
 
-- **A2.1** For every (role, action) pair, `can()` equals the design §2.2
-  matrix (table-driven test generated from one literal).
-- **A2.2** A non-member can read or write no row of another course, through
-  any table with a `package_id` (PGlite, every table enumerated from the
-  schema so a new table can't be forgotten).
-- **A2.3** A co-author can read and write content rows but cannot change
-  license, listing, sharing, members, deputy, archive (each attempted through
-  the API and directly through PostgREST with the user's JWT).
-- **A2.4** A deputy's rights end at `deputy_until` without any job running.
-- **A2.5** Exactly one owner per course at all times; transferring ownership
-  is one transaction.
-- **A2.6** Every server action and API route under `app/` that touches a
-  course calls `requireCan` (scan test, like the existing
-  `manifest-writers.scan.test.ts`).
-- **A2.7** Public-read behaviour of Discover, portal and permalinks is
-  unchanged (existing tests stay green).
-- **A2.8** A removed member loses access in the same transaction (no cached
-  role survives: roles are resolved per request).
+| Claim | What |
+|---|---|
+| A2.1 | `can()` equals the design §2.2 matrix for every (role, action) (table-driven from one literal) |
+| A2.2 | a non-member reads/writes no row of another course through any course table (enumerated from the schema; public-read tables excluded by name) |
+| A2.3 | with a co-author's JWT via PostgREST: PATCH `packages.manifest` (any key), `packages.review_all`, `documents.license`, `documents.discoverable`; insert/delete `portal_registrations`; insert/update/delete `course_members` — all refused |
+| A2.4 | a deputy's rights end at `deputy_until`; a deputy can't extend it or name another deputy |
+| A2.5 | exactly one owner always; `transfer_owner` is one transaction and keeps listing and suggestion resolution working |
+| A2.6 | every server action, route, worker job and `lib/` entry point touching a course calls `requireCan` (scan test, like `manifest-writers.scan.test.ts`) |
+| A2.7 | Discover, portal and permalink public reads unchanged (existing tests green) |
+| A2.8 | a removed or banned member: no rows at once; their queued writes refused at execution; their agent jobs cancelled |
+| A2.9 | `canAgent(invoker, a) ⊆ can(invoker, a)` for every action and role |
+| A2.10 | invitations: wrong account, second accept, concurrent accepts, expired, `role = owner` — all refused; anon can't execute any definer |
+| A2.11 | installation tokens are scoped to the course's repos |
+| A2.12 | a banned user (0018) gets no rows even as a member |
 
-## 6. Migration
+## 6. Code that changes
 
-R31: no backward compatibility is needed for courses, but the two current
-users' accounts carry over. The cut-over migration inserts an owner row for
-each remaining package from `owner_id`. Built and tested on PGlite and the
-testing project first.
+- `apps/web/src/lib/github.ts`: `clientForUser` → `clientForCourse`.
+- `apps/web/src/lib/package-trust-writes.ts`: `.eq("owner_id", …)` filters
+  → role checks through `requireCan`.
+- Listing consent and suggestions SQL (0009, 0025) keep `owner_id`, kept
+  correct by the trigger.
+- `package_changes` policy: member-readable.
+- `documents.repo` partition: becomes the file's space (contract v3); the
+  unique index changes to `(package_id, path) where not tombstoned`.
+
+## 7. Migration (R31)
+
+Accounts carry over; the cut-over inserts an owner row for each remaining
+package. Built and tested on PGlite and the testing project first.
+
+## 8. Review resolutions (G0 round 1)
+
+| Finding | Resolution |
+|---|---|
+| 3.1 `package_id` type | §2 text |
+| 2.1/3.2 owner-only data | §4.2 named tables, columns, JSON keys; grants revoked; definers |
+| 2.2 agent role | §3 `canAgent`, server-minted token |
+| 3.3 forged source pointers | §3 table: pointers server-written; contract §5: authority is the `sources` row |
+| 3.4 symlinks, submodules | contract §2 rule 6 |
+| 3.5 `.github/` | §3 table; contract §2 rule 2 |
+| 3.6 bans | §3, §4.2 `course_role` includes `is_active_user()` |
+| 3.7 encoded paths | contract §2 rule 1 |
+| 3.8 invitations | §4.3 |
+| 3.9 removal in flight | §4.1 re-check at execution; §4.4 collaborator removal |
+| 3.10 token scope | §4.4 |
+| 3.11 storage keys | contract §5 |
+| 3.12 private reads | members may read private instructor files (matrix: they may edit them); sources files are separate (contract §5) |
+| 2.3–2.8 | §2 trigger direction and creation; §2 no direct writes; §3 deputy rules and root files; invitations co-author only |
+| §4 existing-code conflicts | §6 |
+| T13 scan scope | A2.6 |
