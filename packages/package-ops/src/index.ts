@@ -40,3 +40,4 @@ export * from "./sql-queue-store";
 export * from "./copy-check";
 export * from "./sync-entry";
 export * from "./source-store";
+export * from "./publish-job";
