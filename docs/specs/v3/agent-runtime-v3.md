@@ -1,7 +1,7 @@
 # Agent runtime (sessions, hand-over, catch-up, deferral) — mini-spec
 
-**Status:** draft 2 for gate G7, 2026-10-27 (draft 1 reviewed; resolutions
-§8). Module C4 (with C3 sandbox provider, C5 harness adapter). Design
+**Status:** draft 3 for gate G7, 2026-10-27 (two review rounds; resolutions
+§9 and §10). Module C4 (with C3 sandbox provider, C5 harness adapter). Design
 source: `ALEMBIC-WORKSPACE-DESIGN.md` §5; FC-16 v1 draft Part A; write-path
 and queue specs.
 
@@ -155,7 +155,7 @@ paused:budget, unavailable}`.
 |---|---|---|---|
 | paused:owner, paused:handout | refused | accepted | accepted |
 | paused:github | accepted (queued; it waits) | accepted | accepted |
-| paused:budget | accepted for the current step; the next step needs a new hold | accepted | accepted |
+| paused:budget | accepted for the current step; the next step needs `extend` on the job's hold (ledger §9.9) | accepted | accepted |
 | unavailable | — | — | — |
 
 **Quick asks** use no sandbox. Vercel calls the gateway with a per-ask key
@@ -204,3 +204,31 @@ are never written by automatic work.
 | A-1 | §5 |
 | A-2 | §7 table |
 | A-3 | §7 quick asks; §1 unique running job |
+
+## 10. Round 2 resolutions (G7 round 2) — these rules take precedence
+
+1. **Keeping the token out of the agent's reach (H6):**
+   - **production:** the agent runs as a non-root user with no sudo, `/proc`
+     is mounted with `hidepid=2`, and ptrace is disabled (`yama ptrace_scope
+     = 3`); the sidecar runs as another user, holding the token and the AI
+     key in memory only;
+   - **testing (instabox, one VM):** each course's Linux user reaches the
+     agent API and the gateway only through **its own local proxy port**
+     (nftables owner match → a per-course port), and that proxy holds the
+     course's token. No VM-wide secret is used for the session token.
+   R.7 also checks that the agent user can't read the sidecar's environment
+   or memory, and that one course's user can't use another course's proxy.
+2. **Allowed hosts (R-3):** the machine firewall allows the gateway, the
+   fetch proxy and the agent API (Alembic's API host, whose addresses are
+   resolved and pinned by the orchestrator when the sandbox starts, renewed
+   on change). Nothing else.
+3. **Re-offering repeats every refusal (R-7):** the 30-second job re-runs
+   §4.1 steps 1–4 (token still valid, paths, read-only course, paused
+   reasons) before queueing a pending changeset.
+4. **Automatic jobs are capped at co-author rights at every check (R-10):**
+   the changeset records `rights_cap = 'co-author'`, and both §4.1 step 3
+   and the committer's re-check use `min(invoker role, rights_cap)`.
+5. **Public records are checked (R-5):** the publish profile's output is
+   run through the answer-key and copying checks like any public file, with
+   all text fields of a record concatenated, so passages split across
+   fields can't slip under the 12-word limit.

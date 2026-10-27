@@ -1,7 +1,7 @@
 # AI credit ledger (v3) — mini-spec
 
-**Status:** draft 2 for gate G7, 2026-10-27 (draft 1 reviewed; resolutions
-§8). Module C1. Design source: `ALEMBIC-WORKSPACE-DESIGN.md` §11; rulings
+**Status:** draft 3 for gate G7, 2026-10-27 (two review rounds; resolutions
+§8 and §9). Module C1. Design source: `ALEMBIC-WORKSPACE-DESIGN.md` §11; rulings
 R9, R27 (Stripe top-ups and operator grants to specific users or cohorts),
 O7.
 
@@ -13,13 +13,14 @@ concurrent operations on one account are serialised (L-1).
 ```sql
 create table public.ledger_accounts (
   id         uuid primary key default gen_random_uuid(),
-  kind       text not null check (kind in ('user','course-allowance','demo-budget')),
+  kind       text not null check (kind in ('user','course-allowance','demo-budget','cohort-pool')),
   user_id    uuid references public.profiles(id),
   package_id text references public.packages(id),
   month      date,
   check ((kind = 'user' and user_id is not null and package_id is null and month is null)
       or (kind = 'course-allowance' and package_id is not null and month is not null and user_id is null)
-      or (kind = 'demo-budget' and month is not null and user_id is null and package_id is null)),
+      or (kind = 'demo-budget' and month is not null and user_id is null and package_id is null)
+      or (kind = 'cohort-pool' and user_id is null and package_id is null and month is null)),
   debt       numeric(14,4) not null default 0 check (debt >= 0)   -- overruns not covered by any lot (§3.4)
 );
 create unique index on public.ledger_accounts (user_id) where kind = 'user';
@@ -245,3 +246,42 @@ per-network limits of design §11.5.
 | L-18 fail-open path | §4 |
 | L-19 | §1 checks; rounding up |
 | A-4, A-5, A-6 | §5, §3.4 extend, §6 |
+
+## 9. Round 2 resolutions (G7 round 2) — these rules take precedence
+
+1. **The margin is not money (H1).** Any capture beyond what the hold drew
+   from lots goes **straight to debt**. The margin only says how far into
+   debt a job may run before it is stopped; it is never a source of credit.
+   (Replaces "then from the margin" in §3.4.)
+2. **Jobs are capped (H2).** The job's gateway key has a spending cap of
+   `drawn + margin`. When it is reached, the orchestrator calls `extend`;
+   if `extend` fails, the job stops at a safe point and the session gets
+   `paused:budget`. Claim L.17.
+3. **Refunds never touch `captured` (H3).** A refund returns the refunded
+   cost to the lots it came from; a part that went to debt reduces debt
+   instead. `release` uses `drawn − captured` as before, so nothing is
+   returned twice. L.2 covers refund-then-release sequences.
+4. **Transfers keep their origin (H4).** `fund_allowance` records the
+   source top-up lot of each credit it moves. A Stripe refund or dispute
+   takes credit back first from the allowance lot it funded (unused part),
+   then from the owner's lots, then to the owner's debt. While the owner has
+   debt, `fund_allowance` and holds on that owner's allowances are refused.
+5. **Hold takes the payer from the job (H5).** `hold(actor, job, estimate)`
+   reads `jobs.payer_account_id` and checks it against the actor with the
+   §4 rules (requester's own account; the course allowance only for
+   automatic or checkpoint jobs of a course where the actor is a member; the
+   owner's account for a deputy's draft only if the owner enabled it; the
+   demo budget only for try-mode jobs). There is no account parameter.
+   L.11 covers it.
+6. **Debt is cleared first (L-12).** Every new lot (top-up, month-end
+   return, grant) pays off debt before it becomes spendable.
+7. **Month-end return** is idempotent (`return:<package>:<month>`).
+   Releases or refunds landing on an allowance after its month ended go
+   straight back to the owner.
+8. **Cohort pools** are accounts of kind `cohort-pool`. Only the members
+   of the cohort spend from it, and only for their own requests (the payer
+   rule in item 5).
+9. **`extend` failing** ends the step and pauses the job (`paused:budget`);
+   the job resumes when credit is available and `extend` succeeds. The
+   runtime spec's "the next step needs a new hold" means `extend` on the
+   job's single hold (C1).
