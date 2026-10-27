@@ -46,6 +46,12 @@ export async function getInstallationToken(opts: {
   appId: string;
   privateKey: string;
   installationId: string | number;
+  /**
+   * Limit the token to these repositories (names, without owner) — workspace
+   * v3 permissions §4.4: a course's token reaches only that course's repos.
+   * Omitted only for repository creation.
+   */
+  repositories?: readonly string[];
   fetchImpl?: FetchLike;
   nowMs?: number;
   retry?: Partial<RetryPolicy>;
@@ -62,7 +68,9 @@ export async function getInstallationToken(opts: {
         Authorization: `Bearer ${jwt}`,
         Accept: "application/vnd.github+json",
         "X-GitHub-Api-Version": "2022-11-28",
+        ...(opts.repositories ? { "Content-Type": "application/json" } : {}),
       },
+      ...(opts.repositories ? { body: JSON.stringify({ repositories: [...opts.repositories] }) } : {}),
     },
     { replayable: true, policy: opts.retry },
   );
@@ -156,6 +164,7 @@ export function installationTokenSource(opts: {
   appId: string;
   privateKey: string;
   installationId: string | number;
+  repositories?: readonly string[];
   fetchImpl?: FetchLike;
   now?: () => number;
   refreshBeforeMs?: number;
@@ -171,6 +180,7 @@ export function installationTokenSource(opts: {
       appId: opts.appId,
       privateKey: opts.privateKey,
       installationId: opts.installationId,
+      ...(opts.repositories ? { repositories: opts.repositories } : {}),
       fetchImpl: opts.fetchImpl,
       nowMs: now(),
       retry: opts.retry,

@@ -1,4 +1,5 @@
 import "server-only";
+import { courseRepoScope } from "./github-scope";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   commitFiles,
@@ -122,6 +123,37 @@ export async function clientForUser(
   if (!profile?.github_installation_id || !profile.github_username) return null;
   const client = await clientForInstallation(cfg, profile.github_installation_id);
   return { client, owner: profile.github_username };
+}
+
+/**
+ * A GitHub client for a COURSE (workspace v3): the installation of the account
+ * that owns its repositories, with tokens scoped to exactly those repositories
+ * (permissions §4.4). Used for every course GitHub call, whoever acts. Reads
+ * the service-role-only columns, so it takes the admin client. Null when the
+ * course has no installation or repositories recorded yet.
+ */
+export async function clientForCourse(
+  admin: SupabaseClient,
+  packageId: string,
+): Promise<{ client: GitHubClient; owner: string; repos: string[] } | null> {
+  const cfg = githubConfig();
+  if (!cfg) return null;
+  const { data } = await admin
+    .from("packages")
+    .select("repo_installation_id, private_repo, public_repo")
+    .eq("id", packageId)
+    .maybeSingle();
+  if (!data?.repo_installation_id) return null;
+  const scope = courseRepoScope(data as Parameters<typeof courseRepoScope>[0]);
+  if (!scope) return null;
+  const tokens = installationTokenSource({
+    appId: cfg.appId,
+    privateKey: cfg.privateKey,
+    installationId: data.repo_installation_id as number,
+    repositories: scope.names,
+  });
+  await tokens.token();
+  return { client: new GitHubClient(tokens), owner: scope.owner, repos: scope.names };
 }
 
 export { advanceSyncedSha, recordOwnCommit, recordSyncedSha, syncedShaFor } from "./synced-sha";
