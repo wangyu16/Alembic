@@ -94,7 +94,9 @@ never blocks the course.
 ### 2.5 Re-check at execution
 
 The consumer re-reads the actor's role (or the invoker's, for changesets)
-when it processes a row; removed or banned → `refused`. `outside` and
+when it processes a row and re-checks **every path** with that current role
+(`canWritePath`); removed or banned, or a path no longer allowed (e.g. a
+deputy term ended) → `refused`. `outside` and
 `system` rows are not permission-checked (the push already happened or the
 platform is acting), but **are** subject to §4.
 
@@ -233,6 +235,8 @@ additions). An Edited elsewhere item names the pusher.
 | `course_members` | — | SELECT own course | all |
 | `typing` | — | INSERT/UPDATE own rows for own courses; SELECT own course | all |
 | `approvals` | — | SELECT own course | all |
+| `agent_sessions`, `session_events`, `agent_changesets`, `jobs` | — | SELECT own course (events: own course) | all |
+| ledger tables (`ledger_accounts`, `credit_lots`, `holds`, `hold_lots`, `ledger_entries`, `credit_grants`, `cohort_members`) | — | SELECT own user account and its lots/entries; owner: the course allowance | all (through definers; entries append-only) |
 
 ## 8. Claims (bound to tests)
 
