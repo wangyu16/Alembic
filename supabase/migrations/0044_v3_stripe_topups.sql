@@ -39,6 +39,7 @@ create table public.stripe_checkouts (
 create table public.stripe_payments (
   payment_intent text primary key,
   refunded_cents int not null default 0 check (refunded_cents >= 0),
+  as_of          bigint not null default 0,  -- Stripe `created` of the event this state came from
   updated_at     timestamptz not null default now()
 );
 
@@ -47,6 +48,7 @@ create table public.stripe_disputes (
   payment_intent text not null,
   amount_cents   int not null check (amount_cents >= 0),
   withdrawn      boolean not null,
+  as_of          bigint not null,            -- Stripe `created` of the event this state came from
   updated_at     timestamptz not null default now()
 );
 
@@ -81,6 +83,13 @@ begin
   on conflict (session_id) do nothing;
   return v_credits;
 end $$;
+
+-- Every path that touches one payment takes this lock first, so a refund
+-- racing the paid event can't read the checkout before it is linked.
+create function public.stripe_lock_payment(p_payment_intent text)
+returns void language sql security definer set search_path = '' as $$
+  select pg_advisory_xact_lock(hashtextextended('stripe-payment:' || p_payment_intent, 0));
+$$;
 
 -- Bring a credited checkout's credit in line with its payment's state.
 create function public.ledger_reconcile_payment(p_payment_intent text)
@@ -118,31 +127,40 @@ begin
   if p_reference is distinct from c.user_id then raise exception 'checkout belongs to someone else' using errcode = '42501'; end if;
   if p_usd_cents <> c.usd_cents then raise exception 'paid amount differs from the checkout' using errcode = '22023'; end if;
   if p_payment_intent is null then raise exception 'paid checkout without a payment' using errcode = '22023'; end if;
+  perform public.stripe_lock_payment(p_payment_intent);
   update public.stripe_checkouts set topup_event = p_event, payment_intent = p_payment_intent where session_id = p_session;
   perform public.ledger_topup(c.user_id, c.credits, p_event);
   perform public.ledger_reconcile_payment(p_payment_intent);  -- a refund may have arrived first
 end $$;
 
--- charge.refunded: Stripe's running refund total for the payment.
-create function public.ledger_payment_refunded(p_payment_intent text, p_total_cents int)
+-- charge.refunded: Stripe's running refund total for the payment, as of the
+-- event's time. A newer total always wins, even a lower one (a refund that
+-- failed gives the credit back); an older event delivered late changes nothing.
+create function public.ledger_payment_refunded(p_payment_intent text, p_total_cents int, p_as_of bigint)
 returns void language plpgsql security definer set search_path = '' as $$
 begin
   if p_total_cents < 0 then raise exception 'bad amount' using errcode = '22023'; end if;
-  insert into public.stripe_payments (payment_intent, refunded_cents) values (p_payment_intent, p_total_cents)
+  perform public.stripe_lock_payment(p_payment_intent);
+  insert into public.stripe_payments (payment_intent, refunded_cents, as_of) values (p_payment_intent, p_total_cents, p_as_of)
   on conflict (payment_intent) do update
-    set refunded_cents = greatest(public.stripe_payments.refunded_cents, excluded.refunded_cents), updated_at = now();
+    set refunded_cents = excluded.refunded_cents, as_of = excluded.as_of, updated_at = now()
+    where public.stripe_payments.as_of < excluded.as_of;
   perform public.ledger_reconcile_payment(p_payment_intent);
 end $$;
 
--- charge.dispute.funds_withdrawn / funds_reinstated. Inquiries and warnings
--- move no money and are not passed here.
-create function public.ledger_payment_dispute(p_payment_intent text, p_dispute text, p_amount_cents int, p_withdrawn boolean)
+-- charge.dispute.funds_withdrawn / funds_reinstated, as of the event's time
+-- (a late resend of an older event can't undo a won dispute). Inquiries and
+-- warnings move no money and are not passed here.
+create function public.ledger_payment_dispute(p_payment_intent text, p_dispute text, p_amount_cents int, p_withdrawn boolean, p_as_of bigint)
 returns void language plpgsql security definer set search_path = '' as $$
 begin
   if p_amount_cents < 0 then raise exception 'bad amount' using errcode = '22023'; end if;
-  insert into public.stripe_disputes (dispute_id, payment_intent, amount_cents, withdrawn) values (p_dispute, p_payment_intent, p_amount_cents, p_withdrawn)
-  on conflict (dispute_id) do update set withdrawn = excluded.withdrawn, amount_cents = excluded.amount_cents, updated_at = now()
-    where public.stripe_disputes.payment_intent = excluded.payment_intent;
+  perform public.stripe_lock_payment(p_payment_intent);
+  insert into public.stripe_disputes (dispute_id, payment_intent, amount_cents, withdrawn, as_of)
+  values (p_dispute, p_payment_intent, p_amount_cents, p_withdrawn, p_as_of)
+  on conflict (dispute_id) do update
+    set withdrawn = excluded.withdrawn, amount_cents = excluded.amount_cents, as_of = excluded.as_of, updated_at = now()
+    where public.stripe_disputes.payment_intent = excluded.payment_intent and public.stripe_disputes.as_of < excluded.as_of;
   perform public.ledger_reconcile_payment(p_payment_intent);
 end $$;
 
@@ -156,8 +174,9 @@ declare f text;
 begin
   foreach f in array array[
     'ledger_checkout_created(text, uuid, int)', 'ledger_reconcile_payment(text)',
-    'ledger_checkout_paid(text, text, text, int, uuid)', 'ledger_payment_refunded(text, int)',
-    'ledger_payment_dispute(text, text, int, boolean)', 'ledger_stripe_problem(text, text)'] loop
+    'ledger_checkout_paid(text, text, text, int, uuid)', 'ledger_payment_refunded(text, int, bigint)',
+    'ledger_payment_dispute(text, text, int, boolean, bigint)', 'ledger_stripe_problem(text, text)',
+    'stripe_lock_payment(text)'] loop
     execute format('revoke execute on function public.%s from public, anon, authenticated', f);
     execute format('grant execute on function public.%s to service_role', f);
   end loop;

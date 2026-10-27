@@ -11,9 +11,11 @@ async function attempt(fn: () => Promise<unknown>): Promise<"ok" | "refused"> { 
 const created = (s: string, u: string, cents: number) => svc(`select public.ledger_checkout_created($1, $2, $3)`, [s, u, cents]);
 const paid = (s: string, e: string, pi: string, cents: number, ref: string) =>
   svc(`select public.ledger_checkout_paid($1, $2, $3, $4, $5)`, [s, e, pi, cents, ref]);
-const refunded = (pi: string, total: number) => svc(`select public.ledger_payment_refunded($1, $2)`, [pi, total]);
-const dispute = (pi: string, id: string, cents: number, withdrawn: boolean) =>
-  svc(`select public.ledger_payment_dispute($1, $2, $3, $4)`, [pi, id, cents, withdrawn]);
+let clock = 1_000;
+/** Each event is newer than the last unless `at` says otherwise. */
+const refunded = (pi: string, total: number, at = ++clock) => svc(`select public.ledger_payment_refunded($1, $2, $3)`, [pi, total, at]);
+const dispute = (pi: string, id: string, cents: number, withdrawn: boolean, at = ++clock) =>
+  svc(`select public.ledger_payment_dispute($1, $2, $3, $4, $5)`, [pi, id, cents, withdrawn, at]);
 const setPrice = (usd: number) => db.query(`insert into public.credit_prices (usd_per_credit, valid_from) values ($1, now())`, [usd]);
 
 beforeAll(async () => {
@@ -47,9 +49,10 @@ describe("Stripe top-ups", () => {
     const u = await seedUser(db, "sx");
     await created("cs_c", u, 1000);
     await paid("cs_c", "evt_c", "pi_c", 1000, u);
-    await refunded("pi_c", 300);
-    await refunded("pi_c", 300); // replay
-    await refunded("pi_c", 200); // an older total delivered late: no effect
+    await refunded("pi_c", 200, 500);
+    await refunded("pi_c", 300, 600);
+    await refunded("pi_c", 300, 600); // replay
+    await refunded("pi_c", 200, 500); // an older total delivered late: no effect
     expect(await bal(u)).toBe(700);
     await db.query(`update public.credit_lots set remaining = 100 where source = 'top-up:evt_c'`); // 600 spent
     await refunded("pi_c", 1000);
@@ -63,6 +66,16 @@ describe("Stripe top-ups", () => {
     await dispute("pi_h1", "dp_h1", 500, true);
     await refunded("pi_h1", 300);
     expect(await bal(u)).toBe(200);
+  });
+
+  it("a refund that failed (Stripe's total goes down) gives the credit back (round 2, L1)", async () => {
+    const u = await seedUser(db, "sfail");
+    await created("cs_l1", u, 1000);
+    await paid("cs_l1", "evt_l1", "pi_l1", 1000, u);
+    await refunded("pi_l1", 500);
+    expect(await bal(u)).toBe(500);
+    await refunded("pi_l1", 0);
+    expect(await bal(u)).toBe(1000);
   });
 
   it("a refund that arrives before the payment is recorded is applied when it is (review H2)", async () => {
@@ -85,6 +98,9 @@ describe("Stripe top-ups", () => {
     expect(await debt(u)).toBe(600);
     await dispute("pi_h3", "dp_h3", 1000, false); // won: funds reinstated
     expect(await debt(u)).toBe(0);
+    expect(await bal(u)).toBe(400);
+    // A late resend of the older "withdrawn" event changes nothing (round 2, M1).
+    await dispute("pi_h3", "dp_h3", 1000, true, 1);
     expect(await bal(u)).toBe(400);
   });
 

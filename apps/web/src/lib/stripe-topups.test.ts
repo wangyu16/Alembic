@@ -34,7 +34,7 @@ function deps(events: StripeEvent[], livemode = false) {
   return d;
 }
 const session = (over: Record<string, unknown> = {}): StripeEvent => ({
-  id: "evt_s", type: "checkout.session.completed", livemode: false,
+  id: "evt_s", type: "checkout.session.completed", created: 100, livemode: false,
   data: { object: { id: "cs_1", mode: "payment", payment_status: "paid", amount_total: 1000, currency: "usd", payment_intent: "pi_1", client_reference_id: "u1", metadata: { alembic: "topup" }, ...over } },
 });
 
@@ -56,18 +56,21 @@ describe("handleStripeEvent", () => {
   });
   it("passes refunds as Stripe's running total, and disputes only when money moves", async () => {
     const d = deps([
-      { id: "evt_r", type: "charge.refunded", data: { object: { payment_intent: "pi_1", amount_refunded: 400 } } },
-      { id: "evt_w", type: "charge.dispute.funds_withdrawn", data: { object: { id: "dp_1", payment_intent: { id: "pi_1" }, amount: 600 } } },
-      { id: "evt_b", type: "charge.dispute.funds_reinstated", data: { object: { id: "dp_1", payment_intent: "pi_1", amount: 600 } } },
-      { id: "evt_c", type: "charge.dispute.created", data: { object: { id: "dp_2", payment_intent: "pi_1", amount: 600 } } },
+      { id: "evt_r", type: "charge.refunded", created: 101, data: { object: { payment_intent: "pi_1", amount_refunded: 400, currency: "usd" } } },
+      { id: "evt_w", type: "charge.dispute.funds_withdrawn", created: 102, data: { object: { id: "dp_1", payment_intent: { id: "pi_1" }, amount: 600, currency: "usd" } } },
+      { id: "evt_b", type: "charge.dispute.funds_reinstated", created: 103, data: { object: { id: "dp_1", payment_intent: "pi_1", amount: 600, currency: "usd" } } },
+      { id: "evt_c", type: "charge.dispute.created", created: 104, data: { object: { id: "dp_2", payment_intent: "pi_1", amount: 600 } } },
     ]);
     expect((await handleStripeEvent("evt_r", d)).status).toBe("reversed");
     expect((await handleStripeEvent("evt_w", d)).status).toBe("reversed");
     expect((await handleStripeEvent("evt_b", d)).status).toBe("restored");
     expect((await handleStripeEvent("evt_c", d)).status).toBe("ignored");
-    expect(d.paymentRefunded).toHaveBeenCalledWith({ paymentIntent: "pi_1", totalCents: 400 });
-    expect(d.paymentDispute).toHaveBeenNthCalledWith(1, { paymentIntent: "pi_1", dispute: "dp_1", amountCents: 600, withdrawn: true });
-    expect(d.paymentDispute).toHaveBeenNthCalledWith(2, { paymentIntent: "pi_1", dispute: "dp_1", amountCents: 600, withdrawn: false });
+    expect(d.paymentRefunded).toHaveBeenCalledWith({ paymentIntent: "pi_1", totalCents: 400, asOf: 101 });
+    expect(d.paymentDispute).toHaveBeenNthCalledWith(1, { paymentIntent: "pi_1", dispute: "dp_1", amountCents: 600, withdrawn: true, asOf: 102 });
+    // A refund in another currency is not counted against USD credit.
+    const e = deps([{ id: "evt_j", type: "charge.refunded", created: 105, data: { object: { payment_intent: "pi_1", amount_refunded: 400, currency: "jpy" } } }]);
+    expect((await handleStripeEvent("evt_j", e)).status).toBe("rejected");
+    expect(d.paymentDispute).toHaveBeenNthCalledWith(2, { paymentIntent: "pi_1", dispute: "dp_1", amountCents: 600, withdrawn: false, asOf: 103 });
   });
   it("knows live secret and restricted keys", () => {
     expect(isLiveKey("sk_live_x")).toBe(true);
@@ -85,6 +88,7 @@ describe("createTopupCheckout", () => {
       expect(f.get("client_reference_id")).toBe("u1");
       expect(f.get("metadata[alembic]")).toBe("topup");
       expect(f.get("line_items[0][price_data][unit_amount]")).toBe("1000");
+      expect(f.get("adaptive_pricing[enabled]")).toBe("false");
       return Response.json({ id: "cs_9", url: "https://checkout.stripe.com/x" });
     }) as unknown as typeof fetch;
     const record = vi.fn(async () => { order.push("record"); });

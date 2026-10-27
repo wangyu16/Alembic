@@ -48,6 +48,8 @@ export function verifyStripeSignature(
 export interface StripeEvent {
   id: string;
   type: string;
+  /** Seconds since epoch; orders refund and dispute states. */
+  created: number;
   livemode?: boolean;
   data: { object: Record<string, unknown> };
 }
@@ -57,9 +59,9 @@ export interface TopupDeps {
   fetchEvent(id: string): Promise<StripeEvent | null>;
   checkoutPaid(a: { session: string; event: string; paymentIntent: string | null; usdCents: number; reference: string | null }): Promise<void>;
   /** Stripe's running refund total for a payment. */
-  paymentRefunded(a: { paymentIntent: string; totalCents: number }): Promise<void>;
+  paymentRefunded(a: { paymentIntent: string; totalCents: number; asOf: number }): Promise<void>;
   /** A dispute's money was withdrawn (true) or reinstated after a win (false). */
-  paymentDispute(a: { paymentIntent: string; dispute: string; amountCents: number; withdrawn: boolean }): Promise<void>;
+  paymentDispute(a: { paymentIntent: string; dispute: string; amountCents: number; withdrawn: boolean; asOf: number }): Promise<void>;
   /** Live or test mode this deployment accepts. */
   livemode: boolean;
 }
@@ -80,6 +82,8 @@ export async function handleStripeEvent(eventId: string, deps: TopupDeps): Promi
   const ev = await deps.fetchEvent(eventId);
   if (!ev || ev.id !== eventId) return { status: "rejected", reason: "event not found at Stripe" };
   if (Boolean(ev.livemode) !== deps.livemode) return { status: "rejected", reason: "wrong mode" };
+  if (!Number.isInteger(ev.created) || ev.created <= 0) return { status: "rejected", reason: "malformed event" };
+  const usd = (v: unknown) => String(v).toLowerCase() === "usd";
   const o = ev.data.object;
 
   switch (ev.type) {
@@ -90,7 +94,7 @@ export async function handleStripeEvent(eventId: string, deps: TopupDeps): Promi
       if (o["mode"] !== "payment" || o["payment_status"] !== "paid") return { status: "ignored", event: ev.id };
       const session = str(o["id"]);
       const usdCents = int(o["amount_total"]);
-      if (!session || usdCents === null || String(o["currency"]).toLowerCase() !== "usd") {
+      if (!session || usdCents === null || !usd(o["currency"])) {
         return { status: "rejected", reason: "malformed checkout" };
       }
       await deps.checkoutPaid({
@@ -105,8 +109,8 @@ export async function handleStripeEvent(eventId: string, deps: TopupDeps): Promi
     case "charge.refunded": {
       const pi = intentOf(o["payment_intent"]);
       const total = int(o["amount_refunded"]);
-      if (!pi || total === null) return { status: "rejected", reason: "malformed refund" };
-      await deps.paymentRefunded({ paymentIntent: pi, totalCents: total });
+      if (!pi || total === null || !usd(o["currency"])) return { status: "rejected", reason: "malformed refund" };
+      await deps.paymentRefunded({ paymentIntent: pi, totalCents: total, asOf: ev.created });
       return { status: "reversed", event: ev.id };
     }
     // Disputes count only when money actually moves; inquiries and warnings don't.
@@ -115,9 +119,9 @@ export async function handleStripeEvent(eventId: string, deps: TopupDeps): Promi
       const pi = intentOf(o["payment_intent"]);
       const dispute = str(o["id"]);
       const amount = int(o["amount"]);
-      if (!pi || !dispute || amount === null) return { status: "rejected", reason: "malformed dispute" };
+      if (!pi || !dispute || amount === null || !usd(o["currency"])) return { status: "rejected", reason: "malformed dispute" };
       const withdrawn = ev.type === "charge.dispute.funds_withdrawn";
-      await deps.paymentDispute({ paymentIntent: pi, dispute, amountCents: amount, withdrawn });
+      await deps.paymentDispute({ paymentIntent: pi, dispute, amountCents: amount, withdrawn, asOf: ev.created });
       return { status: withdrawn ? "reversed" : "restored", event: ev.id };
     }
     default:
@@ -158,6 +162,8 @@ export async function createTopupCheckout(
     mode: "payment",
     client_reference_id: a.userId,
     "metadata[alembic]": TOPUP_TAG,
+    // Charge in US dollars only: credit, refunds and disputes are all counted in USD cents.
+    "adaptive_pricing[enabled]": "false",
     "line_items[0][quantity]": "1",
     "line_items[0][price_data][currency]": "usd",
     "line_items[0][price_data][unit_amount]": String(a.usdCents),

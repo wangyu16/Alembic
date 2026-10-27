@@ -35,9 +35,9 @@ export async function POST(req: NextRequest) {
     checkoutPaid: (a) => rpc("ledger_checkout_paid", {
       p_session: a.session, p_event: a.event, p_payment_intent: a.paymentIntent, p_usd_cents: a.usdCents, p_reference: a.reference,
     }),
-    paymentRefunded: (a) => rpc("ledger_payment_refunded", { p_payment_intent: a.paymentIntent, p_total_cents: a.totalCents }),
+    paymentRefunded: (a) => rpc("ledger_payment_refunded", { p_payment_intent: a.paymentIntent, p_total_cents: a.totalCents, p_as_of: a.asOf }),
     paymentDispute: (a) => rpc("ledger_payment_dispute", {
-      p_payment_intent: a.paymentIntent, p_dispute: a.dispute, p_amount_cents: a.amountCents, p_withdrawn: a.withdrawn,
+      p_payment_intent: a.paymentIntent, p_dispute: a.dispute, p_amount_cents: a.amountCents, p_withdrawn: a.withdrawn, p_as_of: a.asOf,
     }),
   };
   // Kept for the operator: a paid event Alembic could not match never vanishes into a log.
