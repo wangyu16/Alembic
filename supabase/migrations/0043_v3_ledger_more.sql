@@ -172,18 +172,20 @@ begin
   select * into l from public.credit_lots where source = 'top-up:' || p_event;
   if not found then raise exception 'unknown top-up' using errcode = '22023'; end if;
   perform 1 from public.ledger_accounts where id = l.account_id for update;
-  v_take := least(l.remaining, v_left);
-  update public.credit_lots set remaining = remaining - v_take where id = l.id;
-  v_left := v_left - v_take;
+  -- Order (ledger §9.4): the unused part of any allowance it funded, then the top-up lot, then debt.
   for o in select x.lot_id, x.amount, c.remaining, c.account_id from public.lot_origins x join public.credit_lots c on c.id = x.lot_id
             where x.source_lot_id = l.id loop
     exit when v_left <= 0;
     v_take := least(o.amount, o.remaining, v_left);
     if v_take > 0 then
+      perform 1 from public.ledger_accounts where id = o.account_id for update;
       update public.credit_lots set remaining = remaining - v_take where id = o.lot_id;
       v_left := v_left - v_take;
     end if;
   end loop;
+  v_take := least(l.remaining, v_left);
+  update public.credit_lots set remaining = remaining - v_take where id = l.id;
+  v_left := v_left - v_take;
   if v_left > 0 then update public.ledger_accounts set debt = debt + v_left where id = l.account_id; end if;
   insert into public.ledger_entries (account_id, kind, amount, lot_id, idempotency_key, note)
   values (l.account_id, 'refund', p_amount, l.id, 'reversal:' || p_reason_event, 'payment refunded or disputed');

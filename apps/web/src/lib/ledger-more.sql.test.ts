@@ -61,6 +61,15 @@ describe("course allowance", () => {
     const allowance = (await svc<{ r: string }>(`select coalesce(sum(l.remaining),0) as r from public.credit_lots l join public.ledger_accounts a on a.id = l.account_id where a.kind = 'course-allowance' and a.package_id = $1`, [pkg])).rows[0]!.r;
     expect(Number(allowance)).toBe(0);
     expect(await bal(owner)).toBe(0);
+    // Both still hold credit: the allowance it funded goes first, then the top-up itself.
+    const owner3 = await seedUser(db, "down3");
+    const pkg3 = await seedPackage(db, { owner: owner3 });
+    await svc(`select public.ledger_topup($1, 100, 'evt_d5')`, [owner3]);
+    await svc(`select public.ledger_fund_allowance($1, $2, '2026-10-01', 30, 'fd5')`, [owner3, pkg3]);
+    await svc(`select public.ledger_topup_reversed('evt_d5', 50, 'dispute_5')`);
+    const left3 = (await svc<{ r: string }>(`select coalesce(sum(remaining),0) as r from public.credit_lots where source = 'transfer:fd5'`)).rows[0]!.r;
+    expect(Number(left3)).toBe(0);
+    expect(await bal(owner3)).toBe(50);
     // If the allowance had already been spent, the rest is debt and the allowance pauses.
     const owner2 = await seedUser(db, "down2");
     const pkg2 = await seedPackage(db, { owner: owner2 });
