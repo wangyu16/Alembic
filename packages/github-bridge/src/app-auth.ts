@@ -84,6 +84,8 @@ export interface InstallationAccount {
   login: string;
   /** "User" or "Organization". */
   type: string;
+  /** GitHub's numeric account id (immutable, unlike the login). */
+  id: number | null;
 }
 
 /**
@@ -120,12 +122,12 @@ export async function getInstallationAccount(opts: {
     );
   }
   const data = (await res.json()) as {
-    account: { login: string; type: string } | null;
+    account: { login: string; type: string; id?: number } | null;
   };
   if (!data.account?.login) {
     throw new GitHubError("Installation has no account login", res.status);
   }
-  return { login: data.account.login, type: data.account.type };
+  return { login: data.account.login, type: data.account.type, id: typeof data.account.id === "number" ? data.account.id : null };
 }
 
 /**

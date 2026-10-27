@@ -79,7 +79,7 @@ describe("getInstallationAccount", () => {
       return {
         ok: true,
         status: 200,
-        json: async () => ({ account: { login: "prof-ada", type: "User" } }),
+        json: async () => ({ account: { login: "prof-ada", type: "User", id: 777 } }),
         text: async () => "",
       };
     };
@@ -89,7 +89,7 @@ describe("getInstallationAccount", () => {
       installationId: 42,
       fetchImpl,
     });
-    expect(res).toEqual({ login: "prof-ada", type: "User" });
+    expect(res).toEqual({ login: "prof-ada", type: "User", id: 777 });
     expect(calls[0]?.url).toContain("/app/installations/42");
     expect(calls[0]?.init?.method).toBe("GET");
   });
