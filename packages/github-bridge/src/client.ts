@@ -173,6 +173,27 @@ function isNotFastForward(err: unknown): boolean {
   );
 }
 
+/**
+ * The branch head is no longer the head the caller decided against
+ * (workspace v3, write-path spec §3.2 step 4). Nothing was moved; the
+ * caller re-reads the head and decides again.
+ */
+export class HeadMovedError extends Error {
+  constructor(
+    readonly expected: string,
+    readonly actual: string | null,
+  ) {
+    super(`branch head moved (expected ${expected}, found ${actual ?? "unknown"})`);
+    this.name = "HeadMovedError";
+  }
+}
+
+/** A file in a commit-chain step: new text/bytes, an existing blob, or a deletion. */
+export type ChainFile =
+  | { path: string; content: string; encoding?: "utf-8" | "base64" }
+  | { path: string; blobSha: string }
+  | { path: string; content: null };
+
 export class GitHubClient {
   private readonly tokens: TokenSource;
   private readonly retry: Partial<RetryPolicy> | undefined;
@@ -465,6 +486,67 @@ export class GitHubClient {
       { sha: commit.sha },
     );
     return { commitSha: commit.sha, parentSha };
+  }
+
+  /**
+   * Build one or more commits on top of `expectedHead`, each step's tree on
+   * the previous one, and move the branch ONCE to the last commit — only if
+   * the branch head is still `expectedHead` (workspace v3 write path §3.2,
+   * §5: kept versions are committed before the version on top, and the head
+   * never shows the kept one). The ref update is a non-force PATCH, so a
+   * concurrent push that moved the head forward makes it fail; the head is
+   * also re-read just before the PATCH so a rewind (force-push to an older
+   * commit) is caught too, instead of being fast-forwarded over.
+   * Throws `HeadMovedError`; nothing is moved in that case.
+   */
+  async commitChain(input: {
+    coords: RepoCoords;
+    branch?: string;
+    expectedHead: string;
+    steps: Array<{ message: string; files: ChainFile[] }>;
+  }): Promise<{ commitShas: string[]; head: string }> {
+    const branch = input.branch ?? "main";
+    const { owner, repo } = input.coords;
+    if (input.steps.length === 0) return { commitShas: [], head: input.expectedHead };
+    const base = await this.request<{ tree: { sha: string } }>(
+      "GET",
+      `/repos/${owner}/${repo}/git/commits/${input.expectedHead}`,
+    );
+    let parent = input.expectedHead;
+    let tree = base.tree.sha;
+    const commitShas: string[] = [];
+    for (const step of input.steps) {
+      const entries = await mapWithConcurrency(step.files, BLOB_UPLOAD_CONCURRENCY, async (f) => {
+        if ("blobSha" in f) return { path: f.path, mode: "100644", type: "blob", sha: f.blobSha };
+        if (f.content === null) return { path: f.path, mode: "100644", type: "blob", sha: null };
+        if (f.encoding === "base64") {
+          const sha = await this.createBlob(input.coords, f.content, "base64");
+          return { path: f.path, mode: "100644", type: "blob", sha };
+        }
+        return { path: f.path, mode: "100644", type: "blob", content: f.content };
+      });
+      const newTree = await this.request<{ sha: string }>("POST", `/repos/${owner}/${repo}/git/trees`, {
+        base_tree: tree,
+        tree: entries,
+      });
+      const commit = await this.request<{ sha: string }>("POST", `/repos/${owner}/${repo}/git/commits`, {
+        message: step.message,
+        tree: newTree.sha,
+        parents: [parent],
+      });
+      commitShas.push(commit.sha);
+      parent = commit.sha;
+      tree = newTree.sha;
+    }
+    const now = await this.getRefSha(input.coords, `heads/${branch}`);
+    if (now !== input.expectedHead) throw new HeadMovedError(input.expectedHead, now);
+    try {
+      await this.request("PATCH", `/repos/${owner}/${repo}/git/refs/heads/${branch}`, { sha: parent });
+    } catch (e) {
+      if (isNotFastForward(e)) throw new HeadMovedError(input.expectedHead, null);
+      throw e;
+    }
+    return { commitShas, head: parent };
   }
 
   async listCommits(
