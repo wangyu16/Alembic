@@ -36,3 +36,4 @@ export * from "./populate-package";
 export * from "./version-rule";
 export * from "./course-committer";
 export * from "./publisher";
+export * from "./sql-queue-store";

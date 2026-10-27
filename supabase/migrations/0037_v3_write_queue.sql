@@ -178,6 +178,28 @@ begin
   if not found then raise exception 'row is not being processed' using errcode = '22023'; end if;
 end $$;
 
+-- course_role_of: a given user's role (the committer's re-check at execution).
+create function public.course_role_of(p text, p_user uuid)
+returns text language sql stable security definer set search_path = '' as $$
+  select case
+    when not exists (
+      select 1 from auth.users u
+       where u.id = p_user and (u.banned_until is null or u.banned_until <= now())
+    ) then null
+    else (
+      select case
+        when m.role = 'owner' then 'owner'
+        when m.deputy_until is not null and m.deputy_until > now() then 'deputy'
+        else 'co-author'
+      end
+      from public.course_members m
+      where m.package_id = p and m.user_id = p_user
+    )
+  end
+$$;
+revoke execute on function public.course_role_of(text, uuid) from public, anon, authenticated;
+grant execute on function public.course_role_of(text, uuid) to service_role;
+
 revoke execute on function public.queue_insert(text, text, text, jsonb, uuid, uuid, text, smallint, uuid) from public, anon, authenticated;
 revoke execute on function public.committer_acquire(text, text, int) from public, anon, authenticated;
 revoke execute on function public.committer_holds(text, text, bigint) from public, anon, authenticated;
