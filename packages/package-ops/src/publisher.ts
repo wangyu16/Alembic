@@ -31,7 +31,9 @@ const SLOT_DIRS = ["study-guide", "slides", "practice", "concepts", "assessment-
 
 /** The chapter slug a path belongs to, if it is a slot file or chapter-scoped. */
 export function chapterSlugOf(path: string): string | null {
-  const scoped = /^[a-z-]+\/chapters\/([a-z0-9]+(?:-[a-z0-9]+)*)\//.exec(path);
+  // Any folder under `<space>/chapters/` is chapter-scoped, valid slug or not
+  // (an invalid name can never match a chapter, so it becomes an orphan) (G3 M1).
+  const scoped = /^[a-z-]+\/chapters\/([^/]+)\//.exec(path);
   if (scoped) return scoped[1]!;
   for (const dir of SLOT_DIRS) {
     const m = new RegExp(`^${dir}/([a-z0-9]+(?:-[a-z0-9]+)*)\\.(?:slides\\.)?md$`).exec(path);
@@ -114,6 +116,8 @@ export interface AssembleInput {
   everPublishedChapters: ReadonlySet<string>;
   /** Files Publish generates (`.alembic/…`, `provenance/coursewerk/…`), already computed. */
   generated?: ReadonlyMap<string, TreeFile>;
+  /** Texts of kept units' published files (to keep only the deleted assets they still link to). */
+  keptTexts?: ReadonlyMap<string, string>;
 }
 
 export interface AssembledTree {
@@ -144,7 +148,11 @@ export function assemblePublicTree(i: AssembleInput): AssembledTree {
       if (pass(key)) continue; // passing: W is authoritative (a file deleted at W stays deleted)
     } else if (key.startsWith("asset:")) {
       if (pass(key) && i.working.has(path)) continue;
-      // asset deleted at W: kept only while a kept chapter still uses it (decided by the link check)
+      if (!i.working.has(path)) {
+        // Deleted at W: kept only while a kept unit's published text still links to it (G3 H3).
+        const usedByKept = [...(i.keptTexts ?? new Map<string, string>())].some(([from, text]) => relativeLinks(from, text).includes(path));
+        if (!usedByKept) continue;
+      }
     } else if (pass(key)) {
       continue;
     }
@@ -170,11 +178,13 @@ export function assemblePublicTree(i: AssembleInput): AssembledTree {
 /** Relative links and image/embed sources in Markdown text. */
 export function relativeLinks(fromPath: string, text: string): string[] {
   const out = new Set<string>();
-  const re = /\]\(\s*<?([^)\s>]+)>?(?:\s+"[^"]*")?\s*\)|\bsrc\s*=\s*"([^"]+)"/g;
+  // Inline links, images, src/href attributes (either quote), and reference definitions (G3 L1).
+  const re = /\]\(\s*<?([^)\s>]+)>?(?:\s+"[^"]*")?\s*\)|\b(?:src|href)\s*=\s*["']([^"']+)["']|^\s*\[[^\]]+\]:\s*<?(\S+?)>?(?:\s|$)/gm;
   for (const m of text.matchAll(re)) {
-    const raw = (m[1] ?? m[2] ?? "").split("#")[0]!.split("?")[0]!;
-    if (!raw || /^[a-z][a-z0-9+.-]*:/i.test(raw) || raw.startsWith("/") || raw.startsWith("//")) continue;
-    const dir = fromPath.split("/").slice(0, -1);
+    const raw = (m[1] ?? m[2] ?? m[3] ?? "").split("#")[0]!.split("?")[0]!;
+    if (!raw || /^[a-z][a-z0-9+.-]*:/i.test(raw) || raw.startsWith("//")) continue;
+    // Root-absolute links resolve from the course root.
+    const dir = raw.startsWith("/") ? [] : fromPath.split("/").slice(0, -1);
     for (const seg of raw.split("/")) {
       if (seg === "" || seg === ".") continue;
       if (seg === "..") dir.pop();
@@ -200,10 +210,17 @@ export function publishWithLinkCheck(
     const tree = assemblePublicTree({ ...assembleIn, decisions });
     const added: Finding[] = [];
     for (const [path, f] of tree.files) {
-      if (f.origin !== "unit" || f.text === undefined || !f.unit.startsWith("chapter:")) continue;
+      // Chapters and the course unit (course map) are link-checked (G3 L2).
+      if (f.origin !== "unit" || f.text === undefined || !(f.unit.startsWith("chapter:") || f.unit === "course")) continue;
+      if (decisions.get(f.unit)?.result !== "pass") continue;
       for (const target of relativeLinks(path, f.text)) {
-        if (!tree.files.has(target) && !findings.some((x) => x.unit === f.unit && x.check === "link" && x.path === target)) {
-          added.push({ unit: f.unit, path: target, check: "link", severity: "default", message: `Links to ${target}, which is not published` });
+        const missing = !tree.files.has(target);
+        // A link to an asset kept at an older version than this chapter expects (G3 M4).
+        const targetUnit = `asset:${target}`;
+        const stale = !missing && target.startsWith("assets/") && decisions.get(targetUnit)?.result === "kept" &&
+          assembleIn.working.has(target) && tree.files.get(target)?.text !== assembleIn.working.get(target)?.text;
+        if ((missing || stale) && !findings.some((x) => x.unit === f.unit && x.check === "link" && x.path === target)) {
+          added.push({ unit: f.unit, path: target, check: "link", severity: "default", message: missing ? `Links to ${target}, which is not published` : `Links to ${target}, which is published only in an older version` });
         }
       }
     }

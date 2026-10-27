@@ -1,123 +1,80 @@
-/** The Publish job with fakes: claims P.4–P.6, P.11–P.15, Q.6 (drift), first Publish. */
-import { createHash } from "node:crypto";
+/**
+ * The Publish job with fakes: claims P.4–P.6, P.8, P.11–P.15, Q.6, Q.9, plus
+ * the G3 round-1 findings (kept as regression tests; probes ported here).
+ */
 import { describe, expect, it } from "vitest";
-import { WorkingManifestV3Schema } from "@alembic/package-contract";
-import { runPublish, type PublicSide, type PublishedRecord, type PublishStore, type TreeEntry, type UnitCheck, type WorkingSide } from "./publish-job";
+import { copyChecks, fingerprint } from "./copy-check";
+import { FakePublic, FakeStore, manifestJson, working } from "./publish-fakes";
+import { runPublish, type PublishedRecord, type UnitCheck } from "./publish-job";
 
-const h = (t: string) => createHash("sha256").update(t, "utf8").digest("hex");
-const manifest = (chs: Array<{ slug: string; mode?: "draft" | "package" }>) =>
-  WorkingManifestV3Schema.parse({ schemaVersion: 3, packageId: "pkg-1", title: "Chem", license: "CC-BY-4.0", createdAt: "2026-10-27T00:00:00Z",
-    privateRepo: { owner: "yu", name: "chem-private" }, chapters: chs.map((c) => ({ slug: c.slug, title: c.slug, mode: c.mode ?? "package" })) });
-
-function working(files: Record<string, string>, extra: TreeEntry[] = [], truncated = false): WorkingSide {
-  return {
-    async head() { return "W1"; },
-    async listTree() { return { entries: [...Object.keys(files).map((p) => ({ path: p, mode: "100644", blobSha: `wb-${p}` })), ...extra], truncated }; },
-    async readText(_s, p) { return files[p] ?? null; },
-  };
-}
-
-class FakePublic implements PublicSide {
-  commits: Array<{ sha: string; message: string; files: Map<string, string> }> = [];
-  headSha: string | null = null;
-  async head() { return this.headSha; }
-  async create() { this.commits.push({ sha: "p0", message: "init", files: new Map() }); this.headSha = "p0"; return "p0"; }
-  private at(sha: string) { return this.commits.find((c) => c.sha === sha)!; }
-  async listTree(sha: string) { return { entries: [...this.at(sha).files.keys()].map((p) => ({ path: p, mode: "100644", blobSha: `pb-${p}` })), truncated: false }; }
-  async recentCommits() { return [...this.commits].reverse().map((c) => ({ sha: c.sha, message: c.message })); }
-  async changedPaths(from: string, to: string) {
-    const a = this.at(from).files, b = this.at(to).files;
-    return [...new Set([...a.keys(), ...b.keys()])].filter((p) => a.get(p) !== b.get(p));
-  }
-  async commit(i: { expectedHead: string; message: string; files: Array<{ path: string; text?: string; blobSha?: string; delete?: true }> }) {
-    if (i.expectedHead !== this.headSha) throw new Error("head moved");
-    const next = new Map(this.at(this.headSha!).files);
-    for (const f of i.files) f.delete ? next.delete(f.path) : next.set(f.path, f.text ?? `blob:${f.blobSha}`);
-    const sha = `p${this.commits.length}`;
-    this.commits.push({ sha, message: i.message, files: next });
-    this.headSha = sha;
-    return sha;
-  }
-  push(path: string, text: string) {
-    const next = new Map(this.at(this.headSha!).files); next.set(path, text);
-    const sha = `p${this.commits.length}`; this.commits.push({ sha, message: "edited on GitHub", files: next }); this.headSha = sha;
-  }
-  file(p: string) { return this.at(this.headSha!).files.get(p); }
-}
-
-class FakeStore implements PublishStore {
-  ack: string | null = null;
-  runs = new Map<string, { status: string; intended: PublishedRecord[]; publicSha?: string }>();
-  files: PublishedRecord[] = [];
-  approvals = new Set<string>(); // `${path}@${version}`
-  drift: string[][] = [];
-  async acknowledged() { return this.ack; }
-  async acknowledge(_p: string, sha: string) { this.ack = sha; }
-  async pendingRun(_p: string, id: string) { const r = this.runs.get(id); return r && r.status === "pending" ? { id, intendedFiles: r.intended } : null; }
-  async insertPendingRun(r: { id: string; intendedFiles: PublishedRecord[] }) { this.runs.set(r.id, { status: "pending", intended: r.intendedFiles }); }
-  async markCommitted(id: string, sha: string, files: PublishedRecord[]) { this.runs.set(id, { status: "committed", intended: files, publicSha: sha }); this.files = files; }
-  async publishedFiles() { return this.files; }
-  async approvedAt(_p: string, parts: Array<{ path: string; version: string }>) { return new Set(parts.filter((x) => this.approvals.has(`${x.path}@${x.version}`)).map((x) => x.path)); }
-  async bringInDrift(_p: string, _s: string, paths: string[]) { this.drift.push(paths); return "done" as const; }
-  approve(path: string, text: string) { this.approvals.add(`${path}@${h(text)}`); }
-}
-
-const W = {
+const M = manifestJson([{ slug: "atoms" }, { slug: "gases" }]);
+const W: Record<string, string> = {
   "concepts/atoms.md": "atoms plan", "assessment-support/atoms.md": "atoms assess", "study-guide/atoms.md": "# Atoms",
   "concepts/gases.md": "gases plan", "assessment-support/gases.md": "gases assess", "study-guide/gases.md": "# Gases",
-  "private/instructor/key.md": "ANSWERS", "README.md": "readme", "alembic.json": "{}",
+  "private/instructor/key.md": "ANSWERS", "README.md": "readme", "alembic.json": M,
 };
 const noChecks: UnitCheck[] = [];
+const id = (n: number) => `${n}${n}${n}${n}${n}${n}${n}${n}-${n}${n}${n}${n}-4${n}${n}${n}-8${n}${n}${n}-${String(n).repeat(12)}`;
 const input = (over: Partial<Parameters<typeof runPublish>[0]> = {}) => ({
-  runId: "11111111-1111-4111-8111-111111111111", packageId: "pkg-1", by: "owner", isFirstPublish: true,
-  manifest: manifest([{ slug: "atoms" }, { slug: "gases" }]), choices: { publishAnyway: [], approveAndPublish: [] }, ...over,
+  runId: id(1), packageId: "pkg-1", by: "owner", role: "owner" as const, choices: { publishAnyway: [] as string[], approveAndPublish: [] as string[] }, ...over,
 });
+const approveAll = (st: FakeStore, files: Record<string, string>) => {
+  for (const [p, t] of Object.entries(files)) if (p.startsWith("concepts/") || p.startsWith("assessment-support/")) st.approveText(p, t);
+};
 
 describe("runPublish", () => {
-  it("first Publish creates the public repo; approved chapters publish, unapproved are kept; private never leaves", async () => {
+  it("first Publish (owner) creates the public repo; approved chapters publish, unapproved are kept; private never leaves", async () => {
     const pub = new FakePublic(); const st = new FakeStore();
-    st.approve("concepts/atoms.md", "atoms plan"); st.approve("assessment-support/atoms.md", "atoms assess");
+    st.approveText("concepts/atoms.md", "atoms plan"); st.approveText("assessment-support/atoms.md", "atoms assess");
     const out = await runPublish(input(), working(W), pub, st, noChecks);
     expect(out.status).toBe("committed");
     expect(pub.file("study-guide/atoms.md")).toBe("# Atoms");
     expect(pub.file("study-guide/gases.md")).toBeUndefined();
     expect(pub.file("private/instructor/key.md")).toBeUndefined();
     expect(JSON.parse(pub.file("alembic.json")!)).not.toHaveProperty("privateRepo");
-    expect(st.runs.get(input().runId)!.status).toBe("committed");
+    expect(st.runs.get(id(1))!.status).toBe("committed");
     expect(st.ack).toBe(pub.headSha);
-    expect((await pub.recentCommits())[0]!.message).toContain("Alembic-Publish-Run: 11111111-1111-4111-8111-111111111111");
+    expect((await pub.recentCommits())[0]!.message).toContain(`Alembic-Publish-Run: ${id(1)}`);
+  });
+
+  it("P.8 a deputy can't make the first Publish; a co-author can't publish; approve-and-publish needs approve rights", async () => {
+    expect(await runPublish(input({ role: "deputy" }), working(W), new FakePublic(), new FakeStore(), noChecks)).toMatchObject({ status: "stopped" });
+    const pub = new FakePublic(); const st = new FakeStore(); approveAll(st, W);
+    await runPublish(input(), working(W), pub, st, noChecks);
+    expect(await runPublish(input({ runId: id(2), role: "co-author" }), working(W), pub, st, noChecks)).toMatchObject({ status: "stopped" });
+    expect((await runPublish(input({ runId: id(3), role: "deputy" }), working(W), pub, st, noChecks)).status).toBe("committed");
+  });
+
+  it("approve-and-publish approves the plan parts at W and publishes the chapter", async () => {
+    const pub = new FakePublic(); const st = new FakeStore();
+    const out = await runPublish(input({ choices: { publishAnyway: [], approveAndPublish: ["concepts/atoms.md", "assessment-support/atoms.md"] } }), working(W), pub, st, noChecks);
+    expect(out.status === "committed" && out.published).toEqual(["atoms"]);
   });
 
   it("an always-finding keeps its chapter whatever the choices", async () => {
-    const pub = new FakePublic(); const st = new FakeStore();
-    for (const [p, t] of Object.entries(W)) if (p.startsWith("concepts/") || p.startsWith("assessment-support/")) st.approve(p, t);
+    const pub = new FakePublic(); const st = new FakeStore(); approveAll(st, W);
     const leak: UnitCheck = { id: "answer-key", async run(unit) { return unit === "chapter:atoms" ? [{ unit, check: "answer-key", severity: "always", message: "matches an answer key" }] : []; } };
     const out = await runPublish(input({ choices: { publishAnyway: ["atoms"], approveAndPublish: [] } }), working(W), pub, st, [leak]);
     expect(out.status === "committed" && out.published).toEqual(["gases"]);
   });
 
   it("drift on GitHub is brought in and the run stops; the next run proceeds", async () => {
-    const pub = new FakePublic(); const st = new FakeStore();
-    for (const [p, t] of Object.entries(W)) if (p.startsWith("concepts/") || p.startsWith("assessment-support/")) st.approve(p, t);
+    const pub = new FakePublic(); const st = new FakeStore(); approveAll(st, W);
     await runPublish(input(), working(W), pub, st, noChecks);
-    pub.push("study-guide/atoms.md", "# Atoms (edited on GitHub)");
-    const second = await runPublish(input({ runId: "22222222-2222-4222-8222-222222222222", isFirstPublish: false }), working(W), pub, st, noChecks);
-    expect(second).toMatchObject({ status: "stopped", drift: ["study-guide/atoms.md"] });
-    const third = await runPublish(input({ runId: "33333333-3333-4333-8333-333333333333", isFirstPublish: false }), working(W), pub, st, noChecks);
-    expect(third.status).toBe("committed");
+    await pub.push("study-guide/atoms.md", "# Atoms (edited on GitHub)");
+    expect(await runPublish(input({ runId: id(2) }), working(W), pub, st, noChecks)).toMatchObject({ status: "stopped", drift: ["study-guide/atoms.md"] });
+    expect((await runPublish(input({ runId: id(3) }), working(W), pub, st, noChecks)).status).toBe("committed");
   });
 
   it("a crash after the public commit is completed from the trailer, not treated as drift", async () => {
-    const pub = new FakePublic(); const st = new FakeStore();
-    for (const [p, t] of Object.entries(W)) if (p.startsWith("concepts/") || p.startsWith("assessment-support/")) st.approve(p, t);
+    const pub = new FakePublic(); const st = new FakeStore(); approveAll(st, W);
     const realMark = st.markCommitted.bind(st);
     let crash = true;
     st.markCommitted = async (...a) => { if (crash) { crash = false; throw new Error("worker died"); } return realMark(...a); };
     await expect(runPublish(input(), working(W), pub, st, noChecks)).rejects.toThrow("worker died");
-    const again = await runPublish(input({ runId: "44444444-4444-4444-8444-444444444444", isFirstPublish: false }), working(W), pub, st, noChecks);
-    expect(again.status).toBe("committed");
+    expect((await runPublish(input({ runId: id(4) }), working(W), pub, st, noChecks)).status).toBe("committed");
     expect(st.drift).toHaveLength(0);
-    expect(st.runs.get(input().runId)!.status).toBe("committed");
+    expect(st.runs.get(id(1))!.status).toBe("committed");
   });
 
   it("refuses symlinks, submodules and truncated trees", async () => {
@@ -128,18 +85,83 @@ describe("runPublish", () => {
   });
 
   it("a later run removes chapters that left the manifest and keeps kept chapters' old bytes", async () => {
-    const pub = new FakePublic(); const st = new FakeStore();
-    for (const [p, t] of Object.entries(W)) if (p.startsWith("concepts/") || p.startsWith("assessment-support/")) st.approve(p, t);
+    const pub = new FakePublic(); const st = new FakeStore(); approveAll(st, W);
     await runPublish(input(), working(W), pub, st, noChecks);
-    const W2 = { ...W, "study-guide/atoms.md": "# Atoms v2", "concepts/atoms.md": "atoms plan v2" }; // plan changed: no longer approved
-    const out = await runPublish(input({ runId: "55555555-5555-4555-8555-555555555555", isFirstPublish: false, manifest: manifest([{ slug: "atoms" }]) }), working(W2), pub, st, noChecks);
-    expect(out.status).toBe("committed");
-    expect(pub.file("study-guide/atoms.md")).toBe("# Atoms"); // kept at its last published bytes
-    expect(pub.file("study-guide/gases.md")).toBeUndefined(); // removed from the manifest
+    const W2 = { ...W, "study-guide/atoms.md": "# Atoms v2", "concepts/atoms.md": "atoms plan v2", "alembic.json": manifestJson([{ slug: "atoms" }]) };
+    expect((await runPublish(input({ runId: id(5) }), working(W2), pub, st, noChecks)).status).toBe("committed");
+    expect(pub.file("study-guide/atoms.md")).toBe("# Atoms");
+    expect(pub.file("study-guide/gases.md")).toBeUndefined();
+  });
+
+  it("a lost compare-and-swap is retried", async () => {
+    const pub = new FakePublic(); const st = new FakeStore(); approveAll(st, W);
+    await runPublish(input(), working(W), pub, st, noChecks);
+    pub.moveOnce = true;
+    expect((await runPublish(input({ runId: id(6) }), working(W), pub, st, noChecks)).status).toBe("committed");
   });
 });
 
-import { copyChecks, fingerprint } from "./copy-check";
+describe("G3 round 1 (regression)", () => {
+  it("H1 the manifest is read at W: a chapter that is Draft there is not published", async () => {
+    const pub = new FakePublic(); const st = new FakeStore(); approveAll(st, W);
+    const atW = { ...W, "alembic.json": manifestJson([{ slug: "atoms" }, { slug: "gases", mode: "draft" }]) };
+    await runPublish(input(), working(atW), pub, st, noChecks);
+    expect(pub.file("study-guide/gases.md")).toBeUndefined();
+  });
+
+  it("H1 an unreadable manifest stops the run (fail closed)", async () => {
+    expect(await runPublish(input(), working({ ...W, "alembic.json": "{" }), new FakePublic(), new FakeStore(), noChecks)).toMatchObject({ status: "stopped" });
+  });
+
+  it("H2 every record carries the public blob id; kept files round-trip by blob as the table stores them", async () => {
+    const pub = new FakePublic(); const st = new FakeStore(); approveAll(st, W);
+    let intended: PublishedRecord[] = [];
+    const real = st.insertPendingRun.bind(st);
+    st.insertPendingRun = async (r) => { intended = r.intendedFiles; return real(r); };
+    await runPublish(input(), working(W), pub, st, noChecks);
+    expect(intended.filter((r) => !r.blobSha)).toEqual([]);
+    const W2 = { ...W, "study-guide/atoms.md": "# Atoms v2", "concepts/atoms.md": "atoms plan v2" };
+    await runPublish(input({ runId: id(2) }), working(W2), pub, st, noChecks);
+    expect(pub.file("study-guide/atoms.md")).toBe("# Atoms");
+  });
+
+  it("H3 an asset deleted at W and used by no kept chapter leaves the public repo", async () => {
+    const pub = new FakePublic(); const st = new FakeStore(); approveAll(st, W);
+    await runPublish(input(), working({ ...W, "assets/fig.svg": "<svg/>" }), pub, st, noChecks);
+    expect(pub.file("assets/fig.svg")).toBe("<svg/>");
+    await runPublish(input({ runId: id(2) }), working(W), pub, st, noChecks);
+    expect(pub.file("assets/fig.svg")).toBeUndefined();
+  });
+
+  it("H3 a deleted asset a kept chapter still links to stays", async () => {
+    const pub = new FakePublic(); const st = new FakeStore(); approveAll(st, W);
+    const W1 = { ...W, "assets/fig.svg": "<svg/>", "study-guide/atoms.md": "# Atoms ![f](../assets/fig.svg)" };
+    await runPublish(input(), working(W1), pub, st, noChecks);
+    const W2 = { ...W, "study-guide/atoms.md": "# Atoms v2", "concepts/atoms.md": "plan v2" }; // atoms kept, fig deleted
+    await runPublish(input({ runId: id(2) }), working(W2), pub, st, noChecks);
+    expect(pub.file("assets/fig.svg")).toBe("<svg/>");
+  });
+
+  it("M2 a text file that can't be read stops the run instead of skipping the checks", async () => {
+    const pub = new FakePublic(); const st = new FakeStore(); approveAll(st, W);
+    const files = { ...W, "study-guide/chapters/atoms/key.md": "ANSWERS" };
+    expect(await runPublish(input(), working(files, [], false, ["study-guide/chapters/atoms/key.md"]), pub, st, noChecks)).toMatchObject({ status: "stopped" });
+  });
+
+  it("M3 a new projectable file added on GitHub is brought in", async () => {
+    const pub = new FakePublic(); const st = new FakeStore(); approveAll(st, W);
+    await runPublish(input(), working(W), pub, st, noChecks);
+    await pub.push("study-guide/chapters/atoms/contributed.md", "a fix");
+    expect((await runPublish(input({ runId: id(2) }), working(W), pub, st, noChecks)).status).toBe("stopped");
+    expect(st.drift.flat()).toContain("study-guide/chapters/atoms/contributed.md");
+  });
+
+  it("L3 a first Publish that crashed right after creating the repo doesn't look like drift", async () => {
+    const pub = new FakePublic(); const st = new FakeStore(); approveAll(st, W);
+    await pub.create();
+    expect((await runPublish(input(), working(W), pub, st, noChecks)).status).toBe("committed");
+  });
+});
 
 describe("Publish with the copy checks (B5 as plug-ins)", () => {
   it("a chapter repeating an answer key or copying a source is kept, even if published anyway", async () => {
@@ -147,13 +169,11 @@ describe("Publish with the copy checks (B5 as plug-ins)", () => {
     const key = "The pressure doubles because the volume is halved at constant temperature and amount of gas.";
     const book = Array.from({ length: 120 }, (_, k) => `bookword${k}`).join(" ");
     const W3 = { ...W, "private/instructor/key.md": key,
-      "study-guide/atoms.md": `# Atoms\nHint: the pressure doubles because the volume is halved at constant temperature and amount of gas.`,
+      "study-guide/atoms.md": `# Atoms\n<!-- ${key} -->`,
       "study-guide/gases.md": `# Gases\n${book.split(" ").slice(0, 70).join(" ")}` };
-    for (const [p, t] of Object.entries(W3)) if (p.startsWith("concepts/") || p.startsWith("assessment-support/")) st.approve(p, t);
+    approveAll(st, W3);
     const checks = copyChecks([{ path: "private/instructor/key.md", text: key }], [fingerprint("src_book", book)]);
     const out = await runPublish(input({ choices: { publishAnyway: ["atoms", "gases"], approveAndPublish: [] } }), working(W3), pub, st, checks);
     expect(out.status === "committed" && out.published).toEqual([]);
-    expect(pub.file("study-guide/atoms.md")).toBeUndefined();
-    expect(pub.file("study-guide/gases.md")).toBeUndefined();
   });
 });

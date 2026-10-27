@@ -9,8 +9,8 @@ describe("fingerprints", () => {
     const fp = fingerprint("src_a", "The ideal gas law relates pressure, volume and temperature in a simple way.");
     expect(JSON.stringify(fp)).not.toMatch(/ideal|pressure|volume/);
   });
-  it("words() normalises case and punctuation and skips code fences", () => {
-    expect(words("Hello, WORLD!\n```\nsecret code\n```\n<b>bold</b>")).toEqual(["hello", "world", "bold"]);
+  it("words() normalises case and punctuation and keeps comment and fence contents (G3 H4)", () => {
+    expect(words("Hello, WORLD!\n```\nsecret code\n```\n<b>bold</b> <!-- hidden -->")).toEqual(["hello", "world", "secret", "code", "bold", "hidden"]);
   });
 });
 

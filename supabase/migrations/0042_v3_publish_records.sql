@@ -19,6 +19,7 @@ create table public.publish_runs (
   public_sha    text,               -- set when committed
   status        text not null check (status in ('pending', 'committed', 'site-built', 'site-failed', 'stopped')),
   choices       jsonb not null default '{}',
+  intended      jsonb not null default '[]',  -- the published_files rows this run will write (crash recovery)
   results       jsonb not null default '{}',
   created_at    timestamptz not null default now(),
   committed_at  timestamptz

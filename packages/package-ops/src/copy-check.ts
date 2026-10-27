@@ -15,14 +15,18 @@ export const QUOTE_LIMIT_WORDS = 50; // R27
 export const ANSWER_KEY_RUN_WORDS = 12; // R27 (O19)
 export const SHINGLE = 8; // words per shingle for source fingerprints
 
-/** Lower-case words; punctuation and markup stripped; digits kept. */
+/**
+ * Lower-case words; punctuation and markup stripped; digits kept. Nothing a
+ * reader of the raw public file could see is dropped: HTML comments and code
+ * fences keep their contents (only the markers go), so an answer hidden in a
+ * comment or a solution in a code block is still compared (G3 H4).
+ */
 export function words(text: string): string[] {
   return text
     .normalize("NFKC")
     .toLowerCase()
-    .replace(/```[\s\S]*?```/g, " ") // code fences are not prose
-    .replace(/<[^>]+>/g, " ")
-    .replace(/\{\{[^}]*\}\}/g, " ")
+    .replace(/<!--|-->/g, " ")
+    .replace(/<\/?[a-z][^>]*>/gi, " ")
     .replace(/[^\p{L}\p{N}]+/gu, " ")
     .split(" ")
     .filter(Boolean);
@@ -148,7 +152,8 @@ export function checkAnswerKeys(path: string, text: string, privateTexts: Readon
  * to 20 words of the matching passage *from the course file itself*.
  */
 export function copyChecks(privateTexts: ReadonlyArray<{ path: string; text: string }>, fingerprints: readonly Fingerprint[]): UnitCheck[] {
-  const textual = (p: string) => /\.(md|txt|html|svg|json|csv)$/i.test(p);
+  // Every file that has text is checked; only files read as binary (text === null) are skipped (G3 H4).
+  const textual = (_p: string) => true;
   return [
     {
       id: "answer-key",
