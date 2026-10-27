@@ -26,6 +26,9 @@
     "@supabase/supabase-js": "^2.108.1",
     "fflate": "^0.8.3",
     "next": "16.2.9",
+    "orz-mdhtml-browser": "^1.1.0",
+    "orz-paged-browser": "^1.1.0",
+    "orz-slides-browser": "^1.1.0",
     "react": "19.2.4",
     "react-dom": "19.2.4"
   },
