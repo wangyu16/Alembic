@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { removeMemberAction, revokeInvitationAction } from "./actions";
+import { endDeputyAction, leaveCourseAction, nameDeputyAction, removeMemberAction, revokeInvitationAction } from "./actions";
 import { InviteForm } from "./invite-form";
 
 export const dynamic = "force-dynamic";
@@ -23,6 +23,8 @@ export default async function PeoplePage({ params }: { params: Promise<{ package
   const { data: invites } = isOwner ? await supabase.rpc("course_open_invitations", { p: packageId }) : { data: [] };
   const open = (invites ?? []) as Array<{ id: string; invitee_login: string; expires_at: string }>;
   const { data: course } = await supabase.from("packages").select("title").eq("id", packageId).maybeSingle();
+  const today = new Date().toISOString().slice(0, 10);
+  const sixMonths = new Date(Date.now() + 182 * 86_400_000).toISOString().slice(0, 10);
 
   return (
     <main className="mx-auto max-w-2xl p-6">
@@ -42,10 +44,32 @@ export default async function PeoplePage({ params }: { params: Promise<{ package
                 </span>
               </span>
               {isOwner && m.role !== "owner" ? (
-                <form action={removeMemberAction}>
+                <span className="flex flex-wrap items-center gap-3">
+                  {deputy ? (
+                    <form action={endDeputyAction}>
+                      <input type="hidden" name="packageId" value={packageId} />
+                      <input type="hidden" name="userId" value={m.user_id} />
+                      <button type="submit" className="text-sm underline">End deputy</button>
+                    </form>
+                  ) : (
+                    <form action={nameDeputyAction} className="flex items-center gap-1 text-sm">
+                      <input type="hidden" name="packageId" value={packageId} />
+                      <input type="hidden" name="userId" value={m.user_id} />
+                      <label className="sr-only" htmlFor={`until-${m.user_id}`}>Deputy until</label>
+                      <input id={`until-${m.user_id}`} type="date" name="until" required min={today} max={sixMonths} className="rounded border px-1" />
+                      <button type="submit" className="underline" title="While you're away, a deputy can approve and publish in your place.">Make deputy</button>
+                    </form>
+                  )}
+                  <form action={removeMemberAction}>
+                    <input type="hidden" name="packageId" value={packageId} />
+                    <input type="hidden" name="userId" value={m.user_id} />
+                    <button type="submit" className="text-sm text-red-700 underline">Remove</button>
+                  </form>
+                </span>
+              ) : !isOwner && m.user_id === user.id ? (
+                <form action={leaveCourseAction}>
                   <input type="hidden" name="packageId" value={packageId} />
-                  <input type="hidden" name="userId" value={m.user_id} />
-                  <button type="submit" className="text-sm text-red-700 underline">Remove</button>
+                  <button type="submit" className="text-sm underline">Leave this course</button>
                 </form>
               ) : null}
             </li>
@@ -56,7 +80,7 @@ export default async function PeoplePage({ params }: { params: Promise<{ package
       {isOwner ? (
         <section className="mt-8">
           <h2 className="text-lg font-medium">Invite a co-author</h2>
-          <p className="mt-1 text-sm text-gray-600">Co-authors edit the course with you. You keep approving and publishing.</p>
+          <p className="mt-1 text-sm text-gray-600">Co-authors edit the course with you. You keep approving and publishing; while you&apos;re away, a deputy can do both until the date you choose.</p>
           <div className="mt-3"><InviteForm packageId={packageId} /></div>
           {open.length > 0 ? (
             <>

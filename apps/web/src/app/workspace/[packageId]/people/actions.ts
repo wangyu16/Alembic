@@ -86,3 +86,26 @@ export async function removeMemberAction(formData: FormData): Promise<void> {
   await supabase.rpc("remove_member", { p: packageId, p_user: String(formData.get("userId") ?? "") });
   revalidatePath(`/workspace/${packageId}/people`);
 }
+
+/** Name a co-author deputy until the end of a chosen day (at most 6 months; the database checks). */
+export async function nameDeputyAction(formData: FormData): Promise<void> {
+  const supabase = await createSupabaseServerClient();
+  const packageId = String(formData.get("packageId") ?? "");
+  const until = String(formData.get("until") ?? "");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(until)) return;
+  await supabase.rpc("name_deputy", { p: packageId, p_user: String(formData.get("userId") ?? ""), p_until: `${until}T23:59:59Z` });
+  revalidatePath(`/workspace/${packageId}/people`);
+}
+
+export async function endDeputyAction(formData: FormData): Promise<void> {
+  const supabase = await createSupabaseServerClient();
+  const packageId = String(formData.get("packageId") ?? "");
+  await supabase.rpc("end_deputy", { p: packageId, p_user: String(formData.get("userId") ?? "") });
+  revalidatePath(`/workspace/${packageId}/people`);
+}
+
+export async function leaveCourseAction(formData: FormData): Promise<void> {
+  const supabase = await createSupabaseServerClient();
+  await supabase.rpc("leave_course", { p: String(formData.get("packageId") ?? "") });
+  redirect("/workspace");
+}
