@@ -312,3 +312,14 @@ carriers 1.x), so these wait for it:
 - **Whether the public/private split was right in the first place**: nothing
   private leaked *out*, but whether the right things went *in* cannot be
   proven from outside. This is unchanged from round 1.
+
+## Owner rulings after the round (2026-10-27)
+
+- Demo courses stay listed as they are.
+- The private repository's name will be left out of the public `alembic.json`
+  (Track C).
+- Assessment guides are public by design. D5 is clarified in the spec's
+  Amendment log.
+- The test shared file was unshared.
+- The GitHub App was renamed "Alembic Publisher".
+

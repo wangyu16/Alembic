@@ -6,6 +6,16 @@ design, and what is deferred to the future. Complements [Status.md](Status.md)
 
 ---
 
+
+## 2026-10-27 — Owner rulings after blind-critique round 2
+
+| # | Decision | Why |
+|---|---|---|
+| 1 | **Demo courses stay listed on Discover as they are.** | Alembic has no real outside users yet (about 10 interested people are waiting for it to be ready). The demos show what the platform creates and how materials look; they are not vetted content. Their description wording is the owner's own content, to edit whenever convenient. |
+| 2 | **The public `alembic.json` will not name the private repository** (to implement in the first Track C batch). | The private repo is unreadable, but its name and existence needn't be public. Deferred to Track C because it touches the same settings-file handling the workspace revision reworks. |
+| 3 | **Assessment guides are public by design.** They stay in the public repository; the student site leaves them out only to avoid distraction. Acceptance spec D5 clarified in its Amendment log (2026-10-27). | They are guidance on how to ask questions, not a question bank or an answer key; students may read them if they find them. |
+| 4 | **The test shared file is removed** (unshared by its owner on a rarely used test account). | Lesson for Track C: courses and shared files need clear traceability (owner, account, copies, share state). See the family `docs/PHASE5-ALEMBIC.md`. |
+
 ## 2026-10-26 — Blind-critique round, final pass: one name ("shared file"), not-found pages without scripts
 
 Branch `blindcritique/r2-final` (after the re-verification of `blindcritique/r2-fixes`).

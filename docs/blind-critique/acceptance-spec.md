@@ -286,3 +286,15 @@ and Discover is public.
 - **P12 — Discover on a phone, and the Back button.** Discover, course pages
   and file pages are usable at about 375px wide without sideways scrolling.
   Back returns you to the same results, filters and page you came from.
+
+**2026-10-27 — D5 clarified: assessment guides are public by design (owner ruling).**
+A chapter's assessment guide describes how assessment questions should be
+asked: objectives, item design, how an answer is judged, with worked
+examples. It is not a question bank or an answer key. It lives in the public
+repository on purpose. The student website leaves it out only because
+students don't need that distraction, not because it is secret. Under D5,
+"assessment answers" means answer keys and other material in the **Private**
+collection. A verifier who finds an assessment guide in the public repository
+should not report it as a D5 failure. Answer keys or Private-collection files
+anywhere public still are.
+
