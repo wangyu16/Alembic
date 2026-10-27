@@ -34,3 +34,4 @@ export * from "./validate-package";
 export * from "./import-package";
 export * from "./populate-package";
 export * from "./version-rule";
+export * from "./course-committer";
