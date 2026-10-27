@@ -22,6 +22,8 @@ export interface OrzKit {
   assemble(text: string, options?: Record<string, unknown>): Promise<string>;
   extract(html: string): { text: string; kind?: string } | null;
   readDocument(text: string): { uid?: string | null; title?: string | null };
+  /** FC-18 §9 header edit (null removes a key); never re-serializes the header. */
+  editHeader(text: string, changes: Readonly<Record<string, string | null>>): string;
   version: string;
 }
 

@@ -32,7 +32,7 @@ says "prepared" for some of these; that table is stale.)
 | Other people's changes | `applyEdits` + `flash` on the open editor when a sync lands on other blocks (design §7.1). |
 | Includes, assets, uids | `hooks.fetchInclude`, `hooks.resolveAsset` / `hooks.uploadAsset`, `hooks.mintUid` (Alembic `newDocId`). |
 | AI | `hooks.ai` → quick asks (C4 §7), when C2 is live; absent before that. |
-| Download | `assemble(text, { delivery: "inline" })` in the browser; the FC-18 header carries the document identity and base version under the `alembic:` namespace (stripped on Replace). |
+| Download | `assemble(text, { delivery: "inline" })` in the browser; the FC-18 header carries the document identity and base version as host keys `x_alembic_course`, `x_alembic_path`, `x_alembic_base` (FC-18 §5 host-key rule; stripped on Replace). |
 | Replace | `extract(html)` → text and kind; `readDocument(text)` → uid; then the version rule. |
 | Site build | orz-site on the worker (A12), from the public repo's projected text. |
 | Worker | No longer generates editable files. Keeps: orz-site builds, Publish jobs, the committer, checks. |
@@ -61,7 +61,7 @@ says "prepared" for some of these; that table is stale.)
    - Its unit tests mount against jsdom where possible; the rest is
      covered by a Playwright smoke test (under `/tmp/orz-heavy.lock`).
 4. **Download and Replace** on the new path: `assemble`, `extract`,
-   `readDocument`; the `alembic:` header field.
+   `editHeader`; the `x_alembic_*` host keys.
 5. **Retire for layout-3 courses** (deleted at the cut-over, R31):
    `generateEditableFile`, the hosted-carrier iframe path, the
    `orz-host-*` protocol clients, `@alembic/carriers`' 0.x island,
@@ -97,6 +97,12 @@ says "prepared" for some of these; that table is stale.)
 |---|---|
 | K4.1 | an embedded editor opens a format-1 document without any worker call |
 | K4.2 | `hooks.save` text reaches `enqueueSync` with the right base version |
-| K4.3 | Download → edit offline → Replace round-trips identity and base, and the `alembic:` header is stripped from the stored text |
+| K4.3 | Download → edit offline → Replace round-trips identity and base, and the `x_alembic_*` keys are stripped from the stored text |
 | K4.4 | CSP blocks inline scripts without the nonce, and the editors still work |
 | K4.5 | a remote change to another block appears in the open editor without losing the cursor or undo history |
+
+> **Amended 2026-10-27:** the `alembic:` namespace is written as FC-18 host
+> keys `x_alembic_*`, the form FC-18 §5 reserves for hosts.
+> - Done on the branch: step 1, step 3 (core) and step 4 (logic).
+> - K4.1, K4.3 and K4.5 are verified: in Chrome (`apps/web/e2e/k4-smoke`),
+>   and with the real kit in vitest (`download.test.ts`).

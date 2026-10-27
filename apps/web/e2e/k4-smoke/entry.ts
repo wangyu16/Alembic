@@ -13,7 +13,7 @@ const s = new SyncScheduler({
   newSyncId: () => crypto.randomUUID(),
   send: async (d, syncId) => { sent.push({ text: d.text, syncId }); return { ok: true }; },
 });
-const text = "{{nyml\nkind: orz-mdhtml\nformat: 1\ntitle: Smoke\n}}\n\n# Smoke\n\nFirst paragraph.\n\n{{md parts/a.md}}\n\nLast paragraph.\n";
+const text = "{{nyml\nkind: document\nformat: 1\ntitle: Smoke\n}}\n\n# Smoke\n\nFirst paragraph.\n\n{{md parts/a.md}}\n\nLast paragraph.\n";
 const editor = mountEditor(document.getElementById("host")!, {
   text,
   mode: "split",
