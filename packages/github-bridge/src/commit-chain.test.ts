@@ -112,6 +112,20 @@ describe("commitChain", () => {
     expect(r.state.head).toBe("h0");
   });
 
+  it("an aborted attempt never sends the ref update (G2 r3)", async () => {
+    const r = repo();
+    const ctl = new AbortController();
+    await expect(
+      r.client.commitChain({
+        coords, expectedHead: "h0", signal: ctl.signal,
+        steps: [{ message: "m", files: [{ path: "x.md", content: "a" }] }],
+        beforeMove: async () => { ctl.abort(); },
+      }),
+    ).rejects.toThrow(/aborted/);
+    expect(r.patches()).toBe(0);
+    expect(r.state.head).toBe("h0");
+  });
+
   it("reuses existing blobs and deletes paths", async () => {
     const r = repo();
     await r.client.commitChain({

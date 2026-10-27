@@ -71,6 +71,8 @@ export interface WorkingRepo {
     steps: Array<{ message: string; files: Array<{ path: string; content: string | null }> }>;
     /** Called with the built commit SHAs after they exist and before the ref moves; throwing aborts the move. */
     beforeMove?: (shas: string[]) => Promise<void>;
+    /** Aborted at the attempt's deadline: the ref must not move (checked again right before the update). */
+    signal?: AbortSignal;
   }): Promise<{ commitShas: string[]; head: string }>;
   /** Newest first. `byAlembic` must be true only for commits Alembic itself wrote (its App identity). */
   recentCommits(limit: number): Promise<Array<{ sha: string; message: string; byAlembic?: boolean }>>;
@@ -152,8 +154,13 @@ async function alreadyLanded(row: QueueRow, repo: WorkingRepo): Promise<RowResul
   const files: FileOutcome[] = [];
   for (const c of mine) {
     for (const line of c.message.split("\n")) {
-      const m = /^Alembic-File: (landed|combined|both-changed)(?: ([a-z-]+))? (.+)$/.exec(line.trim());
-      if (m && !files.some((f) => f.path === m[3])) files.push({ path: m[3]!, outcome: m[1] as FileOutcome["outcome"], ...(m[2] ? { reason: m[2] } : {}) });
+      // Only a reason after both-changed; later lines win (the real trailers come last) (G2 r3 LOW).
+      const m = /^Alembic-File: (?:(landed|combined)|both-changed ([a-z-]+)) (.+)$/.exec(line.trim());
+      if (!m) continue;
+      const entry: FileOutcome = m[1] ? { path: m[3]!, outcome: m[1] as FileOutcome["outcome"] } : { path: m[3]!, outcome: "both-changed", reason: m[2]! };
+      const i = files.findIndex((f) => f.path === entry.path);
+      if (i >= 0) files[i] = entry;
+      else files.push(entry);
     }
   }
   return { status: "done", result: { head: mine[0]!.sha, commits: mine.map((c) => c.sha).reverse(), files, recovered: true } };
@@ -287,9 +294,13 @@ export async function processRow(row: QueueRow, store: QueueStore, repo: Working
         outcome: d.outcome,
         ...(d.outcome === "both-changed" ? { reason: d.reason } : {}),
       }));
-      if (kept.length === 0 && top.length === 0) return { status: "done", result: { head, commits: [], files } };
+      if (kept.length === 0 && top.length === 0) {
+        const competing = round > 0 ? await alreadyLanded(row, repo) : null; // a competing attempt landed it (G2 r3)
+        return competing ?? { status: "done", result: { head, commits: [], files } };
+      }
 
-      const summary = row.payload.summary ?? `${row.kind} ${row.payload.files.length} file(s)`;
+      // One line, no control characters: user text can't forge trailer lines (G2 r3 LOW).
+      const summary = (row.payload.summary ?? `${row.kind} ${row.payload.files.length} file(s)`).replace(/[\u0000-\u001f\u007f]+/g, " ").slice(0, 200);
       const fileLines = files
         .filter((f) => f.outcome !== "refused")
         .map((f) => `Alembic-File: ${f.outcome}${f.reason ? ` ${f.reason}` : ""} ${f.path}`)
@@ -312,6 +323,7 @@ export async function processRow(row: QueueRow, store: QueueStore, repo: Working
           expectedHead: head,
           steps,
           // Last gate before the ref moves: record the built commits, and stop if this attempt is no longer the live one (G2 r2 HIGH).
+          ...(opts.signal ? { signal: opts.signal } : {}),
           beforeMove: async (shas) => {
             if (!(await stillMine())) throw new AttemptSuperseded();
             if (opts.claim && store.recordPlanned) await store.recordPlanned(row.id, opts.claim.holder, opts.claim.fence, row.attempts, shas);

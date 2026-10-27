@@ -157,6 +157,10 @@ begin
     -- A row reclaimed while 'processing' (worker died, lease lost) counts an
     -- abandonment; the committer decides — after checking whether it landed —
     -- whether to fail it (G2 r2: never fail here, before the landed check).
+    if r.status = 'processing' then
+      -- A worker died: rows created until now were processed "after an outage" (G2 r3).
+      update public.course_committer set last_retry_at = now() where package_id = p_package;
+    end if;
     update public.write_queue
        set status = 'processing', attempts = attempts + 1,
            abandons = abandons + (case when r.status = 'processing' then 1 else 0 end)
@@ -181,7 +185,9 @@ begin
   if p_status not in ('done', 'bounced', 'refused', 'failed', 'retry') then
     raise exception 'bad status %', p_status using errcode = '22023';
   end if;
-  if p_status = 'retry' then
+  -- The outage mark moves on every retry AND when a retried row finally ends,
+  -- so every row created during the outage falls before it (G2 r3 MEDIUM).
+  if p_status = 'retry' or (select attempts from public.write_queue where id = p_id) > 1 then
     update public.course_committer set last_retry_at = now() where package_id = v_pkg;
   end if;
   update public.write_queue
@@ -215,7 +221,11 @@ begin
   if not public.committer_claim_current(p_id, p_holder, p_fence, p_attempts) then
     raise exception 'claim lost' using errcode = '40001';
   end if;
-  update public.write_queue set planned_shas = planned_shas || p_shas where id = p_id;
+  -- Re-checked in the update itself, so a reclaim between the check and the
+  -- write can't let a superseded attempt append (G2 r3 LOW).
+  update public.write_queue set planned_shas = planned_shas || p_shas
+   where id = p_id and status = 'processing' and attempts = p_attempts;
+  if not found then raise exception 'claim lost' using errcode = '40001'; end if;
 end $$;
 
 -- course_role_of: a given user's role (the committer's re-check at execution).

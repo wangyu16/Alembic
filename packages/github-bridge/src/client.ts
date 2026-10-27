@@ -211,6 +211,7 @@ export class GitHubClient {
     method: string,
     path: string,
     body?: unknown,
+    signal?: AbortSignal,
   ): Promise<T> {
     const send = async (token: string) =>
       sendWithRetry(
@@ -225,6 +226,7 @@ export class GitHubClient {
             ...(body ? { "Content-Type": "application/json" } : {}),
           },
           ...(body ? { body: JSON.stringify(body) } : {}),
+          ...(signal ? { signal } : {}),
         },
         { replayable: isReplayable(method, path), policy: this.retry },
       );
@@ -506,6 +508,10 @@ export class GitHubClient {
     steps: Array<{ message: string; files: ChainFile[] }>;
     /** Runs after the commits exist and before the ref moves; throwing stops the move. */
     beforeMove?: (shas: string[]) => Promise<void>;
+    /** Aborted: the ref is not moved (checked right before the PATCH, and the PATCH itself is cancelled). */
+    signal?: AbortSignal;
+    /** Hard limit for the ref update request (default 20 s), so an abandoned attempt can't move the ref late. */
+    moveTimeoutMs?: number;
   }): Promise<{ commitShas: string[]; head: string }> {
     const branch = input.branch ?? "main";
     const { owner, repo } = input.coords;
@@ -543,8 +549,11 @@ export class GitHubClient {
     if (input.beforeMove) await input.beforeMove(commitShas);
     const now = await this.getRefSha(input.coords, `heads/${branch}`);
     if (now !== input.expectedHead) throw new HeadMovedError(input.expectedHead, now);
+    if (input.signal?.aborted) throw new Error("commit attempt aborted before the ref move");
+    const timeout = AbortSignal.timeout(input.moveTimeoutMs ?? 20_000);
+    const signal = input.signal ? AbortSignal.any([input.signal, timeout]) : timeout;
     try {
-      await this.request("PATCH", `/repos/${owner}/${repo}/git/refs/heads/${branch}`, { sha: parent });
+      await this.request("PATCH", `/repos/${owner}/${repo}/git/refs/heads/${branch}`, { sha: parent }, signal);
     } catch (e) {
       if (isNotFastForward(e)) throw new HeadMovedError(input.expectedHead, null);
       throw e;

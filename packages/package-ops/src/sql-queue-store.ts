@@ -40,12 +40,17 @@ export class SqlQueueStore implements Omit<QueueStore, "baseText"> {
     );
     const r = rows[0];
     if (!r) return undefined;
-    const { rows: c } = await this.sql.query<{ t: string | Date | null }>(`select last_retry_at as t from public.course_committer where package_id = $1`, [packageId]);
-    const lastRetry = c[0]?.t ? new Date(c[0].t).getTime() : null;
+    // Compared in SQL (microseconds), not through JS dates (G2 r3 LOW).
+    const { rows: c } = await this.sql.query<{ after: boolean }>(
+      `select coalesce(q.created_at < c.last_retry_at, false) as after
+         from public.write_queue q left join public.course_committer c on c.package_id = q.package_id
+        where q.id = $1`,
+      [r.id],
+    );
     return {
       abandons: Number(r.abandons ?? 0),
       plannedShas: r.planned_shas ?? [],
-      afterOutage: lastRetry !== null && new Date(r.created_at).getTime() < lastRetry,
+      afterOutage: c[0]?.after === true,
       id: r.id,
       packageId: r.package_id,
       kind: r.kind,
