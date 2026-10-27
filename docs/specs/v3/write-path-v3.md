@@ -42,9 +42,8 @@ the row's result arrives. It adopts the returned `version` as its new base
 ### 3.1 One consumer per course
 
 The worker (Fly in production; the VPS in testing) has a direct Postgres
-connection. It claims work with
-`select … from write_queue where status='queued' and package_id = $p order by seq for update skip locked`
-inside a **per-course claim**: a row in `course_committer(package_id,
+connection. It takes the course's lowest non-terminal row in strict order
+(`queue-and-jobs-v3.md` §2.3) inside a **per-course claim**: a row in `course_committer(package_id,
 holder, fence, lease_until)` taken with a short transaction and renewed
 every 10 s. A worker only processes courses it holds the lease for, and
 every database write it makes is conditional on its `fence` (a stale holder
@@ -73,11 +72,10 @@ can't record anything after losing the lease).
 A row is normally committed within a few seconds (one worker loop + one
 GitHub commit). Sync cadence (design §7.1) keeps the volume low.
 
-### 3.4 Publishing shares the queue
+### 3.4 Publishing
 
-Publish is a queue row of kind `publish` (publisher spec), so it is
-serialised with writes for the same course; two Publish runs can't overlap
-(H-9 of the publisher review).
+Publish is a worker **job** (one per course at a time), not a queue row; its
+working-repo writes are ordinary queue rows (`queue-and-jobs-v3.md` §5).
 
 ## 4. The version rule (per file)
 
