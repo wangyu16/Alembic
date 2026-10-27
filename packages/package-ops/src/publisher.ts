@@ -35,9 +35,12 @@ export function chapterSlugOf(path: string): string | null {
   // (an invalid name can never match a chapter, so it becomes an orphan) (G3 M1).
   const scoped = /^[a-z-]+\/chapters\/([^/]+)\//.exec(path);
   if (scoped) return scoped[1]!;
-  for (const dir of SLOT_DIRS) {
-    const m = new RegExp(`^${dir}/([a-z0-9]+(?:-[a-z0-9]+)*)\\.(?:slides\\.)?md$`).exec(path);
-    if (m && !(dir === "concepts" && m[1] === "course")) return m[1]!;
+  // Any file directly in a slot folder is a chapter file, named by its stem —
+  // whatever its case or extension (G3 r2 M4). Only `concepts/course.md` is the course map.
+  const direct = /^(study-guide|slides|practice|concepts|assessment-support)\/([^/]+)$/.exec(path);
+  if (direct) {
+    if (direct[1] === "concepts" && direct[2] === "course.md") return null;
+    return direct[2]!.replace(/\.[^.]*$/, "").replace(/\.slides$/i, "");
   }
   return null;
 }
@@ -116,8 +119,8 @@ export interface AssembleInput {
   everPublishedChapters: ReadonlySet<string>;
   /** Files Publish generates (`.alembic/…`, `provenance/coursewerk/…`), already computed. */
   generated?: ReadonlyMap<string, TreeFile>;
-  /** Texts of kept units' published files (to keep only the deleted assets they still link to). */
-  keptTexts?: ReadonlyMap<string, string>;
+  /** Published texts of chapter and course files, with their unit (to keep only the deleted assets KEPT units still link to). */
+  keptTexts?: ReadonlyMap<string, { unit: string; text: string }>;
 }
 
 export interface AssembledTree {
@@ -129,6 +132,8 @@ export function assemblePublicTree(i: AssembleInput): AssembledTree {
   const chapters = new Set(i.manifest.chapters.map((c) => c.slug));
   const files: AssembledTree["files"] = new Map();
   const pass = (unit: string) => i.decisions.get(unit)?.result === "pass";
+  const courseMap = i.working.get("concepts/course.md")?.text;
+  const courseMapLinks = new Set(courseMap ? relativeLinks("concepts/course.md", courseMap) : []);
 
   // Passing units at W.
   for (const [path, f] of i.working) {
@@ -144,13 +149,17 @@ export function assemblePublicTree(i: AssembleInput): AssembledTree {
     const key = f.unit;
     if (key.startsWith("chapter:")) {
       const slug = key.slice("chapter:".length);
-      if (!chapters.has(slug)) continue; // removed from the manifest: its public files go
-      if (pass(key)) continue; // passing: W is authoritative (a file deleted at W stays deleted)
+      if (!chapters.has(slug)) {
+        // Removed from the manifest: its public files go, unless the course map at W still links to them (spec §2; G3 r2 H1).
+        if (!courseMapLinks.has(path)) continue;
+      } else if (pass(key)) continue; // passing: W is authoritative (a file deleted at W stays deleted)
     } else if (key.startsWith("asset:")) {
       if (pass(key) && i.working.has(path)) continue;
       if (!i.working.has(path)) {
-        // Deleted at W: kept only while a kept unit's published text still links to it (G3 H3).
-        const usedByKept = [...(i.keptTexts ?? new Map<string, string>())].some(([from, text]) => relativeLinks(from, text).includes(path));
+        // Deleted at W: kept only while a KEPT unit's published text still links to it (G3 H3, r2 M2).
+        const usedByKept = [...(i.keptTexts ?? new Map<string, { unit: string; text: string }>())].some(
+          ([from, k]) => !pass(k.unit) && (!k.unit.startsWith("chapter:") || chapters.has(k.unit.slice(8))) && relativeLinks(from, k.text).includes(path),
+        );
         if (!usedByKept) continue;
       }
     } else if (pass(key)) {
@@ -178,11 +187,16 @@ export function assemblePublicTree(i: AssembleInput): AssembledTree {
 /** Relative links and image/embed sources in Markdown text. */
 export function relativeLinks(fromPath: string, text: string): string[] {
   const out = new Set<string>();
-  // Inline links, images, src/href attributes (either quote), and reference definitions (G3 L1).
-  const re = /\]\(\s*<?([^)\s>]+)>?(?:\s+"[^"]*")?\s*\)|\b(?:src|href)\s*=\s*["']([^"']+)["']|^\s*\[[^\]]+\]:\s*<?(\S+?)>?(?:\s|$)/gm;
+  // Inline links (also <with spaces>), images, src/href attributes (either quote), and reference definitions (G3 L1, r2 L3).
+  const re = /\]\(\s*(?:<([^>]+)>|([^)\s]+))(?:\s+"[^"]*")?\s*\)|\b(?:src|href)\s*=\s*["']([^"']+)["']|^\s*\[[^\]]+\]:\s*<?(\S+?)>?(?:\s|$)/gm;
   for (const m of text.matchAll(re)) {
-    const raw = (m[1] ?? m[2] ?? m[3] ?? "").split("#")[0]!.split("?")[0]!;
-    if (!raw || /^[a-z][a-z0-9+.-]*:/i.test(raw) || raw.startsWith("//")) continue;
+    let raw = (m[1] ?? m[2] ?? m[3] ?? m[4] ?? "").split("#")[0]!.split("?")[0]!;
+    try {
+      raw = decodeURIComponent(raw);
+    } catch {
+      /* keep as written */
+    }
+    if (!raw || raw === "/" || raw.endsWith("/") || /^[a-z][a-z0-9+.-]*:/i.test(raw) || raw.startsWith("//")) continue;
     // Root-absolute links resolve from the course root.
     const dir = raw.startsWith("/") ? [] : fromPath.split("/").slice(0, -1);
     for (const seg of raw.split("/")) {
@@ -210,15 +224,18 @@ export function publishWithLinkCheck(
     const tree = assemblePublicTree({ ...assembleIn, decisions });
     const added: Finding[] = [];
     for (const [path, f] of tree.files) {
-      // Chapters and the course unit (course map) are link-checked (G3 L2).
-      if (f.origin !== "unit" || f.text === undefined || !(f.unit.startsWith("chapter:") || f.unit === "course")) continue;
+      // Passing chapters are link-checked (spec step 9). The course map is not: it may name
+      // chapters still being written; removed chapters it links to stay (assembly, G3 r2 H1).
+      if (f.origin !== "unit" || f.text === undefined || !f.unit.startsWith("chapter:")) continue;
       if (decisions.get(f.unit)?.result !== "pass") continue;
       for (const target of relativeLinks(path, f.text)) {
         const missing = !tree.files.has(target);
         // A link to an asset kept at an older version than this chapter expects (G3 M4).
         const targetUnit = `asset:${target}`;
-        const stale = !missing && target.startsWith("assets/") && decisions.get(targetUnit)?.result === "kept" &&
-          assembleIn.working.has(target) && tree.files.get(target)?.text !== assembleIn.working.get(target)?.text;
+        const atW = assembleIn.working.get(target);
+        const pub = tree.files.get(target);
+        const stale = !missing && target.startsWith("assets/") && decisions.get(targetUnit)?.result === "kept" && atW !== undefined &&
+          (atW.text !== undefined ? pub?.text !== atW.text : pub?.blobSha !== atW.blobSha); // binary assets compare blobs (G3 r2 L4)
         if ((missing || stale) && !findings.some((x) => x.unit === f.unit && x.check === "link" && x.path === target)) {
           added.push({ unit: f.unit, path: target, check: "link", severity: "default", message: missing ? `Links to ${target}, which is not published` : `Links to ${target}, which is published only in an older version` });
         }

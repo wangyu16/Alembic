@@ -5,7 +5,7 @@
  */
 import { createHash } from "node:crypto";
 import { WorkingManifestV3Schema, type Role } from "@alembic/package-contract";
-import { gitBlobSha, type PublicSide, type PublishedRecord, type PublishStore, type TreeEntry, type WorkingSide } from "./publish-job";
+import { classifyBytes, gitBlobSha, type PublicSide, type PublishedRecord, type PublishStore, type TreeEntry, type WorkingSide } from "./publish-job";
 
 export const h = (t: string) => createHash("sha256").update(t, "utf8").digest("hex");
 
@@ -16,11 +16,15 @@ export function manifestJson(chs: Array<{ slug: string; mode?: "draft" | "packag
   }));
 }
 
+/** A working tree; a file whose content contains a NUL byte is binary (classified by content, like the adapter). */
 export function working(files: Record<string, string>, extra: TreeEntry[] = [], truncated = false, unreadable: string[] = []): WorkingSide {
   return {
     async head() { return "W1"; },
     async listTree() { return { entries: [...Object.keys(files).map((p) => ({ path: p, mode: "100644", blobSha: `wb-${p}` })), ...extra], truncated }; },
-    async readText(_s, p) { return unreadable.includes(p) ? null : (files[p] ?? null); },
+    async readFile(_s, p) {
+      if (unreadable.includes(p) || !(p in files)) return null;
+      return classifyBytes(new TextEncoder().encode(files[p]!));
+    },
   };
 }
 

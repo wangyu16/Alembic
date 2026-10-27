@@ -25,8 +25,9 @@ export function words(text: string): string[] {
   return text
     .normalize("NFKC")
     .toLowerCase()
+    .replace(/\p{Cf}/gu, "") // soft hyphens, zero-width characters (G3 r2 L1)
     .replace(/<!--|-->/g, " ")
-    .replace(/<\/?[a-z][^>]*>/gi, " ")
+    .replace(/<\/?[a-z][\w-]*|\/?>/gi, " ") // tag names and brackets only: attribute values are compared (G3 r2 M6)
     .replace(/[^\p{L}\p{N}]+/gu, " ")
     .split(" ")
     .filter(Boolean);

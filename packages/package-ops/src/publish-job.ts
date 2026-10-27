@@ -25,10 +25,24 @@ import { publishWithLinkCheck, unitKey, unitOf, type Decision, type Finding, typ
 
 export interface TreeEntry { path: string; mode: string; type?: string; blobSha: string }
 
+/** A file's content, classified by CONTENT (NUL byte or invalid UTF-8 = binary), never by name (G3 r2 M5). */
+export type FileContent = { text: string } | { binary: true };
+
 export interface WorkingSide {
   head(): Promise<string>;
   listTree(sha: string): Promise<{ entries: TreeEntry[]; truncated: boolean }>;
-  readText(sha: string, path: string): Promise<string | null>;
+  /** null = the file couldn't be read at all. */
+  readFile(sha: string, path: string): Promise<FileContent | null>;
+}
+
+/** Classify bytes as text or binary by content (for adapters). */
+export function classifyBytes(bytes: Uint8Array): FileContent {
+  if (bytes.includes(0)) return { binary: true };
+  try {
+    return { text: new TextDecoder("utf-8", { fatal: true }).decode(bytes) };
+  } catch {
+    return { binary: true };
+  }
 }
 
 export interface PublicSide {
@@ -57,6 +71,8 @@ export interface PublishStore {
   approve(packageId: string, by: string, role: Role, parts: Array<{ path: string; version: string }>): Promise<void>;
   /** Bring public drift into the working repo (a system queue row); resolves when it ended. */
   bringInDrift(packageId: string, publicSha: string, paths: string[]): Promise<"done" | "not-done">;
+  /** A run that stopped after being recorded pending (e.g. the public copy kept changing). */
+  markStopped?(runId: string, reason: string): Promise<void>;
 }
 
 /** One public file: always identified by its git blob id in the public repo (G3 H2). */
@@ -81,7 +97,6 @@ export type PublishOutcome =
   | { status: "stopped"; reason: string; drift?: string[] };
 
 const TRAILER = "Alembic-Publish-Run";
-const BINARY = /\.(png|jpe?g|gif|webp|avif|ico|pdf|zip|gz|mp4|webm|mov|mp3|wav|ogg|woff2?|ttf|otf)$/i;
 
 /** Git's blob id of a text: sha1("blob <bytes>\0" + utf8) (G3 H2). */
 export async function gitBlobSha(text: string): Promise<string> {
@@ -102,8 +117,8 @@ const generatedOrSecret = (p: string) =>
  * -------------------------------------------------------------------------- */
 
 export async function runPublish(i: PublishInput, w: WorkingSide, pub: PublicSide, store: PublishStore, checks: UnitCheck[]): Promise<PublishOutcome> {
-  // 1. Authorise (P.8, Q.9).
-  const firstPublish = (await pub.head()) === null;
+  // 1. Authorise (P.8, Q.9). "First" = no Publish has ever been committed, even if the repo exists (G3 r2 M3).
+  const firstPublish = (await pub.head()) === null || !(await store.anyCommittedRun(i.packageId));
   if (!can(i.role, firstPublish ? "publish.first" : "publish.later")) {
     return { status: "stopped", reason: firstPublish ? "Only the owner makes the first Publish" : "Only the owner or deputy publishes" };
   }
@@ -121,7 +136,8 @@ export async function runPublish(i: PublishInput, w: WorkingSide, pub: PublicSid
   }
   let manifest: WorkingManifestV3;
   try {
-    manifest = WorkingManifestV3Schema.parse(JSON.parse((await w.readText(W, "alembic.json")) ?? "null"));
+    const m = await w.readFile(W, "alembic.json");
+    manifest = WorkingManifestV3Schema.parse(JSON.parse(m && "text" in m ? m.text : "null"));
   } catch {
     return { status: "stopped", reason: "The course manifest can't be read at this version" };
   }
@@ -163,6 +179,10 @@ export async function runPublish(i: PublishInput, w: WorkingSide, pub: PublicSid
           const u = unitOf(p, chapters, everPublished);
           return u.kind !== "none" && u.kind !== "orphan";
         });
+        // Files added under a chapter name the course doesn't have can't be placed: stop and name them,
+        // without acknowledging, so nothing is deleted silently (G3 r2 L5).
+        const orphans = changed.filter((p) => !generatedOrSecret(p) && isProjectable(p) && unitOf(p, chapters, everPublished).kind === "orphan");
+        if (orphans.length) return { status: "stopped", reason: `Files were added on GitHub under a chapter this course doesn't have: ${orphans.join(", ")}. Move or remove them on GitHub, then publish again.`, drift: orphans };
         const landed = bringable.length ? await store.bringInDrift(i.packageId, P, bringable) : "done";
         if (landed !== "done") return { status: "stopped", reason: "The public copy was changed on GitHub and those changes couldn't be brought in yet", drift: bringable };
         await store.acknowledge(i.packageId, P);
@@ -178,9 +198,9 @@ export async function runPublish(i: PublishInput, w: WorkingSide, pub: PublicSid
     if (e.type === "tree" || e.mode === "040000") continue;
     const u = unitOf(e.path, chapters, everPublished);
     if (u.kind === "none" || u.kind === "orphan") continue;
-    const binary = BINARY.test(e.path);
-    const text = binary ? null : await w.readText(W, e.path);
-    if (!binary && text === null) return { status: "stopped", reason: `Couldn't read ${e.path} to check it` };
+    const content = await w.readFile(W, e.path);
+    if (content === null) return { status: "stopped", reason: `Couldn't read ${e.path} to check it` };
+    const text = "text" in content ? content.text : null;
     working.set(e.path, text === null ? { blobSha: e.blobSha } : { text });
     const key = unitKey(u);
     byUnit.set(key, [...(byUnit.get(key) ?? []), { path: e.path, text }]);
@@ -206,13 +226,14 @@ export async function runPublish(i: PublishInput, w: WorkingSide, pub: PublicSid
     if (mine.length === 2 && mine.every((p) => approvedPaths.has(p.path))) approved.add(slug);
   }
 
-  // Kept units' published texts (for deleted assets they still link to, G3 H3).
-  const keptTexts = new Map<string, string>();
+  // Published chapter and course texts, with their unit: assembly uses those of KEPT units to keep the
+  // deleted assets they still link to (G3 H3; r2 M1: whatever the record's version; r2 M2: keyed by unit).
+  const keptTexts = new Map<string, { unit: string; text: string }>();
   if (P !== null) {
     for (const f of previously) {
-      if (f.version !== null && (f.unit.startsWith("chapter:") || f.unit === "course")) {
+      if (f.unit.startsWith("chapter:") || f.unit === "course") {
         const t = await pub.readText(P, f.path);
-        if (t !== null) keptTexts.set(f.path, t);
+        if (t !== null) keptTexts.set(f.path, { unit: f.unit, text: t });
       }
     }
   }
@@ -259,12 +280,18 @@ export async function runPublish(i: PublishInput, w: WorkingSide, pub: PublicSid
       return { status: "committed", runId: i.runId, publicSha, decisions: [...decisions.values()], published: [...assembled.publishedChapters] };
     } catch (e) {
       if (!(e instanceof Error && e.name === "HeadMovedError") || attempt >= 2) {
-        if (e instanceof Error && e.name === "HeadMovedError") return { status: "stopped", reason: "The public copy keeps changing; try again in a moment" };
+        if (e instanceof Error && e.name === "HeadMovedError") {
+          await store.markStopped?.(i.runId, "the public copy kept changing");
+          return { status: "stopped", reason: "The public copy keeps changing; try again in a moment" };
+        }
         throw e;
       }
       const now = await pub.head();
       const ack = await store.acknowledged(i.packageId);
-      if (now === null || now !== ack) return { status: "stopped", reason: "The public copy changed on GitHub during Publish; run Publish again" };
+      if (now === null || now !== ack) {
+        await store.markStopped?.(i.runId, "the public copy changed on GitHub during Publish");
+        return { status: "stopped", reason: "The public copy changed on GitHub during Publish; run Publish again" };
+      }
       P = now;
     }
   }
