@@ -10,7 +10,7 @@ contract once the cut-over happens (R31: no backward compatibility).
 
 | Repo | Name | Holds | Written by |
 |---|---|---|---|
-| **working** (private) | `<slug>-private` | the whole course tree, every space | the write path only (and the owner on GitHub) |
+| **working** (private) | `<slug>-private` | the whole course tree, every space | the write path only (and, on GitHub, the owner and any collaborator the owner added; forbidden content is undone, `queue-and-jobs-v3.md` §4) |
 | **public** | `<slug>-oer` | the projection: public spaces of published units | Publish only |
 
 `RepoKind` keeps its two values; `"private"` now means the working repo.
@@ -36,8 +36,8 @@ Rules:
    decides the space; unknown directory or root file throws.
 2. **Root files:** `alembic.json`, `README.md`, `LICENSE`, `CITATION.cff`,
    `.gitignore`, and new **`orz-site.json`**. Root directories: `.alembic`,
-   `.github`. They classify as space `metadata` as before. **`.github/` and
-   `.alembic/` are server-generated only** (refused from every user and
+   `.github`. They classify as space `metadata` as before. **`.github/`,
+   `.alembic/` and `.gitignore` are server-generated only** (refused from every user and
    agent write; permissions spec §3) and **`.github/` is never
    projectable**; the public repo's `.alembic/` is regenerated at Publish
    from public items only.
@@ -55,9 +55,9 @@ Rules:
    (draft chapters, kept units) is the publisher's decision.
 6. **Only regular files.** A working-repo tree entry is accepted only with
    mode `100644` or `100755`. Symlinks (`120000`) and submodules (`160000`)
-   are refused by every reader of the working repo: the write path never
-   creates them, Door C undoes them, Publish refuses a tree that contains
-   one (fail closed).
+   are never created by Alembic; if pushed on GitHub they are undone by a
+   front-of-line system commit (`queue-and-jobs-v3.md` §4); Publish refuses
+   a tree that still contains one (fail closed) and waits for the undo.
 
 ## 3. The private space
 

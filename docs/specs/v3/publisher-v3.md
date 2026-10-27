@@ -1,6 +1,6 @@
 # Publisher v3 (units, pinning, projection, checks) — mini-spec
 
-**Status:** draft 2 for gate G0, 2026-10-27 (draft 1 reviewed; resolutions in §6). Modules A11 (+A12 orz-site on the
+**Status:** draft 2 for gate G0 (run model superseded by `queue-and-jobs-v3.md` §5: Publish is a worker job, site build a separate job), 2026-10-27 (draft 1 reviewed; resolutions in §6). Modules A11 (+A12 orz-site on the
 worker). Design source: `ALEMBIC-WORKSPACE-DESIGN.md` §4.1, §4.3, §6.5,
 §9.4, §18.6; rulings R18, R19, R27.
 
@@ -24,7 +24,7 @@ worker). Design source: `ALEMBIC-WORKSPACE-DESIGN.md` §4.1, §4.3, §6.5,
 Not units (never projected; Publish writes them itself): `.github/`,
 `.alembic/` (regenerated from public items), `.gitignore`,
 `provenance/coursewerk/` (publish profile). The chapter slug `course` is
-reserved (contract §6). A renamed chapter is a removed chapter plus a new
+reserved (contract §7). A renamed chapter is a removed chapter plus a new
 one. Every projectable path belongs to exactly one unit (P.1).
 
 ## 3. A Publish run

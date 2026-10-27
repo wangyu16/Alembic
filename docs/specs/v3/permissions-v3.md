@@ -144,7 +144,9 @@ accepted_by, accepted_at)`):
 
 ### 4.4 GitHub
 
-`clientForCourse(packageId)` uses the **owner's** installation and mints the
+`clientForCourse(packageId)` uses the installation of the account that
+**owns the repositories** (`packages.repo_installation_id`,
+`queue-and-jobs-v3.md` §6) and mints the
 installation token **scoped to the course's two repositories** (the
 `repositories` parameter), with coordinates taken only from
 `packages.public_repo` / `private_repo`, never from the manifest. If the

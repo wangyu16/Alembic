@@ -1,6 +1,6 @@
 # Write path v3 (sync, version rule, kept versions, per-course queue) — mini-spec
 
-**Status:** draft 2 for gate G0, 2026-10-27 (draft 1 reviewed; findings
+**Status:** draft 2 for gate G0 (queue details superseded by `queue-and-jobs-v3.md`), 2026-10-27 (draft 1 reviewed; findings
 W-1…W-10, H-1…H-6, F-1…F-3 resolved here, see §10). Modules A4 (+A5 blocks
 adapter, A6 outage handling). Design source: `ALEMBIC-WORKSPACE-DESIGN.md`
 §7.1, §7.6, §8.8 #37, §18.1, §18.4.
@@ -124,8 +124,8 @@ serialised with writes for the same course; two Publish runs can't overlap
     on top, **unless** the document already has an open Both changed item
     involving another person (H-5): then current stays on top and that
     person's autosync for the document pauses until the item is resolved;
-  - everything else (Replace, offline sync, agent, outside, outbox) keeps
-    current on top.
+  - everything else (Replace, offline sync, agent, outside, and any row
+    processed after an outage) keeps current on top.
 - **Commits:** if current stays on top, one commit whose tree = H's tree
   plus the incoming file is the **kept** commit, followed by a commit
   restoring current's bytes; both built with `commitChain(H, [treeKept,
@@ -190,7 +190,7 @@ serialised with writes for the same course; two Publish runs can't overlap
 | A4.12 dependsOn: bounced dependency, unknown id, cycle | pure + fake |
 | A4.13 records refused outside harness changesets; records bounce with content | fake |
 | A4.14 every Alembic commit has the trailers; `doc_versions` rebuilds from them | fake |
-| A4.15 no entry point writes the public repo (scan + runtime assert) | scan |
+| A4.15 no write-queue entry point writes the public repo; only the Publish job and the site-build job do (scan + runtime assert) | scan |
 
 ## 10. Review resolutions (G0 round 1)
 
