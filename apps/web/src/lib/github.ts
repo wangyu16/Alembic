@@ -86,6 +86,15 @@ export async function installationAccountLogin(
   return account.login;
 }
 
+/** The installation's account (login, type, numeric id), or null if publishing isn't configured. */
+export async function installationAccount(
+  installationId: number,
+): Promise<{ login: string; type: string; id: number | null } | null> {
+  const cfg = githubConfig();
+  if (!cfg) return null;
+  return getInstallationAccount({ appId: cfg.appId, privateKey: cfg.privateKey, installationId });
+}
+
 /**
  * A GitHub client authenticated as a specific installation. The token source
  * refreshes the one-hour installation token ahead of expiry and after a 401,
