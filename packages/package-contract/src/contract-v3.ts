@@ -132,14 +132,36 @@ export function isHarnessPath(path: string): boolean {
   return normalizePath(path).startsWith("private/coursewerk/");
 }
 
-/** Generated files only Publish (or the publish profile) writes in the public repo (rule 5). */
-function isPublishGenerated(p: string): boolean {
+/**
+ * Files only Publish itself (or the publish profile) writes in the public
+ * repo — never copied from the working repo (rule 5). The public
+ * `alembic.json` is generated from the working one (`toPublicManifest`), so
+ * the working manifest can never be copied out by mistake.
+ */
+export function isPublishGenerated(path: string): boolean {
+  const p = normalizePath(path);
   return (
+    p === "alembic.json" ||
     p.startsWith("provenance/coursewerk/") ||
     p.startsWith(".github/") ||
     p.startsWith(".alembic/") ||
     p === ".gitignore"
   );
+}
+
+/**
+ * The public-repo write check Publish applies to every file of its commit:
+ * a unit file must be projectable; a generated file must be on the
+ * generated list. Both must pass the public-repo boundary.
+ */
+export function assertPublishWritable(path: string, origin: "unit" | "generated"): void {
+  assertPathAllowedInPublicRepo(path);
+  if (origin === "unit" && !isProjectable(path)) {
+    throw new PathLayerError(`"${path}" is not projectable from the working repo`, path);
+  }
+  if (origin === "generated" && !isPublishGenerated(path)) {
+    throw new PathLayerError(`"${path}" is not a file Publish generates`, path);
+  }
 }
 
 /** May this working-repo path be copied into the public repo? (rule 5; which UNITS are published is the publisher's call.) */
