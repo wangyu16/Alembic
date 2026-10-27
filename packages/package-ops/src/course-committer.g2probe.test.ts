@@ -46,7 +46,7 @@ class FakeRepo implements WorkingRepo {
     this.commits.push({ sha, parent: this.headSha, files: next, message });
     this.headSha = sha;
   }
-  async commitChain(input: { expectedHead: string; steps: Array<{ message: string; files: Array<{ path: string; content: string | null }> }> }) {
+  async commitChain(input: { expectedHead: string; steps: Array<{ message: string; files: Array<{ path: string; content: string | null }> }>; beforeMove?: (shas: string[]) => Promise<void> }) {
     let parent = input.expectedHead;
     let files = new Map(this.byId(parent).files);
     const staged: { sha: string; parent: string; files: Map<string, string>; message: string; alembic?: boolean }[] = [];
@@ -61,6 +61,7 @@ class FakeRepo implements WorkingRepo {
       this.beforeMove = undefined;
       await b();
     }
+    await input.beforeMove?.(staged.map((x) => x.sha));
     if (this.headSha !== input.expectedHead) throw new HeadMoved();
     this.commits.push(...staged);
     this.headSha = parent;

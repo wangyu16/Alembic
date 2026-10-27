@@ -18,6 +18,9 @@ interface Raw {
   actor_id: string | null;
   invoker_id: string | null;
   attempts: number;
+  abandons: number;
+  planned_shas: string[] | null;
+  created_at: string | Date;
   payload: QueueRow["payload"] | string;
 }
 
@@ -32,12 +35,17 @@ export class SqlQueueStore implements Omit<QueueStore, "baseText"> {
 
   async next(packageId: string, holder: string, fence: string): Promise<QueueRow | undefined> {
     const { rows } = await this.sql.query<Raw>(
-      `select id, package_id, kind, actor_id, invoker_id, attempts, payload from public.committer_next($1, $2, $3)`,
+      `select id, package_id, kind, actor_id, invoker_id, attempts, abandons, planned_shas, created_at, payload from public.committer_next($1, $2, $3)`,
       [packageId, holder, fence],
     );
     const r = rows[0];
     if (!r) return undefined;
+    const { rows: c } = await this.sql.query<{ t: string | Date | null }>(`select last_retry_at as t from public.course_committer where package_id = $1`, [packageId]);
+    const lastRetry = c[0]?.t ? new Date(c[0].t).getTime() : null;
     return {
+      abandons: Number(r.abandons ?? 0),
+      plannedShas: r.planned_shas ?? [],
+      afterOutage: lastRetry !== null && new Date(r.created_at).getTime() < lastRetry,
       id: r.id,
       packageId: r.package_id,
       kind: r.kind,
@@ -58,6 +66,15 @@ export class SqlQueueStore implements Omit<QueueStore, "baseText"> {
       i.error ?? null,
       i.retryAfterSeconds ?? null,
     ]);
+  }
+
+  async claimCurrent(rowId: string, holder: string, fence: string, attempts: number): Promise<boolean> {
+    const { rows } = await this.sql.query<{ ok: boolean }>(`select public.committer_claim_current($1, $2, $3, $4) as ok`, [rowId, holder, fence, attempts]);
+    return rows[0]?.ok === true;
+  }
+
+  async recordPlanned(rowId: string, holder: string, fence: string, attempts: number, shas: string[]): Promise<void> {
+    await this.sql.query(`select public.committer_record_planned($1, $2, $3, $4, $5::text[])`, [rowId, holder, fence, attempts, shas]);
   }
 
   async roleOf(packageId: string, userId: string): Promise<Role> {

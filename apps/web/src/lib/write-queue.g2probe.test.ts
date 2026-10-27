@@ -54,9 +54,11 @@ describe("G2 queue probes", () => {
       attempts = r.attempts;
       await expire(pkg); // the worker dies mid-row; its lease runs out
     }
-    const { rows } = await db.query<{ status: string }>(`select status from public.write_queue where id = $1`, [id]);
-    // queue §2.4/§3: abandoned rows count attempts; after 8 the row ends 'failed'.
-    expect(attempts).toBeLessThanOrEqual(8);
-    expect(rows[0]!.status).toBe("failed");
+    const { rows } = await db.query<{ status: string; abandons: number }>(`select status, abandons from public.write_queue where id = $1`, [id]);
+    // Revised after G2 round 2: SQL counts abandonments separately from retries and hands the row to the
+    // committer, which fails it only after checking it did not land (course-committer: MAX_ABANDONS).
+    expect(attempts).toBe(12);
+    expect(rows[0]!.abandons).toBe(11);
+    expect(rows[0]!.status).toBe("processing");
   });
 });

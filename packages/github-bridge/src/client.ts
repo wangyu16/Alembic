@@ -504,6 +504,8 @@ export class GitHubClient {
     branch?: string;
     expectedHead: string;
     steps: Array<{ message: string; files: ChainFile[] }>;
+    /** Runs after the commits exist and before the ref moves; throwing stops the move. */
+    beforeMove?: (shas: string[]) => Promise<void>;
   }): Promise<{ commitShas: string[]; head: string }> {
     const branch = input.branch ?? "main";
     const { owner, repo } = input.coords;
@@ -538,6 +540,7 @@ export class GitHubClient {
       parent = commit.sha;
       tree = newTree.sha;
     }
+    if (input.beforeMove) await input.beforeMove(commitShas);
     const now = await this.getRefSha(input.coords, `heads/${branch}`);
     if (now !== input.expectedHead) throw new HeadMovedError(input.expectedHead, now);
     try {

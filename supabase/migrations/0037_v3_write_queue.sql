@@ -24,6 +24,8 @@ create table public.write_queue (
   status          text not null default 'queued'
                   check (status in ('queued', 'processing', 'retry', 'done', 'bounced', 'refused', 'failed')),
   attempts        int not null default 0,
+  abandons        int not null default 0,   -- reclaimed while 'processing' (worker died); distinct from retries
+  planned_shas    text[] not null default '{}', -- commits built for this row, recorded before the ref move
   next_attempt_at timestamptz not null default now(),
   last_error      text,
   result          jsonb,
@@ -48,7 +50,8 @@ create table public.course_committer (
   package_id  text primary key references public.packages (id) on delete cascade,
   holder      text not null,
   fence       bigint not null default 1,
-  lease_until timestamptz not null
+  lease_until timestamptz not null,
+  last_retry_at timestamptz   -- the course's last outage/retry: rows created before it were processed "after an outage"
 );
 alter table public.course_committer enable row level security;
 revoke all on public.course_committer from anon, authenticated;
@@ -151,17 +154,14 @@ begin
       if dep is distinct from 'done' then return; end if;   -- wait, in order
     end if;
     if r.status = 'retry' and r.next_attempt_at > now() then return; end if;  -- wait, in order
-    -- A row abandoned in 'processing' (worker crash, lost lease) is retried a
-    -- bounded number of times, never in a hot loop forever (G2 finding 6).
-    if r.status = 'processing' and r.attempts >= 8 then
-      update public.write_queue
-         set status = 'failed', finished_at = now(),
-             last_error = coalesce(last_error, 'abandoned repeatedly while being processed')
-       where id = r.id;
-      continue;
-    end if;
-    update public.write_queue set status = 'processing', attempts = attempts + 1 where id = r.id
-      returning * into r;
+    -- A row reclaimed while 'processing' (worker died, lease lost) counts an
+    -- abandonment; the committer decides — after checking whether it landed —
+    -- whether to fail it (G2 r2: never fail here, before the landed check).
+    update public.write_queue
+       set status = 'processing', attempts = attempts + 1,
+           abandons = abandons + (case when r.status = 'processing' then 1 else 0 end)
+     where id = r.id
+     returning * into r;
     return next r;
     return;
   end loop;
@@ -181,6 +181,9 @@ begin
   if p_status not in ('done', 'bounced', 'refused', 'failed', 'retry') then
     raise exception 'bad status %', p_status using errcode = '22023';
   end if;
+  if p_status = 'retry' then
+    update public.course_committer set last_retry_at = now() where package_id = v_pkg;
+  end if;
   update public.write_queue
      set status = p_status,
          result = coalesce(p_result, result),
@@ -189,6 +192,30 @@ begin
          finished_at = case when p_status = 'retry' then null else now() end
    where id = p_id and status = 'processing';
   if not found then raise exception 'row is not being processed' using errcode = '22023'; end if;
+end $$;
+
+-- committer_claim_current: is this attempt still the live one? Checked right
+-- before every ref move, so an attempt abandoned at its deadline can never
+-- commit after the row moved on (G2 r2 HIGH).
+create function public.committer_claim_current(p_id uuid, p_holder text, p_fence bigint, p_attempts int)
+returns boolean language sql stable security definer set search_path = '' as $$
+  select exists (
+    select 1 from public.write_queue q
+     where q.id = p_id and q.status = 'processing' and q.attempts = p_attempts
+       and public.committer_holds(q.package_id, p_holder, p_fence)
+  )
+$$;
+
+-- committer_record_planned: remember the commits built for this attempt
+-- before the ref moves; a later attempt treats the row as landed only if one
+-- of them is in the branch (G2 r2 design risk: no reliance on commit authors).
+create function public.committer_record_planned(p_id uuid, p_holder text, p_fence bigint, p_attempts int, p_shas text[])
+returns void language plpgsql security definer set search_path = '' as $$
+begin
+  if not public.committer_claim_current(p_id, p_holder, p_fence, p_attempts) then
+    raise exception 'claim lost' using errcode = '40001';
+  end if;
+  update public.write_queue set planned_shas = planned_shas || p_shas where id = p_id;
 end $$;
 
 -- course_role_of: a given user's role (the committer's re-check at execution).
@@ -213,6 +240,10 @@ $$;
 revoke execute on function public.course_role_of(text, uuid) from public, anon, authenticated;
 grant execute on function public.course_role_of(text, uuid) to service_role;
 
+revoke execute on function public.committer_claim_current(uuid, text, bigint, int) from public, anon, authenticated;
+revoke execute on function public.committer_record_planned(uuid, text, bigint, int, text[]) from public, anon, authenticated;
+grant execute on function public.committer_claim_current(uuid, text, bigint, int) to service_role;
+grant execute on function public.committer_record_planned(uuid, text, bigint, int, text[]) to service_role;
 revoke execute on function public.queue_insert(text, text, text, jsonb, uuid, uuid, text, smallint, uuid) from public, anon, authenticated;
 revoke execute on function public.committer_acquire(text, text, int) from public, anon, authenticated;
 revoke execute on function public.committer_holds(text, text, bigint) from public, anon, authenticated;

@@ -29,10 +29,12 @@ function fakeRepo(initial: Record<string, string>): WorkingRepo & { file(p: stri
     async head() { return head; },
     async readFile(ref, p) { return by(ref).files.get(p) ?? null; },
     async recentCommits(n) { const out = []; let c: string | null = head; while (c && out.length < n) { const x = by(c); out.push({ sha: x.sha, message: x.message, byAlembic: x.alembic }); c = x.parent; } return out; },
-    async commitChain({ expectedHead, steps }) {
+    async commitChain({ expectedHead, steps, beforeMove }) {
       if (expectedHead !== head) throw new Error("moved");
-      let parent = head; let files = new Map(by(head).files); const shas: string[] = [];
-      for (const s of steps) { files = new Map(files); for (const f of s.files) f.content === null ? files.delete(f.path) : files.set(f.path, f.content); const sha = `c${commits.length}`; commits.push({ sha, parent, files, message: s.message, alembic: true }); shas.push(sha); parent = sha; }
+      let parent = head; let files = new Map(by(head).files); const shas: string[] = []; const staged: typeof commits = [];
+      for (const s of steps) { files = new Map(files); for (const f of s.files) f.content === null ? files.delete(f.path) : files.set(f.path, f.content); const sha = `c${commits.length + staged.length}`; staged.push({ sha, parent, files, message: s.message, alembic: false }); shas.push(sha); parent = sha; }
+      await beforeMove?.(shas);
+      commits.push(...staged);
       head = parent; this.moves++; return { commitShas: shas, head };
     },
     file(p) { return by(head).files.get(p) ?? null; },

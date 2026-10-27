@@ -97,6 +97,21 @@ describe("commitChain", () => {
     expect(r.patches()).toBe(0);
   });
 
+  it("beforeMove sees the built commits and can stop the move (superseded attempt)", async () => {
+    const r = repo();
+    let seen: string[] = [];
+    await expect(
+      r.client.commitChain({
+        coords, expectedHead: "h0",
+        steps: [{ message: "m", files: [{ path: "x.md", content: "a" }] }],
+        beforeMove: async (shas) => { seen = shas; throw new Error("superseded"); },
+      }),
+    ).rejects.toThrow("superseded");
+    expect(seen).toEqual(["c-1"]);
+    expect(r.patches()).toBe(0);
+    expect(r.state.head).toBe("h0");
+  });
+
   it("reuses existing blobs and deletes paths", async () => {
     const r = repo();
     await r.client.commitChain({

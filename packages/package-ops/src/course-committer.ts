@@ -8,7 +8,7 @@
  * so it is tested with fakes and runs unchanged on the worker.
  */
 
-import { canWritePath, type Role } from "@alembic/package-contract";
+import { canWritePath, normalizePath, type Role } from "@alembic/package-contract";
 import { decideFile, type FileDecision, type FileKind } from "./version-rule";
 
 /* -------------------------------------------------------------------------- *
@@ -26,6 +26,12 @@ export interface QueueRow {
   invokerId: string | null;
   attempts: number;
   payload: RowPayload;
+  /** Times the row was reclaimed while 'processing' (a worker died). */
+  abandons?: number;
+  /** Commits built for this row by earlier attempts (recorded before their ref move). */
+  plannedShas?: string[];
+  /** The row waited through an outage/retry of the course before being processed. */
+  afterOutage?: boolean;
 }
 
 export interface RowFile {
@@ -51,12 +57,21 @@ export interface QueueStore {
   roleOf(packageId: string, userId: string): Promise<Role>;
   /** Text of an earlier version of a file, if Alembic can still find it; undefined = unavailable. */
   baseText(packageId: string, path: string, version: string): Promise<string | null | undefined>;
+  /** Is this attempt still the live claim on the row? (Checked right before every ref move.) */
+  claimCurrent?(rowId: string, holder: string, fence: string, attempts: number): Promise<boolean>;
+  /** Record the commits built for this attempt, before the ref moves. */
+  recordPlanned?(rowId: string, holder: string, fence: string, attempts: number, shas: string[]): Promise<void>;
 }
 
 export interface WorkingRepo {
   head(): Promise<string>;
   readFile(ref: string, path: string): Promise<string | null>;
-  commitChain(input: { expectedHead: string; steps: Array<{ message: string; files: Array<{ path: string; content: string | null }> }> }): Promise<{ commitShas: string[]; head: string }>;
+  commitChain(input: {
+    expectedHead: string;
+    steps: Array<{ message: string; files: Array<{ path: string; content: string | null }> }>;
+    /** Called with the built commit SHAs after they exist and before the ref moves; throwing aborts the move. */
+    beforeMove?: (shas: string[]) => Promise<void>;
+  }): Promise<{ commitShas: string[]; head: string }>;
   /** Newest first. `byAlembic` must be true only for commits Alembic itself wrote (its App identity). */
   recentCommits(limit: number): Promise<Array<{ sha: string; message: string; byAlembic?: boolean }>>;
 }
@@ -66,6 +81,12 @@ export class RepoUnavailableError extends Error {
   constructor(readonly kind: "outage" | "access", message: string) {
     super(message);
     this.name = "RepoUnavailableError";
+  }
+}
+export class AttemptSuperseded extends Error {
+  constructor() {
+    super("attempt superseded");
+    this.name = "AttemptSuperseded";
   }
 }
 export class HeadMoved extends Error {
@@ -106,16 +127,36 @@ function trailers(row: QueueRow, extra: Record<string, string> = {}): string {
     .join("\n");
 }
 
-/** A trailer counts only on a commit Alembic wrote: a pushed commit can't forge one (G2 finding 4). */
-function findTrailer(c: { message: string; byAlembic?: boolean }, rowId: string): boolean {
-  return c.byAlembic === true && c.message.split("\n").some((l) => l.trim() === `Alembic-Write: ${rowId}`);
+/**
+ * Did an earlier attempt of this row land? A commit counts only if it is one
+ * this row recorded before its ref move (`plannedShas`), or — for adapters
+ * that can prove it — one flagged `byAlembic`. A trailer on a pushed commit
+ * proves nothing (G2 finding 4, G2 r2 design risk).
+ */
+function rowCommits(row: QueueRow, recent: Array<{ sha: string; message: string; byAlembic?: boolean }>) {
+  const planned = new Set(row.plannedShas ?? []);
+  return recent.filter(
+    (c) =>
+      planned.has(c.sha) ||
+      (c.byAlembic === true && c.message.split("\n").some((l) => l.trim() === `Alembic-Write: ${row.id}`)),
+  );
 }
 
 const isHeadMoved = (e: unknown) => e instanceof HeadMoved || (e instanceof Error && e.name === "HeadMovedError");
 
-async function alreadyLanded(row: QueueRow, repo: WorkingRepo) {
+/** The recorded result of a row that already landed: commits and per-file outcomes from its trailers (G2 r2). */
+async function alreadyLanded(row: QueueRow, repo: WorkingRepo): Promise<RowResult | null> {
   const recent = await repo.recentCommits(TRAILER_SCAN);
-  return recent.find((c) => findTrailer(c, row.id));
+  const mine = rowCommits(row, recent);
+  if (mine.length === 0) return null;
+  const files: FileOutcome[] = [];
+  for (const c of mine) {
+    for (const line of c.message.split("\n")) {
+      const m = /^Alembic-File: (landed|combined|both-changed)(?: ([a-z-]+))? (.+)$/.exec(line.trim());
+      if (m && !files.some((f) => f.path === m[3])) files.push({ path: m[3]!, outcome: m[1] as FileOutcome["outcome"], ...(m[2] ? { reason: m[2] } : {}) });
+    }
+  }
+  return { status: "done", result: { head: mine[0]!.sha, commits: mine.map((c) => c.sha).reverse(), files, recovered: true } };
 }
 
 export interface FileOutcome {
@@ -158,17 +199,32 @@ async function permitted(row: QueueRow, store: QueueStore): Promise<string | nul
 export interface ProcessOptions {
   /** Format validation for combined texts (e.g. the FC-18 header parses). */
   validate?: (path: string, text: string) => boolean;
+  /** Aborted when the attempt's deadline passes: it must not commit afterwards. */
+  signal?: AbortSignal;
+  /** The claim this attempt runs under (to re-check right before the ref move). */
+  claim?: { holder: string; fence: string };
 }
+
+/** A row reclaimed this many times without landing is failed. */
+export const MAX_ABANDONS = 8;
 
 export async function processRow(row: QueueRow, store: QueueStore, repo: WorkingRepo, opts: ProcessOptions = {}): Promise<RowResult> {
   try {
-    // 0. One entry per path (G2 finding 8).
+    // 0. Every path must be a clean contract path (no dot segments etc.) and appear once (G2 r1 #8, r2 LOW).
     const paths = row.payload.files.map((f) => f.path);
+    for (const p of paths) {
+      try {
+        normalizePath(p);
+      } catch {
+        return { status: "refused", reason: `invalid path ${JSON.stringify(p)}` };
+      }
+    }
     if (new Set(paths).size !== paths.length) return { status: "refused", reason: "the same file appears twice in one change" };
 
     // 1. Already landed? (crash after the ref move, or a stale holder.)
     const landed = await alreadyLanded(row, repo);
-    if (landed) return { status: "done", result: { head: landed.sha, commits: [landed.sha], files: [], recovered: true } };
+    if (landed) return landed;
+    if ((row.abandons ?? 0) >= MAX_ABANDONS) return { status: "failed", error: "abandoned repeatedly while being processed" };
 
     // 2. Still allowed?
     const denied = await permitted(row, store);
@@ -187,8 +243,8 @@ export async function processRow(row: QueueRow, store: QueueStore, repo: Working
           baseText,
           currentText,
           incomingText: file.text,
-          // Only on the first attempt: after an outage the editor may be long gone (spec §7, G2 finding 7).
-          fromOpenEditor: row.kind === "sync" && row.payload.fromOpenEditor === true && row.attempts <= 1,
+          // Only on a first attempt that didn't wait through an outage: the editor may be long gone (spec §5, §7).
+          fromOpenEditor: row.kind === "sync" && row.payload.fromOpenEditor === true && row.attempts <= 1 && row.afterOutage !== true,
           openItemWithOther: row.payload.openItemsWithOther?.includes(file.path) ?? false,
           allowRecords: row.kind === "changeset" || row.kind === "system",
           ...(opts.validate ? { validate: (t: string) => opts.validate!(file.path, t) } : {}),
@@ -234,18 +290,37 @@ export async function processRow(row: QueueRow, store: QueueStore, repo: Working
       if (kept.length === 0 && top.length === 0) return { status: "done", result: { head, commits: [], files } };
 
       const summary = row.payload.summary ?? `${row.kind} ${row.payload.files.length} file(s)`;
+      const fileLines = files
+        .filter((f) => f.outcome !== "refused")
+        .map((f) => `Alembic-File: ${f.outcome}${f.reason ? ` ${f.reason}` : ""} ${f.path}`)
+        .join("\n");
       const steps = [
         ...(kept.length ? [{ message: `Kept version (both changed)\n\n${trailers(row, { "Alembic-Kept": "true" })}`, files: kept }] : []),
-        ...(top.length ? [{ message: `${summary}\n\n${trailers(row)}`, files: top }] : []),
+        ...(top.length ? [{ message: `${summary}\n\n${trailers(row)}\n${fileLines}`, files: top }] : []),
       ];
       // Scan again right before moving the ref: another holder may have landed this row (G2 finding 1).
       const meanwhile = await alreadyLanded(row, repo);
-      if (meanwhile) return { status: "done", result: { head: meanwhile.sha, commits: [meanwhile.sha], files: [], recovered: true } };
+      if (meanwhile) return meanwhile;
+      const stillMine = async () => {
+        if (opts.signal?.aborted) return false;
+        if (opts.claim && store.claimCurrent) return store.claimCurrent(row.id, opts.claim.holder, opts.claim.fence, row.attempts);
+        return true;
+      };
+      if (!(await stillMine())) return { status: "retry", error: "attempt superseded", retryAfterSeconds: 0 };
       try {
-        const out = await repo.commitChain({ expectedHead: head, steps });
+        const out = await repo.commitChain({
+          expectedHead: head,
+          steps,
+          // Last gate before the ref moves: record the built commits, and stop if this attempt is no longer the live one (G2 r2 HIGH).
+          beforeMove: async (shas) => {
+            if (!(await stillMine())) throw new AttemptSuperseded();
+            if (opts.claim && store.recordPlanned) await store.recordPlanned(row.id, opts.claim.holder, opts.claim.fence, row.attempts, shas);
+          },
+        });
         return { status: "done", result: { head: out.head, commits: out.commitShas, files } };
       } catch (e) {
         if (isHeadMoved(e)) continue; // decide again on the new head (re-scanning first)
+        if (e instanceof AttemptSuperseded) return { status: "retry", error: "attempt superseded", retryAfterSeconds: 0 };
         throw e;
       }
     }
@@ -282,11 +357,15 @@ export async function drainCourse(packageId: string, holder: string, store: Queu
     const row = await store.next(packageId, holder, fence);
     if (!row) break;
     const deadline = opts.deadlineMs ?? ROW_DEADLINE_MS;
+    const abort = new AbortController();
     let timer: ReturnType<typeof setTimeout> | undefined;
     const r = await Promise.race([
-      processRow(row, store, repo, opts),
+      processRow(row, store, repo, { ...opts, signal: abort.signal, claim: { holder, fence } }),
       new Promise<RowResult>((res) => {
-        timer = setTimeout(() => res({ status: "retry", error: "took too long; trying again", retryAfterSeconds: 60 }), deadline);
+        timer = setTimeout(() => {
+          abort.abort(); // the abandoned attempt can no longer move the ref
+          res({ status: "retry", error: "took too long; trying again", retryAfterSeconds: 60 });
+        }, deadline);
       }),
     ]).finally(() => clearTimeout(timer));
     if (r.status === "done") await store.finish({ id: row.id, holder, fence, status: "done", result: r.result });

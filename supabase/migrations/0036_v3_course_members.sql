@@ -103,6 +103,17 @@ grant execute on function public.course_member_profiles(text) to authenticated;
 -- ---------------------------------------------------------------------------
 -- Invitations
 -- ---------------------------------------------------------------------------
+-- Removals: an invitation created before the invitee was removed is void,
+-- whatever GitHub login it named (logins can change; G1 r2).
+create table public.course_removals (
+  package_id text not null references public.packages (id) on delete cascade,
+  user_id    uuid not null references public.profiles (id) on delete cascade,
+  removed_at timestamptz not null default now()
+);
+create index course_removals_idx on public.course_removals (package_id, user_id);
+alter table public.course_removals enable row level security;
+revoke all on public.course_removals from anon, authenticated;
+
 create table public.course_invitations (
   id            uuid primary key default gen_random_uuid(),
   package_id    text not null references public.packages (id) on delete cascade,
@@ -158,6 +169,10 @@ begin
   if v_login is distinct from inv.invitee_login then
     raise exception 'This invitation is for another account' using errcode = '42501';
   end if;
+  if exists (select 1 from public.course_removals r
+              where r.package_id = inv.package_id and r.user_id = v_uid and r.removed_at >= inv.created_at) then
+    raise exception 'This invitation is no longer valid' using errcode = '42501';
+  end if;
   -- The inviter must still be the course's owner (and not banned): an
   -- invitation from a former owner or a banned account is void (G1 F2).
   if not exists (
@@ -199,6 +214,9 @@ begin
     raise exception 'Only the owner can remove a member' using errcode = '42501';
   end if;
   delete from public.course_members where package_id = p and user_id = p_user and role = 'co-author';
+  if found then
+    insert into public.course_removals (package_id, user_id) values (p, p_user);
+  end if;
   -- No open invitation lets a removed person back in (G1 F1).
   update public.course_invitations set revoked_at = now()
    where package_id = p and accepted_by is null and revoked_at is null

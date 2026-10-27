@@ -60,7 +60,7 @@ class FakeRepo implements WorkingRepo {
     this.commits.push({ sha, parent: this.headSha, files: next, message: "outside" });
     this.headSha = sha;
   }
-  async commitChain(input: { expectedHead: string; steps: Array<{ message: string; files: Array<{ path: string; content: string | null }> }> }) {
+  async commitChain(input: { expectedHead: string; steps: Array<{ message: string; files: Array<{ path: string; content: string | null }> }>; beforeMove?: (shas: string[]) => Promise<void> }) {
     let parent = input.expectedHead;
     let files = new Map(this.byId(parent).files);
     const shas: string[] = [];
@@ -74,6 +74,7 @@ class FakeRepo implements WorkingRepo {
       parent = sha;
     }
     this.beforeMove?.();
+    await input.beforeMove?.(staged.map((x) => x.sha));
     if (this.headSha !== input.expectedHead) throw new HeadMoved();
     this.commits.push(...staged);
     this.headSha = parent;
@@ -274,6 +275,16 @@ describe("course committer", () => {
     q3.add(sync("z", "owner", "study-guide/gases.md", base, sg("x", "two", "three")));
     const row = { ...q3.rows[0]!, attempts: MAX_ATTEMPTS };
     expect(await processRow(row, q3, r3)).toMatchObject({ status: "failed" });
+  });
+
+  it("an abandoned row is failed after MAX_ABANDONS only if it did not land; a landed one is recorded done", async () => {
+    const { repo, q } = setup();
+    q.add(sync("r1", "owner", "study-guide/gases.md", base, sg("x", "two", "three")));
+    const row = { ...q.rows[0]!, attempts: 9, abandons: 8 };
+    expect(await processRow(row, q, repo)).toMatchObject({ status: "failed" });
+    const landedRow = { ...q.rows[0]!, attempts: 1 };
+    await processRow(landedRow, q, repo); // lands
+    expect(await processRow({ ...landedRow, attempts: 10, abandons: 9 }, q, repo)).toMatchObject({ status: "done", result: { recovered: true } });
   });
 
   it("A4.0 a duplicate sync of identical text commits nothing", async () => {
