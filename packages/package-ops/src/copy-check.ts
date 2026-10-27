@@ -9,6 +9,8 @@
  * 32-bit halves) — collisions only cause a false "too close", never a leak.
  */
 
+import type { UnitCheck } from "./publish-job";
+
 export const QUOTE_LIMIT_WORDS = 50; // R27
 export const ANSWER_KEY_RUN_WORDS = 12; // R27 (O19)
 export const SHINGLE = 8; // words per shingle for source fingerprints
@@ -131,4 +133,40 @@ export function checkAnswerKeys(path: string, text: string, privateTexts: Readon
     }
   }
   return out;
+}
+
+/* -------------------------------------------------------------------------- *
+ * Publish check plug-ins (publisher §4; interface I8)
+ * -------------------------------------------------------------------------- */
+
+
+/**
+ * Answer-key and copying checks as Publish plug-ins. `privateTexts` are the
+ * pinned working tree's `private/instructor/` files; `fingerprints` the
+ * course's source fingerprints (kept after a file is removed). Both always
+ * block (R27). Findings never quote private text; a copying finding shows up
+ * to 20 words of the matching passage *from the course file itself*.
+ */
+export function copyChecks(privateTexts: ReadonlyArray<{ path: string; text: string }>, fingerprints: readonly Fingerprint[]): UnitCheck[] {
+  const textual = (p: string) => /\.(md|txt|html|svg|json|csv)$/i.test(p);
+  return [
+    {
+      id: "answer-key",
+      async run(unit, files) {
+        return files
+          .filter((f) => f.text !== null && textual(f.path))
+          .flatMap((f) => checkAnswerKeys(f.path, f.text!, privateTexts))
+          .map((x) => ({ unit, path: x.path, check: x.check, severity: x.severity, message: x.message }));
+      },
+    },
+    {
+      id: "copying",
+      async run(unit, files) {
+        return files
+          .filter((f) => f.text !== null && textual(f.path))
+          .flatMap((f) => checkCopying(f.path, f.text!, fingerprints))
+          .map((x) => ({ unit, path: x.path, check: x.check, severity: x.severity, message: x.message }));
+      },
+    },
+  ];
 }

@@ -138,3 +138,22 @@ describe("runPublish", () => {
     expect(pub.file("study-guide/gases.md")).toBeUndefined(); // removed from the manifest
   });
 });
+
+import { copyChecks, fingerprint } from "./copy-check";
+
+describe("Publish with the copy checks (B5 as plug-ins)", () => {
+  it("a chapter repeating an answer key or copying a source is kept, even if published anyway", async () => {
+    const pub = new FakePublic(); const st = new FakeStore();
+    const key = "The pressure doubles because the volume is halved at constant temperature and amount of gas.";
+    const book = Array.from({ length: 120 }, (_, k) => `bookword${k}`).join(" ");
+    const W3 = { ...W, "private/instructor/key.md": key,
+      "study-guide/atoms.md": `# Atoms\nHint: the pressure doubles because the volume is halved at constant temperature and amount of gas.`,
+      "study-guide/gases.md": `# Gases\n${book.split(" ").slice(0, 70).join(" ")}` };
+    for (const [p, t] of Object.entries(W3)) if (p.startsWith("concepts/") || p.startsWith("assessment-support/")) st.approve(p, t);
+    const checks = copyChecks([{ path: "private/instructor/key.md", text: key }], [fingerprint("src_book", book)]);
+    const out = await runPublish(input({ choices: { publishAnyway: ["atoms", "gases"], approveAndPublish: [] } }), working(W3), pub, st, checks);
+    expect(out.status === "committed" && out.published).toEqual([]);
+    expect(pub.file("study-guide/atoms.md")).toBeUndefined();
+    expect(pub.file("study-guide/gases.md")).toBeUndefined();
+  });
+});
