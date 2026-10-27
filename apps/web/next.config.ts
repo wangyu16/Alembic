@@ -10,6 +10,7 @@ const nextConfig: NextConfig = {
     "@alembic/ai-operations",
     "@alembic/github-bridge",
     "@alembic/research-events",
+    "@alembic/notify",
   ],
   experimental: {
     serverActions: {

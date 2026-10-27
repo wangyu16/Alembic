@@ -45,10 +45,28 @@ describe("runDigests", () => {
       ["b@x", "Nothing needs you this week"],
     ]);
     expect(mailer.sent[0]!.text).toContain("https://alembic.example/workspace/pkg-1");
+    expect(mailer.sent[0]!.text).not.toContain("/act/"); // no secret: no one-click links
     expect(db.marked.sort()).toEqual(["u1:2026-W44", "u2:2026-W44", "u4:2026-10-26"]);
     expect(logs.some((l) => l.includes("boom"))).toBe(true);
     // The next hour: only the one that failed is tried again.
     expect(await runDigests(db.rpc, { mailer, appUrl: "https://alembic.example", now: new Date("2026-10-26T15:00:00Z"), log: () => {} })).toBe(0);
     expect(mailer.sent).toHaveLength(2);
+  });
+});
+
+describe("one-click links", () => {
+  it("are signed for the person and the item when a secret is set", async () => {
+    const { verifyActionToken } = await import("@alembic/notify");
+    const secret = "z".repeat(40);
+    const mailer = new MemoryMailer();
+    const rpc = async (fn: string, a: Record<string, unknown> = {}) => {
+      if (fn === "notify_due_people") return a["p_every"] === "week" ? [{ user_id: "u9", email: "e@x", name: "E" }] : [];
+      if (fn === "notify_items") return [{ id: "n9", package_id: "pkg-9", course_title: "Bio", kind: "to-confirm", chapter: null, title: "Keep it", created_at: "2026-10-20T00:00:00Z" }];
+      return null;
+    };
+    await runDigests(rpc, { mailer, appUrl: "https://a.example", actionSecret: secret, now: new Date("2026-10-26T14:00:00Z") });
+    const token = /\/act\/([A-Za-z0-9_\-.]+)/.exec(mailer.sent[0]!.text)![1]!;
+    const claim = verifyActionToken(token, secret, Math.floor(Date.parse("2026-10-27T00:00:00Z") / 1000));
+    expect(claim).toMatchObject({ item: "n9", user: "u9", action: "confirm" });
   });
 });

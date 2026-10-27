@@ -17,6 +17,7 @@
     "@alembic/carriers": "workspace:*",
     "@alembic/editor-kit": "workspace:*",
     "@alembic/github-bridge": "workspace:*",
+    "@alembic/notify": "workspace:*",
     "@alembic/package-contract": "workspace:*",
     "@alembic/package-ops": "workspace:*",
     "@alembic/renderer": "workspace:*",

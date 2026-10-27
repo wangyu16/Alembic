@@ -38,6 +38,9 @@ importers:
       '@alembic/github-bridge':
         specifier: workspace:*
         version: link:../../packages/github-bridge
+      '@alembic/notify':
+        specifier: workspace:*
+        version: link:../../packages/notify
       '@alembic/package-contract':
         specifier: workspace:*
         version: link:../../packages/package-contract

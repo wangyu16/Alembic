@@ -6,10 +6,12 @@
  * sending and recording). A weekly email goes out even when nothing needs
  * the person ("nothing needs you this week"); a daily one doesn't.
  */
-import { buildDigest, type DigestCourse, type DigestItem, type Mailer, type NeedsYouKind } from "@alembic/notify";
+import { buildDigest, signActionToken, type DigestCourse, type DigestItem, type Mailer, type NeedsYouKind } from "@alembic/notify";
 import type { Rpc } from "./schedules";
 
 export const SEND_HOUR_UTC = 13;
+/** How long a one-click link works. */
+export const LINK_DAYS = 14;
 
 /** ISO-8601 week, e.g. "2026-W44". */
 export function isoWeek(d: Date): string {
@@ -34,7 +36,7 @@ interface Row { id: string; package_id: string; course_title: string; kind: Need
 
 export async function runDigests(
   rpc: Rpc,
-  deps: { mailer: Mailer; appUrl: string; now?: Date; log?: (m: string) => void },
+  deps: { mailer: Mailer; appUrl: string; actionSecret?: string; now?: Date; log?: (m: string) => void },
 ): Promise<number> {
   const now = deps.now ?? new Date();
   const base = deps.appUrl.replace(/\/+$/, "");
@@ -63,8 +65,10 @@ export async function runDigests(
           periodKey: key,
           courses: [...courses.values()],
           settingsUrl: `${base}/workspace/settings`,
-          // Until the one-click confirmation page exists, simple items open the course.
-          actionLink: (item) => `${base}/workspace/${encodeURIComponent(rows.find((r) => r.id === item.id)!.package_id)}`,
+          // A signed link to the confirmation page (/act); without a secret, the course.
+          actionLink: (item, action) => deps.actionSecret
+            ? `${base}/act/${signActionToken({ item: item.id, user: person.user_id, action, exp: Math.floor(now.getTime() / 1000) + LINK_DAYS * 86_400 }, deps.actionSecret)}`
+            : `${base}/workspace/${encodeURIComponent(rows.find((r) => r.id === item.id)!.package_id)}`,
         });
         await deps.mailer.send(email);
         await rpc("notify_mark_sent", { p_user: person.user_id, p_period_key: key });

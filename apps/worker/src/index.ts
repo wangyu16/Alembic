@@ -34,7 +34,7 @@ if (dbUrl && dbKey) {
   const appUrl = process.env["APP_URL"]?.trim();
   if (resendKey && from && appUrl) {
     const mailer = new ResendMailer(resendKey, from);
-    schedules.push({ name: "needs-you-email", everyMs: 60 * 60_000, run: (rpc) => runDigests(rpc, { mailer, appUrl }) });
+    schedules.push({ name: "needs-you-email", everyMs: 60 * 60_000, run: (rpc) => runDigests(rpc, { mailer, appUrl, actionSecret: process.env["ACTION_LINK_SECRET"]?.trim() || undefined }) });
   }
   startSchedules(postgrestRpc(dbUrl, dbKey), { schedules });
   console.log(`[alembic-worker] schedules on: ${schedules.map((s) => s.name).join(", ")}`);
