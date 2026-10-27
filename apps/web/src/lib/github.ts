@@ -138,18 +138,17 @@ export async function clientForCourse(
 ): Promise<{ client: GitHubClient; owner: string; repos: string[] } | null> {
   const cfg = githubConfig();
   if (!cfg) return null;
-  const { data } = await admin
-    .from("packages")
-    .select("repo_installation_id, private_repo, public_repo")
-    .eq("id", packageId)
-    .maybeSingle();
-  if (!data?.repo_installation_id) return null;
+  const [{ data }, { data: inst }] = await Promise.all([
+    admin.from("packages").select("private_repo, public_repo").eq("id", packageId).maybeSingle(),
+    admin.from("course_installations").select("installation_id").eq("package_id", packageId).maybeSingle(),
+  ]);
+  if (!data || !inst?.installation_id) return null;
   const scope = courseRepoScope(data as Parameters<typeof courseRepoScope>[0]);
   if (!scope) return null;
   const tokens = installationTokenSource({
     appId: cfg.appId,
     privateKey: cfg.privateKey,
-    installationId: data.repo_installation_id as number,
+    installationId: inst.installation_id as number,
     repositories: scope.names,
   });
   await tokens.token();

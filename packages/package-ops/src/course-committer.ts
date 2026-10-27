@@ -57,7 +57,8 @@ export interface WorkingRepo {
   head(): Promise<string>;
   readFile(ref: string, path: string): Promise<string | null>;
   commitChain(input: { expectedHead: string; steps: Array<{ message: string; files: Array<{ path: string; content: string | null }> }> }): Promise<{ commitShas: string[]; head: string }>;
-  recentCommits(limit: number): Promise<Array<{ sha: string; message: string }>>;
+  /** Newest first. `byAlembic` must be true only for commits Alembic itself wrote (its App identity). */
+  recentCommits(limit: number): Promise<Array<{ sha: string; message: string; byAlembic?: boolean }>>;
 }
 
 /** Errors the repo seam may throw, classified by the committer (queue-and-jobs §2.4). */
@@ -105,8 +106,16 @@ function trailers(row: QueueRow, extra: Record<string, string> = {}): string {
     .join("\n");
 }
 
-function findTrailer(message: string, rowId: string): boolean {
-  return message.split("\n").some((l) => l.trim() === `Alembic-Write: ${rowId}`);
+/** A trailer counts only on a commit Alembic wrote: a pushed commit can't forge one (G2 finding 4). */
+function findTrailer(c: { message: string; byAlembic?: boolean }, rowId: string): boolean {
+  return c.byAlembic === true && c.message.split("\n").some((l) => l.trim() === `Alembic-Write: ${rowId}`);
+}
+
+const isHeadMoved = (e: unknown) => e instanceof HeadMoved || (e instanceof Error && e.name === "HeadMovedError");
+
+async function alreadyLanded(row: QueueRow, repo: WorkingRepo) {
+  const recent = await repo.recentCommits(TRAILER_SCAN);
+  return recent.find((c) => findTrailer(c, row.id));
 }
 
 export interface FileOutcome {
@@ -122,6 +131,7 @@ export interface FileOutcome {
 export type RowResult =
   | { status: "done"; result: { head: string; commits: string[]; files: FileOutcome[]; recovered?: boolean } }
   | { status: "refused"; reason: string }
+  | { status: "bounced"; reason: string; records: string[] }
   | { status: "retry"; error: string; retryAfterSeconds: number; access?: boolean }
   | { status: "failed"; error: string };
 
@@ -145,11 +155,19 @@ async function permitted(row: QueueRow, store: QueueStore): Promise<string | nul
   return null;
 }
 
-export async function processRow(row: QueueRow, store: QueueStore, repo: WorkingRepo): Promise<RowResult> {
+export interface ProcessOptions {
+  /** Format validation for combined texts (e.g. the FC-18 header parses). */
+  validate?: (path: string, text: string) => boolean;
+}
+
+export async function processRow(row: QueueRow, store: QueueStore, repo: WorkingRepo, opts: ProcessOptions = {}): Promise<RowResult> {
   try {
+    // 0. One entry per path (G2 finding 8).
+    const paths = row.payload.files.map((f) => f.path);
+    if (new Set(paths).size !== paths.length) return { status: "refused", reason: "the same file appears twice in one change" };
+
     // 1. Already landed? (crash after the ref move, or a stale holder.)
-    const recent = await repo.recentCommits(TRAILER_SCAN);
-    const landed = recent.find((c) => findTrailer(c.message, row.id));
+    const landed = await alreadyLanded(row, repo);
     if (landed) return { status: "done", result: { head: landed.sha, commits: [landed.sha], files: [], recovered: true } };
 
     // 2. Still allowed?
@@ -169,11 +187,23 @@ export async function processRow(row: QueueRow, store: QueueStore, repo: Working
           baseText,
           currentText,
           incomingText: file.text,
-          fromOpenEditor: row.kind === "sync" && row.payload.fromOpenEditor === true,
+          // Only on the first attempt: after an outage the editor may be long gone (spec §7, G2 finding 7).
+          fromOpenEditor: row.kind === "sync" && row.payload.fromOpenEditor === true && row.attempts <= 1,
           openItemWithOther: row.payload.openItemsWithOther?.includes(file.path) ?? false,
+          allowRecords: row.kind === "changeset" || row.kind === "system",
+          ...(opts.validate ? { validate: (t: string) => opts.validate!(file.path, t) } : {}),
         });
         if (d.outcome === "refused") return { status: "refused", reason: `${file.path}: ${d.reason}` };
         decisions.push({ file, d });
+      }
+
+      // Harness records land only if every content file landed or was combined (spec §6).
+      if (row.kind === "changeset") {
+        const records = decisions.filter(({ file }) => file.path.startsWith("private/coursewerk/"));
+        const contentOk = decisions.every(({ file, d }) => file.path.startsWith("private/coursewerk/") || d.outcome === "landed" || d.outcome === "combined");
+        if (records.length && !contentOk) {
+          return { status: "bounced", reason: "some changes need a person first; the records come back to the agent", records: records.map(({ file }) => file.path) };
+        }
       }
 
       // 3. Build the chain: kept versions first (only those not already in history), then the top.
@@ -208,11 +238,14 @@ export async function processRow(row: QueueRow, store: QueueStore, repo: Working
         ...(kept.length ? [{ message: `Kept version (both changed)\n\n${trailers(row, { "Alembic-Kept": "true" })}`, files: kept }] : []),
         ...(top.length ? [{ message: `${summary}\n\n${trailers(row)}`, files: top }] : []),
       ];
+      // Scan again right before moving the ref: another holder may have landed this row (G2 finding 1).
+      const meanwhile = await alreadyLanded(row, repo);
+      if (meanwhile) return { status: "done", result: { head: meanwhile.sha, commits: [meanwhile.sha], files: [], recovered: true } };
       try {
         const out = await repo.commitChain({ expectedHead: head, steps });
         return { status: "done", result: { head: out.head, commits: out.commitShas, files } };
       } catch (e) {
-        if (e instanceof HeadMoved) continue; // decide again on the new head
+        if (isHeadMoved(e)) continue; // decide again on the new head (re-scanning first)
         throw e;
       }
     }
@@ -237,16 +270,28 @@ export async function processRow(row: QueueRow, store: QueueStore, repo: Working
  * Drain a course's queue while holding its lease. Returns how many rows were
  * finished; stops when the course has nothing ready, or the lease is lost.
  */
-export async function drainCourse(packageId: string, holder: string, store: QueueStore, repo: WorkingRepo, limit = 50): Promise<number> {
+export const ROW_DEADLINE_MS = 45_000;
+
+export async function drainCourse(packageId: string, holder: string, store: QueueStore, repo: WorkingRepo, limit = 50, opts: ProcessOptions & { deadlineMs?: number } = {}): Promise<number> {
   const fence = await store.acquire(packageId, holder);
   if (fence === null) return 0;
   let done = 0;
   for (; done < limit; done++) {
+    // Renew the lease before every row; stop if it was taken over (G2 finding 1).
+    if (done > 0 && (await store.acquire(packageId, holder)) !== fence) break;
     const row = await store.next(packageId, holder, fence);
     if (!row) break;
-    const r = await processRow(row, store, repo);
+    const deadline = opts.deadlineMs ?? ROW_DEADLINE_MS;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const r = await Promise.race([
+      processRow(row, store, repo, opts),
+      new Promise<RowResult>((res) => {
+        timer = setTimeout(() => res({ status: "retry", error: "took too long; trying again", retryAfterSeconds: 60 }), deadline);
+      }),
+    ]).finally(() => clearTimeout(timer));
     if (r.status === "done") await store.finish({ id: row.id, holder, fence, status: "done", result: r.result });
     else if (r.status === "refused") await store.finish({ id: row.id, holder, fence, status: "refused", result: { reason: r.reason } });
+    else if (r.status === "bounced") await store.finish({ id: row.id, holder, fence, status: "bounced", result: { reason: r.reason, records: r.records } });
     else if (r.status === "failed") await store.finish({ id: row.id, holder, fence, status: "failed", error: r.error });
     else {
       await store.finish({ id: row.id, holder, fence, status: "retry", error: r.error, retryAfterSeconds: r.retryAfterSeconds, ...(r.access ? { result: { needsReconnect: true } } : {}) });

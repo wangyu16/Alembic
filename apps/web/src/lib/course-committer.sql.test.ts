@@ -21,18 +21,18 @@ const sql = {
 };
 
 function fakeRepo(initial: Record<string, string>): WorkingRepo & { file(p: string): string | null; moves: number } {
-  const commits = [{ sha: "c0", parent: null as string | null, files: new Map(Object.entries(initial)), message: "init" }];
+  const commits = [{ sha: "c0", parent: null as string | null, files: new Map(Object.entries(initial)), message: "init", alembic: false }];
   let head = "c0";
   const by = (s: string) => commits.find((c) => c.sha === s)!;
   return {
     moves: 0,
     async head() { return head; },
     async readFile(ref, p) { return by(ref).files.get(p) ?? null; },
-    async recentCommits(n) { const out = []; let c: string | null = head; while (c && out.length < n) { const x = by(c); out.push({ sha: x.sha, message: x.message }); c = x.parent; } return out; },
+    async recentCommits(n) { const out = []; let c: string | null = head; while (c && out.length < n) { const x = by(c); out.push({ sha: x.sha, message: x.message, byAlembic: x.alembic }); c = x.parent; } return out; },
     async commitChain({ expectedHead, steps }) {
       if (expectedHead !== head) throw new Error("moved");
       let parent = head; let files = new Map(by(head).files); const shas: string[] = [];
-      for (const s of steps) { files = new Map(files); for (const f of s.files) f.content === null ? files.delete(f.path) : files.set(f.path, f.content); const sha = `c${commits.length}`; commits.push({ sha, parent, files, message: s.message }); shas.push(sha); parent = sha; }
+      for (const s of steps) { files = new Map(files); for (const f of s.files) f.content === null ? files.delete(f.path) : files.set(f.path, f.content); const sha = `c${commits.length}`; commits.push({ sha, parent, files, message: s.message, alembic: true }); shas.push(sha); parent = sha; }
       head = parent; this.moves++; return { commitShas: shas, head };
     },
     file(p) { return by(head).files.get(p) ?? null; },

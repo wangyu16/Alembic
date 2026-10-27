@@ -158,10 +158,23 @@ begin
   if v_login is distinct from inv.invitee_login then
     raise exception 'This invitation is for another account' using errcode = '42501';
   end if;
+  -- The inviter must still be the course's owner (and not banned): an
+  -- invitation from a former owner or a banned account is void (G1 F2).
+  if not exists (
+    select 1 from public.course_members m join auth.users u on u.id = m.user_id
+     where m.package_id = inv.package_id and m.user_id = inv.invited_by and m.role = 'owner'
+       and (u.banned_until is null or u.banned_until <= now())
+  ) then
+    raise exception 'This invitation is no longer valid' using errcode = '42501';
+  end if;
   insert into public.course_members (package_id, user_id, role, added_by)
   values (inv.package_id, v_uid, 'co-author', inv.invited_by)
   on conflict (package_id, user_id) do nothing;
   update public.course_invitations set accepted_by = v_uid, accepted_at = now() where id = inv.id;
+  -- Other open invitations for the same person to this course are spent too (G1 F1).
+  update public.course_invitations set revoked_at = now()
+   where package_id = inv.package_id and invitee_login = inv.invitee_login
+     and accepted_by is null and revoked_at is null and id <> inv.id;
   return inv.package_id;
 end $$;
 
@@ -186,6 +199,10 @@ begin
     raise exception 'Only the owner can remove a member' using errcode = '42501';
   end if;
   delete from public.course_members where package_id = p and user_id = p_user and role = 'co-author';
+  -- No open invitation lets a removed person back in (G1 F1).
+  update public.course_invitations set revoked_at = now()
+   where package_id = p and accepted_by is null and revoked_at is null
+     and invitee_login = (select lower(github_username) from public.profiles where id = p_user);
 end $$;
 
 create function public.leave_course(p text)
@@ -232,14 +249,38 @@ begin
   if public.course_role(p) is distinct from 'owner' then
     raise exception 'Only the owner can transfer the course' using errcode = '42501';
   end if;
+  -- Lock both member rows so a concurrent leave/remove can't leave the course ownerless.
+  perform 1 from public.course_members where package_id = p and user_id in (v_old, p_user) for update;
   if not exists (select 1 from public.course_members where package_id = p and user_id = p_user and role = 'co-author') then
     raise exception 'The new owner must be a co-author of the course' using errcode = '22023';
   end if;
   update public.course_members set role = 'co-author', deputy_until = null where package_id = p and user_id = v_old;
-  update public.course_members set role = 'owner', deputy_until = null where package_id = p and user_id = p_user;
-  update public.packages set owner_id = p_user where id = p;
-  update public.portal_registrations set owner_id = p_user where package_id = p;
+  update public.course_members set role = 'owner', deputy_until = null where package_id = p and user_id = p_user and role = 'co-author';
+  if not found then
+    raise exception 'The new owner left the course' using errcode = '40001';
+  end if;
+  -- Invitations the previous owner sent are void (G1 F2). The owner_id copies
+  -- follow through the owner-sync trigger below.
+  update public.course_invitations set revoked_at = now()
+   where package_id = p and accepted_by is null and revoked_at is null;
 end $$;
+
+-- Owner sync: course_members is the source of truth; the denormalised
+-- owner_id copies (packages, portal_registrations) follow ANY ownership
+-- change, not only transfer_owner (spec §2; G1 F4).
+create function public.course_members_owner_sync()
+returns trigger language plpgsql security definer set search_path = '' as $$
+begin
+  if new.role = 'owner' then
+    update public.packages set owner_id = new.user_id where id = new.package_id and owner_id is distinct from new.user_id;
+    update public.portal_registrations set owner_id = new.user_id where package_id = new.package_id and owner_id is distinct from new.user_id;
+  end if;
+  return new;
+end $$;
+revoke execute on function public.course_members_owner_sync() from public, anon, authenticated;
+create trigger course_members_owner_sync
+  after insert or update of role on public.course_members
+  for each row execute function public.course_members_owner_sync();
 
 -- Every membership definer: never callable by anon or PUBLIC.
 revoke execute on function public.invite_member(text, text, text, int) from public, anon;

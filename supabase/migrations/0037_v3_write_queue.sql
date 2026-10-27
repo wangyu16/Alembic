@@ -70,6 +70,10 @@ begin
   ) then
     raise exception 'depends_on must be a row of the same course' using errcode = '22023';
   end if;
+  -- A front-of-line row can't wait on a row behind it (G2 finding 5).
+  if p_depends is not null and p_priority > (select priority from public.write_queue where id = p_depends) then
+    raise exception 'a priority row cannot depend on a lower-priority row' using errcode = '22023';
+  end if;
   insert into public.write_queue (package_id, kind, idem_key, payload, actor_id, invoker_id, pusher_login, priority, depends_on)
   values (p_package, p_kind, p_kind || ':' || p_idem, p_payload, p_actor, p_invoker, p_pusher, p_priority, p_depends)
   on conflict (package_id, kind, idem_key) do nothing
@@ -147,6 +151,15 @@ begin
       if dep is distinct from 'done' then return; end if;   -- wait, in order
     end if;
     if r.status = 'retry' and r.next_attempt_at > now() then return; end if;  -- wait, in order
+    -- A row abandoned in 'processing' (worker crash, lost lease) is retried a
+    -- bounded number of times, never in a hot loop forever (G2 finding 6).
+    if r.status = 'processing' and r.attempts >= 8 then
+      update public.write_queue
+         set status = 'failed', finished_at = now(),
+             last_error = coalesce(last_error, 'abandoned repeatedly while being processed')
+       where id = r.id;
+      continue;
+    end if;
     update public.write_queue set status = 'processing', attempts = attempts + 1 where id = r.id
       returning * into r;
     return next r;

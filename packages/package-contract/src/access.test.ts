@@ -53,11 +53,19 @@ describe("A2.1 the matrix", () => {
 });
 
 describe("A2.9 the agent is capped by its invoker", () => {
-  it("canAgent ⊆ can(invoker) for every action, role and context", () => {
+  it("canAgent ⊆ can(invoker) for every action a person can do, role and context", () => {
     const ctxs = [{}, { aiAllowed: true }, { path: "study-guide/x.md" }, { actorId: "a", uploaderId: "a", sharedWithCourse: true, addressedTo: ["a"], githubCollaborator: true }];
     for (const inv of ROLES) for (const a of ACTIONS) for (const c of ctxs) {
+      if (a === "source.use-ai") continue; // agent-only: capped by membership instead (next test)
       if (canAgent(inv, a, c)) expect(can(inv, a, c), `${inv}/${a}`).toBe(true);
     }
+  });
+  it("agent-only source use is capped by the invoker's membership (G1 F5)", () => {
+    expect(canAgent("owner", "source.use-ai", { aiAllowed: true })).toBe(true);
+    expect(canAgent("co-author", "source.use-ai", { aiAllowed: true })).toBe(true);
+    expect(canAgent("co-author", "source.use-ai", { aiAllowed: false })).toBe(false);
+    expect(canAgent("none", "source.use-ai", { aiAllowed: true })).toBe(false);
+    expect(canAgent("operator", "source.use-ai", { aiAllowed: true })).toBe(false);
   });
   it("an agent started by nobody can do nothing", () => {
     for (const a of ACTIONS) expect(canAgent("none", a, { aiAllowed: true })).toBe(false);

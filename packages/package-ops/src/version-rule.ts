@@ -87,7 +87,14 @@ function hunks(base: string[], other: string[]): Hunk[] {
     }
   }
   flush();
-  return out;
+  // A one-for-one replacement of k blocks is k independent block edits:
+  // split it, so an identical edit resent alongside a new one is recognised
+  // block by block (G2 finding 2).
+  return out.flatMap((hk) =>
+    hk.end - hk.start === hk.with.length && hk.with.length > 1
+      ? hk.with.map((w, k) => ({ start: hk.start + k, end: hk.start + k + 1, with: [w] }))
+      : [hk],
+  );
 }
 
 /**
@@ -107,7 +114,9 @@ function conflicts(a: Hunk, b: Hunk): boolean {
 /** Combine two edits of `base`; null if they touch the same block. */
 export function mergeBlocks(base: string[], current: string[], incoming: string[]): string[] | null {
   const hc = hunks(base, current);
-  const hi = hunks(base, incoming);
+  const same = (x: Hunk, y: Hunk) => x.start === y.start && x.end === y.end && x.with.length === y.with.length && x.with.every((w, k) => w === y.with[k]);
+  // The same change made on both sides (a resent edit) is not a conflict (G2 finding 2).
+  const hi = hunks(base, incoming).filter((y) => !hc.some((x) => same(x, y)));
   for (const a of hc) for (const b of hi) if (conflicts(a, b)) return null;
   const all = [...hc.map((h) => ({ ...h, side: 0 })), ...hi.map((h) => ({ ...h, side: 1 }))].sort(
     (x, y) => x.start - y.start || x.end - y.end || x.side - y.side,
@@ -144,6 +153,8 @@ export interface FileChangeInput {
   openItemWithOther?: boolean;
   /** Optional format validation for a combined text (e.g. FC-18 header parse). */
   validate?: (text: string) => boolean;
+  /** Coursewerk records may be written (harness changesets and system rows only). */
+  allowRecords?: boolean;
 }
 
 export type FileDecision =
@@ -169,7 +180,7 @@ const v = async (t: string | null): Promise<string | null> => (t === null ? null
 
 /** Apply the version rule to one file. */
 export async function decideFile(c: FileChangeInput): Promise<FileDecision> {
-  if (c.path.startsWith("private/coursewerk/")) return { outcome: "refused", reason: "records-not-editable" };
+  if (c.path.startsWith("private/coursewerk/") && !c.allowRecords) return { outcome: "refused", reason: "records-not-editable" };
   if (c.path === "alembic.json") return { outcome: "refused", reason: "manifest-not-editable" };
 
   const current = await v(c.currentText);

@@ -23,7 +23,7 @@ const h = (t: string) => createHash("sha256").update(t, "utf8").digest("hex");
 const sg = (...s: string[]) => "# T\n\n" + s.map((x, i) => `## S${i}\n\n${x}\n\n`).join("");
 
 class FakeRepo implements WorkingRepo {
-  commits: Array<{ sha: string; parent: string | null; files: Map<string, string>; message: string }> = [];
+  commits: Array<{ sha: string; parent: string | null; files: Map<string, string>; message: string; alembic?: boolean }> = [];
   refMoves = 0;
   beforeMove?: () => void;
   failWith?: Error;
@@ -46,7 +46,7 @@ class FakeRepo implements WorkingRepo {
     let c: string | null = this.headSha;
     while (c && out.length < limit) {
       const x = this.byId(c);
-      out.push({ sha: x.sha, message: x.message });
+      out.push({ sha: x.sha, message: x.message, byAlembic: x.alembic === true });
       c = x.parent;
     }
     return out;
@@ -69,7 +69,7 @@ class FakeRepo implements WorkingRepo {
       files = new Map(files);
       for (const f of step.files) f.content === null ? files.delete(f.path) : files.set(f.path, f.content);
       const sha = `c${this.commits.length + staged.length}`;
-      staged.push({ sha, parent, files, message: step.message });
+      staged.push({ sha, parent, files, message: step.message, alembic: true });
       shas.push(sha);
       parent = sha;
     }

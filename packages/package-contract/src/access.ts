@@ -138,6 +138,10 @@ export function can(role: Role, action: Action, ctx: AccessContext = {}): boolea
  * job (permissions §3): agent ∩ invoker. Automatic jobs use the owner.
  */
 export function canAgent(invoker: Role, action: Action, ctx: AccessContext = {}): boolean {
+  // Agent-only actions (no human row grants them) are capped by membership
+  // instead: the invoker must be a course member who can see the source's
+  // pointer (G1 F5).
+  if (action === "source.use-ai") return can("agent", action, ctx) && can(invoker, "source.see-pointer", ctx);
   return can("agent", action, ctx) && can(invoker, action, ctx);
 }
 
