@@ -1,0 +1,14 @@
+{
+  "name": "@alembic/notify",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Notifications (C8): the mailer seam (Resend), the weekly Needs-you email, invitations, and signed one-click links. No database access; callers pass the data in.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  }
+}

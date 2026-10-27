@@ -168,6 +168,8 @@ importers:
         specifier: workspace:*
         version: link:../package-contract
 
+  packages/notify: {}
+
   packages/package-contract:
     dependencies:
       zod:
