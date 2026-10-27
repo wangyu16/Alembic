@@ -236,6 +236,9 @@ begin
        or public.course_role_of(j.package_id, p_actor) is null then
       raise exception 'The course allowance pays only automatic work of its course' using errcode = '42501';
     end if;
+    if a.month < date_trunc('month', now())::date then
+      raise exception 'That month''s allowance has ended' using errcode = '42501';
+    end if;
     -- While the owner has debt (e.g. a disputed payment), the allowance can't be spent (ledger §9.4).
     if exists (select 1 from public.course_members m join public.ledger_accounts u on u.kind = 'user' and u.user_id = m.user_id
                 where m.package_id = a.package_id and m.role = 'owner' and u.debt > 0) then

@@ -1,6 +1,6 @@
 import { createHmac } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
-import { createTopupCheckout, handleStripeEvent, verifyStripeSignature, type StripeEvent, type TopupDeps } from "./stripe-topups";
+import { createTopupCheckout, handleStripeEvent, isLiveKey, verifyStripeSignature, type StripeEvent, type TopupDeps } from "./stripe-topups";
 
 const SECRET = "whsec_test";
 const sign = (body: string, t: number, secret = SECRET) =>
@@ -27,7 +27,8 @@ function deps(events: StripeEvent[], livemode = false) {
   const d = {
     fetchEvent: vi.fn(async (id: string) => events.find((e) => e.id === id) ?? null),
     checkoutPaid: vi.fn(async () => undefined),
-    paymentReversed: vi.fn(async () => undefined),
+    paymentRefunded: vi.fn(async () => undefined),
+    paymentDispute: vi.fn(async () => undefined),
     livemode,
   } satisfies TopupDeps;
   return d;
@@ -53,15 +54,25 @@ describe("handleStripeEvent", () => {
     expect((await handleStripeEvent("evt_s", deps([session({ currency: "eur" })]))).status).toBe("rejected");
     expect((await handleStripeEvent("evt_s", deps([session({ metadata: {} })]))).status).toBe("ignored"); // not an Alembic top-up
   });
-  it("passes refunds as Stripe's running total and disputes as an added amount", async () => {
+  it("passes refunds as Stripe's running total, and disputes only when money moves", async () => {
     const d = deps([
       { id: "evt_r", type: "charge.refunded", data: { object: { payment_intent: "pi_1", amount_refunded: 400 } } },
-      { id: "evt_d", type: "charge.dispute.created", data: { object: { payment_intent: { id: "pi_1" }, amount: 600 } } },
+      { id: "evt_w", type: "charge.dispute.funds_withdrawn", data: { object: { id: "dp_1", payment_intent: { id: "pi_1" }, amount: 600 } } },
+      { id: "evt_b", type: "charge.dispute.funds_reinstated", data: { object: { id: "dp_1", payment_intent: "pi_1", amount: 600 } } },
+      { id: "evt_c", type: "charge.dispute.created", data: { object: { id: "dp_2", payment_intent: "pi_1", amount: 600 } } },
     ]);
-    await handleStripeEvent("evt_r", d);
-    await handleStripeEvent("evt_d", d);
-    expect(d.paymentReversed).toHaveBeenNthCalledWith(1, { paymentIntent: "pi_1", reasonEvent: "evt_r", totalCents: 400, addCents: null });
-    expect(d.paymentReversed).toHaveBeenNthCalledWith(2, { paymentIntent: "pi_1", reasonEvent: "evt_d", totalCents: null, addCents: 600 });
+    expect((await handleStripeEvent("evt_r", d)).status).toBe("reversed");
+    expect((await handleStripeEvent("evt_w", d)).status).toBe("reversed");
+    expect((await handleStripeEvent("evt_b", d)).status).toBe("restored");
+    expect((await handleStripeEvent("evt_c", d)).status).toBe("ignored");
+    expect(d.paymentRefunded).toHaveBeenCalledWith({ paymentIntent: "pi_1", totalCents: 400 });
+    expect(d.paymentDispute).toHaveBeenNthCalledWith(1, { paymentIntent: "pi_1", dispute: "dp_1", amountCents: 600, withdrawn: true });
+    expect(d.paymentDispute).toHaveBeenNthCalledWith(2, { paymentIntent: "pi_1", dispute: "dp_1", amountCents: 600, withdrawn: false });
+  });
+  it("knows live secret and restricted keys", () => {
+    expect(isLiveKey("sk_live_x")).toBe(true);
+    expect(isLiveKey("rk_live_x")).toBe(true);
+    expect(isLiveKey("sk_test_x")).toBe(false);
   });
 });
 

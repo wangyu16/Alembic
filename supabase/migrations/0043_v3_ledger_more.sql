@@ -25,7 +25,7 @@ alter table public.credit_grants add constraint credit_grants_target check ((use
 create table public.lot_origins (
   lot_id        uuid not null references public.credit_lots (id),
   source_lot_id uuid not null references public.credit_lots (id),
-  amount        numeric(14,4) not null check (amount > 0),
+  amount        numeric(14,4) not null check (amount >= 0),  -- what of it can still be taken back
   primary key (lot_id, source_lot_id)
 );
 
@@ -118,6 +118,9 @@ begin
   end if;
   if exists (select 1 from public.ledger_entries where idempotency_key = 'transfer-out:' || p_key) then return; end if;
   v_from := public.ledger_user_account(v_owner);
+  if date_trunc('month', p_month) < date_trunc('month', now()) then
+    raise exception 'That month has ended' using errcode = '22023';
+  end if;
   insert into public.ledger_accounts (kind, package_id, month) values ('course-allowance', p_package, date_trunc('month', p_month)::date)
   on conflict (package_id, month) where kind = 'course-allowance' do nothing;
   select id into v_to from public.ledger_accounts where kind = 'course-allowance' and package_id = p_package and month = date_trunc('month', p_month)::date;
@@ -147,6 +150,7 @@ create function public.ledger_allowance_return(p_package text, p_month date)
 returns void language plpgsql security definer set search_path = '' as $$
 declare v_acc uuid; v_owner uuid; v_back numeric;
 begin
+  p_month := date_trunc('month', p_month)::date;  -- one key per month, whatever day is passed
   select id into v_acc from public.ledger_accounts where kind = 'course-allowance' and package_id = p_package and month = date_trunc('month', p_month)::date;
   if v_acc is null then return; end if;
   if exists (select 1 from public.ledger_entries where idempotency_key = 'return:' || p_package || ':' || p_month) then return; end if;
@@ -161,25 +165,29 @@ begin
 end $$;
 
 -- ---------------------------------------------------------------------------
--- Stripe refund/dispute: take the credit back from the top-up lot, then from
--- the allowance lots it funded, then to the owner's debt (ledger §9.4).
+-- Stripe refund/dispute: take the credit back from the unused part of any
+-- allowance it funded, then from the top-up lot, then to the owner's debt (§9.4).
 -- ---------------------------------------------------------------------------
 create function public.ledger_topup_reversed(p_event text, p_amount numeric, p_reason_event text)
 returns void language plpgsql security definer set search_path = '' as $$
-declare l public.credit_lots; v_left numeric := p_amount; v_take numeric; o record;
+declare v_lot uuid; v_acc uuid; l public.credit_lots; v_left numeric := p_amount; v_take numeric; o record;
 begin
   if exists (select 1 from public.ledger_entries where idempotency_key = 'reversal:' || p_reason_event) then return; end if;
-  select * into l from public.credit_lots where source = 'top-up:' || p_event;
+  select id, account_id into v_lot, v_acc from public.credit_lots where source = 'top-up:' || p_event;
   if not found then raise exception 'unknown top-up' using errcode = '22023'; end if;
-  perform 1 from public.ledger_accounts where id = l.account_id for update;
+  perform 1 from public.ledger_accounts where id = v_acc for update;  -- lock, then read the lot
+  select * into l from public.credit_lots where id = v_lot;
   -- Order (ledger §9.4): the unused part of any allowance it funded, then the top-up lot, then debt.
-  for o in select x.lot_id, x.amount, c.remaining, c.account_id from public.lot_origins x join public.credit_lots c on c.id = x.lot_id
-            where x.source_lot_id = l.id loop
+  for o in select x.lot_id, x.amount, c.account_id from public.lot_origins x join public.credit_lots c on c.id = x.lot_id
+            where x.source_lot_id = l.id and x.amount > 0 order by c.account_id loop
     exit when v_left <= 0;
-    v_take := least(o.amount, o.remaining, v_left);
+    perform 1 from public.ledger_accounts where id = o.account_id for update;
+    v_take := least(o.amount, (select remaining from public.credit_lots where id = o.lot_id), v_left);
     if v_take > 0 then
-      perform 1 from public.ledger_accounts where id = o.account_id for update;
       update public.credit_lots set remaining = remaining - v_take where id = o.lot_id;
+      update public.lot_origins set amount = amount - v_take where lot_id = o.lot_id and source_lot_id = l.id;
+      insert into public.ledger_entries (account_id, kind, amount, lot_id, idempotency_key, note)
+      values (o.account_id, 'refund', v_take, o.lot_id, 'reversal:' || p_reason_event || ':' || o.lot_id, 'funding payment refunded or disputed');
       v_left := v_left - v_take;
     end if;
   end loop;

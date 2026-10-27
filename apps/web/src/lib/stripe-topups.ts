@@ -6,7 +6,8 @@
  * 2. the event is then re-fetched from Stripe by id, and only that copy is used;
  * 3. the user comes from the checkout row Alembic wrote when it created the
  *    session (`ledger_checkout_paid` checks `client_reference_id` against it).
- * Money moves only inside the SQL functions of migration 0044.
+ * Money moves only inside the SQL functions of migration 0044, which keep the
+ * state of each payment (refund total, disputes) and reconcile credit to it.
  */
 import { createHmac, timingSafeEqual } from "node:crypto";
 
@@ -55,13 +56,16 @@ export interface StripeEvent {
 export interface TopupDeps {
   fetchEvent(id: string): Promise<StripeEvent | null>;
   checkoutPaid(a: { session: string; event: string; paymentIntent: string | null; usdCents: number; reference: string | null }): Promise<void>;
-  paymentReversed(a: { paymentIntent: string; reasonEvent: string; totalCents: number | null; addCents: number | null }): Promise<void>;
+  /** Stripe's running refund total for a payment. */
+  paymentRefunded(a: { paymentIntent: string; totalCents: number }): Promise<void>;
+  /** A dispute's money was withdrawn (true) or reinstated after a win (false). */
+  paymentDispute(a: { paymentIntent: string; dispute: string; amountCents: number; withdrawn: boolean }): Promise<void>;
   /** Live or test mode this deployment accepts. */
   livemode: boolean;
 }
 
 export type TopupOutcome =
-  | { status: "credited" | "reversed" | "ignored"; event: string }
+  | { status: "credited" | "reversed" | "restored" | "ignored"; event: string }
   | { status: "rejected"; reason: string };
 
 const str = (v: unknown): string | null => (typeof v === "string" && v ? v : null);
@@ -102,20 +106,27 @@ export async function handleStripeEvent(eventId: string, deps: TopupDeps): Promi
       const pi = intentOf(o["payment_intent"]);
       const total = int(o["amount_refunded"]);
       if (!pi || total === null) return { status: "rejected", reason: "malformed refund" };
-      await deps.paymentReversed({ paymentIntent: pi, reasonEvent: ev.id, totalCents: total, addCents: null });
+      await deps.paymentRefunded({ paymentIntent: pi, totalCents: total });
       return { status: "reversed", event: ev.id };
     }
-    case "charge.dispute.created": {
+    // Disputes count only when money actually moves; inquiries and warnings don't.
+    case "charge.dispute.funds_withdrawn":
+    case "charge.dispute.funds_reinstated": {
       const pi = intentOf(o["payment_intent"]);
+      const dispute = str(o["id"]);
       const amount = int(o["amount"]);
-      if (!pi || amount === null) return { status: "rejected", reason: "malformed dispute" };
-      await deps.paymentReversed({ paymentIntent: pi, reasonEvent: ev.id, totalCents: null, addCents: amount });
-      return { status: "reversed", event: ev.id };
+      if (!pi || !dispute || amount === null) return { status: "rejected", reason: "malformed dispute" };
+      const withdrawn = ev.type === "charge.dispute.funds_withdrawn";
+      await deps.paymentDispute({ paymentIntent: pi, dispute, amountCents: amount, withdrawn });
+      return { status: withdrawn ? "reversed" : "restored", event: ev.id };
     }
     default:
       return { status: "ignored", event: ev.id };
   }
 }
+
+/** Live-mode secret or restricted keys. */
+export const isLiveKey = (key: string): boolean => /^(sk|rk)_live_/.test(key);
 
 /** Re-fetch an event from Stripe's API (no SDK; one GET). */
 export function stripeEventFetcher(secretKey: string, fetchImpl: typeof fetch = fetch) {

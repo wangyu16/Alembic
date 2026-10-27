@@ -111,6 +111,20 @@ The Stripe webhook:
 rest goes to `debt`, and the account's new holds are refused until the debt
 is cleared.
 
+> **Amended 2026-10-27 (E5 adversarial review, migration 0044).**
+> - Disputes use `charge.dispute.funds_withdrawn` and
+>   `charge.dispute.funds_reinstated` instead of `.created`. Inquiries move
+>   no money, and a won dispute gives the credit back (paying debt first).
+> - Refunds and disputes are kept as the **state** of each payment: Stripe's
+>   running refund total, plus disputes whose money is withdrawn. Credit is
+>   reconciled to `paid − refunded − withdrawn` after every event, so event
+>   order, retries, and a refund arriving before the payment is recorded
+>   all end the same.
+> - Credits are rounded to the ledger's 4 decimals, so there is no
+>   rounding dust.
+> - Paid events that can't be matched go to `stripe_problems` for the
+>   operator.
+
 ### 3.3 Course allowance (L-7)
 
 - `fund_allowance(actor, package, month, amount)`: owner only. It moves
