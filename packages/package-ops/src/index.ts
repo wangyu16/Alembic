@@ -35,6 +35,7 @@ export * from "./import-package";
 export * from "./populate-package";
 export * from "./version-rule";
 export * from "./course-committer";
+export * from "./door-c";
 export * from "./publisher";
 export * from "./sql-queue-store";
 export * from "./copy-check";
