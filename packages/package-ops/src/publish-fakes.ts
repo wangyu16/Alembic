@@ -92,6 +92,7 @@ export class FakeStore implements PublishStore {
   async approvedAt(_p: string, parts: Array<{ path: string; version: string }>) { return new Set(parts.filter((x) => this.approvals.has(`${x.path}@${x.version}`)).map((x) => x.path)); }
   async approve(_p: string, _by: string, _role: Role, parts: Array<{ path: string; version: string }>) { for (const x of parts) this.approvals.add(`${x.path}@${x.version}`); }
   async bringInDrift(_p: string, _s: string, paths: string[]) { this.drift.push(paths); return "done" as const; }
-  isCommitted?: (packageId: string, runId: string) => Promise<boolean>;
+  isCommitted?: (packageId: string, runId: string, publicSha: string) => Promise<boolean>;
+  markStopped?: (runId: string, reason: string) => Promise<void>;
   approveText(path: string, text: string) { this.approvals.add(`${path}@${h(text)}`); }
 }

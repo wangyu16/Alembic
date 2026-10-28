@@ -94,8 +94,8 @@ export interface PublishStore {
   bringInDrift(packageId: string, publicSha: string, paths: string[]): Promise<"done" | "not-done">;
   /** A run that stopped after being recorded pending (e.g. the public copy kept changing). */
   markStopped?(runId: string, reason: string): Promise<void>;
-  /** The run is recorded committed (its commit is Alembic's own, even if it wasn't acknowledged). */
-  isCommitted?(packageId: string, runId: string): Promise<boolean>;
+  /** The run is recorded committed AS this exact commit (its own, even if it wasn't acknowledged; an amended copy isn't). */
+  isCommitted?(packageId: string, runId: string, publicSha: string): Promise<boolean>;
 }
 
 /** One public file: always identified by its git blob id in the public repo (G3 H2). */
@@ -125,6 +125,8 @@ export interface PublishInput {
    * them a Publish removes the build files the public repo started with.
    */
   generated?: Readonly<Record<string, string>>;
+  /** Whether this run still holds its request (re-checked before each commit attempt; review r2 L-B). */
+  stillHeld?: () => Promise<boolean>;
 }
 
 export type PublishOutcome =
@@ -154,6 +156,14 @@ export async function gitBlobSha(text: string): Promise<string> {
   all.set(body, head.length);
   const d = await globalThis.crypto.subtle.digest("SHA-1", all);
   return [...new Uint8Array(d)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/** Does the public tree at `sha` hold every intended file at its intended blob? */
+async function holds(pub: PublicSide, sha: string, intended: PublishedRecord[]): Promise<boolean> {
+  const t = await pub.listTree(sha);
+  if (t.truncated) return false;
+  const at = new Map(t.entries.map((e) => [e.path, e.blobSha]));
+  return intended.every((f) => at.get(f.path) === f.blobSha);
 }
 
 const generatedOrSecret = (p: string) =>
@@ -203,11 +213,16 @@ export async function runPublish(i: PublishInput, w: WorkingSide, pub: PublicSid
         const m = new RegExp(`^${TRAILER}: ([0-9a-f-]{36})$`, "m").exec(c.message);
         if (m) {
           const pending = await store.pendingRun(i.packageId, m[1]!);
-          if (pending) {
+          // Our own commit only if it holds exactly what the run meant to write (review r2 M-A: an amended
+          // or cherry-picked copy keeps the trailer but not the content, and is drift).
+          const intact = pending ? await holds(pub, c.sha, pending.intendedFiles) : false;
+          if (pending && intact) {
             await store.markCommitted(pending.id, c.sha, pending.intendedFiles, { recovered: true });
             await store.acknowledge(i.packageId, c.sha);
             ownSha = c.sha;
-          } else if (await store.isCommitted?.(i.packageId, m[1]!)) {
+          } else if (pending) {
+            await store.markStopped?.(pending.id, "its commit was changed on GitHub before it was recorded");
+          } else if (await store.isCommitted?.(i.packageId, m[1]!, c.sha)) {
             // Recorded but not acknowledged (a crash in between): still our own commit, never drift (review M1).
             await store.acknowledge(i.packageId, c.sha);
             ownSha = c.sha;
@@ -345,6 +360,9 @@ export async function runPublish(i: PublishInput, w: WorkingSide, pub: PublicSid
     const deletions = current.entries
       .filter((e) => e.type !== "tree" && e.mode !== "040000" && !assembled.files.has(e.path) && !ownersFolder(e.path))
       .map((e) => ({ path: e.path, delete: true as const }));
+    if (i.stillHeld && !(await i.stillHeld())) {
+      return { status: "stopped", reason: "This Publish was taken over by a newer run" };
+    }
     if (attempt === 0) {
       await store.insertPendingRun({ id: i.runId, packageId: i.packageId, by: i.by, workingSha: W, publicParent: P, choices: i.choices, intendedFiles: records });
       pendingInserted = true;

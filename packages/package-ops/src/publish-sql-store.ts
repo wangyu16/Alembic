@@ -47,9 +47,9 @@ export class SqlPublishStore implements PublishStore {
   }
 
   /** Marked stopped although its commit landed (review M1): `pendingRun` also finds stopped runs; this finds recorded ones. */
-  async isCommitted(packageId: string, runId: string): Promise<boolean> {
+  async isCommitted(packageId: string, runId: string, publicSha: string): Promise<boolean> {
     const { rows } = await this.sql.query<{ n: number }>(
-      `select count(*)::int as n from public.publish_runs where package_id = $1 and id = $2 and status in ('committed', 'site-built', 'site-failed')`, [packageId, runId]);
+      `select count(*)::int as n from public.publish_runs where package_id = $1 and id = $2 and public_sha = $3 and status in ('committed', 'site-built', 'site-failed')`, [packageId, runId, publicSha]);
     return (rows[0]?.n ?? 0) > 0;
   }
 

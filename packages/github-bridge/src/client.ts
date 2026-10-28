@@ -335,9 +335,11 @@ export class GitHubClient {
    */
   private async buildTreeEntries(
     coords: RepoCoords,
-    files: Array<{ path: string; content: string | null; encoding?: "utf-8" | "base64" }>,
+    files: Array<{ path: string; content: string | null; encoding?: "utf-8" | "base64" } | { path: string; blobSha: string }>,
   ): Promise<Array<Record<string, unknown>>> {
     return mapWithConcurrency(files, BLOB_UPLOAD_CONCURRENCY, async (f) => {
+      // An existing blob of this repository, by id: nothing is uploaded.
+      if ("blobSha" in f) return { path: f.path, mode: "100644", type: "blob", sha: f.blobSha };
       if (f.content === null) {
         return { path: f.path, mode: "100644", type: "blob", sha: null };
       }
@@ -632,7 +634,8 @@ export class GitHubClient {
     coords: RepoCoords;
     branch: string;
     message: string;
-    files: Array<{ path: string; content: string; encoding?: "utf-8" | "base64" }>;
+    /** New text or bytes, or an existing blob of this repository by id (nothing uploaded). */
+    files: Array<{ path: string; content: string; encoding?: "utf-8" | "base64" } | { path: string; blobSha: string }>;
   }): Promise<{ commitSha: string; unchanged: boolean }> {
     const { coords, branch } = input;
     const existing = await this.getRefSha(coords, `heads/${branch}`);
@@ -686,18 +689,19 @@ export class GitHubClient {
   async enablePages(
     coords: RepoCoords,
     branch: string,
-  ): Promise<{ url: string }> {
+  ): Promise<{ url: string; servesBranch?: string | null }> {
     const base = `/repos/${coords.owner}/${coords.repo}/pages`;
     try {
-      const existing = await this.request<{ html_url: string }>("GET", base);
-      return { url: existing.html_url };
+      const existing = await this.request<{ html_url: string; build_type?: string; source?: { branch?: string } | null }>("GET", base);
+      // Pages already on: say what it serves (the owner may have pointed it elsewhere).
+      return { url: existing.html_url, servesBranch: existing.build_type === "workflow" ? null : (existing.source?.branch ?? null) };
     } catch (e) {
       if (!(e instanceof GitHubError && e.status === 404)) throw e;
     }
     const created = await this.request<{ html_url: string }>("POST", base, {
       source: { branch, path: "/" },
     });
-    return { url: created.html_url };
+    return { url: created.html_url, servesBranch: branch };
   }
 
   /** The repository's default branch name (e.g. "main"). */
@@ -840,10 +844,10 @@ export class GitHubClient {
   async listTreeEntries(
     coords: RepoCoords,
     ref: string,
-  ): Promise<{ entries: Array<{ path: string; mode: string; type: string; sha: string }>; truncated: boolean }> {
-    const data = await this.request<{ tree: Array<{ path: string; mode: string; type: string; sha: string }>; truncated?: boolean }>(
+  ): Promise<{ entries: Array<{ path: string; mode: string; type: string; sha: string; size?: number }>; truncated: boolean }> {
+    const data = await this.request<{ tree: Array<{ path: string; mode: string; type: string; sha: string; size?: number }>; truncated?: boolean }>(
       "GET", `/repos/${coords.owner}/${coords.repo}/git/trees/${ref}?recursive=1`);
-    return { entries: data.tree.map((e) => ({ path: e.path, mode: e.mode, type: e.type, sha: e.sha })), truncated: data.truncated === true };
+    return { entries: data.tree.map((e) => ({ path: e.path, mode: e.mode, type: e.type, sha: e.sha, ...(typeof e.size === "number" ? { size: e.size } : {}) })), truncated: data.truncated === true };
   }
 
   /**

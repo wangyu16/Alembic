@@ -163,6 +163,9 @@ async function publishRun(cfg: PublishConfig, req: Claimed): Promise<PublishOutc
       runId: req.id, packageId: req.package_id, by: req.by_user, role: c.role,
       choices: { publishAnyway: list(choices.publishAnyway), approveAndPublish: list(choices.approveAndPublish) },
       generated: await siteBuildFiles(cfg),
+      stillHeld: async () => (await cfg.sql.query(
+        `select 1 from public.publish_requests where id = $1 and status = 'running' and started_at = $2::text::timestamptz`,
+        [req.id, req.started_at])).rows.length > 0,
     },
     w, pub, store, checks,
   );

@@ -33,7 +33,8 @@ export default async function PublishPage({ params, searchParams }: { params: Pr
     supabase.from("publish_runs").select("status, results").eq("package_id", packageId).in("status", ["committed", "site-built", "site-failed"]).order("committed_at", { ascending: false }).limit(1),
   ]);
   const lastRun = runs?.[0] as { status: string; results: { site?: { url?: string; error?: string; superseded?: boolean } } } | undefined;
-  const siteUrl = (runs ?? []).length && lastRun?.status === "site-built" && typeof lastRun.results.site?.url === "string" && /^https:\/\/[a-z0-9-]+\.github\.io\//i.test(lastRun.results.site.url) ? lastRun.results.site.url : null;
+  const site = lastRun?.results.site as { url?: string; error?: string; pagesNote?: string; superseded?: boolean } | undefined;
+  const siteUrl = lastRun?.status === "site-built" && typeof site?.url === "string" && /^https:\/\/[a-z0-9-]+\.github\.io\//i.test(site.url) ? site.url : null;
   const c = await courseRepo(packageId);
   if (!c) return <main className="mx-auto max-w-2xl p-6"><p>This course's repository can't be reached right now.</p></main>;
   const head = await c.repo.head();
@@ -51,7 +52,9 @@ export default async function PublishPage({ params, searchParams }: { params: Pr
   }));
 
   const last = requests?.[0] as { id: string; status: string; outcome: Outcome | null; finished_at: string | null } | undefined;
-  const busy = last?.status === "queued" || last?.status === "running" || lastRun?.status === "committed";
+  const busy = last?.status === "queued" || last?.status === "running";
+  // The website is built after Publish; that never blocks publishing again (review r2 M-C).
+  const siteBuilding = lastRun?.status === "committed";
   const lastDecisions = last?.outcome?.status === "committed" ? last.outcome.decisions : [];
   const keptFor = (slug: string) => lastDecisions.find((d) => d.unit === `chapter:${slug}`);
   const anywayKeys = last?.outcome?.status === "committed" ? (last.outcome.anywayKeys ?? {}) : {};
@@ -62,7 +65,7 @@ export default async function PublishPage({ params, searchParams }: { params: Pr
 
   return (
     <main className="mx-auto max-w-3xl p-6">
-      <RefreshWhile active={busy} />
+      <RefreshWhile active={busy || siteBuilding} everyMs={busy ? 3000 : 10_000} />
       <p className="text-sm"><Link href={`/workspace/${packageId}/course`}>← {(course?.title as string | undefined) ?? "Course"}</Link></p>
       <h1 className="mt-2 text-2xl font-semibold">Publish</h1>
       <p className="mt-1 text-sm text-gray-600">
@@ -73,8 +76,9 @@ export default async function PublishPage({ params, searchParams }: { params: Pr
       {message ? <p className="mt-3 rounded border border-amber-300 bg-amber-50 p-2 text-sm">{message}</p> : null}
       {lastRun ? (
         <p className="mt-3 text-sm">
-          Website: {siteUrl ? <a className="underline" href={siteUrl}>{siteUrl}</a>
-            : lastRun.status === "site-failed" ? <>not updated — {lastRun.results.site?.error ?? "the build failed"}; the previous one stays up.</>
+          Website: {siteUrl ? <><a className="underline" href={siteUrl}>{siteUrl}</a>{site?.pagesNote ? <> ({site.pagesNote})</> : null}</>
+            : lastRun.status === "site-failed" ? <>not updated — {site?.error ?? "the build failed"}</>
+            : lastRun.status === "site-built" ? "updated"
             : "being built…"}
         </p>
       ) : null}

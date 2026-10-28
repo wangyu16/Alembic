@@ -86,11 +86,48 @@ describe("runPublish", () => {
     const realAck = st.acknowledge.bind(st);
     let crash = true;
     st.acknowledge = async (...a) => { if (crash) { crash = false; throw new Error("worker died"); } return realAck(...a); };
-    st.isCommitted = async (_p, runId) => st.runs.get(runId)?.status === "committed";
+    st.isCommitted = async (_p, runId, sha) => st.runs.get(runId)?.status === "committed" && st.runs.get(runId)?.publicSha === sha;
     await expect(runPublish(input(), working(W), pub, st, noChecks)).rejects.toThrow("worker died");
     const drift = st.drift.length;
     expect((await runPublish(input({ runId: id(2) }), working(W), pub, st, noChecks)).status).toBe("committed");
     expect(st.drift.length).toBe(drift);
+  });
+
+  it("review r2 M-A: an amended copy of our own commit (same trailer, other content) is drift, not ours", async () => {
+    const pub = new FakePublic(); const st = new FakeStore(); approveAll(st, W);
+    st.isCommitted = async (_p, runId, sha) => st.runs.get(runId)?.status === "committed" && st.runs.get(runId)?.publicSha === sha;
+    await runPublish(input(), working(W), pub, st, noChecks);
+    // Someone amends Alembic's commit on GitHub, keeping its message (and trailer).
+    const last = pub.commits[pub.commits.length - 1]!;
+    const amended = new Map(last.files); amended.set("study-guide/atoms.md", "# Atoms (amended on GitHub)");
+    pub.commits.push({ sha: "amended", message: last.message, files: amended }); pub.headSha = "amended";
+    const out = await runPublish(input({ runId: id(2) }), working(W), pub, st, noChecks);
+    expect(out).toMatchObject({ status: "stopped", drift: ["study-guide/atoms.md"] });
+  });
+
+  it("review r2 M-A: a crashed run whose commit was changed before recording isn't recovered as ours", async () => {
+    const pub = new FakePublic(); const st = new FakeStore(); approveAll(st, W);
+    const realMark = st.markCommitted.bind(st);
+    let crash = true;
+    st.markCommitted = async (...a) => { if (crash) { crash = false; throw new Error("worker died"); } return realMark(...a); };
+    const stopped: string[] = [];
+    st.markStopped = async (runId) => { stopped.push(runId); };
+    await expect(runPublish(input(), working(W), pub, st, noChecks)).rejects.toThrow("worker died");
+    const last = pub.commits[pub.commits.length - 1]!;
+    const changed = new Map(last.files); changed.set("study-guide/atoms.md", "# Atoms (changed)");
+    pub.commits[pub.commits.length - 1] = { ...last, files: changed };
+    const out = await runPublish(input({ runId: id(2) }), working(W), pub, st, noChecks);
+    expect(stopped).toContain(id(1));
+    expect(st.runs.get(id(1))!.status).toBe("pending"); // never recorded as committed with content it didn't write
+    // Nothing was ever committed, so the head is the first Publish's baseline (G3 L3) and this run publishes W.
+    expect(out.status).toBe("committed");
+  });
+
+  it("review r2 L-B: a run that no longer holds its request doesn't commit", async () => {
+    const pub = new FakePublic(); const st = new FakeStore(); approveAll(st, W);
+    const out = await runPublish(input({ stillHeld: async () => false }), working(W), pub, st, noChecks);
+    expect(out).toEqual({ status: "stopped", reason: "This Publish was taken over by a newer run" });
+    expect(pub.commits.filter((c) => c.message.includes("Alembic-Publish-Run")).length).toBe(0);
   });
 
   it("review M3: Publish never writes or deletes workflow files", async () => {
