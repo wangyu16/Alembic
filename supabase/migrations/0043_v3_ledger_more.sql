@@ -171,7 +171,7 @@ end $$;
 -- ---------------------------------------------------------------------------
 create function public.ledger_topup_reversed(p_event text, p_amount numeric, p_reason_event text)
 returns void language plpgsql security definer set search_path = '' as $$
-declare v_lot uuid; v_acc uuid; l public.credit_lots; v_left numeric := p_amount; v_take numeric; o record;
+declare v_lot uuid; v_acc uuid; l public.credit_lots; v_left numeric := p_amount; v_take numeric; o record; v_from_allowances numeric := 0;
 begin
   if exists (select 1 from public.ledger_entries where idempotency_key = 'reversal:' || p_reason_event) then return; end if;
   select id, account_id into v_lot, v_acc from public.credit_lots where source = 'top-up:' || p_event;
@@ -188,16 +188,18 @@ begin
       update public.credit_lots set remaining = remaining - v_take where id = o.lot_id;
       update public.lot_origins set amount = amount - v_take where lot_id = o.lot_id and source_lot_id = l.id;
       insert into public.ledger_entries (account_id, kind, amount, lot_id, idempotency_key, note)
-      values (o.account_id, 'refund', v_take, o.lot_id, 'reversal:' || p_reason_event || ':' || o.lot_id, 'funding payment refunded or disputed');
+      values (o.account_id, 'reversal', v_take, o.lot_id, 'reversal:' || p_reason_event || ':' || o.lot_id, 'funding payment refunded or disputed');
       v_left := v_left - v_take;
+      v_from_allowances := v_from_allowances + v_take;
     end if;
   end loop;
   v_take := least(l.remaining, v_left);
   update public.credit_lots set remaining = remaining - v_take where id = l.id;
   v_left := v_left - v_take;
   if v_left > 0 then update public.ledger_accounts set debt = debt + v_left where id = l.account_id; end if;
+  -- The person's account records only what it lost (lot + debt); allowance parts are on the allowance.
   insert into public.ledger_entries (account_id, kind, amount, lot_id, idempotency_key, note)
-  values (l.account_id, 'refund', p_amount, l.id, 'reversal:' || p_reason_event, 'payment refunded or disputed');
+  values (l.account_id, 'reversal', p_amount - v_from_allowances, l.id, 'reversal:' || p_reason_event, 'payment refunded or disputed');
 end $$;
 
 -- Holds on an allowance are refused while its owner has debt (ledger §9.4).

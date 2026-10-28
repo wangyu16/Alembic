@@ -71,7 +71,8 @@ create table public.hold_lots (
 create table public.ledger_entries (
   id              uuid primary key default gen_random_uuid(),
   account_id      uuid not null references public.ledger_accounts (id),
-  kind            text not null check (kind in ('grant', 'top-up', 'hold', 'capture', 'overrun', 'release', 'refund', 'expiry', 'debt-paid', 'transfer-in', 'transfer-out')),
+  kind            text not null check (kind in ('grant', 'top-up', 'hold', 'capture', 'overrun', 'release', 'refund', 'expiry', 'debt-paid', 'transfer-in', 'transfer-out', 'reversal')),
+  -- refund = credit RETURNED for a failed task; reversal = credit TAKEN BACK because a payment was refunded or disputed
   amount          numeric(14,4) not null check (amount >= 0),
   lot_id          uuid references public.credit_lots (id),
   job_id          uuid references public.ai_jobs (id),

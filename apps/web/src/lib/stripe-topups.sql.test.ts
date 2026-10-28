@@ -129,7 +129,7 @@ describe("Stripe top-ups", () => {
     await refunded("pi_ma", 3000);
     expect(await allowance()).toBe(7000); // only A's 3000 came out
     expect(await debt(owner)).toBe(0);
-    const entries = Number((await svc<{ n: string }>(`select count(*) as n from public.ledger_entries e join public.ledger_accounts a on a.id = e.account_id where a.kind = 'course-allowance' and a.package_id = $1 and e.kind = 'refund'`, [pkg])).rows[0]!.n);
+    const entries = Number((await svc<{ n: string }>(`select count(*) as n from public.ledger_entries e join public.ledger_accounts a on a.id = e.account_id where a.kind = 'course-allowance' and a.package_id = $1 and e.kind = 'reversal'`, [pkg])).rows[0]!.n);
     expect(entries).toBe(2); // the allowance's own entries record each reduction
   });
 
