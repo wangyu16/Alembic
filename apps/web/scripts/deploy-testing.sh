@@ -16,6 +16,7 @@ cp -a .next/standalone/. $OUT/
 cp -a .next/static $OUT/apps/web/.next/static
 [[ -d public ]] && cp -a public $OUT/apps/web/public
 find $OUT -path "*sharp*darwin*" -prune -exec rm -rf {} +   # macOS-only image binaries
+mkdir -p $OUT/apps/web/.next/cache   # mount point for the writable cache (tmpfs on the VM)
 
 BUILD=$(cat .next/BUILD_ID)
 # A tar stream into a fresh folder, then a swap: the VM never runs a half-copied app.

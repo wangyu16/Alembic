@@ -137,6 +137,6 @@ export function statusLabel(s: SyncStatus, fmt: (ms: number) => string): string 
     case "saved": return "Saved";
     case "syncing": return "Syncing…";
     case "retrying": return "Saved — will sync when back online";
-    case "refused": return "Saved on this device only — couldn't sync";
+    case "refused": return `Saved on this device only — couldn't sync: ${s.reason}`;
   }
 }

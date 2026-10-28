@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createPackageAction } from "./actions";
 import { connectGithubAction, createCourseV3Action } from "./v3-actions";
+import { SubmitButton } from "./submit-button";
 import { v3Enabled } from "@/lib/db";
 import { reconcileArchivedPackages } from "./lifecycle-actions";
 import { PackageActions } from "./_components/package-actions";
@@ -103,7 +104,7 @@ export default async function WorkspacePage({ searchParams }: { searchParams: Pr
           {v3 && V3_NOTICE[v3] ? <p className={`mt-2 text-sm ${v3 === "connected" ? "text-green-700" : "text-red-700"}`} role={v3 === "connected" ? "status" : "alert"}>{V3_NOTICE[v3]}</p> : null}
           {v3 === "connect" || v3 === "not-yours" ? (
             <form action={connectGithubAction} className="mt-2">
-              <button type="submit" className="btn btn-ghost btn-sm">Connect GitHub</button>
+              <SubmitButton className="btn btn-ghost btn-sm" pending="Connecting…">Connect GitHub</SubmitButton>
               <span className="ml-2 text-sm text-muted">Finds the Alembic App on your own GitHub account, or takes you to install it.</span>
             </form>
           ) : null}
@@ -113,7 +114,7 @@ export default async function WorkspacePage({ searchParams }: { searchParams: Pr
             <select name="license" defaultValue="CC-BY-4.0" className="input">
               {LICENSES.map((l) => <option key={l} value={l}>{LICENSE_OPTION_LABEL[l]}</option>)}
             </select>
-            <button type="submit" className="btn btn-primary">Create course</button>
+            <SubmitButton className="btn btn-primary" pending="Creating… (about 15 seconds)">Create course</SubmitButton>
           </form>
         </section>
       ) : null}

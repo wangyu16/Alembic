@@ -32,6 +32,10 @@ export async function createCourseV3Action(formData: FormData): Promise<void> {
   const cfg = githubConfig();
   const admin = createServiceClient();
   if (!cfg || !admin) redirect("/workspace?v3=unconfigured");
+  // A repeated press (or double click) while the first one is still working: go to the course it made.
+  const { data: recent } = await admin.from("packages").select("id").eq("owner_id", user.id).eq("title", title)
+    .gte("created_at", new Date(Date.now() - 2 * 60_000).toISOString()).order("created_at", { ascending: false }).limit(1);
+  if (recent?.[0]) redirect(`/workspace/${recent[0].id as string}/course`);
   const { data: profile } = await admin.from("profiles").select("github_installation_id, github_username").eq("id", user.id).maybeSingle();
   const installationId = profile?.github_installation_id as number | null;
   const owner = profile?.github_username as string | null;
