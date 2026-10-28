@@ -18,7 +18,7 @@ describe("runDigests", () => {
   function fakeDb() {
     const marked: string[] = [];
     const people: Record<string, Array<{ user_id: string; email: string; name: string }>> = {
-      week: [{ user_id: "u1", email: "a@x", name: "Ada" }, { user_id: "u2", email: "b@x", name: "Bo" }, { user_id: "u3", email: "c@x", name: "Cy" }],
+      week: [{ user_id: "u1", email: "a@x", name: "Ada" }, { user_id: "u2", email: "b@x", name: "Bo" }, { user_id: "u3", email: "c@x", name: "Cy" }, { user_id: "u5", email: "t@test.invalid", name: "Test" }],
       day: [{ user_id: "u4", email: "d@x", name: "Di" }],
     };
     const items: Record<string, unknown[]> = {
@@ -46,7 +46,7 @@ describe("runDigests", () => {
     ]);
     expect(mailer.sent[0]!.text).toContain("https://alembic.example/workspace/pkg-1");
     expect(mailer.sent[0]!.text).not.toContain("/act/"); // no secret: no one-click links
-    expect(db.marked.sort()).toEqual(["u1:2026-W44", "u2:2026-W44", "u4:2026-10-26"]);
+    expect(db.marked.sort()).toEqual(["u1:2026-W44", "u2:2026-W44", "u4:2026-10-26", "u5:2026-W44"]); // the test address is marked, not mailed
     expect(logs.some((l) => l.includes("boom"))).toBe(true);
     // The next hour: only the one that failed is tried again.
     expect(await runDigests(db.rpc, { mailer, appUrl: "https://alembic.example", now: new Date("2026-10-26T15:00:00Z"), log: () => {} })).toBe(0);

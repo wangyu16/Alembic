@@ -22,6 +22,8 @@ GITHUB_APP_ID=$GITHUB_APP_ID
 GITHUB_APP_PRIVATE_KEY=$KEY
 ACTION_LINK_SECRET=$ACTION_LINK_SECRET
 APP_URL=$APP_URL
+RESEND_API_KEY=$RESEND_API_KEY
+EMAIL_FROM=$EMAIL_FROM
 E2
 COPYFILE_DISABLE=1 tar --no-xattrs -C $OUT -czf - worker.mjs worker.env | "${SSH[@]}" $VM 'set -e; mkdir -p ~/alembic-testing/worker && tar -xzf - -C ~/alembic-testing/worker && mv ~/alembic-testing/worker/worker.env ~/alembic-testing/worker.env && chmod 600 ~/alembic-testing/worker.env'
 rm -rf $OUT

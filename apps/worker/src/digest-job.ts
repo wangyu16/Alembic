@@ -45,6 +45,11 @@ export async function runDigests(
   for (const { every, key } of duePeriods(now)) {
     const people = ((await rpc("notify_due_people", { p_every: every, p_period_key: key })) ?? []) as Person[];
     for (const person of people) {
+      // Reserved test domains (RFC 2606) never receive mail; sending would only bounce.
+      if (/\.(invalid|test|example)$/i.test(person.email)) {
+        await rpc("notify_mark_sent", { p_user: person.user_id, p_period_key: key });
+        continue;
+      }
       try {
         const rows = ((await rpc("notify_items", { p_user: person.user_id })) ?? []) as Row[];
         if (every === "day" && rows.length === 0) {
