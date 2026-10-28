@@ -808,10 +808,10 @@ export class GitHubClient {
   async listTreeEntries(
     coords: RepoCoords,
     ref: string,
-  ): Promise<{ entries: Array<{ path: string; mode: string; type: string }>; truncated: boolean }> {
-    const data = await this.request<{ tree: Array<{ path: string; mode: string; type: string }>; truncated?: boolean }>(
+  ): Promise<{ entries: Array<{ path: string; mode: string; type: string; sha: string }>; truncated: boolean }> {
+    const data = await this.request<{ tree: Array<{ path: string; mode: string; type: string; sha: string }>; truncated?: boolean }>(
       "GET", `/repos/${coords.owner}/${coords.repo}/git/trees/${ref}?recursive=1`);
-    return { entries: data.tree.map((e) => ({ path: e.path, mode: e.mode, type: e.type })), truncated: data.truncated === true };
+    return { entries: data.tree.map((e) => ({ path: e.path, mode: e.mode, type: e.type, sha: e.sha })), truncated: data.truncated === true };
   }
 
   /**

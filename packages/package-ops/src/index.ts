@@ -44,3 +44,4 @@ export * from "./copy-check";
 export * from "./sync-entry";
 export * from "./source-store";
 export * from "./publish-job";
+export * from "./publish-sql-store";

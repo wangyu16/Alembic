@@ -11,6 +11,7 @@ import { SCHEDULES, postgrestRpc, startSchedules, type Schedule } from "./schedu
 import { runDigests } from "./digest-job";
 import { committerPass } from "./committer-loop";
 import { doorCPass } from "./door-c-loop";
+import { publishPass } from "./publish-loop";
 
 const log = (m: string) => console.log(`[alembic-worker] ${m}`);
 
@@ -37,15 +38,20 @@ const appKey = process.env["GITHUB_APP_PRIVATE_KEY"]?.replace(/\\n/g, "\n");
 if (databaseUrl && appId && appKey) {
   const pg = postgres(databaseUrl, { ssl: "require", max: 3, idle_timeout: 30, prepare: false, onnotice: () => {} });
   const sql = { query: async <T,>(text: string, params?: unknown[]) => ({ rows: (await pg.unsafe(text, (params ?? []) as never[])) as unknown as T[] }) };
+  const templateOwner = process.env["GITHUB_TEMPLATE_OWNER"]?.trim();
+  const publicTemplate = process.env["GITHUB_PUBLIC_TEMPLATE"]?.trim();
   const holder = `worker-${hostname()}-${process.pid}`;
   startSchedules(async () => null, {
     schedules: [
       { name: "committer", everyMs: 3000, run: () => committerPass({ sql, appId, privateKey: appKey, holder, log }) },
       { name: "door-c", everyMs: 5000, run: () => doorCPass({ sql, appId, privateKey: appKey, log }) },
+      ...(templateOwner && publicTemplate
+        ? [{ name: "publish", everyMs: 4000, run: () => publishPass({ sql, appId, privateKey: appKey, templateOwner, publicTemplate, log }) }]
+        : []),
     ],
     log,
   });
-  log(`committer and door C on (${holder})`);
+  log(`committer, door C${templateOwner && publicTemplate ? " and publish" : ""} on (${holder})`);
 } else {
   log("committer off (DATABASE_URL / GITHUB_APP_ID / GITHUB_APP_PRIVATE_KEY not set)");
 }

@@ -311,3 +311,48 @@ describe("course committer", () => {
     expect(repo.refMoves).toBe(0);
   });
 });
+
+describe("manifest by compare-and-swap (W-10)", () => {
+  const M = (mode: "draft" | "package") => `${JSON.stringify({ schemaVersion: 3, packageId: P, title: "T", license: "CC-BY-4.0", createdAt: "2026-10-28T00:00:00Z", chapters: [{ slug: "gases", title: "Gases", mode }] }, null, 2)}\n`;
+  const sys = (id: string, baseText: string | null, text: string | null): Omit<QueueRow, "attempts"> => ({
+    id, packageId: P, kind: "system", actorId: "owner", invokerId: null,
+    payload: { files: [{ path: "alembic.json", baseVersion: baseText === null ? null : h(baseText), text }] },
+  });
+  const withManifest = () => {
+    const { repo, q } = setup();
+    return { repo: new FakeRepo({ "alembic.json": M("draft"), "study-guide/gases.md": base }), q };
+  };
+
+  it("lands on exactly the version it was made from", async () => {
+    const { repo, q } = withManifest();
+    q.add(sys("m1", M("draft"), M("package")));
+    await drainCourse(P, "w", q, repo);
+    expect(q.status("m1")).toBe("done");
+    expect(repo.file("alembic.json")).toBe(M("package"));
+  });
+
+  it("is refused when the manifest changed meanwhile (no merge)", async () => {
+    const { repo, q } = withManifest();
+    q.add(sys("m2", M("package"), M("draft").replace('"T"', '"T2"')));
+    await drainCourse(P, "w", q, repo);
+    expect(q.status("m2")).toBe("refused");
+    expect(repo.file("alembic.json")).toBe(M("draft"));
+  });
+
+  it("is refused when the new text isn't a valid manifest", async () => {
+    const { repo, q } = withManifest();
+    q.add(sys("m3", M("draft"), "{\"schemaVersion\": 3}\n"));
+    q.add(sys("m4", M("draft"), null));
+    await drainCourse(P, "w", q, repo);
+    expect(q.status("m3")).toBe("refused");
+    expect(q.status("m4")).toBe("refused");
+    expect(repo.file("alembic.json")).toBe(M("draft"));
+  });
+
+  it("a sync row still can't touch it", async () => {
+    const { repo, q } = withManifest();
+    q.add(sync("m5", "owner", "alembic.json", M("draft"), M("package")));
+    await drainCourse(P, "w", q, repo);
+    expect(q.status("m5")).toBe("refused");
+  });
+});

@@ -8,7 +8,7 @@
  * so it is tested with fakes and runs unchanged on the worker.
  */
 
-import { canWritePath, normalizePath, type Role } from "@alembic/package-contract";
+import { canWritePath, normalizePath, sha256Hex, WorkingManifestV3Schema, type Role } from "@alembic/package-contract";
 import { decideFile, type FileDecision, type FileKind } from "./version-rule";
 
 /* -------------------------------------------------------------------------- *
@@ -246,6 +246,18 @@ export async function processRow(row: QueueRow, store: QueueStore, repo: Working
         const currentText = await repo.readFile(head, file.path);
         // A Door C undo restores exactly the last accepted state; no version rule (system rows only).
         if (row.kind === "system" && row.payload.force === true) {
+          decisions.push({ file, d: { outcome: "landed", write: file.text, noop: currentText === file.text } });
+          continue;
+        }
+        // The manifest changes only by compare-and-swap (write-path §4 rule 8, W-10): a system row
+        // lands its new manifest only on exactly the version it was made from, and only a valid one.
+        if (row.kind === "system" && file.path === "alembic.json") {
+          if (file.baseVersion === null || currentText === null || (await sha256Hex(currentText)) !== file.baseVersion) {
+            return { status: "refused", reason: "alembic.json: the course settings changed meanwhile; try again" };
+          }
+          let valid = false;
+          try { valid = file.text !== null && WorkingManifestV3Schema.safeParse(JSON.parse(file.text)).success; } catch { /* not JSON */ }
+          if (!valid) return { status: "refused", reason: "alembic.json: not a valid course manifest" };
           decisions.push({ file, d: { outcome: "landed", write: file.text, noop: currentText === file.text } });
           continue;
         }

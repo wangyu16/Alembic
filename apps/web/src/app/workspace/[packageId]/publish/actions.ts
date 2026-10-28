@@ -1,0 +1,77 @@
+"use server";
+
+import { randomUUID } from "node:crypto";
+import { redirect } from "next/navigation";
+import { can, newDocId, WorkingManifestV3Schema, type Role } from "@alembic/package-contract";
+import { enqueueSync, firstStudyGuide, SqlQueueStore, SyncRefused } from "@alembic/package-ops";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { directDb } from "@/lib/db";
+import { courseRepo, textVersion } from "@/lib/course-v3";
+
+const back = (packageId: string, msg?: string) =>
+  redirect(`/workspace/${packageId}/publish${msg ? `?m=${encodeURIComponent(msg)}` : ""}`);
+
+async function member(packageId: string) {
+  const supabase = await createSupabaseServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect(`/signin?next=${encodeURIComponent(`/workspace/${packageId}/publish`)}`);
+  const { data: role } = await supabase.rpc("course_role", { p: packageId });
+  return { supabase, user, role: (role ?? "none") as Role };
+}
+
+/** Ask for a Publish with the publisher's choices (the worker runs it). */
+export async function requestPublishAction(packageId: string, form: FormData): Promise<void> {
+  const { supabase } = await member(packageId);
+  const approveAndPublish = form.getAll("approve").flatMap((v) => (typeof v === "string" ? v.split("|") : []))
+    .filter((v) => /^(concepts|assessment-support)\/[a-z0-9-]{1,60}\.md$/.test(v));
+  const publishAnyway = form.getAll("anyway").filter((v): v is string => typeof v === "string" && /^[a-z0-9-]{1,60}$/.test(v));
+  const { error } = await supabase.rpc("request_publish", { p: packageId, p_choices: { approveAndPublish, publishAnyway } });
+  if (error) back(packageId, error.code === "42501" ? "Only the owner or deputy publishes." : "Publish couldn't be started. Try again.");
+  back(packageId);
+}
+
+/**
+ * Start a chapter's course plan: its concept map and assessment guide, as new
+ * documents (each passes the permission matrix like any edit).
+ */
+export async function startPlanAction(packageId: string, slug: string): Promise<void> {
+  const { user } = await member(packageId);
+  const sql = directDb();
+  const c = await courseRepo(packageId);
+  if (!sql || !c || !/^[a-z0-9-]{1,60}$/.test(slug)) back(packageId, "That chapter can't be changed here.");
+  const head = await c!.repo.head();
+  const m = WorkingManifestV3Schema.parse(JSON.parse((await c!.repo.readFile(head, "alembic.json")) ?? "null"));
+  const ch = m.chapters.find((x) => x.slug === slug);
+  if (!ch) back(packageId, "That chapter isn't in the course.");
+  const files = [];
+  for (const [space, label] of [["concepts", "Concept map"], ["assessment-support", "Assessment guide"]] as const) {
+    const path = `${space}/${slug}.md`;
+    if ((await c!.repo.readFile(head, path)) === null) files.push({ path, baseVersion: null, text: firstStudyGuide(`${label}: ${ch!.title}`, newDocId()) });
+  }
+  if (files.length === 0) back(packageId);
+  try {
+    await enqueueSync(sql!, { actorId: user!.id, packageId, syncId: randomUUID(), files, fromOpenEditor: false });
+  } catch (e) {
+    back(packageId, e instanceof SyncRefused ? `Not allowed: ${e.reason}` : "Couldn't reach Alembic.");
+  }
+  back(packageId, "The course plan documents are being added; they appear in a few seconds.");
+}
+
+/** Mark a chapter ready for publishing, or back to draft (the manifest is changed by a system row, owner or deputy only). */
+export async function setChapterModeAction(packageId: string, slug: string, mode: "draft" | "package"): Promise<void> {
+  const { user, role } = await member(packageId);
+  if (!can(role, "edit.course-files")) back(packageId, "Only the owner or deputy changes this.");
+  const sql = directDb();
+  const c = await courseRepo(packageId);
+  if (!sql || !c) back(packageId, "That chapter can't be changed here.");
+  const head = await c!.repo.head();
+  const text = (await c!.repo.readFile(head, "alembic.json")) ?? "null";
+  const m = WorkingManifestV3Schema.parse(JSON.parse(text));
+  if (!m.chapters.some((x) => x.slug === slug)) back(packageId, "That chapter isn't in the course.");
+  const next = WorkingManifestV3Schema.parse({ ...m, chapters: m.chapters.map((x) => (x.slug === slug ? { ...x, mode } : x)) });
+  await new SqlQueueStore(sql!).insert({
+    packageId, kind: "system", idem: `mode:${slug}:${mode}:${randomUUID()}`, actorId: user!.id, priority: 1,
+    payload: { files: [{ path: "alembic.json", baseVersion: textVersion(text), text: `${JSON.stringify(next, null, 2)}\n` }], summary: `Chapter “${slug}” ${mode === "draft" ? "back to draft" : "ready for publishing"}` },
+  });
+  back(packageId, "Saved; it takes a few seconds to show.");
+}

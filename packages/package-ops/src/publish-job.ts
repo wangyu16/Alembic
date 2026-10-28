@@ -12,6 +12,7 @@ import {
   assertRegularTree,
   can,
   isProjectable,
+  isPublishGenerated,
   sha256Hex,
   WorkingManifestV3Schema,
   type Role,
@@ -110,6 +111,12 @@ export interface PublishInput {
   /** The publisher's role, resolved by the server at execution. */
   role: Role;
   choices: { publishAnyway: string[]; approveAndPublish: string[] };
+  /**
+   * Files Publish writes itself (`.github/`, `.alembic/`, `.gitignore`): the
+   * site build. Each path must be on the generated list (spec §2); without
+   * them a Publish removes the build files the public repo started with.
+   */
+  generated?: Readonly<Record<string, string>>;
 }
 
 export type PublishOutcome =
@@ -263,8 +270,13 @@ export async function runPublish(i: PublishInput, w: WorkingSide, pub: PublicSid
   // 7–9. Decide, assemble, link check.
   const draft = new Set(manifest.chapters.filter((c) => c.mode === "draft").map((c) => c.slug));
   const publishedMap = new Map(previously.map((f) => [f.path, { blobSha: f.blobSha, unit: f.unit }]));
+  const generated = new Map<string, TreeFile>();
+  for (const [path, text] of Object.entries(i.generated ?? {})) {
+    if (path === "alembic.json" || !isPublishGenerated(path)) throw new Error(`"${path}" is not a file Publish generates`);
+    generated.set(path, { text });
+  }
   const { tree: assembled, decisions } = publishWithLinkCheck(
-    { working, published: publishedMap, manifest, everPublishedChapters: everPublished, keptTexts },
+    { working, published: publishedMap, manifest, everPublishedChapters: everPublished, keptTexts, generated },
     { units, findings, draft, approved, publishAnyway: new Set(i.choices.publishAnyway) },
   );
 
@@ -272,6 +284,11 @@ export async function runPublish(i: PublishInput, w: WorkingSide, pub: PublicSid
   const records: PublishedRecord[] = [];
   const files: Array<{ path: string; text?: string; blobSha?: string; delete?: true }> = [];
   for (const [path, f] of assembled.files) {
+    // The site build is Publish's own output, not a unit: written every run, never recorded as published.
+    if (f.origin === "generated" && path !== "alembic.json") {
+      files.push({ path, text: f.text! });
+      continue;
+    }
     if (f.text !== undefined) {
       files.push({ path, text: f.text });
       records.push({ path, unit: f.unit, blobSha: await gitBlobSha(f.text), version: await sha256Hex(f.text) });
