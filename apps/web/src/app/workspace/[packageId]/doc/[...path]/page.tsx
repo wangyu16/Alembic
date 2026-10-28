@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { normalizePath } from "@alembic/package-contract";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -38,7 +39,7 @@ export default async function DocPage({ params }: { params: Promise<{ packageId:
         <span className="font-medium">{path}</span>
       </div>
       <div className="min-h-0 flex-1">
-        <DocEditor kind={kind} packageId={packageId} path={path} text={text} version={version} isPrivate={path.startsWith("private/")} />
+        <DocEditor kind={kind} packageId={packageId} path={path} text={text} version={version} isPrivate={path.startsWith("private/")} nonce={(await headers()).get("x-nonce") ?? undefined} />
       </div>
     </main>
   );

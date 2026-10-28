@@ -6,7 +6,7 @@ import type { OrzKind } from "@/lib/orz-editor/kit";
 import { browserSupabase } from "@/lib/supabase/browser";
 import { mintUidAction, readCourseTextAction, readVersionAction, syncDocAction } from "./actions";
 
-export function DocEditor(p: { kind: OrzKind; packageId: string; path: string; text: string; version: string; isPrivate: boolean }) {
+export function DocEditor(p: { kind: OrzKind; packageId: string; path: string; text: string; version: string; isPrivate: boolean; nonce?: string }) {
   const ed = useRef<EmbeddedEditorHandle>(null);
   const others = usePresence(p.packageId, p.path);
 
@@ -50,6 +50,7 @@ export function DocEditor(p: { kind: OrzKind; packageId: string; path: string; t
       text={p.text}
       baseVersion={p.version}
       isPrivate={p.isPrivate}
+      {...(p.nonce ? { nonce: p.nonce } : {})}
       readCourseText={(path) => readCourseTextAction(p.packageId, path)}
       mintUid={() => mintUidAction()}
       sync={(a) => syncDocAction(a)}
