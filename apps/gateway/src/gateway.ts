@@ -88,25 +88,40 @@ const HIDDEN_PROMPT_TOKENS = 1000;
  * fixed ceiling. Returns a refusal, or the number of images.
  */
 export function inspectContent(b: Record<string, unknown>): { refuse: string } | { images: number; base64Bytes: number } {
-  let images = 0;
-  let base64Bytes = 0;
-  const walk = (v: unknown): string | null => {
-    if (Array.isArray(v)) { for (const x of v) { const r = walk(x); if (r) return r; } return null; }
+  // 1. Anywhere in the request: refuse what the estimate can't bound.
+  const deny = (v: unknown): string | null => {
+    if (Array.isArray(v)) { for (const x of v) { const r = deny(x); if (r) return r; } return null; }
     if (!v || typeof v !== "object") return null;
     const o = v as Record<string, unknown>;
     if (o["type"] === "document") return "documents (PDF) aren't allowed through the gateway";
-    if (o["type"] === "image") {
-      const src = o["source"] as Record<string, unknown> | undefined;
-      if (src?.["type"] !== "base64") return "images must be inline (base64), not by url or file";
-      images++;
-      base64Bytes += typeof src["data"] === "string" ? (src["data"] as string).length : 0;
-    }
+    if (o["type"] === "redacted_thinking") return "redacted thinking blocks aren't allowed through the gateway";
     if (o["type"] === "container_upload" || o["type"] === "search_result") return `content of type ${String(o["type"])} isn't allowed`;
-    for (const x of Object.values(o)) { const r = walk(x); if (r) return r; }
+    const src = o["source"] as Record<string, unknown> | undefined;
+    if (o["type"] === "image" && src?.["type"] !== "base64") return "images must be inline (base64), not by url or file";
+    for (const x of Object.values(o)) { const r = deny(x); if (r) return r; }
     return null;
   };
-  const r = walk(b["messages"]) ?? walk(b["system"]);
-  return r ? { refuse: r } : { images, base64Bytes };
+  const r = deny(b["messages"]) ?? deny(b["system"]);
+  if (r) return { refuse: r };
+  // 2. Only real image blocks count as images (review r3 H): a message's content list, or a tool result's.
+  //    Anything shaped like an image elsewhere (e.g. inside tool_use input) stays text and is counted by its bytes.
+  let images = 0;
+  let base64Bytes = 0;
+  const countBlocks = (content: unknown) => {
+    if (!Array.isArray(content)) return;
+    for (const blk of content as Array<Record<string, unknown>>) {
+      if (!blk || typeof blk !== "object") continue;
+      if (blk["type"] === "image") {
+        const data = (blk["source"] as Record<string, unknown>)["data"];
+        images++;
+        base64Bytes += typeof data === "string" ? data.length : 0;
+      } else if (blk["type"] === "tool_result") {
+        countBlocks(blk["content"]);
+      }
+    }
+  };
+  if (Array.isArray(b["messages"])) for (const m of b["messages"] as Array<Record<string, unknown>>) if (m && typeof m === "object") countBlocks(m["content"]);
+  return { images, base64Bytes };
 }
 
 /** Read a body with a size cap and a time limit. */
@@ -161,12 +176,12 @@ export async function handleMessages(req: Request, deps: GatewayDeps): Promise<R
       return json(402, `this call could cost up to ${worstCredits.toFixed(4)} credits; ${Math.max(0, fresh.remaining).toFixed(4)} are left for this job (lower max_tokens or shorten the request)`);
     }
     handedOff = true;
-    return await forward(outBody, parsed, model, perCredit);
+    return await forward(outBody, parsed, model, perCredit, { input_tokens: inputTokens, output_tokens: maxTokens });
   } finally {
     if (!handedOff) release();
   }
 
-  async function forward(outBody: string, parsed: Record<string, unknown>, model: string, perCredit: number): Promise<Response> {
+  async function forward(outBody: string, parsed: Record<string, unknown>, model: string, perCredit: number, worst: Usage): Promise<Response> {
   const charge = async (usage: Usage, callId: string) => {
     try {
       const usd = costUsd(model, usage);
@@ -182,7 +197,7 @@ export async function handleMessages(req: Request, deps: GatewayDeps): Promise<R
 
   let up: Response;
   try {
-    up = await deps.upstream(outBody, { "content-type": "application/json", "anthropic-version": req.headers.get("anthropic-version") ?? "2023-06-01" }, AbortSignal.timeout(10 * 60_000));
+    up = await deps.upstream(outBody, { "content-type": "application/json", "anthropic-version": "2023-06-01" }, AbortSignal.timeout(10 * 60_000));
   } catch (e) {
     release();
     throw e;
@@ -220,7 +235,14 @@ export async function handleMessages(req: Request, deps: GatewayDeps): Promise<R
     return new Response(out, { status: 200, headers: { "content-type": "text/event-stream", "cache-control": "no-cache" } });
   }
 
-  const text = await up.text();
+  let text: string;
+  try {
+    text = await up.text();
+  } catch (e) {
+    // The answer couldn't be read (reset, timeout): charge the conservative estimate; the lock is released (review r3 M).
+    await charge(worst, fallbackId);
+    throw e;
+  }
   let usage: Usage = {};
   let id = fallbackId;
   try { const r = JSON.parse(text) as { id?: string; usage?: Usage }; usage = r.usage ?? {}; id = r.id ?? id; } catch { /* not JSON: nothing to charge */ }

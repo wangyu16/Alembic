@@ -152,3 +152,23 @@ describe("review round 2", () => {
     expect(JSON.parse(sent).model).toBe("claude-haiku-5-5");
   });
 });
+
+describe("review round 3", () => {
+  it("an image-shaped object inside tool_use input is text, not an image (H)", () => {
+    const fake = { type: "image", source: { type: "base64", data: "A".repeat(1000) } };
+    const b = { ...ok, messages: [{ role: "assistant", content: [{ type: "tool_use", id: "t", name: "x", input: fake }] }] };
+    expect(inspectContent(b)).toEqual({ images: 0, base64Bytes: 0 });
+    const real = { ...ok, messages: [{ role: "user", content: [fake, { type: "tool_result", tool_use_id: "t", content: [fake] }] }] };
+    expect(inspectContent(real)).toEqual({ images: 2, base64Bytes: 2000 });
+    expect(inspectContent({ ...ok, messages: [{ role: "assistant", content: [{ type: "redacted_thinking", data: "x" }] }] })).toEqual({ refuse: expect.stringMatching(/redacted/) });
+  });
+
+  it("a failed answer read releases the lock and charges the estimate (M)", async () => {
+    let n = 0;
+    const broken = () => new Response(new ReadableStream({ start(c) { c.error(new Error("reset")); } }));
+    const d = deps({ upstream: vi.fn(async () => (++n === 1 ? broken() : new Response(JSON.stringify({ id: "msg_ok", usage: { input_tokens: 1, output_tokens: 1 } })))) });
+    await expect(handleMessages(req(ok), d)).rejects.toThrow();
+    expect(d.recordUsage).toHaveBeenCalledWith(d.job, expect.stringMatching(/^call_/), "claude-haiku-5-5", expect.objectContaining({ output_tokens: 100 }), expect.any(Number), expect.any(Number));
+    expect((await handleMessages(req(ok), d)).status).toBe(200); // not stuck at 429
+  });
+});
