@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { handleMessages, keyHash, MAX_TOKENS_CAP, refuseFields, type GatewayDeps } from "./gateway";
+import { handleMessages, inspectContent, keyHash, MAX_TOKENS_CAP, refuseFields, type GatewayDeps } from "./gateway";
 import { costUsd } from "./pricing";
 import { chargeableUsage, StreamUsage } from "./usage";
 
@@ -73,7 +73,7 @@ describe("handleMessages", () => {
   });
 
   it("refuses a call whose worst case exceeds what is left of the hold (review H1)", async () => {
-    const d = deps({}, undefined, 200, 0.05);
+    const d = deps({}, undefined, 200, 0.5);
     // Opus 5.5: 32k output tokens could cost 32_000 × $20/M = $0.64 = 64 credits
     const r = await handleMessages(req({ ...ok, model: "claude-opus-5-5", max_tokens: 32_000 }), d);
     expect(r.status).toBe(402);
@@ -120,5 +120,35 @@ describe("handleMessages", () => {
     expect(d.capture).not.toHaveBeenCalled();
     const big = deps();
     expect((await handleMessages(req({ ...ok, messages: [{ role: "user", content: "x".repeat(9 * 1024 * 1024) }] }), big)).status).toBe(413);
+  });
+});
+
+describe("review round 2", () => {
+  it("refuses url/file images and documents; counts inline images (H2)", () => {
+    const img = (source: unknown) => ({ ...ok, messages: [{ role: "user", content: [{ type: "image", source }] }] });
+    expect(inspectContent(img({ type: "url", url: "https://x/y.png" }))).toEqual({ refuse: expect.stringMatching(/inline/) });
+    expect(inspectContent(img({ type: "file", file_id: "file_1" }))).toEqual({ refuse: expect.stringMatching(/inline/) });
+    expect(inspectContent({ ...ok, messages: [{ role: "user", content: [{ type: "document", source: { type: "base64", data: "x" } }] }] })).toEqual({ refuse: expect.stringMatching(/PDF/) });
+    expect(inspectContent(img({ type: "base64", media_type: "image/png", data: "AAAA" }))).toEqual({ images: 1, base64Bytes: 4 });
+  });
+
+  it("re-checks the credit after the body arrives, under the job's lock (H1)", async () => {
+    let remaining = 10;
+    const d = deps({ checkKey: vi.fn(async () => ({ jobId: "jobR", models: ["claude-haiku-5-5"], remaining })) });
+    // The credit is spent while this request's body is still arriving.
+    const slow = new ReadableStream<Uint8Array>({ async start(c) { remaining = 0; c.enqueue(new TextEncoder().encode(JSON.stringify(ok))); c.close(); } });
+    const r = await handleMessages(new Request("http://g/v1/messages", { method: "POST", headers: { "x-api-key": TOKEN }, body: slow, duplex: "half" } as RequestInit), d);
+    expect(r.status).toBe(402);
+    expect(d.upstream).not.toHaveBeenCalled();
+  });
+
+  it("forwards exactly what it checked: duplicate keys collapse to the checked value (M3)", async () => {
+    const d = deps();
+    const raw = `{"model":"claude-opus-5-5","model":"claude-haiku-5-5","max_tokens":20,"messages":[{"role":"user","content":"hi"}]}`;
+    const r = await handleMessages(new Request("http://g/v1/messages", { method: "POST", headers: { "x-api-key": TOKEN }, body: raw }), d);
+    expect(r.status).toBe(200);
+    const sent = (d.upstream as unknown as { mock: { calls: unknown[][] } }).mock.calls[0]![0] as string;
+    expect(sent.match(/"model"/g)).toHaveLength(1);
+    expect(JSON.parse(sent).model).toBe("claude-haiku-5-5");
   });
 });

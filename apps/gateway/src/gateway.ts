@@ -76,45 +76,104 @@ export function refuseFields(b: Record<string, unknown>): string | null {
   return null;
 }
 
+/** Per-image ceiling (tokens): images are resized to ≤1568 px on the long edge, ≈3.3k tokens; generous. */
+export const IMAGE_TOKEN_CEILING = 5000;
+/** Tool definitions and structured outputs add a system prompt not in the body. */
+const HIDDEN_PROMPT_TOKENS = 1000;
+
+/**
+ * Content the estimate can't bound (review r2 H2): a url or file source makes
+ * Anthropic fetch something whose size we don't see, and a PDF is billed per
+ * page as text plus an image. Base64 images are allowed and counted at a
+ * fixed ceiling. Returns a refusal, or the number of images.
+ */
+export function inspectContent(b: Record<string, unknown>): { refuse: string } | { images: number; base64Bytes: number } {
+  let images = 0;
+  let base64Bytes = 0;
+  const walk = (v: unknown): string | null => {
+    if (Array.isArray(v)) { for (const x of v) { const r = walk(x); if (r) return r; } return null; }
+    if (!v || typeof v !== "object") return null;
+    const o = v as Record<string, unknown>;
+    if (o["type"] === "document") return "documents (PDF) aren't allowed through the gateway";
+    if (o["type"] === "image") {
+      const src = o["source"] as Record<string, unknown> | undefined;
+      if (src?.["type"] !== "base64") return "images must be inline (base64), not by url or file";
+      images++;
+      base64Bytes += typeof src["data"] === "string" ? (src["data"] as string).length : 0;
+    }
+    if (o["type"] === "container_upload" || o["type"] === "search_result") return `content of type ${String(o["type"])} isn't allowed`;
+    for (const x of Object.values(o)) { const r = walk(x); if (r) return r; }
+    return null;
+  };
+  const r = walk(b["messages"]) ?? walk(b["system"]);
+  return r ? { refuse: r } : { images, base64Bytes };
+}
+
+/** Read a body with a size cap and a time limit. */
+async function readBody(req: Request, ms = 15_000): Promise<string | null | "timeout"> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<"timeout">((r) => { timer = setTimeout(() => r("timeout"), ms); });
+  try { return await Promise.race([readCapped(req), timeout]); } finally { clearTimeout(timer); }
+}
+
 export async function handleMessages(req: Request, deps: GatewayDeps): Promise<Response> {
   const token = req.headers.get("x-api-key") ?? req.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ?? "";
   if (!/^agk_[A-Za-z0-9_-]{30,}$/.test(token)) return json(401, "missing or malformed gateway key");
   const key = await deps.checkKey(keyHash(token));
   if (!key) return json(401, "this key is not valid now (expired, revoked, or its job ended)");
+  const jobId = key.jobId;
   if (req.headers.get("anthropic-beta")) return json(400, "beta features are not available through the gateway");
 
-  const body = await readCapped(req);
-  if (body === null) return json(413, "request too large");
-  let parsed: Record<string, unknown>;
-  try { parsed = JSON.parse(body) as Record<string, unknown>; } catch { return json(400, "body is not JSON"); }
-  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return json(400, "body must be an object");
-  const model = typeof parsed["model"] === "string" ? parsed["model"] : "";
-  if (!knownModel(model) || !key.models.includes(model)) return json(403, `model ${model || "(none)"} is not allowed for this key`);
-  const refused = refuseFields(parsed);
-  if (refused) return json(400, refused);
-  const maxTokens = parsed["max_tokens"];
-  if (typeof maxTokens !== "number" || !Number.isInteger(maxTokens) || maxTokens < 1 || maxTokens > MAX_TOKENS_CAP) {
-    return json(400, `max_tokens is required (1–${MAX_TOKENS_CAP})`);
-  }
-
-  // Worst case: every body character a token at the highest input rate, plus all of max_tokens.
-  const perCredit = await deps.usdPerCredit();
-  const worstCredits = (body.length * worstInputRate(model) + maxTokens * worstOutputRate(model)) / perCredit;
-  if (worstCredits > key.remaining) {
-    return json(402, `this call could cost up to ${worstCredits.toFixed(4)} credits; ${Math.max(0, key.remaining).toFixed(4)} are left for this job (lower max_tokens or shorten the request)`);
-  }
+  // Lock the job first, then read the body and re-check the credit under the lock (review r2 H1).
   if (inFlight.has(key.jobId)) return json(429, "this job already has a call in progress");
   inFlight.add(key.jobId);
   let released = false;
   const release = () => { if (!released) { released = true; inFlight.delete(key.jobId); } };
+  let handedOff = false;
+  try {
+    const body = await readBody(req);
+    if (body === "timeout") return json(408, "the request body took too long");
+    if (body === null) return json(413, "request too large");
+    let parsed: Record<string, unknown>;
+    try { parsed = JSON.parse(body) as Record<string, unknown>; } catch { return json(400, "body is not JSON"); }
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return json(400, "body must be an object");
+    const model = typeof parsed["model"] === "string" ? parsed["model"] : "";
+    if (!knownModel(model) || !key.models.includes(model)) return json(403, `model ${model || "(none)"} is not allowed for this key`);
+    const refused = refuseFields(parsed);
+    if (refused) return json(400, refused);
+    const content = inspectContent(parsed);
+    if ("refuse" in content) return json(400, content.refuse);
+    const maxTokens = parsed["max_tokens"];
+    if (typeof maxTokens !== "number" || !Number.isInteger(maxTokens) || maxTokens < 1 || maxTokens > MAX_TOKENS_CAP) {
+      return json(400, `max_tokens is required (1–${MAX_TOKENS_CAP})`);
+    }
+    // What is sent is exactly what was checked (review r2 M3: no duplicate-key games).
+    const outBody = JSON.stringify(parsed);
+    // Worst case: every UTF-8 byte of text a token (byte-fallback tokens can't exceed bytes), each image at its ceiling,
+    // the hidden tool prompt, all of max_tokens — against the credit left now, read under the lock.
+    const fresh = await deps.checkKey(keyHash(token));
+    if (!fresh || fresh.jobId !== key.jobId) return json(401, "this key is not valid now");
+    const perCredit = await deps.usdPerCredit();
+    const textBytes = Buffer.byteLength(outBody, "utf8") - content.base64Bytes;
+    const inputTokens = textBytes + content.images * IMAGE_TOKEN_CEILING + HIDDEN_PROMPT_TOKENS;
+    const worstCredits = (inputTokens * worstInputRate(model) + maxTokens * worstOutputRate(model)) / perCredit;
+    if (worstCredits > fresh.remaining) {
+      return json(402, `this call could cost up to ${worstCredits.toFixed(4)} credits; ${Math.max(0, fresh.remaining).toFixed(4)} are left for this job (lower max_tokens or shorten the request)`);
+    }
+    handedOff = true;
+    return await forward(outBody, parsed, model, perCredit);
+  } finally {
+    if (!handedOff) release();
+  }
 
+  async function forward(outBody: string, parsed: Record<string, unknown>, model: string, perCredit: number): Promise<Response> {
   const charge = async (usage: Usage, callId: string) => {
     try {
       const usd = costUsd(model, usage);
       const credits = usd / perCredit;
-      if (await deps.recordUsage(key.jobId, callId, model, usage, usd, credits)) await deps.capture(key.jobId, callId, credits);
+      if (await deps.recordUsage(jobId, callId, model, usage, usd, credits)) await deps.capture(jobId, callId, credits);
     } catch (e) {
-      deps.log?.(`charge pending for job ${key.jobId}: ${(e as Error).message}`); // the worker retries recorded, uncaptured usage
+      deps.log?.(`charge pending for job ${jobId}: ${(e as Error).message}`); // the worker retries recorded, uncaptured usage
     } finally {
       release();
     }
@@ -123,7 +182,7 @@ export async function handleMessages(req: Request, deps: GatewayDeps): Promise<R
 
   let up: Response;
   try {
-    up = await deps.upstream(body, { "content-type": "application/json", "anthropic-version": req.headers.get("anthropic-version") ?? "2023-06-01" });
+    up = await deps.upstream(outBody, { "content-type": "application/json", "anthropic-version": req.headers.get("anthropic-version") ?? "2023-06-01" }, AbortSignal.timeout(10 * 60_000));
   } catch (e) {
     release();
     throw e;
@@ -167,4 +226,5 @@ export async function handleMessages(req: Request, deps: GatewayDeps): Promise<R
   try { const r = JSON.parse(text) as { id?: string; usage?: Usage }; usage = r.usage ?? {}; id = r.id ?? id; } catch { /* not JSON: nothing to charge */ }
   await charge(usage, id);
   return new Response(text, { status: up.status, headers: { "content-type": "application/json" } });
+}
 }
