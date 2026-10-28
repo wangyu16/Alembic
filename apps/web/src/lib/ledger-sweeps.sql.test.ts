@@ -83,3 +83,18 @@ describe("month end", () => {
     expect(await attempt(() => svc(`select public.ledger_fund_allowance($1, $2, (date_trunc('month', now()) - interval '1 month')::date, 1, 'm2')`, [owner, pkg]))).toBe("refused");
   });
 });
+
+describe("expiry by date", () => {
+  it("records granted credit that expired as an expiry entry, once; paid credit never expires", async () => {
+    const u = await seedUser(db, "exu");
+    await svc(`select public.ledger_grant($1, $2, 12, now() + interval '1 day', 'g')`, [op, u]);
+    await svc(`select public.ledger_topup($1, 5, 'evt_ex1')`, [u]);
+    await db.query(`update public.credit_lots set expires_at = now() - interval '1 minute' where credit_kind = 'granted' and account_id = public.ledger_user_account($1)`, [u]);
+    expect(await bal(u)).toBe(5);
+    expect((await one<{ n: number }>(`select public.ledger_expire_lots() as n`)).n).toBe(1);
+    expect((await one<{ n: number }>(`select public.ledger_expire_lots() as n`)).n).toBe(0);
+    const e = await one<{ s: string }>(`select coalesce(sum(amount), 0) as s from public.ledger_entries where kind = 'expiry' and account_id = public.ledger_user_account($1)`, [u]);
+    expect(Number(e.s)).toBe(12);
+    expect(await bal(u)).toBe(5);
+  });
+});

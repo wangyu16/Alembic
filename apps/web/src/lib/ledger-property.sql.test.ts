@@ -53,10 +53,11 @@ describe("L.2 (full): every account's balance equals its entries, whatever happe
       const ownerAcc = (await one<{ a: string }>(`select public.ledger_user_account($1) as a`, [owner])).a;
       for (let step = 0; step < 40; step++) {
         const k = ++n;
-        const what = pick(["grant", "topup", "topup", "fund", "task", "task", "alltask", "reverse", "endgrant", "monthend"]);
+        const what = pick(["grant", "grant", "topup", "topup", "fund", "task", "task", "alltask", "reverse", "endgrant", "monthend", "expire"]);
         switch (what) {
           case "grant": {
-            const g = await one<{ g: string }>(`select public.ledger_grant($1, $2, $3, null, 'p') as g`, [op, owner, 1 + Math.floor(rnd() * 30)]);
+            const expires = rnd() < 0.5 ? null : new Date(Date.now() + 86_400_000).toISOString();
+            const g = await one<{ g: string }>(`select public.ledger_grant($1, $2, $3, $4, 'p') as g`, [op, owner, 1 + Math.floor(rnd() * 30), expires]);
             if (g.g) grants.push(g.g);
             break;
           }
@@ -89,6 +90,12 @@ describe("L.2 (full): every account's balance equals its entries, whatever happe
             break;
           case "endgrant":
             if (grants.length) await svc(`select public.ledger_end_grant($1, $2)`, [op, grants.splice(Math.floor(rnd() * grants.length), 1)[0]]);
+            break;
+          case "expire":
+            // Time passes for one dated grant; the hourly sweep records it.
+            await db.query(`update public.credit_lots set expires_at = now() - interval '1 second'
+                             where id = (select id from public.credit_lots where expires_at > now() and account_id = $1 limit 1)`, [ownerAcc]);
+            await svc(`select public.ledger_expire_lots()`);
             break;
           case "monthend":
             // A month passes for this course's allowance, then the sweep runs.

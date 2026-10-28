@@ -8,7 +8,8 @@
 -- ledger_month_end: returns every ended month's course allowance to the
 --   owner (once per month), and moves anything that came back to an ended
 --   allowance later (a late release or refund) to the owner too.
--- Both are idempotent and safe to run from several workers at once.
+-- ledger_expire_lots: records granted credit that expired by date.
+-- All are idempotent and safe to run from several workers at once.
 --
 -- READ-ONLY PRE-CHECK: none. DEPLOY ORDER: after 0044.
 
@@ -61,7 +62,31 @@ begin
   return n;
 end $$;
 
+-- Granted lots past their date: their unused credit leaves the balance at
+-- that moment (balance counts unexpired lots); this records it as an
+-- 'expiry' entry and empties the lot, so entries keep adding up (L.2).
+create function public.ledger_expire_lots()
+returns int language plpgsql security definer set search_path = '' as $$
+declare l record; n int := 0;
+begin
+  for l in select id, account_id from public.credit_lots
+            where expires_at is not null and expires_at <= now() and remaining > 0
+            order by account_id
+  loop
+    perform 1 from public.ledger_accounts where id = l.account_id for update;
+    insert into public.ledger_entries (account_id, kind, amount, lot_id, idempotency_key)
+    select account_id, 'expiry', remaining, id, 'expiry:date:' || id || ':' || remaining
+      from public.credit_lots where id = l.id and remaining > 0
+    on conflict (idempotency_key) do nothing;
+    update public.credit_lots set remaining = 0 where id = l.id;
+    n := n + 1;
+  end loop;
+  return n;
+end $$;
+
 revoke execute on function public.ledger_sweep_orphans(interval) from public, anon, authenticated;
 revoke execute on function public.ledger_month_end() from public, anon, authenticated;
+revoke execute on function public.ledger_expire_lots() from public, anon, authenticated;
+grant execute on function public.ledger_expire_lots() to service_role;
 grant execute on function public.ledger_sweep_orphans(interval) to service_role;
 grant execute on function public.ledger_month_end() to service_role;

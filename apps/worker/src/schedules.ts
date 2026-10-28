@@ -21,6 +21,8 @@ export const SCHEDULES: readonly Schedule[] = [
   { name: "ledger-orphan-sweep", everyMs: 5 * 60_000, rpc: "ledger_sweep_orphans" },
   // Ended months' course allowances back to their owners (§3.3, §9.7).
   { name: "ledger-month-end", everyMs: 60 * 60_000, rpc: "ledger_month_end" },
+  // Granted credit past its date, recorded as expired (§1, L.2).
+  { name: "ledger-expire-lots", everyMs: 60 * 60_000, rpc: "ledger_expire_lots" },
 ];
 
 export type Rpc = (fn: string, args?: Record<string, unknown>) => Promise<unknown>;
