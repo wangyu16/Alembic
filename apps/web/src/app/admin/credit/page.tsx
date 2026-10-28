@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { requireAdmin } from "@/lib/admin";
-import { ADMIN_CREDIT_MESSAGES } from "./messages";
-import { addToCohortAction, createCohortAction, endGrantAction, grantCohortAction, grantUserAction, setPriceAction } from "./actions";
+import { ADMIN_CREDIT_MESSAGES, NEW_WORKSHOP_COOKIE } from "./messages";
+import { cookies } from "next/headers";
+import { addToCohortAction, createCohortAction, createWorkshopAction, endGrantAction, endWorkshopAction, grantCohortAction, grantUserAction, setPriceAction } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -11,8 +12,11 @@ const btn = "rounded bg-black px-3 py-1 text-white";
 export default async function AdminCreditPage({ searchParams }: { searchParams: Promise<{ msg?: string }> }) {
   const { msg: code } = await searchParams;
   const msg = code && code in ADMIN_CREDIT_MESSAGES ? ADMIN_CREDIT_MESSAGES[code as keyof typeof ADMIN_CREDIT_MESSAGES] : null;
-  const { service } = await requireAdmin();
+  const { service, userId } = await requireAdmin();
   if (!service) return <main className="p-6">The service key isn&apos;t configured.</main>;
+  // A code just created, shown this once (the cookie expires in two minutes).
+  const fresh = code === "workshop-created" ? (await cookies()).get(NEW_WORKSHOP_COOKIE)?.value?.split("|") : undefined;
+  const { data: workshops } = await service.rpc("workshop_list", { p_actor: userId });
   const [{ data: price }, { data: cohorts }, { data: grants }, { data: problems }] = await Promise.all([
     service.from("credit_prices").select("usd_per_credit, valid_from").order("valid_from", { ascending: false }).limit(1).maybeSingle(),
     service.from("cohorts").select("id, name, created_at").order("created_at", { ascending: false }),
@@ -65,6 +69,34 @@ export default async function AdminCreditPage({ searchParams }: { searchParams: 
             ))}
           </div>
         ) : null}
+      </section>
+
+      <section>
+        <h2 className="text-lg font-medium">Workshop codes (try mode)</h2>
+        <p className="mt-1 text-sm text-gray-600">People who enter a code on the try page make sample chapters paid by the code&apos;s own credit, without the per-network limit, so a whole room can try at once.</p>
+        {fresh?.[1] ? (
+          <p className="mt-2 rounded border border-green-600 bg-green-50 p-2 text-sm" data-testid="new-workshop-code">
+            Code for {fresh[0]}: <b className="font-mono text-base">{fresh[1]}</b>
+          </p>
+        ) : null}
+        <form action={createWorkshopAction} className="mt-2 flex flex-wrap items-end gap-2 text-sm">
+          <label className="flex flex-col">Workshop<input name="name" required maxLength={120} className={input} /></label>
+          <label className="flex flex-col">Credit<input name="amount" type="number" min="1" step="1" required className={`${input} w-24`} /></label>
+          <label className="flex flex-col">Days valid<input name="days" type="number" min="1" max="90" defaultValue="2" required className={`${input} w-20`} /></label>
+          <label className="flex flex-col">Per browser per day<input name="perBrowser" type="number" min="1" max="50" defaultValue="5" required className={`${input} w-20`} /></label>
+          <button className={btn}>Create code</button>
+        </form>
+        <ul className="mt-3 divide-y rounded border text-sm">
+          {((workshops ?? []) as Array<{ id: string; name: string; expires_at: string; ended_at: string | null; runs: number; remaining: number }>).map((w) => {
+            const live = !w.ended_at && new Date(w.expires_at) > new Date();
+            return (
+              <li key={w.id} className="flex items-center justify-between gap-2 p-2">
+                <span>{w.name} · {Number(w.runs)} runs · {Number(w.remaining).toFixed(2)} credit left · {live ? `until ${new Date(w.expires_at).toLocaleDateString()}` : "ended"}</span>
+                {live ? <form action={endWorkshopAction}><input type="hidden" name="workshop" value={w.id} /><button className="underline">End</button></form> : null}
+              </li>
+            );
+          })}
+        </ul>
       </section>
 
       <section>

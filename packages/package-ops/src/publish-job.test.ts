@@ -123,6 +123,23 @@ describe("runPublish", () => {
     expect(out.status).toBe("committed");
   });
 
+  it("review r3 M1: a crashed run's commit amended with an extra file isn't ours: the file is brought in, not deleted", async () => {
+    const pub = new FakePublic(); const st = new FakeStore(); approveAll(st, W);
+    await runPublish(input(), working(W), pub, st, noChecks); // one committed run, so the head isn't a first-Publish baseline
+    const realMark = st.markCommitted.bind(st);
+    let crash = true;
+    st.markCommitted = async (...a) => { if (crash) { crash = false; throw new Error("worker died"); } return realMark(...a); };
+    const W2 = { ...W, "study-guide/atoms.md": "# Atoms, second" };
+    await expect(runPublish(input({ runId: id(2) }), working(W2), pub, st, noChecks)).rejects.toThrow("worker died");
+    const last = pub.commits[pub.commits.length - 1]!;
+    const amended = new Map(last.files); amended.set("study-guide/chapters/atoms/notes.md", "added on GitHub");
+    pub.commits[pub.commits.length - 1] = { ...last, files: amended };
+    const out = await runPublish(input({ runId: id(3) }), working(W2), pub, st, noChecks);
+    expect(st.runs.get(id(2))!.status).toBe("pending");
+    expect(out).toMatchObject({ status: "stopped" });
+    expect(st.drift.flat()).toContain("study-guide/chapters/atoms/notes.md");
+  });
+
   it("review r2 L-B: a run that no longer holds its request doesn't commit", async () => {
     const pub = new FakePublic(); const st = new FakeStore(); approveAll(st, W);
     const out = await runPublish(input({ stillHeld: async () => false }), working(W), pub, st, noChecks);

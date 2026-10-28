@@ -46,7 +46,9 @@ async function main(dir: string) {
   await writeFile(join(dir, "result.json"), JSON.stringify({ ok, errors: errors.slice(0, 50), warnings: r.warnings }));
 }
 
-main(process.argv[2]!).catch((e) => {
+main(process.argv[2]!).catch(async (e) => {
   console.error((e as Error).message);
+  // Say why, for the person (the parent shows it): an orz-site or file error, not "out of memory".
+  await writeFile(join(process.argv[2]!, "result.json"), JSON.stringify({ ok: false, errors: [`The website build stopped: ${(e as Error).message.slice(0, 300)}`], warnings: 0 })).catch(() => {});
   process.exit(1);
 });

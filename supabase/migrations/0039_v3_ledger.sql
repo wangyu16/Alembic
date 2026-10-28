@@ -246,7 +246,8 @@ begin
                 where m.package_id = a.package_id and m.role = 'owner' and u.debt > 0) then
       raise exception 'The course allowance is paused until the owner''s balance is cleared' using errcode = '42501';
     end if;
-  elsif a.kind = 'demo-budget' then
+  elsif a.kind in ('demo-budget', 'cohort-pool') then
+    -- The demo budget and a workshop's pool (0059) pay only try mode.
     if j.kind <> 'try' then raise exception 'The demo budget pays only try mode' using errcode = '42501'; end if;
   else
     raise exception 'unsupported payer' using errcode = '22023';

@@ -18,6 +18,7 @@ const ORDER = ["concepts", "assessment", "study-guide", "slides", "practice"];
 export function TryApp() {
   const [phase, setPhase] = useState<"intro" | "form" | "making" | "made">("intro");
   const [topic, setTopic] = useState("");
+  const [code, setCode] = useState("");
   const [level, setLevel] = useState("");
   const [steps, setSteps] = useState<Record<string, Step>>({});
   const [files, setFiles] = useState<File[]>([]);
@@ -30,7 +31,7 @@ export function TryApp() {
     e.preventDefault();
     setPhase("making"); setSteps({}); setFiles([]); setNotice(null); setError(null); setSources([]); setOpen(null);
     try {
-      const res = await fetch("/api/try", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ topic, level }) });
+      const res = await fetch("/api/try", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ topic, level, ...(code.trim() ? { code } : {}) }) });
       if (!res.ok || !res.body) {
         const j = (await res.json().catch(() => ({}))) as { error?: string };
         throw new Error(j.error ?? "Try mode isn't available right now.");
@@ -94,6 +95,9 @@ export function TryApp() {
           </label>
           <label className="flex flex-col text-sm">Level (optional)
             <input value={level} onChange={(e) => setLevel(e.target.value)} maxLength={60} placeholder="first-year university" className="mt-1 rounded border px-2 py-1.5" disabled={phase === "making"} />
+          </label>
+          <label className="flex flex-col text-sm">Workshop code (if you have one)
+            <input value={code} onChange={(e) => setCode(e.target.value)} maxLength={40} placeholder="WKS-…" autoComplete="off" className="mt-1 w-40 rounded border px-2 py-1.5 font-mono" disabled={phase === "making"} />
           </label>
           <button type="submit" disabled={phase === "making"} className="rounded bg-black px-4 py-2 text-white disabled:opacity-50">{phase === "making" ? "Making…" : phase === "made" ? "Make another" : "Make a sample chapter"}</button>
         </form>

@@ -7,6 +7,7 @@ import { tryDeps } from "@/lib/try/server";
 import { EXAMPLES } from "@/lib/try/examples";
 import { requestOrigin } from "@/lib/request-origin";
 import { PARTS } from "@/lib/try/guides";
+import { normalizeWorkshopCode, workshopCodeHash } from "@/lib/try/workshop";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -29,11 +30,15 @@ export async function POST(req: Request) {
   const origin = req.headers.get("origin");
   if (!(req.headers.get("content-type") ?? "").startsWith("application/json")) return Response.json({ error: "bad request" }, { status: 415 });
   if ((site && site !== "same-origin") || (origin && origin !== requestOrigin(req))) return Response.json({ error: "forbidden" }, { status: 403 });
-  let input: { topic?: unknown; level?: unknown };
+  let input: { topic?: unknown; level?: unknown; code?: unknown };
   try { input = (await req.json()) as typeof input; } catch { return Response.json({ error: "bad request" }, { status: 400 }); }
   const topic = typeof input.topic === "string" ? input.topic.trim().slice(0, 120) : "";
   const level = typeof input.level === "string" ? input.level.trim().slice(0, 60) : "";
   if (topic.length < 2) return Response.json({ error: "Name a topic." }, { status: 400 });
+  // A workshop code (optional): the workshop's credit pays, and the per-network limit doesn't apply (design §11.5).
+  const rawCode = typeof input.code === "string" ? input.code.trim().slice(0, 40) : "";
+  const code = rawCode ? normalizeWorkshopCode(rawCode) : null;
+  if (rawCode && !code) return Response.json({ error: "That workshop code isn't valid. Check it, or leave it empty." }, { status: 400 });
 
   const jar = await cookies();
   let browser = jar.get(COOKIE)?.value;
@@ -54,11 +59,17 @@ export async function POST(req: Request) {
       let job: string | null = null;
       try {
         try {
-          const { rows } = await sql.query<{ j: string }>(`select public.try_start($1, $2, $3) as j`, [hash(browser!), hash(network), ESTIMATE_CREDITS]);
+          const { rows } = code
+            ? await sql.query<{ j: string }>(`select public.try_start_workshop($1, $2, $3, $4) as j`, [workshopCodeHash(code, secret), hash(browser!), hash(network), ESTIMATE_CREDITS])
+            : await sql.query<{ j: string }>(`select public.try_start($1, $2, $3) as j`, [hash(browser!), hash(network), ESTIMATE_CREDITS]);
           job = rows[0]!.j;
         } catch (e) {
-          // Resting (no budget), daily caps, or the budget used up: ready-made sample instead.
           const msg = (e as Error).message;
+          if (/workshop code isn't valid/.test(msg)) {
+            emit({ type: "error", message: "That workshop code isn't valid or has ended. Check it with your workshop leader, or leave it empty." });
+            return;
+          }
+          // Resting (no budget), daily caps, or the budget used up: ready-made sample instead.
           emit({ type: "notice", message: /limit/.test(msg) ? "You've reached today's limit for sample chapters. Here is a ready-made one." : "Try mode is resting right now. Here is a ready-made sample chapter." });
           for (const p of PARTS) {
             emit({ type: "file", part: p.id, path: EXAMPLES[p.id].path, kind: p.kind, text: EXAMPLES[p.id].text });

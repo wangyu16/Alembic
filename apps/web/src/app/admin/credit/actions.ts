@@ -3,8 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/admin";
+import { cookies } from "next/headers";
 import { isGithubLogin } from "@/lib/invitations";
-import type { AdminCreditMessage } from "./messages";
+import { newWorkshopCode, normalizeWorkshopCode, workshopCodeHash } from "@/lib/try/workshop";
+import { NEW_WORKSHOP_COOKIE, type AdminCreditMessage } from "./messages";
 
 // Only fixed message codes travel in the URL, so a crafted link can't show a false status.
 const back = (msg: AdminCreditMessage) => redirect(`/admin/credit?msg=${msg}`);
@@ -88,4 +90,33 @@ export async function setPriceAction(formData: FormData): Promise<void> {
   const { error } = await service!.from("credit_prices").insert({ usd_per_credit: usd });
   revalidatePath("/admin/credit");
   back(error ? failure(error) : "price-set");
+}
+
+/** Create a workshop code for try mode, with its own credit (design §11.5). */
+export async function createWorkshopAction(formData: FormData): Promise<void> {
+  const { userId, service } = await requireAdmin();
+  if (!service) back("no-service");
+  const secret = process.env["RATE_LIMIT_SECRET"];
+  const name = String(formData.get("name") ?? "").trim().slice(0, 120);
+  const amount = amountOf(formData.get("amount"));
+  const days = Number(formData.get("days"));
+  const perBrowser = Number(formData.get("perBrowser") ?? 5);
+  if (!secret || !name || !amount || !Number.isInteger(days) || days < 1 || days > 90 || !Number.isInteger(perBrowser) || perBrowser < 1 || perBrowser > 50) back("bad-workshop");
+  const code = newWorkshopCode();
+  const { error } = await service!.rpc("workshop_create", {
+    p_actor: userId, p_name: name, p_code_hash: workshopCodeHash(normalizeWorkshopCode(code)!, secret!), p_amount: amount,
+    p_expires: new Date(Date.now() + days * 86_400_000).toISOString(), p_per_browser: perBrowser,
+  });
+  if (error) back(failure(error));
+  (await cookies()).set(NEW_WORKSHOP_COOKIE, `${name.slice(0, 60)}|${code}`, { httpOnly: true, secure: true, sameSite: "strict", maxAge: 120, path: "/admin/credit" });
+  revalidatePath("/admin/credit");
+  back("workshop-created");
+}
+
+export async function endWorkshopAction(formData: FormData): Promise<void> {
+  const { userId, service } = await requireAdmin();
+  if (!service) back("no-service");
+  const { error } = await service!.rpc("workshop_end", { p_actor: userId, p_id: String(formData.get("workshop") ?? "") });
+  revalidatePath("/admin/credit");
+  back(error ? failure(error) : "workshop-ended");
 }

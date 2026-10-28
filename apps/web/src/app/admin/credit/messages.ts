@@ -13,6 +13,12 @@ export const ADMIN_CREDIT_MESSAGES = {
   "group-granted": "Each member of the group got the credit.",
   "grant-ended": "Grant ended; unused credit expired.",
   "price-set": "New price in force for new purchases.",
+  "bad-workshop": "Give the workshop a name, credit above 0, and 1–90 days.",
+  "workshop-created": "Workshop code created. Copy it now: it is shown only this once.",
+  "workshop-ended": "Workshop code ended; it no longer works.",
 } as const;
 
 export type AdminCreditMessage = keyof typeof ADMIN_CREDIT_MESSAGES;
+
+/** A new workshop code travels to the page in a short-lived cookie and is shown once (never in the URL). */
+export const NEW_WORKSHOP_COOKIE = "alembic_new_workshop_code";

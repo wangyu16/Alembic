@@ -62,14 +62,20 @@ export function childProcessBuilder(script: string): SiteBuilder {
         }
         await writeFile(join(dir, "job.json"), JSON.stringify(o));
         const code = await new Promise<number | null>((resolve) => {
-          const child = spawn(process.execPath, [`--max-old-space-size=${CHILD_HEAP_MB}`, script, dir], { stdio: ["ignore", "ignore", "pipe"] });
+          // None of the worker's secrets (database, App key) reach the child (review r3 L2).
+          const child = spawn(process.execPath, [`--max-old-space-size=${CHILD_HEAP_MB}`, script, dir], {
+            stdio: ["ignore", "ignore", "pipe"], cwd: dir, env: { PATH: process.env["PATH"] ?? "", NODE_ENV: "production" },
+          });
           let err = "";
           child.stderr.on("data", (d: Buffer) => { if (err.length < 2000) err += d.toString(); });
           const t = setTimeout(() => child.kill("SIGKILL"), CHILD_TIMEOUT_MS);
+          // A child that can't start (too many processes or files) fails this build, never the worker (r3 L3).
+          child.on("error", (e) => { clearTimeout(t); console.error(`[alembic-worker] site child didn't start: ${e.message}`); resolve(null); });
           child.on("close", (c) => { clearTimeout(t); if (c !== 0 && err) console.error(`[alembic-worker] site child: ${err.slice(0, 500)}`); resolve(c); });
         });
-        if (code !== 0) return { ok: false, files: new Map(), errors: ["The website build ran out of time or memory"], warnings: 0 };
-        const result = JSON.parse(await readFile(join(dir, "result.json"), "utf8")) as { ok: boolean; errors: string[]; warnings: number };
+        // The child explains a failure it caught in result.json; no result means it was stopped (time, memory) (r3 L4).
+        const result = await readFile(join(dir, "result.json"), "utf8").then((t) => JSON.parse(t) as { ok: boolean; errors: string[]; warnings: number }).catch(() => null);
+        if (!result || (code !== 0 && result.ok)) return { ok: false, files: new Map(), errors: ["The website build ran out of time or memory"], warnings: 0 };
         const out = new Map<string, Uint8Array>();
         if (result.ok) {
           const root = join(dir, "out");

@@ -158,11 +158,18 @@ export async function gitBlobSha(text: string): Promise<string> {
   return [...new Uint8Array(d)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-/** Does the public tree at `sha` hold every intended file at its intended blob? */
+/**
+ * Does the public tree at `sha` hold exactly the intended files at their intended blobs, and nothing
+ * else besides the owner's `.github/` and Publish's own site build (review r3 M1: an amended commit
+ * that adds a file is not ours)?
+ */
 async function holds(pub: PublicSide, sha: string, intended: PublishedRecord[]): Promise<boolean> {
   const t = await pub.listTree(sha);
   if (t.truncated) return false;
-  const at = new Map(t.entries.map((e) => [e.path, e.blobSha]));
+  const files = t.entries.filter((e) => e.type !== "tree" && e.mode !== "040000" && !ownersFolder(e.path)
+    && !(isPublishGenerated(e.path) && e.path !== "alembic.json"));
+  if (files.length !== intended.length) return false;
+  const at = new Map(files.map((e) => [e.path, e.blobSha]));
   return intended.every((f) => at.get(f.path) === f.blobSha);
 }
 

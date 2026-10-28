@@ -15,6 +15,8 @@ export const PAGES_BRANCH = "gh-pages";
 /** A claimed build that hasn't finished in this long is taken again. */
 const CLAIM_MINUTES = 15;
 const MAX_ATTEMPTS = 3;
+/** Total new text sent inline in the site's tree request; the rest is uploaded as blobs. */
+const INLINE_BUDGET = 5 * 1024 * 1024;
 /** Input limits, checked from the tree listing before anything is downloaded. */
 export const SITE_IN = { maxFiles: 2000, maxFileBytes: 10 * 1024 * 1024, maxTotalBytes: 30 * 1024 * 1024 };
 
@@ -153,12 +155,13 @@ async function buildOne(cfg: SiteBuildConfig, run: { id: string; package_id: str
   if (siteHead) for (const e of (await client.listTreeEntries(coords, siteHead)).entries) if (e.type === "blob") known.add(e.sha);
   const out: Array<{ path: string; blobSha: string } | { path: string; content: string; encoding?: "utf-8" | "base64" }> = [];
   let uploads = 0;
+  let inline = 0; // bytes sent inside the one tree request (r3 L6): past the budget, texts go as blobs
   for (const [path, bytes] of built.files) {
     const sha = gitBlobSha(bytes);
     if (known.has(sha)) out.push({ path, blobSha: sha });
     else {
-      const text = bytes.length <= 512 * 1024 ? utf8(bytes) : null; // big texts as blobs: one tree request stays small
-      if (text !== null) out.push({ path, content: text });
+      const text = bytes.length <= 512 * 1024 && inline + bytes.length <= INLINE_BUDGET ? utf8(bytes) : null;
+      if (text !== null) { out.push({ path, content: text }); inline += bytes.length; }
       else { out.push({ path, content: Buffer.from(bytes).toString("base64"), encoding: "base64" }); uploads++; }
     }
   }
