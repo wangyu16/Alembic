@@ -11,10 +11,13 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@alembic/package-contract": "workspace:*",
-    "@alembic/renderer": "workspace:*",
     "@alembic/generators": "workspace:*",
-    "@alembic/notify": "workspace:*"
+    "@alembic/github-bridge": "workspace:*",
+    "@alembic/notify": "workspace:*",
+    "@alembic/package-contract": "workspace:*",
+    "@alembic/package-ops": "workspace:*",
+    "@alembic/renderer": "workspace:*",
+    "postgres": "^3.4.9"
   },
   "devDependencies": {
     "tsx": "^4.22.4"

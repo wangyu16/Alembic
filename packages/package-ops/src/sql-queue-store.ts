@@ -62,7 +62,7 @@ export class SqlQueueStore implements Omit<QueueStore, "baseText"> {
   }
 
   async finish(i: { id: string; holder: string; fence: string; status: RowStatus; result?: unknown; error?: string; retryAfterSeconds?: number }): Promise<void> {
-    await this.sql.query(`select public.committer_finish($1, $2, $3, $4, $5::jsonb, $6, $7)`, [
+    await this.sql.query(`select public.committer_finish($1, $2, $3, $4, $5::text::jsonb, $6, $7)`, [
       i.id,
       i.holder,
       i.fence,
@@ -91,7 +91,7 @@ export class SqlQueueStore implements Omit<QueueStore, "baseText"> {
   /** Insert a row (service role): returns its id. */
   async insert(i: { packageId: string; kind: RowKind; idem: string; payload: QueueRow["payload"]; actorId?: string | null; invokerId?: string | null; pusher?: string | null; priority?: 0 | 1; dependsOn?: string | null }): Promise<string> {
     const { rows } = await this.sql.query<{ id: string }>(
-      `select public.queue_insert($1, $2, $3, $4::jsonb, $5, $6, $7, $8::smallint, $9) as id`,
+      `select public.queue_insert($1, $2, $3, $4::text::jsonb, $5, $6, $7, $8::smallint, $9) as id`,
       [i.packageId, i.kind, i.idem, JSON.stringify(i.payload), i.actorId ?? null, i.invokerId ?? null, i.pusher ?? null, i.priority ?? 0, i.dependsOn ?? null],
     );
     return rows[0]!.id;

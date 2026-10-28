@@ -143,6 +143,9 @@ describe.skipIf(!ENABLED)("real Postgres concurrency (testing project)", () => {
     await Promise.all([wp, ...workers.map((w) => (w.store as unknown as { _pool?: Sql })._pool)].filter(Boolean).map((x) => x!.end({ timeout: 5 })));
     const rows = await main.unsafe(`select status from public.write_queue where package_id = $1`, [pkg]);
     expect(rows.map((r) => r.status)).toEqual(Array(N).fill("done"));
+    // Stored as JSON objects, not JSON strings (postgres.js encodes jsonb-typed parameters itself).
+    const shapes = await main.unsafe(`select distinct jsonb_typeof(payload) as p, jsonb_typeof(result) as r from public.write_queue where package_id = $1`, [pkg]);
+    expect(shapes).toEqual([{ p: "object", r: "object" }]);
     expect(repo.maxConcurrent).toBe(1); // one writer to the course's repo at a time
     const text = repo.file("study-guide/a.md")!;
     for (let i = 0; i < N; i++) expect(text).toContain(`line ${i} edited by writer ${i}\n`);

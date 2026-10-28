@@ -52,7 +52,7 @@ export async function enqueueSync(sql: SqlClient, i: SyncInput): Promise<{ write
     if (f.baseVersion !== null && !/^[0-9a-f]{64}$/.test(f.baseVersion)) throw new SyncRefused("bad base version");
   }
   const { rows: ins } = await sql.query<{ id: string }>(
-    `select public.queue_insert($1, $2, $3, $4::jsonb, $5) as id`,
+    `select public.queue_insert($1, $2, $3, $4::text::jsonb, $5) as id`,
     [i.packageId, i.kind ?? "sync", i.syncId, JSON.stringify({ files: i.files, fromOpenEditor: i.fromOpenEditor }), i.actorId],
   );
   return { writeId: ins[0]!.id, status: "queued" };

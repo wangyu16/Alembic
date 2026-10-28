@@ -26,6 +26,6 @@ rm -rf $OUT
   [ \"\$(cat web.new/apps/web/.next/BUILD_ID)\" = \"$BUILD\" ] || { echo 'copy incomplete; keeping the running version'; exit 1; }
   rm -rf web.old; [ -d web ] && mv web web.old; mv web.new web
   sudo docker compose up -d web >/dev/null && sudo docker compose restart web >/dev/null
-  for i in \$(seq 1 20); do c=\$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/); [ \"\$c\" = 200 ] && break; sleep 1; done
+  for i in \$(seq 1 20); do c=\$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/ || true); [ \"\$c\" = 200 ] && break; sleep 1; done
   echo \"web on VM: \$c (build \$(cat web/apps/web/.next/BUILD_ID))\""
 echo "deployed $(git rev-parse --short HEAD)$(git diff --quiet || echo '+local changes') to https://alembic-test.orz.how"
