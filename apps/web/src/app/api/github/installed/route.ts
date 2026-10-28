@@ -3,6 +3,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { installationAccount } from "@/lib/github";
 import { githubUserIdOf, installationOwnership } from "@/lib/github-installation-owner";
+import { requestOrigin } from "@/lib/request-origin";
 
 /**
  * GitHub App post-install redirect target. GitHub appends installation_id,
@@ -24,7 +25,8 @@ import { githubUserIdOf, installationOwnership } from "@/lib/github-installation
  * lib/github-installation-owner.ts). Otherwise nothing is written.
  */
 export async function GET(request: Request) {
-  const { searchParams, origin } = new URL(request.url);
+  const { searchParams } = new URL(request.url);
+  const origin = requestOrigin(request);
   const installationId = searchParams.get("installation_id");
   const state = searchParams.get("state"); // the package id, if we set it
 

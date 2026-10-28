@@ -1,6 +1,13 @@
 import type { NextConfig } from "next";
+import path from "node:path";
+
+// Self-hosted builds (the testing VM): ALEMBIC_STANDALONE=1 emits a
+// self-contained server in .next/standalone. Vercel builds don't set it.
+const standalone = process.env["ALEMBIC_STANDALONE"] === "1";
 
 const nextConfig: NextConfig = {
+  // The image optimizer (sharp) is platform-specific; a standalone build copied to another OS serves images as they are.
+  ...(standalone ? { output: "standalone" as const, outputFileTracingRoot: path.join(__dirname, "../.."), images: { unoptimized: true } } : {}),
   // Workspace packages are consumed as TypeScript source; Next transpiles them.
   transpilePackages: [
     "@alembic/package-contract",
