@@ -1,20 +1,28 @@
 /**
  * The gateway's one route, POST /v1/messages (I11):
  * 1. the caller's key (x-api-key) must belong to a running job with an open
- *    hold that still has credit, and allow the requested model;
- * 2. the request goes to Anthropic with the master key, the answer streams
+ *    hold, and allow the requested model;
+ * 2. only known request fields pass (no server tools, fast mode, regions,
+ *    containers, MCP, fallbacks or betas: things billed outside the token
+ *    counts); `max_tokens` is required and capped;
+ * 3. the call's worst-case cost must fit what is left of the hold, and a key
+ *    runs one call at a time, so a job can't spend past its hold;
+ * 4. the request goes to Anthropic with the master key, the answer streams
  *    back unchanged;
- * 3. usage is read from Anthropic's own usage fields and charged to the job
- *    (ledger_capture), also when the caller disconnects mid-stream.
+ * 5. usage (Anthropic's own fields; an estimate if a stream ends early) is
+ *    written durably, then charged to the job (ledger_capture by message id),
+ *    also when the caller disconnects. A failed charge is retried later.
  * Prompts and answers are never logged or stored.
  */
 import { createHash } from "node:crypto";
-import { costUsd, knownModel, type Usage } from "./pricing";
-import { StreamUsage } from "./usage";
+import { costUsd, knownModel, worstInputRate, worstOutputRate, type Usage } from "./pricing";
+import { chargeableUsage, StreamUsage } from "./usage";
 
 export interface GatewayDeps {
   checkKey(hash: string): Promise<{ jobId: string; models: string[]; remaining: number } | null>;
-  /** Charge credits to the job (idempotent per call id). */
+  /** Record a call's usage (numbers only) before charging; returns false if it was already recorded. */
+  recordUsage(jobId: string, callId: string, model: string, usage: Usage, usd: number, credits: number): Promise<boolean>;
+  /** Charge credits to the job (idempotent per call id) and mark the usage captured. */
   capture(jobId: string, callId: string, credits: number): Promise<void>;
   /** USD per credit now. */
   usdPerCredit(): Promise<number>;
@@ -22,44 +30,110 @@ export interface GatewayDeps {
   log?(m: string): void;
 }
 
+export const MAX_TOKENS_CAP = 32_000;
+export const MAX_BODY_BYTES = 8 * 1024 * 1024;
+
+/** Request fields that pass through. Anything else (speed, service_tier, inference_geo, container, mcp_servers, fallbacks, …) is refused. */
+const ALLOWED_FIELDS = new Set([
+  "model", "messages", "system", "max_tokens", "stream", "metadata", "stop_sequences",
+  "temperature", "top_p", "top_k", "tools", "tool_choice", "thinking", "output_config", "cache_control",
+]);
+
 export const keyHash = (token: string) => createHash("sha256").update(token, "utf8").digest("hex");
 
 const json = (status: number, message: string) =>
   new Response(JSON.stringify({ type: "error", error: { type: status === 402 ? "budget_exhausted" : "gateway_error", message } }), { status, headers: { "content-type": "application/json" } });
+
+/** Calls in flight, per job (one gateway instance on testing; several instances would need a shared lock). */
+const inFlight = new Set<string>();
+
+/** Read a body with a size cap (stop reading past it). */
+export async function readCapped(req: Request, max = MAX_BODY_BYTES): Promise<string | null> {
+  if (!req.body) return "";
+  const reader = req.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.length;
+    if (size > max) { await reader.cancel().catch(() => {}); return null; }
+    chunks.push(value);
+  }
+  return Buffer.concat(chunks).toString("utf8");
+}
+
+/** Why a request can't pass, or null. Server tools (typed tools such as web_search) bill outside tokens. */
+export function refuseFields(b: Record<string, unknown>): string | null {
+  for (const k of Object.keys(b)) if (!ALLOWED_FIELDS.has(k)) return `field "${k}" is not allowed through the gateway`;
+  if (Array.isArray(b["tools"])) {
+    for (const t of b["tools"] as Array<Record<string, unknown>>) {
+      if (typeof t !== "object" || t === null || ("type" in t && t["type"] !== "custom")) return "only your own tools are allowed (no server tools)";
+    }
+  }
+  const oc = b["output_config"] as Record<string, unknown> | undefined;
+  if (oc && Object.keys(oc).some((k) => k !== "effort" && k !== "format")) return "output_config allows effort and format only";
+  return null;
+}
 
 export async function handleMessages(req: Request, deps: GatewayDeps): Promise<Response> {
   const token = req.headers.get("x-api-key") ?? req.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ?? "";
   if (!/^agk_[A-Za-z0-9_-]{30,}$/.test(token)) return json(401, "missing or malformed gateway key");
   const key = await deps.checkKey(keyHash(token));
   if (!key) return json(401, "this key is not valid now (expired, revoked, or its job ended)");
-  if (key.remaining <= 0) return json(402, "the credit set aside for this job is used up");
+  if (req.headers.get("anthropic-beta")) return json(400, "beta features are not available through the gateway");
 
-  const body = await req.text();
-  if (body.length > 20_000_000) return json(413, "request too large");
-  let parsed: { model?: unknown; stream?: unknown };
-  try { parsed = JSON.parse(body); } catch { return json(400, "body is not JSON"); }
-  const model = typeof parsed.model === "string" ? parsed.model : "";
+  const body = await readCapped(req);
+  if (body === null) return json(413, "request too large");
+  let parsed: Record<string, unknown>;
+  try { parsed = JSON.parse(body) as Record<string, unknown>; } catch { return json(400, "body is not JSON"); }
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return json(400, "body must be an object");
+  const model = typeof parsed["model"] === "string" ? parsed["model"] : "";
   if (!knownModel(model) || !key.models.includes(model)) return json(403, `model ${model || "(none)"} is not allowed for this key`);
+  const refused = refuseFields(parsed);
+  if (refused) return json(400, refused);
+  const maxTokens = parsed["max_tokens"];
+  if (typeof maxTokens !== "number" || !Number.isInteger(maxTokens) || maxTokens < 1 || maxTokens > MAX_TOKENS_CAP) {
+    return json(400, `max_tokens is required (1–${MAX_TOKENS_CAP})`);
+  }
 
-  const headers: Record<string, string> = { "content-type": "application/json", "anthropic-version": req.headers.get("anthropic-version") ?? "2023-06-01" };
-  const beta = req.headers.get("anthropic-beta");
-  if (beta) headers["anthropic-beta"] = beta;
-  const up = await deps.upstream(body, headers);
+  // Worst case: every body character a token at the highest input rate, plus all of max_tokens.
+  const perCredit = await deps.usdPerCredit();
+  const worstCredits = (body.length * worstInputRate(model) + maxTokens * worstOutputRate(model)) / perCredit;
+  if (worstCredits > key.remaining) {
+    return json(402, `this call could cost up to ${worstCredits.toFixed(4)} credits; ${Math.max(0, key.remaining).toFixed(4)} are left for this job (lower max_tokens or shorten the request)`);
+  }
+  if (inFlight.has(key.jobId)) return json(429, "this job already has a call in progress");
+  inFlight.add(key.jobId);
+  let released = false;
+  const release = () => { if (!released) { released = true; inFlight.delete(key.jobId); } };
+
   const charge = async (usage: Usage, callId: string) => {
     try {
       const usd = costUsd(model, usage);
-      if (usd > 0) await deps.capture(key.jobId, callId, usd / (await deps.usdPerCredit()));
+      const credits = usd / perCredit;
+      if (await deps.recordUsage(key.jobId, callId, model, usage, usd, credits)) await deps.capture(key.jobId, callId, credits);
     } catch (e) {
-      deps.log?.(`capture failed for job ${key.jobId}: ${(e as Error).message}`); // ledger sweep/nightly reconcile catches it
+      deps.log?.(`charge pending for job ${key.jobId}: ${(e as Error).message}`); // the worker retries recorded, uncaptured usage
+    } finally {
+      release();
     }
   };
-  const fallbackId = `call_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+  const fallbackId = `call_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
 
+  let up: Response;
+  try {
+    up = await deps.upstream(body, { "content-type": "application/json", "anthropic-version": req.headers.get("anthropic-version") ?? "2023-06-01" });
+  } catch (e) {
+    release();
+    throw e;
+  }
   if (!up.ok || !up.body) {
+    release();
     return new Response(up.body, { status: up.status, headers: { "content-type": up.headers.get("content-type") ?? "application/json" } });
   }
 
-  if (parsed.stream === true) {
+  if (parsed["stream"] === true) {
     const reader = up.body.getReader();
     const meter = new StreamUsage();
     const dec = new TextDecoder();
@@ -75,8 +149,10 @@ export async function handleMessages(req: Request, deps: GatewayDeps): Promise<R
               try { controller.enqueue(value); } catch { clientGone = true; } // keep reading upstream to learn the final usage
             }
           }
+        } catch (e) {
+          deps.log?.(`upstream stream ended early: ${(e as Error).message}`);
         } finally {
-          await charge(meter.usage, meter.messageId ?? fallbackId);
+          await charge(chargeableUsage(meter), meter.messageId ?? fallbackId);
           if (!clientGone) try { controller.close(); } catch { /* already closed */ }
         }
       },

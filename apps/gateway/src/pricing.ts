@@ -40,3 +40,14 @@ export function costUsd(model: string, u: Usage): number {
   const r = "upTo100k" in p ? (prompt > 100_000 ? p.over100k : p.upTo100k) : p;
   return (input * r.input + w5m * r.cacheWrite5m + w1h * r.cacheWrite1h + read * r.cacheRead + (u.output_tokens ?? 0) * r.output) / 1_000_000;
 }
+
+/** The highest per-token input rate a prompt could be charged at (cache writes, top tier). */
+export function worstInputRate(model: string): number {
+  const p = PRICES[model]!;
+  const r = "upTo100k" in p ? p.over100k : p;
+  return Math.max(r.input, r.cacheWrite5m, r.cacheWrite1h) / 1_000_000;
+}
+export function worstOutputRate(model: string): number {
+  const p = PRICES[model]!;
+  return ("upTo100k" in p ? p.over100k : p).output / 1_000_000;
+}
