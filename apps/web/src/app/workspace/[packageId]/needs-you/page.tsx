@@ -37,8 +37,9 @@ export default async function NeedsYouPage({ params }: { params: Promise<{ packa
 
   return (
     <main className="mx-auto max-w-2xl p-6">
-      <p className="text-sm"><Link href={`/workspace/${packageId}`}>← Course</Link></p>
+      <p className="text-sm"><Link href="/workspace">← Your courses</Link></p>
       <h1 className="mt-2 text-2xl font-semibold">Needs you</h1>
+      <p className="mt-1 text-sm"><Link className="underline" href={`/workspace/${packageId}/people`}>People</Link></p>
       {items.length === 0 ? <p className="mt-4">Nothing needs you right now.</p> : null}
       {[...groups].map(([chapter, list]) => (
         <section key={chapter} className="mt-6">

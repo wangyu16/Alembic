@@ -77,6 +77,10 @@ export default async function WorkspacePage() {
         <p className="max-w-2xl text-lg leading-relaxed text-muted">
           Hi {name} — your course packages live here.
         </p>
+        <nav className="flex gap-4 text-sm" aria-label="Your account">
+          <Link href="/workspace/credit" className="underline">AI credit</Link>
+          <Link href="/workspace/settings" className="underline">Settings</Link>
+        </nav>
       </header>
 
       <section className="panel p-6">
@@ -150,6 +154,12 @@ export default async function WorkspacePage() {
                 <div className="flex shrink-0 items-center gap-2">
                   <Link href={`/workspace/${pkg.id}/edit`} className="btn btn-ghost btn-sm">
                     Open editor
+                  </Link>
+                  <Link href={`/workspace/${pkg.id}/needs-you`} className="btn btn-ghost btn-sm">
+                    Needs you
+                  </Link>
+                  <Link href={`/workspace/${pkg.id}/people`} className="btn btn-ghost btn-sm">
+                    People
                   </Link>
                   {pkg.storage === "github" && (
                     <PackageSnapshots packageId={pkg.id} />

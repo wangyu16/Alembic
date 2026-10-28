@@ -30,6 +30,7 @@ export default async function PeoplePage({ params }: { params: Promise<{ package
     <main className="mx-auto max-w-2xl p-6">
       <p className="text-sm"><Link href={`/workspace/${packageId}`}>← {(course?.title as string | undefined) ?? "Course"}</Link></p>
       <h1 className="mt-2 text-2xl font-semibold">People</h1>
+      <p className="mt-1 text-sm"><Link className="underline" href={`/workspace/${packageId}/needs-you`}>Needs you</Link></p>
       <ul className="mt-4 divide-y rounded border">
         {list.map((m) => {
           const deputy = m.deputy_until && new Date(m.deputy_until) > new Date();
