@@ -17,10 +17,10 @@ export function docPageCsp(nonce: string, supabaseUrl: string): string {
   return [
     "default-src 'self'",
     `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' https://cdn.jsdelivr.net`,
-    // The editors' preview themes load Google Fonts.
-    `style-src 'self' 'nonce-${nonce}' https://cdn.jsdelivr.net https://fonts.googleapis.com`,
-    // Style attributes only (Next's route announcer, positioned frames); <style> elements still need the nonce.
-    "style-src-attr 'unsafe-inline'",
+    // Styles: inline allowed. Mermaid (loaded by the carriers) writes <style> elements it can't
+    // give a nonce, and a nonce would make browsers ignore 'unsafe-inline'. Scripts stay strict.
+    // The editors' preview themes load Google Fonts and a highlight.js theme (cdnjs).
+    "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com https://cdnjs.cloudflare.com",
     "font-src 'self' data: https://cdn.jsdelivr.net https://fonts.gstatic.com",
     "img-src 'self' blob: data: https:",
     `connect-src 'self' ${supabase.origin} ${realtime} https://cdn.jsdelivr.net`,
