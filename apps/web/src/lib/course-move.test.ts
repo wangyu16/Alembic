@@ -1,0 +1,41 @@
+import { describe, expect, it } from "vitest";
+import { addHeader, findCollisions, planFile } from "./course-move";
+
+describe("planFile", () => {
+  it("maps the 0.x trees onto the v3 working tree", () => {
+    expect(planFile("public", "study-guide/ch01.md")).toEqual({ kind: "header", from: "study-guide/ch01.md", to: "study-guide/ch01.md" });
+    expect(planFile("public", "slides/ch01.md")).toEqual({ kind: "header", from: "slides/ch01.md", to: "slides/ch01.slides.md" });
+    expect(planFile("public", "current/notes/week1.md.html")).toEqual({ kind: "extract", from: "current/notes/week1.md.html", to: "current/notes/week1.md", carrier: "md" });
+    expect(planFile("public", "current/decks/d.slides.html")).toMatchObject({ kind: "extract", to: "current/decks/d.slides.md", carrier: "slides" });
+    expect(planFile("public", "current/h.paged.html")).toMatchObject({ kind: "extract", to: "current/h.paged.md", carrier: "paged" });
+    expect(planFile("public", "assets/fig.png")).toEqual({ kind: "copy", from: "assets/fig.png", to: "assets/fig.png" });
+    expect(planFile("private", "private/answer-keys/ch01.md")).toEqual({ kind: "copy", from: "private/answer-keys/ch01.md", to: "private/answer-keys/ch01.md" });
+  });
+  it("skips what Alembic regenerates and what needs a person", () => {
+    expect(planFile("public", "alembic.json").kind).toBe("skip");
+    expect(planFile("public", ".github/workflows/pages.yml").kind).toBe("skip");
+    expect(planFile("public", ".git/HEAD").kind).toBe("skip");
+    expect(planFile("private", "README.md")).toMatchObject({ kind: "skip", reason: expect.stringContaining("by hand") });
+  });
+});
+
+describe("addHeader", () => {
+  it("adds an FC-18 header with the first heading as title, keeping the body exactly", () => {
+    const body = "# Atoms & Ions\n\nText.\n";
+    const out = addHeader(body, { uid: "doc-abcdefghij12" });
+    expect(out).toBe("{{nyml\nkind: document\nformat: 1\ntitle: Atoms & Ions\nuid: doc-abcdefghij12\n}}\n\n" + body);
+  });
+  it("leaves a text with a header alone; never lets a title close the header", () => {
+    const t = "{{nyml\nkind: document\nformat: 1\n}}\n\n# X\n";
+    expect(addHeader(t, {})).toBe(t);
+    expect(addHeader("# a }} b\n", {})).toContain("title: a } } b\n");
+    expect(addHeader("no heading\n", { uid: "bad" })).toBe("{{nyml\nkind: document\nformat: 1\n}}\n\nno heading\n");
+  });
+});
+
+describe("findCollisions", () => {
+  it("names two sources writing one target", () => {
+    const a = [planFile("public", "current/a.md"), planFile("public", "current/a.md.html"), planFile("public", "current/b.md")];
+    expect(findCollisions(a)).toEqual([{ to: "current/a.md", from: ["current/a.md", "current/a.md.html"] }]);
+  });
+});
