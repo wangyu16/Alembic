@@ -226,7 +226,8 @@ export async function handleMessages(req: Request, deps: GatewayDeps): Promise<R
         } catch (e) {
           deps.log?.(`upstream stream ended early: ${(e as Error).message}`);
         } finally {
-          await charge(chargeableUsage(meter), meter.messageId ?? fallbackId);
+          // No final usage (reset, abort): charge all of max_tokens, as the non-stream path does (review r4 M3).
+          await charge(meter.sawFinalUsage ? meter.usage : { ...chargeableUsage(meter), output_tokens: Math.max(chargeableUsage(meter).output_tokens ?? 0, worst.output_tokens ?? 0) }, meter.messageId ?? fallbackId);
           if (!clientGone) try { controller.close(); } catch { /* already closed */ }
         }
       },

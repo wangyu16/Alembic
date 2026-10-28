@@ -26,7 +26,7 @@ export interface Usage {
   cache_creation?: { ephemeral_5m_input_tokens?: number; ephemeral_1h_input_tokens?: number };
 }
 
-export const knownModel = (m: string): boolean => m in PRICES;
+export const knownModel = (m: string): boolean => Object.hasOwn(PRICES, m);
 
 /** The USD cost of one call's usage. */
 export function costUsd(model: string, u: Usage): number {

@@ -66,7 +66,7 @@ export function TryApp() {
 
   return (
     <main className="mx-auto w-full max-w-5xl p-6">
-      <p className="rounded border border-amber-500 bg-amber-50 p-2 text-sm" role="note">
+      <p className="rounded border border-amber-500 bg-amber-100 p-2 text-sm text-amber-950" role="note">
         <b>This is a demo.</b> Nothing you make here is saved. Demo output is not checked as a real course would be.
       </p>
 
@@ -110,8 +110,8 @@ export function TryApp() {
                 <b>{s.title}</b>
                 <span className="text-sm">{s.status === "working" ? "Writing…" : s.status === "done" ? "Done" : "Ready-made example"}</span>
               </div>
-              <p className="text-sm text-gray-600">{s.purpose}</p>
-              {s.part === "concepts" && s.status !== "working" ? <p className="mt-1 text-sm">✓ In the real product, you approve the plan here before any materials are written.</p> : null}
+              <p className="text-sm text-muted">{s.purpose}</p>
+              {s.part === "concepts" && s.status !== "working" ? <p className="mt-1 text-sm">✓ Plan approved (a click in the real product).</p> : null}
               {fileByPart.get(s.part) ? (
                 <button type="button" className="mt-2 text-sm underline" onClick={() => setOpen(open === s.part ? null : s.part)}>{open === s.part ? "Close" : "Open in the editor"}</button>
               ) : null}
@@ -158,7 +158,7 @@ function TryEditor({ file }: { file: File }) {
   }, [file]);
   return (
     <div className="mt-2">
-      <p className="text-xs text-gray-600">{file.path}: you can edit; nothing is kept when you leave.</p>
+      <p className="text-xs text-muted">{file.path}: you can edit; nothing is kept when you leave.</p>
       {failed ? <p className="text-red-700">{failed}</p> : null}
       <div ref={host} className="h-[70vh] rounded border" />
     </div>

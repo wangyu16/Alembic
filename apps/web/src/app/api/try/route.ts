@@ -5,6 +5,7 @@ import { directDb } from "@/lib/db";
 import { runTry, type TryEvent } from "@/lib/try/pipeline";
 import { tryDeps } from "@/lib/try/server";
 import { EXAMPLES } from "@/lib/try/examples";
+import { requestOrigin } from "@/lib/request-origin";
 import { PARTS } from "@/lib/try/guides";
 
 export const dynamic = "force-dynamic";
@@ -23,6 +24,11 @@ export async function POST(req: Request) {
   const gateway = process.env["TRY_GATEWAY_URL"];
   const secret = process.env["RATE_LIMIT_SECRET"];
   if (!sql || !gateway || !secret) return Response.json({ error: "Try mode isn't available here." }, { status: 503 });
+  // Only this site's own page may start a run (review r4 M2: no cross-site starts).
+  const site = req.headers.get("sec-fetch-site");
+  const origin = req.headers.get("origin");
+  if (!(req.headers.get("content-type") ?? "").startsWith("application/json")) return Response.json({ error: "bad request" }, { status: 415 });
+  if ((site && site !== "same-origin") || (origin && origin !== requestOrigin(req))) return Response.json({ error: "forbidden" }, { status: 403 });
   let input: { topic?: unknown; level?: unknown };
   try { input = (await req.json()) as typeof input; } catch { return Response.json({ error: "bad request" }, { status: 400 }); }
   const topic = typeof input.topic === "string" ? input.topic.trim().slice(0, 120) : "";
@@ -38,6 +44,8 @@ export async function POST(req: Request) {
   const h = await headers();
   const ip = h.get("cf-connecting-ip") ?? h.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
   const hash = (v: string) => createHash("sha256").update(`${secret}:try:${v}`).digest("hex");
+  // An IPv6 visitor usually holds a whole /64: count the network, not the address (review r4 M1).
+  const network = ip.includes(":") ? ip.split(":").slice(0, 4).join(":") + "::/64" : ip;
 
   const enc = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
@@ -46,7 +54,7 @@ export async function POST(req: Request) {
       let job: string | null = null;
       try {
         try {
-          const { rows } = await sql.query<{ j: string }>(`select public.try_start($1, $2, $3) as j`, [hash(browser!), hash(ip), ESTIMATE_CREDITS]);
+          const { rows } = await sql.query<{ j: string }>(`select public.try_start($1, $2, $3) as j`, [hash(browser!), hash(network), ESTIMATE_CREDITS]);
           job = rows[0]!.j;
         } catch (e) {
           // Resting (no budget), daily caps, or the budget used up: ready-made sample instead.

@@ -12,7 +12,7 @@ const POLICY = { allow: ["en.wikipedia.org"], deny: ["orz.how"], maxQueryBytes: 
 async function get(url: string): Promise<unknown> {
   const ok = checkFetchUrl(url, POLICY);
   if (!ok.ok) throw new Error(`fetch refused: ${ok.reason}`);
-  const r = await fetch(url, { headers: { "user-agent": "Alembic try mode (https://alembic.orz.how)" }, signal: AbortSignal.timeout(8000) });
+  const r = await fetch(url, { headers: { "user-agent": "Alembic try mode (https://alembic.orz.how)" }, signal: AbortSignal.timeout(8000), redirect: "error" });
   if (!r.ok) throw new Error(`Wikipedia returned ${r.status}`);
   return r.json();
 }

@@ -43,7 +43,7 @@ export function cleanFile(text: string): string {
 export async function runTry(input: { topic: string; level?: string }, deps: TryDeps, emit: (e: TryEvent) => void): Promise<void> {
   const topic = input.topic.trim().slice(0, 120);
   const level = (input.level ?? "").trim().slice(0, 60) || "first-year university";
-  if (!(await deps.topicOk(topic))) {
+  if (!(await deps.topicOk(input.level ? `${topic} (level: ${level})` : topic))) {
     emit({ type: "refused", message: "That topic isn't one this demo can make a sample about. Here is a ready-made sample instead." });
     for (const spec of PARTS) emitExample(spec, deps, emit);
     emit({ type: "done" });
