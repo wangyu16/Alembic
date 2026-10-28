@@ -14,7 +14,7 @@ export const ADMIN_CREDIT_MESSAGES = {
   "grant-ended": "Grant ended; unused credit expired.",
   "price-set": "New price in force for new purchases.",
   "bad-workshop": "Give the workshop a name, credit above 0, and 1–90 days.",
-  "workshop-created": "Workshop code created. Copy it now: it is shown only this once.",
+  "workshop-created": "Workshop code created. Copy it now: it is shown here for two minutes only, and never again.",
   "workshop-ended": "Workshop code ended; it no longer works.",
 } as const;
 
