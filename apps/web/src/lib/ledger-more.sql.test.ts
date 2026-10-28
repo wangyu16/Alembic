@@ -91,3 +91,12 @@ describe("course allowance", () => {
     expect(await attempt(() => svc(`select public.ledger_hold($1, $2, 1)`, [owner2, j]))).toBe("ok");
   });
 });
+
+describe("grants with a past expiry (security review 2026-10-27)", () => {
+  it("are refused, for a person and for a group", async () => {
+    const u = await seedUser(db, "pexp");
+    expect(await attempt(() => svc(`select public.ledger_grant($1, $2, 5, now() - interval '1 day', 'old')`, [op, u]))).toBe("refused");
+    const cohort = (await svc<{ id: string }>(`insert into public.cohorts (name, created_by) values ('Past', $1) returning id`, [op])).rows[0]!.id;
+    expect(await attempt(() => svc(`select public.ledger_cohort_grant($1, $2, 5, now() - interval '1 day', 'old')`, [op, cohort]))).toBe("refused");
+  });
+});

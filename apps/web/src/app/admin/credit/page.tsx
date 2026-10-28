@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { requireAdmin } from "@/lib/admin";
+import { ADMIN_CREDIT_MESSAGES } from "./messages";
 import { addToCohortAction, createCohortAction, endGrantAction, grantCohortAction, grantUserAction, setPriceAction } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -8,7 +9,8 @@ const input = "rounded border px-2 py-1";
 const btn = "rounded bg-black px-3 py-1 text-white";
 
 export default async function AdminCreditPage({ searchParams }: { searchParams: Promise<{ msg?: string }> }) {
-  const { msg } = await searchParams;
+  const { msg: code } = await searchParams;
+  const msg = code && code in ADMIN_CREDIT_MESSAGES ? ADMIN_CREDIT_MESSAGES[code as keyof typeof ADMIN_CREDIT_MESSAGES] : null;
   const { service } = await requireAdmin();
   if (!service) return <main className="p-6">The service key isn&apos;t configured.</main>;
   const [{ data: price }, { data: cohorts }, { data: grants }, { data: problems }] = await Promise.all([

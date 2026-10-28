@@ -127,7 +127,9 @@ begin
   if jsonb_typeof(p_answer) is distinct from 'object' or length(p_answer::text) > 4096 then
     raise exception 'Bad answer' using errcode = '22023';
   end if;
-  if n.kind = 'both-changed' and v_role = 'co-author' and not ((select auth.uid()) = any (n.addressed_to)) then
+  -- An item addressed to particular people is theirs to answer, whatever its
+  -- kind (security review 2026-10-27; was only checked for both-changed).
+  if cardinality(n.addressed_to) > 0 and not ((select auth.uid()) = any (n.addressed_to)) then
     raise exception 'This item is for someone else' using errcode = '42501';
   end if;
   update public.needs_you set state = 'answered', answer = p_answer, answered_by = (select auth.uid()), answered_at = now()

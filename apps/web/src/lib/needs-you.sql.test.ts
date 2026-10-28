@@ -106,3 +106,18 @@ describe("answers follow the matrix (security review 2026-10-27)", () => {
     expect(await tryAnswer(o, course, '{"decision":"undo"}')).toBe("ok");
   });
 });
+
+describe("items addressed to someone are theirs (security review 2026-10-27)", () => {
+  it("a co-author can't answer an item addressed only to the owner, whatever its kind", async () => {
+    const o = await seedUser(db, "nao"); const c = await seedUser(db, "nac");
+    const p = await seedPackage(db, { owner: o });
+    await db.query(`insert into public.course_members (package_id, user_id, role) values ($1, $2, 'co-author')`, [p, c]);
+    for (const kind of ["credit", "problem", "review"]) {
+      const id = (await asRole(db, "service_role", () => db.query<{ id: string }>(
+        `select public.needs_you_raise($1, $2, 'platform', $3, '{}'::jsonb, null, null, false, $4::uuid[]) as id`, [p, kind, `to-owner-${kind}`, [o]]))).rows[0]!.id;
+      const asCo = async () => { try { await asRole(db, "authenticated", () => db.query(`select public.needs_you_answer($1, '{"decision":"dismissed"}'::jsonb)`, [id]), c); return "ok"; } catch { return "refused"; } };
+      expect(await asCo()).toBe("refused");
+      await asRole(db, "authenticated", () => db.query(`select public.needs_you_answer($1, '{"decision":"seen"}'::jsonb)`, [id]), o);
+    }
+  });
+});

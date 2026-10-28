@@ -1,7 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { appBaseUrl } from "@/lib/app-url";
+import { serverOrigin } from "@/lib/server-origin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { createTopupCheckout } from "@/lib/stripe-topups";
@@ -17,10 +17,11 @@ export async function buyCreditAction(formData: FormData): Promise<void> {
   const service = createServiceClient();
   if (!key || !service) redirect("/workspace/credit?buy=off");
   const usdCents = Number(formData.get("cents"));
+  const origin = await serverOrigin();
   let url: string;
   try {
     ({ url } = await createTopupCheckout(
-      { userId: user.id, usdCents, successUrl: `${appBaseUrl()}/workspace/credit?buy=done`, cancelUrl: `${appBaseUrl()}/workspace/credit` },
+      { userId: user.id, usdCents, successUrl: `${origin}/workspace/credit?buy=done`, cancelUrl: `${origin}/workspace/credit` },
       {
         secretKey: key,
         record: async (session, userId, cents) => {

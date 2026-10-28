@@ -73,14 +73,14 @@ export default async function CreditPage({ searchParams }: { searchParams: Promi
           <form action={buyCreditAction} className="mt-2 flex flex-wrap gap-2">
             {TOPUP_AMOUNTS_CENTS.map((c) => (
               <button key={c} type="submit" name="cents" value={c} className="rounded border px-3 py-1.5">
-                ${c / 100}{usdPerCredit ? ` · ${fmt(c / 100 / usdPerCredit)} credits` : ""}
+                ${c / 100}{usdPerCredit ? ` · about ${fmt(c / 100 / usdPerCredit)} credits` : ""}
               </button>
             ))}
           </form>
         ) : (
           <p className="mt-2 text-sm text-gray-600">Buying credit isn&apos;t available yet. Credit given by the Alembic team appears here.</p>
         )}
-        <p className="mt-2 text-xs text-gray-600">Payments go through Stripe. Bought credit doesn&apos;t expire.</p>
+        <p className="mt-2 text-xs text-gray-600">Payments go through Stripe. The price is fixed when the payment page opens. Bought credit doesn&apos;t expire.</p>
       </section>
 
       <section className="mt-8">

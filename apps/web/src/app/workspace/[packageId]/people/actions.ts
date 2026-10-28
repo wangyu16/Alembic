@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { buildInvitation } from "@alembic/notify";
 import { lookupGithubUser } from "@alembic/github-bridge";
-import { appBaseUrl } from "@/lib/app-url";
+import { serverOrigin } from "@/lib/server-origin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { isGithubLogin, newInvitationToken, webMailer } from "@/lib/invitations";
@@ -40,7 +40,7 @@ export async function inviteAction(_prev: InviteState, formData: FormData): Prom
     p: packageId, p_login: gh.login, p_github_id: gh.id, p_token_hash: hash, p_days: INVITE_DAYS,
   });
   if (error || typeof id !== "string") return { error: "Only the course owner can invite." };
-  const link = `${appBaseUrl()}/invite/${token}`;
+  const link = `${await serverOrigin()}/invite/${token}`;
 
   // Email it too when the person already uses Alembic and email is set up. Best effort.
   let emailed = false;

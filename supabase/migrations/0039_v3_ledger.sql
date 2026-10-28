@@ -188,6 +188,7 @@ create function public.ledger_grant(p_actor uuid, p_user uuid, p_amount numeric,
 returns uuid language plpgsql security definer set search_path = '' as $$
 declare v_grant uuid; v_acc uuid;
 begin
+  if p_expires is not null and p_expires <= now() then raise exception 'That expiry date has passed' using errcode = '22023'; end if;
   if not coalesce((select is_admin from public.profiles where id = p_actor), false) then
     raise exception 'Only the operator grants credit' using errcode = '42501';
   end if;

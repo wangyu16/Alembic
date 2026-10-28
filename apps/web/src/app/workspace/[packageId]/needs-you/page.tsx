@@ -57,7 +57,6 @@ export default async function NeedsYouPage({ params }: { params: Promise<{ packa
                     <form action={answerItemAction} className="mt-2 flex flex-wrap items-center gap-2">
                       <input type="hidden" name="packageId" value={packageId} />
                       <input type="hidden" name="id" value={i.id} />
-                      <input type="hidden" name="kind" value={i.kind} />
                       {i.kind === "question" ? (
                         <>
                           <label className="sr-only" htmlFor={`a-${i.id}`}>Your answer</label>
