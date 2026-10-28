@@ -13,6 +13,7 @@ import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "re
 import { SyncScheduler, statusLabel, type SendResult, type SyncStatus } from "@/lib/device-save/scheduler";
 import { IndexedDbDraftStore, draftKey, requestPersistentStorage, type DraftStore } from "@/lib/device-save/store";
 import { diffEdit, loadKit, type OrzEditor, type OrzKind } from "./kit";
+import { mergeRemote } from "./merge";
 import { makeHooks } from "./hooks";
 
 export interface EmbeddedEditorProps {
@@ -46,6 +47,8 @@ export const EmbeddedEditor = forwardRef<EmbeddedEditorHandle, EmbeddedEditorPro
   const [status, setStatus] = useState<SyncStatus>({ kind: "synced", at: null });
   const [failed, setFailed] = useState<string | null>(null);
   const base = useRef<string | null>(p.baseVersion);
+  const baseText = useRef<string>(p.text); // the text of `base`: the merge base for others' changes
+  const [conflict, setConflict] = useState<string | null>(null);
   const quiet = useRef(false); // the next change event is a remote update, not typing
   const props = useRef(p);
   props.current = p;
@@ -53,16 +56,23 @@ export const EmbeddedEditor = forwardRef<EmbeddedEditorHandle, EmbeddedEditorPro
   useImperativeHandle(ref, () => ({
     applyRemote(text: string, version: string) {
       const e = editor.current;
-      if (!e) return;
-      // The open text now derives from that version (plus any unsynced typing).
+      if (!e || version === base.current) return;
+      const local = e.getText();
+      const m = mergeRemote(baseText.current, local, text);
+      if (!m.applied) {
+        // Same place changed on both sides: leave the screen alone; the next sync keeps both versions.
+        setConflict("Someone else also changed the part you are editing. When you sync, both versions are kept.");
+        return;
+      }
       base.current = version;
-      const edit = diffEdit(e.getText(), text);
+      baseText.current = text;
+      const edit = diffEdit(local, m.text);
       if (!edit) return;
       quiet.current = !scheduler.current?.hasUnsynced;
       if (e.applyEdits?.([edit], { label: "update from a co-author" })) {
         e.flash?.([{ from: edit.from, to: edit.from + edit.insert.length }]);
       } else {
-        e.setText(text);
+        e.setText(m.text);
       }
       quiet.current = false;
     },
@@ -121,8 +131,9 @@ export const EmbeddedEditor = forwardRef<EmbeddedEditorHandle, EmbeddedEditorPro
         });
         editor.current = e;
         e.on("change", ({ text }) => {
-          if (quiet.current) return; // a remote update with nothing of ours on top: already synced
-          void keep(text);
+          if (quiet.current) { e.markSaved(); return; } // a remote update with nothing of ours on top: already synced
+          // Kept on the device at once: the editor's own bar says Saved too (its Save button syncs now).
+          void keep(text).then(() => { if (e.getText() === text) e.markSaved(); });
         });
         if (startText !== c.text) s.edit({ text: startText, baseVersion: c.baseVersion });
       } catch (err) {
@@ -150,6 +161,11 @@ export const EmbeddedEditor = forwardRef<EmbeddedEditorHandle, EmbeddedEditorPro
         <button type="button" className="underline" onClick={() => void scheduler.current?.syncNow()}>Sync now</button>
       </div>
       {failed ? <p className="p-4 text-red-700" role="alert">{failed}</p> : null}
+      {conflict ? (
+        <p className="border-b bg-amber-100 px-3 py-1 text-sm text-amber-950" role="status">
+          {conflict} <button type="button" className="underline" onClick={() => setConflict(null)}>OK</button>
+        </p>
+      ) : null}
       <div ref={host} className="min-h-0 flex-1" data-testid="orz-editor-host" />
     </div>
   );

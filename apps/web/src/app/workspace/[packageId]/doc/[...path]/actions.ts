@@ -4,7 +4,7 @@ import { newDocId, normalizePath } from "@alembic/package-contract";
 import { enqueueSync, SyncRefused } from "@alembic/package-ops";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { directDb } from "@/lib/db";
-import { courseRepo } from "@/lib/course-v3";
+import { courseRepo, textVersion } from "@/lib/course-v3";
 import type { SendResult } from "@/lib/device-save/scheduler";
 
 async function signedIn() {
@@ -43,4 +43,17 @@ export async function readCourseTextAction(packageId: string, path: string): Pro
 
 export async function mintUidAction(): Promise<string> {
   return newDocId();
+}
+
+/** The text of one version of a document (members only), for live updates in an open editor. */
+export async function readVersionAction(packageId: string, path: string, commitSha: string, version: string): Promise<string | null> {
+  const { supabase, user } = await signedIn();
+  if (!user) return null;
+  const { data: role } = await supabase.rpc("course_role", { p: packageId });
+  if (!role || !/^[0-9a-f]{40}$/.test(commitSha)) return null;
+  let p: string;
+  try { p = normalizePath(path); } catch { return null; }
+  const c = await courseRepo(packageId);
+  const text = c ? await c.repo.readFile(commitSha, p) : null;
+  return text !== null && textVersion(text) === version ? text : null;
 }
