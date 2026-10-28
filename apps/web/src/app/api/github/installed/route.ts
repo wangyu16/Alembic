@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
-import { installationAccountLogin } from "@/lib/github";
+import { installationAccount } from "@/lib/github";
+import { githubUserIdOf, installationOwnership } from "@/lib/github-installation-owner";
 
 /**
  * GitHub App post-install redirect target. GitHub appends installation_id,
@@ -16,6 +17,11 @@ import { installationAccountLogin } from "@/lib/github";
  * thereby borrow a GitHub App token for that account's repositories). The write
  * is safe here because `user.id` comes from the verified session, never from the
  * request. See docs/specs/user-governance.md §0.
+ *
+ * The installation id itself DOES come from the request (anyone can type the
+ * URL), so it is recorded only when GitHub says the installation's account is
+ * the signed-in person's own GitHub account (security fix 2026-10-27; see
+ * lib/github-installation-owner.ts). Otherwise nothing is written.
  */
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
@@ -40,18 +46,24 @@ export async function GET(request: Request) {
       return NextResponse.redirect(`${origin}/workspace?connected=0`);
     }
     const id = Number(installationId);
+    if (!Number.isSafeInteger(id) || id <= 0) return NextResponse.redirect(`${origin}/workspace?connected=0`);
+    // Fail closed: no lookup, no proof of ownership, no write.
+    let account: Awaited<ReturnType<typeof installationAccount>> = null;
+    try {
+      account = await installationAccount(id);
+    } catch {
+      account = null;
+    }
+    const verdict = account ? installationOwnership(account, githubUserIdOf(user)) : "unknown";
+    if (!account || verdict !== "own") {
+      console.warn("github/installed: refused installation", id, verdict);
+      return NextResponse.redirect(`${origin}/workspace?connected=0`);
+    }
+    // Pin the repo owner to where the App was actually installed.
     const update: { github_installation_id: number; github_username?: string } = {
       github_installation_id: id,
+      github_username: account.login,
     };
-    // Pin the repo owner to where the App was actually installed. Best-effort:
-    // if the lookup fails we still save the id and fall back to the OAuth
-    // username at publish time.
-    try {
-      const login = await installationAccountLogin(id);
-      if (login) update.github_username = login;
-    } catch {
-      /* keep the OAuth username; publish has a fallback */
-    }
     await service.from("profiles").update(update).eq("id", user.id);
   }
 
