@@ -8,9 +8,12 @@
  * - Ordinary edits are recorded as the new versions (merge bases for later
  *   syncs) and raise an "Edited elsewhere" item naming the pusher.
  * - `.github/` changes raise an informational item only.
+ * - A force-push that drops Alembic's last commit (history rewritten) is
+ *   undone by one forced system row writing the last Alembic state forward
+ *   again, and an urgent item names the pusher (§4 force-push restore).
  */
 import { createHash } from "node:crypto";
-import { GitHubClient, installationTokenSource, type RepoCoords } from "@alembic/github-bridge";
+import { CompareIncompleteError, GitHubClient, GitHubError, installationTokenSource, type RepoCoords } from "@alembic/github-bridge";
 import { editActionForPath } from "@alembic/package-contract";
 import { classifyOutside, outsideCommits, SqlQueueStore, undoKey, type SqlClient } from "@alembic/package-ops";
 
@@ -65,6 +68,7 @@ async function handlePush(cfg: DoorCConfig, ev: Ev): Promise<void> {
 
   const coords: RepoCoords = { owner: owner!, repo: name! };
   const client = new GitHubClient(installationTokenSource({ appId: cfg.appId, privateKey: cfg.privateKey, installationId: Number(course.installation_id), repositories: [name!] }));
+  if (ev.forced && (await restoreAfterForcePush(cfg, course.id, client, coords, ev))) return;
   const changed = await client.compareCommits(coords, ev.before_sha, ev.after_sha);
   if (changed.length === 0) return;
   const { entries } = await client.listTreeEntries(coords, ev.after_sha);
@@ -113,7 +117,71 @@ async function handlePush(cfg: DoorCConfig, ev: Ev): Promise<void> {
   }
 }
 
-async function raise(sql: SqlClient, packageId: string, dedupe: string, payload: Record<string, unknown>, target: string | null) {
-  await sql.query(`select public.needs_you_raise($1, 'edited-elsewhere', 'platform', $2, $3::text::jsonb, null, $4)`,
-    [packageId, dedupe, JSON.stringify(payload), target]);
+async function raise(sql: SqlClient, packageId: string, dedupe: string, payload: Record<string, unknown>, target: string | null, interrupt = false) {
+  await sql.query(`select public.needs_you_raise($1, 'edited-elsewhere', 'platform', $2, $3::text::jsonb, null, $4, $5)`,
+    [packageId, dedupe, JSON.stringify(payload), target, interrupt]);
+}
+
+/** At most this many files are put back automatically after a rewrite; more raises an item instead. */
+const MAX_RESTORE_FILES = 200;
+
+/**
+ * A force-push: if Alembic's last landed commit is no longer in the history
+ * of the new head, write that state forward again (text files; never
+ * `.github/`), as one forced `undo:<head>` system row. Returns true when the
+ * push was handled here (restored, or reported for a person to resolve).
+ */
+async function restoreAfterForcePush(cfg: DoorCConfig, packageId: string, client: GitHubClient, coords: RepoCoords, ev: Ev): Promise<boolean> {
+  const { sql } = cfg;
+  const after = ev.after_sha;
+  if (!after) return false;
+  const { rows: last } = await sql.query<{ head: string }>(
+    `select result->>'head' as head from public.write_queue
+      where package_id = $1 and status = 'done' and result ? 'head'
+      order by finished_at desc nulls last, seq desc limit 1`, [packageId]);
+  const lastHead = last[0]?.head;
+  if (!lastHead || lastHead === after) return false;
+  const who = ev.pusher_login ?? "someone";
+  const report = (title: string, detail: string) => raise(sql, packageId, `force:${after}`, { title, detail, pusher: who, materials: false }, null, true);
+  try {
+    await client.compareCommits(coords, lastHead, after);
+    return false; // Alembic's last commit is still in the history: an ordinary push on top
+  } catch (e) {
+    if (e instanceof CompareIncompleteError && e.reason === "too-many-files") return false; // reachable, just large
+    if (!(e instanceof CompareIncompleteError) && !(e instanceof GitHubError && e.status === 404)) throw e;
+    if (e instanceof GitHubError) {
+      await report(`The course's history on GitHub was rewritten by ${who}`, "Alembic's last saved version can't be found any more, so nothing was put back automatically. Check the course on GitHub.");
+      return true;
+    }
+  }
+  // History rewritten: put back every file that differs from Alembic's last state.
+  const blobs = async (sha: string) => new Map((await client.listTreeEntries(coords, sha)).entries.filter((e) => e.type === "blob").map((e) => [e.path, e.sha]));
+  const [mine, theirs] = await Promise.all([blobs(lastHead), blobs(after)]);
+  const differ = [...new Set([...mine.keys(), ...theirs.keys()])].filter((p) => mine.get(p) !== theirs.get(p) && !p.startsWith(".github/"));
+  if (differ.length > MAX_RESTORE_FILES) {
+    await report(`The course's history on GitHub was rewritten by ${who}`, `${differ.length} files differ from Alembic's last saved version: too many to put back automatically. Check the course on GitHub.`);
+    return true;
+  }
+  const files: Array<{ path: string; baseVersion: null; text: string | null }> = [];
+  const binary: string[] = [];
+  for (const path of differ) {
+    const sha = mine.get(path);
+    if (!sha) { files.push({ path, baseVersion: null, text: null }); continue; } // added by the rewrite: removed
+    const bytes = await client.getBlob(coords, sha);
+    let text: string | null = null;
+    if (!bytes.includes(0)) { try { text = new TextDecoder("utf-8", { fatal: true }).decode(bytes); } catch { /* binary */ } }
+    if (text === null) binary.push(path);
+    else files.push({ path, baseVersion: null, text });
+  }
+  if (files.length) {
+    await new SqlQueueStore(sql).insert({
+      packageId, kind: "system", idem: undoKey(after), priority: 1, pusher: ev.pusher_login,
+      payload: { files, force: true, summary: `Put back the course after its history was rewritten on GitHub (by ${who})` },
+    });
+  }
+  await report(
+    `The course's history on GitHub was rewritten by ${who}; Alembic put back its last saved version`,
+    (binary.length ? `These files couldn't be put back automatically: ${binary.join(", ")}. ` : "") + `${files.length} file${files.length === 1 ? "" : "s"} restored.`.slice(0, 900),
+  );
+  return true;
 }
