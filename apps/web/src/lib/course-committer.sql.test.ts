@@ -97,3 +97,28 @@ describe("committer over the real queue SQL", () => {
     expect(await drainCourse(pkg, "w2", full, repo)).toBe(0);
   });
 });
+
+describe("Door C undo (system rows with force)", () => {
+  it("restores exactly the last accepted state, ahead of other rows; the flag does nothing on a sync row", async () => {
+    const pkg = await seedPackage(db, { owner });
+    const store = new SqlQueueStore(sql);
+    const full: QueueStore = { acquire: store.acquire.bind(store), next: store.next.bind(store), finish: store.finish.bind(store), roleOf: store.roleOf.bind(store), baseText: async () => undefined };
+    const repo = fakeRepo({ "study-guide/a.md": "kept\n", ".alembic/state.json": "{\"pushed\":true}", "random/x.txt": "pushed" });
+    // A member's sync claiming force is just a sync (a different base → both changed, not forced).
+    await store.insert({ packageId: pkg, kind: "sync", idem: "s1", actorId: owner, payload: { files: [{ path: "study-guide/a.md", baseVersion: h("old\n"), text: "mine\n" }], force: true } });
+    // The undo row: restore .alembic/state.json, delete the unclassifiable file.
+    await store.insert({ packageId: pkg, kind: "system", idem: "undo:abc", priority: 1, payload: { files: [
+      { path: ".alembic/state.json", baseVersion: null, text: "{\"alembic\":true}" },
+      { path: "random/x.txt", baseVersion: null, text: null },
+    ], force: true } });
+    expect(await drainCourse(pkg, "w1", full, repo)).toBe(2);
+    expect(repo.file(".alembic/state.json")).toBe("{\"alembic\":true}");
+    expect(repo.file("random/x.txt")).toBeNull();
+    const { rows } = await db.query<{ kind: string; status: string; outcome: string }>(
+      `select kind, status, result->'files'->0->>'outcome' as outcome from public.write_queue where package_id = $1 order by priority desc, seq`, [pkg]);
+    expect(rows).toEqual([
+      { kind: "system", status: "done", outcome: "landed" },
+      { kind: "sync", status: "done", outcome: "both-changed" },
+    ]);
+  });
+});

@@ -802,6 +802,19 @@ export class GitHubClient {
   }
 
   /**
+   * Every entry of the tree at a ref with its mode and type (Door C: a link is
+   * mode 120000, a submodule type "commit"); `truncated` as for listTree.
+   */
+  async listTreeEntries(
+    coords: RepoCoords,
+    ref: string,
+  ): Promise<{ entries: Array<{ path: string; mode: string; type: string }>; truncated: boolean }> {
+    const data = await this.request<{ tree: Array<{ path: string; mode: string; type: string }>; truncated?: boolean }>(
+      "GET", `/repos/${coords.owner}/${coords.repo}/git/trees/${ref}?recursive=1`);
+    return { entries: data.tree.map((e) => ({ path: e.path, mode: e.mode, type: e.type })), truncated: data.truncated === true };
+  }
+
+  /**
    * List every file (blob) path in the repo tree at a ref, recursively. Used by
    * the leakage audit (M21) to scan the whole public repo — not just a diff —
    * for paths that violate the two-repo invariant. `truncated` is true when the

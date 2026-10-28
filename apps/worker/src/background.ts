@@ -10,6 +10,7 @@ import { ResendMailer } from "@alembic/notify";
 import { SCHEDULES, postgrestRpc, startSchedules, type Schedule } from "./schedules";
 import { runDigests } from "./digest-job";
 import { committerPass } from "./committer-loop";
+import { doorCPass } from "./door-c-loop";
 
 const log = (m: string) => console.log(`[alembic-worker] ${m}`);
 
@@ -38,10 +39,13 @@ if (databaseUrl && appId && appKey) {
   const sql = { query: async <T,>(text: string, params?: unknown[]) => ({ rows: (await pg.unsafe(text, (params ?? []) as never[])) as unknown as T[] }) };
   const holder = `worker-${hostname()}-${process.pid}`;
   startSchedules(async () => null, {
-    schedules: [{ name: "committer", everyMs: 3000, run: () => committerPass({ sql, appId, privateKey: appKey, holder, log }) }],
+    schedules: [
+      { name: "committer", everyMs: 3000, run: () => committerPass({ sql, appId, privateKey: appKey, holder, log }) },
+      { name: "door-c", everyMs: 5000, run: () => doorCPass({ sql, appId, privateKey: appKey, log }) },
+    ],
     log,
   });
-  log(`committer on (${holder})`);
+  log(`committer and door C on (${holder})`);
 } else {
   log("committer off (DATABASE_URL / GITHUB_APP_ID / GITHUB_APP_PRIVATE_KEY not set)");
 }

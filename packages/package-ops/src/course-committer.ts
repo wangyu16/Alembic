@@ -43,6 +43,8 @@ export interface RowFile {
 
 export interface RowPayload {
   files: RowFile[];
+  /** System rows only (Door C undo): write each file exactly as given, without the version rule. */
+  force?: boolean;
   fromOpenEditor?: boolean;
   /** Paths that already have an open Both-changed item involving another person. */
   openItemsWithOther?: string[];
@@ -242,6 +244,11 @@ export async function processRow(row: QueueRow, store: QueueStore, repo: Working
       const decisions: Array<{ file: RowFile; d: FileDecision }> = [];
       for (const file of row.payload.files) {
         const currentText = await repo.readFile(head, file.path);
+        // A Door C undo restores exactly the last accepted state; no version rule (system rows only).
+        if (row.kind === "system" && row.payload.force === true) {
+          decisions.push({ file, d: { outcome: "landed", write: file.text, noop: currentText === file.text } });
+          continue;
+        }
         const baseText = file.baseVersion === null ? null : await store.baseText(row.packageId, file.path, file.baseVersion);
         const d = await decideFile({
           path: file.path,
