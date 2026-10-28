@@ -4,8 +4,8 @@
  */
 import { describe, expect, it } from "vitest";
 import { copyChecks, fingerprint } from "./copy-check";
-import { FakePublic, FakeStore, manifestJson, working } from "./publish-fakes";
-import { runPublish, type PublishedRecord, type UnitCheck } from "./publish-job";
+import { FakePublic, FakeStore, h, manifestJson, working } from "./publish-fakes";
+import { anywayKey, approvalKey, findingsDigest, runPublish, type PublishedRecord, type UnitCheck } from "./publish-job";
 
 const M = manifestJson([{ slug: "atoms" }, { slug: "gases" }]);
 const W: Record<string, string> = {
@@ -47,8 +47,59 @@ describe("runPublish", () => {
 
   it("approve-and-publish approves the plan parts at W and publishes the chapter", async () => {
     const pub = new FakePublic(); const st = new FakeStore();
-    const out = await runPublish(input({ choices: { publishAnyway: [], approveAndPublish: ["concepts/atoms.md", "assessment-support/atoms.md"] } }), working(W), pub, st, noChecks);
+    const out = await runPublish(input({ choices: { publishAnyway: [], approveAndPublish: [approvalKey("concepts/atoms.md", h("atoms plan")), approvalKey("assessment-support/atoms.md", h("atoms assess"))] } }), working(W), pub, st, noChecks);
     expect(out.status === "committed" && out.published).toEqual(["atoms"]);
+  });
+
+  it("review H2: approve-and-publish covers only the version that was shown; a plan changed since stays unapproved", async () => {
+    const pub = new FakePublic(); const st = new FakeStore();
+    // The page showed "atoms plan"; a co-author's edit landed before the job pinned W.
+    const shown = [approvalKey("concepts/atoms.md", h("atoms plan")), approvalKey("assessment-support/atoms.md", h("atoms assess"))];
+    const out = await runPublish(input({ choices: { publishAnyway: [], approveAndPublish: shown } }), working({ ...W, "concepts/atoms.md": "atoms plan, changed by a co-author" }), pub, st, noChecks);
+    expect(out.status === "committed" && out.published).toEqual([]);
+    expect(st.approvals.has(`concepts/atoms.md@${h("atoms plan, changed by a co-author")}`)).toBe(false);
+    // A bare path (the old form) approves nothing.
+    const out2 = await runPublish(input({ runId: id(2), choices: { publishAnyway: [], approveAndPublish: ["concepts/gases.md", "assessment-support/gases.md"] } }), working(W), pub, st, noChecks);
+    expect(out2.status === "committed" && out2.published).toEqual([]);
+  });
+
+  it("review H2: publish anyway covers only the problems that were shown", async () => {
+    const st = new FakeStore(); approveAll(st, W);
+    let msg = "a link looks odd";
+    const odd: UnitCheck = { id: "links", async run(unit) { return unit === "chapter:atoms" ? [{ unit, path: "study-guide/atoms.md", check: "links", severity: "default", message: msg }] : []; } };
+    const pub = new FakePublic();
+    const first = await runPublish(input(), working(W), pub, st, [odd]);
+    expect(first.status === "committed" && first.published).toEqual(["gases"]);
+    const key = first.status === "committed" ? first.anywayKeys["atoms"]! : "";
+    expect(key).toBe(await findingsDigest([{ unit: "chapter:atoms", path: "study-guide/atoms.md", check: "links", severity: "default", message: msg }]));
+    // The problems changed before the next run: the old "publish anyway" doesn't cover the new ones.
+    msg = "a different problem";
+    const second = await runPublish(input({ runId: id(2), choices: { publishAnyway: [anywayKey("atoms", key)], approveAndPublish: [] } }), working(W), pub, st, [odd]);
+    expect(second.status === "committed" && second.published).toEqual(["gases"]);
+    const key2 = second.status === "committed" ? second.anywayKeys["atoms"]! : "";
+    const third = await runPublish(input({ runId: id(3), choices: { publishAnyway: [anywayKey("atoms", key2)], approveAndPublish: [] } }), working(W), pub, st, [odd]);
+    expect(third.status === "committed" && third.published.sort()).toEqual(["atoms", "gases"]);
+  });
+
+  it("review M1: a run recorded committed but never acknowledged is our own commit, not drift", async () => {
+    const pub = new FakePublic(); const st = new FakeStore(); approveAll(st, W);
+    const realAck = st.acknowledge.bind(st);
+    let crash = true;
+    st.acknowledge = async (...a) => { if (crash) { crash = false; throw new Error("worker died"); } return realAck(...a); };
+    st.isCommitted = async (_p, runId) => st.runs.get(runId)?.status === "committed";
+    await expect(runPublish(input(), working(W), pub, st, noChecks)).rejects.toThrow("worker died");
+    const drift = st.drift.length;
+    expect((await runPublish(input({ runId: id(2) }), working(W), pub, st, noChecks)).status).toBe("committed");
+    expect(st.drift.length).toBe(drift);
+  });
+
+  it("review M3: Publish never writes or deletes workflow files", async () => {
+    const pub = new FakePublic(); const st = new FakeStore(); approveAll(st, W);
+    await pub.create();
+    await pub.push(".github/workflows/build-site.yml", "on: push");
+    expect((await runPublish(input(), working(W), pub, st, noChecks)).status).toBe("committed");
+    expect(pub.file(".github/workflows/build-site.yml")).toBe("on: push");
+    await expect(runPublish(input({ runId: id(2), generated: { ".github/workflows/x.yml": "on: push" } }), working(W), pub, st, noChecks)).rejects.toThrow(/not a file Publish generates/);
   });
 
   it("an always-finding keeps its chapter whatever the choices", async () => {

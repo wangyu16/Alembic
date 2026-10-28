@@ -94,6 +94,8 @@ export interface PublishStore {
   bringInDrift(packageId: string, publicSha: string, paths: string[]): Promise<"done" | "not-done">;
   /** A run that stopped after being recorded pending (e.g. the public copy kept changing). */
   markStopped?(runId: string, reason: string): Promise<void>;
+  /** The run is recorded committed (its commit is Alembic's own, even if it wasn't acknowledged). */
+  isCommitted?(packageId: string, runId: string): Promise<boolean>;
 }
 
 /** One public file: always identified by its git blob id in the public repo (G3 H2). */
@@ -110,6 +112,12 @@ export interface PublishInput {
   by: string;
   /** The publisher's role, resolved by the server at execution. */
   role: Role;
+  /**
+   * Bound to what the person saw (review H2): `approveAndPublish` holds
+   * `approvalKey(path, version)` of the plan parts as shown, `publishAnyway`
+   * holds `anywayKey(slug, digest)` of the problems as shown. A part that
+   * changed since, or a chapter whose problems changed, is not covered.
+   */
   choices: { publishAnyway: string[]; approveAndPublish: string[] };
   /**
    * Files Publish writes itself (`.github/`, `.alembic/`, `.gitignore`): the
@@ -120,10 +128,22 @@ export interface PublishInput {
 }
 
 export type PublishOutcome =
-  | { status: "committed"; runId: string; publicSha: string; decisions: Decision[]; published: string[] }
+  | { status: "committed"; runId: string; publicSha: string; decisions: Decision[]; published: string[]; anywayKeys: Record<string, string> }
   | { status: "stopped"; reason: string; drift?: string[] };
 
 const TRAILER = "Alembic-Publish-Run";
+
+/** A course-plan part approved as it was shown: `path@version`. */
+export const approvalKey = (path: string, version: string) => `${path}@${version}`;
+/** "Publish anyway" for exactly the problems that were shown: `slug@digest`. */
+export const anywayKey = (slug: string, digest: string) => `${slug}@${digest}`;
+/** The digest of a chapter's overridable problems (check, path, message), order-free. */
+export async function findingsDigest(fs: Finding[]): Promise<string> {
+  return sha256Hex(JSON.stringify(fs.map((f) => [f.check, f.path ?? "", f.message]).sort()));
+}
+
+/** Workflow files are the repo owner's: Publish never writes or deletes them (review M3; the App has no Workflows permission). */
+const ownersFolder = (p: string) => p.startsWith(".github/");
 
 /** Git's blob id of a text: sha1("blob <bytes>\0" + utf8) (G3 H2). */
 export async function gitBlobSha(text: string): Promise<string> {
@@ -187,6 +207,10 @@ export async function runPublish(i: PublishInput, w: WorkingSide, pub: PublicSid
             await store.markCommitted(pending.id, c.sha, pending.intendedFiles, { recovered: true });
             await store.acknowledge(i.packageId, c.sha);
             ownSha = c.sha;
+          } else if (await store.isCommitted?.(i.packageId, m[1]!)) {
+            // Recorded but not acknowledged (a crash in between): still our own commit, never drift (review M1).
+            await store.acknowledge(i.packageId, c.sha);
+            ownSha = c.sha;
           }
           break;
         }
@@ -246,7 +270,7 @@ export async function runPublish(i: PublishInput, w: WorkingSide, pub: PublicSid
       if (f?.text !== undefined) parts.push({ path, version: await sha256Hex(f.text), slug });
     }
   }
-  const toApprove = parts.filter((p) => i.choices.approveAndPublish.includes(p.path));
+  const toApprove = parts.filter((p) => i.choices.approveAndPublish.includes(approvalKey(p.path, p.version)));
   if (toApprove.length) await store.approve(i.packageId, i.by, i.role, toApprove);
   const approvedPaths = await store.approvedAt(i.packageId, parts);
   const approved = new Set<string>();
@@ -272,12 +296,21 @@ export async function runPublish(i: PublishInput, w: WorkingSide, pub: PublicSid
   const publishedMap = new Map(previously.map((f) => [f.path, { blobSha: f.blobSha, unit: f.unit }]));
   const generated = new Map<string, TreeFile>();
   for (const [path, text] of Object.entries(i.generated ?? {})) {
-    if (path === "alembic.json" || !isPublishGenerated(path)) throw new Error(`"${path}" is not a file Publish generates`);
+    if (path === "alembic.json" || ownersFolder(path) || !isPublishGenerated(path)) throw new Error(`"${path}" is not a file Publish generates`);
     generated.set(path, { text });
+  }
+  // Publish anyway covers a chapter only for the problems that were shown.
+  const anywayKeys: Record<string, string> = {};
+  const anyway = new Set<string>();
+  for (const slug of chapters) {
+    const defaults = findings.filter((f) => f.unit === `chapter:${slug}` && f.severity === "default");
+    if (!defaults.length) continue;
+    anywayKeys[slug] = await findingsDigest(defaults);
+    if (i.choices.publishAnyway.includes(anywayKey(slug, anywayKeys[slug]!))) anyway.add(slug);
   }
   const { tree: assembled, decisions } = publishWithLinkCheck(
     { working, published: publishedMap, manifest, everPublishedChapters: everPublished, keptTexts, generated },
-    { units, findings, draft, approved, publishAnyway: new Set(i.choices.publishAnyway) },
+    { units, findings, draft, approved, publishAnyway: anyway },
   );
 
   // Records: every file carries its public blob id; a file with neither text nor blob is an error (G3 H2).
@@ -310,7 +343,7 @@ export async function runPublish(i: PublishInput, w: WorkingSide, pub: PublicSid
     const current = await pub.listTree(P);
     if (current.truncated) return { status: "stopped", reason: "The public copy is too large to update safely in one run" };
     const deletions = current.entries
-      .filter((e) => e.type !== "tree" && e.mode !== "040000" && !assembled.files.has(e.path))
+      .filter((e) => e.type !== "tree" && e.mode !== "040000" && !assembled.files.has(e.path) && !ownersFolder(e.path))
       .map((e) => ({ path: e.path, delete: true as const }));
     if (attempt === 0) {
       await store.insertPendingRun({ id: i.runId, packageId: i.packageId, by: i.by, workingSha: W, publicParent: P, choices: i.choices, intendedFiles: records });
@@ -322,7 +355,7 @@ export async function runPublish(i: PublishInput, w: WorkingSide, pub: PublicSid
       await store.markCommitted(i.runId, publicSha, records, { decisions: [...decisions.values()] });
       finished = true;
       await store.acknowledge(i.packageId, publicSha);
-      return { status: "committed", runId: i.runId, publicSha, decisions: [...decisions.values()], published: [...assembled.publishedChapters] };
+      return { status: "committed", runId: i.runId, publicSha, decisions: [...decisions.values()], published: [...assembled.publishedChapters], anywayKeys };
     } catch (e) {
       if (!(e instanceof Error && e.name === "HeadMovedError") || attempt >= 2) {
         if (e instanceof Error && e.name === "HeadMovedError") {

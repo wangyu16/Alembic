@@ -17,6 +17,11 @@
     "@alembic/package-contract": "workspace:*",
     "@alembic/package-ops": "workspace:*",
     "@alembic/renderer": "workspace:*",
+    "orz-markdown": "2.5.0",
+    "orz-mdhtml": "1.1.0",
+    "orz-paged": "1.1.0",
+    "orz-site": "0.1.0",
+    "orz-slides": "1.1.0",
     "postgres": "^3.4.9"
   },
   "devDependencies": {

@@ -42,8 +42,15 @@ export class SqlPublishStore implements PublishStore {
 
   async pendingRun(packageId: string, runId: string): Promise<{ id: string; intendedFiles: PublishedRecord[] } | null> {
     const { rows } = await this.sql.query<{ id: string; intended: unknown }>(
-      `select id, intended from public.publish_runs where package_id = $1 and id = $2 and status = 'pending'`, [packageId, runId]);
+      `select id, intended from public.publish_runs where package_id = $1 and id = $2 and status in ('pending', 'stopped')`, [packageId, runId]);
     return rows[0] ? { id: rows[0].id, intendedFiles: parse<PublishedRecord[]>(rows[0].intended) } : null;
+  }
+
+  /** Marked stopped although its commit landed (review M1): `pendingRun` also finds stopped runs; this finds recorded ones. */
+  async isCommitted(packageId: string, runId: string): Promise<boolean> {
+    const { rows } = await this.sql.query<{ n: number }>(
+      `select count(*)::int as n from public.publish_runs where package_id = $1 and id = $2 and status in ('committed', 'site-built', 'site-failed')`, [packageId, runId]);
+    return (rows[0]?.n ?? 0) > 0;
   }
 
   async insertPendingRun(r: { id: string; packageId: string; by: string; workingSha: string; publicParent: string | null; choices: unknown; intendedFiles: PublishedRecord[] }): Promise<void> {
@@ -117,8 +124,14 @@ export class SqlPublishStore implements PublishStore {
       if (f === "binary") return "not-done";
       files.push({ path, baseVersion: published.get(path) ?? null, text: f === null ? null : f.text });
     }
+    // One row per public head, unless the last attempt for it ended badly: then a new attempt (review L1).
+    const { rows: prior } = await this.sql.query<{ status: string }>(
+      `select status from public.write_queue where package_id = $1 and kind = 'system' and idem_key like $2 order by seq desc`,
+      [packageId, `system:drift:${publicSha}%`]);
+    const ended = prior.length > 0 && ["bounced", "refused", "failed"].includes(prior[0]!.status);
+    const attempt = ended ? prior.length : Math.max(prior.length - 1, 0); // reuse the open or landed attempt
     const id = await new SqlQueueStore(this.sql).insert({
-      packageId, kind: "system", idem: `drift:${publicSha}`, priority: 1,
+      packageId, kind: "system", idem: attempt === 0 ? `drift:${publicSha}` : `drift:${publicSha}:${attempt}`, priority: 1,
       payload: { files, summary: "Bring in changes made to the public copy on GitHub" },
     });
     const sleep = this.deps.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));

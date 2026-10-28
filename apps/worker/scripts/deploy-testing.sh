@@ -7,8 +7,11 @@ set -a; . ~/alembic-testing.env; set +a
 [[ "$SUPABASE_URL" == *whbhiqnzknxnaxlulqga* ]] || { echo "not the testing project; refusing"; exit 1; }
 SSH=(ssh -i ~/.ssh/alembic_testing_ed25519 -o IdentitiesOnly=yes -o BatchMode=yes)
 VM="$VM_USER@$VM_HOST"
-OUT=$(mktemp -d)
+export OUT=$(mktemp -d)
+# orz-site and the 1.x carriers read their shells from disk: installed next to the bundle, not bundled.
+SITE_DEPS=(orz-site orz-mdhtml orz-slides orz-paged orz-markdown)
 ../../node_modules/.bin/esbuild src/background.ts --bundle --platform=node --format=esm --target=node22 \
+  ${SITE_DEPS[@]/#/--external:} \
   --outfile=$OUT/worker.mjs --log-level=warning \
   --banner:js="import { createRequire as __cr } from 'module'; const require = __cr(import.meta.url);"
 umask 077
@@ -27,7 +30,14 @@ APP_URL=$APP_URL
 RESEND_API_KEY=$RESEND_API_KEY
 EMAIL_FROM=$EMAIL_FROM
 E2
-COPYFILE_DISABLE=1 tar --no-xattrs -C $OUT -czf - worker.mjs worker.env | "${SSH[@]}" $VM 'set -e; mkdir -p ~/alembic-testing/worker && tar -xzf - -C ~/alembic-testing/worker && mv ~/alembic-testing/worker/worker.env ~/alembic-testing/worker.env && chmod 600 ~/alembic-testing/worker.env'
+node -e '
+const p = require("./package.json"); const deps = {};
+for (const n of process.argv.slice(1)) deps[n] = p.dependencies[n];
+require("fs").writeFileSync(process.env.OUT + "/package.json", JSON.stringify({ name: "alembic-worker-testing", private: true, type: "module", dependencies: deps }, null, 2));
+' ${SITE_DEPS[@]}
+COPYFILE_DISABLE=1 tar --no-xattrs -C $OUT -czf - worker.mjs worker.env package.json | "${SSH[@]}" $VM 'set -e; mkdir -p ~/alembic-testing/worker && tar -xzf - -C ~/alembic-testing/worker && mv ~/alembic-testing/worker/worker.env ~/alembic-testing/worker.env && chmod 600 ~/alembic-testing/worker.env
+cd ~/alembic-testing/worker && if ! cmp -s package.json .installed.json; then
+  sudo docker run --rm --network host -v "$PWD:/app" -w /app node:22-alpine npm install --omit=dev --no-audit --no-fund --loglevel=error && sudo chown -R $(id -u):$(id -g) node_modules && cp package.json .installed.json; fi'
 rm -rf $OUT
 "${SSH[@]}" $VM 'cd ~/alembic-testing
 grep -q "^  worker:" compose.yaml || cat >> compose.yaml <<Y

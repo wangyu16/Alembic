@@ -22,11 +22,16 @@ async function member(packageId: string) {
 /** Ask for a Publish with the publisher's choices (the worker runs it). */
 export async function requestPublishAction(packageId: string, form: FormData): Promise<void> {
   const { supabase } = await member(packageId);
+  // Each choice names the version that was shown (path@version, slug@digest): the job applies it only to that.
   const approveAndPublish = form.getAll("approve").flatMap((v) => (typeof v === "string" ? v.split("|") : []))
-    .filter((v) => /^(concepts|assessment-support)\/[a-z0-9-]{1,60}\.md$/.test(v));
-  const publishAnyway = form.getAll("anyway").filter((v): v is string => typeof v === "string" && /^[a-z0-9-]{1,60}$/.test(v));
+    .filter((v) => /^(concepts|assessment-support)\/[a-z0-9-]{1,60}\.md@[0-9a-f]{64}$/.test(v));
+  const publishAnyway = form.getAll("anyway").filter((v): v is string => typeof v === "string" && /^[a-z0-9-]{1,60}@[0-9a-f]{64}$/.test(v));
   const { error } = await supabase.rpc("request_publish", { p: packageId, p_choices: { approveAndPublish, publishAnyway } });
-  if (error) back(packageId, error.code === "42501" ? "Only the owner or deputy publishes." : "Publish couldn't be started. Try again.");
+  if (error) {
+    back(packageId, error.code === "42501" ? "Only the owner or deputy publishes."
+      : error.code === "55006" ? "Publish is already running; try again when it has finished."
+      : "Publish couldn't be started. Try again.");
+  }
   back(packageId);
 }
 

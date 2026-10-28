@@ -90,6 +90,26 @@ export async function fetchPublicRepoBytes(
 }
 
 /**
+ * The file paths of a PUBLIC repository at a ref, without any token (for the
+ * public template: no installation's token is needed or used to read it).
+ * Null on 404; `truncated` as for the tree API.
+ */
+export async function fetchPublicTree(
+  coords: RepoCoords,
+  ref = "main",
+  fetchImpl: FetchLike = defaultFetch,
+): Promise<{ paths: string[]; truncated: boolean } | null> {
+  const res = await fetchImpl(`https://api.github.com/repos/${coords.owner}/${coords.repo}/git/trees/${encodeURIComponent(ref)}?recursive=1`, {
+    method: "GET",
+    headers: { accept: "application/vnd.github+json", "x-github-api-version": "2022-11-28" },
+  });
+  if (res.status === 404) return null;
+  if (!res.ok) throw new GitHubError("Public tree read failed", res.status, await res.text().catch(() => undefined));
+  const data = (await res.json()) as { tree: Array<{ path: string; type: string }>; truncated?: boolean };
+  return { paths: data.tree.filter((e) => e.type === "blob").map((e) => e.path), truncated: data.truncated === true };
+}
+
+/**
  * Requests that are safe to send twice, so a 5xx or a dropped connection may
  * be retried: reads, ref updates to a fixed sha (PATCH), and creation of
  * content-addressed git objects (a duplicate blob/tree is the same object; a
@@ -701,6 +721,18 @@ export class GitHubClient {
       return true;
     } catch (e) {
       if (e instanceof GitHubError && e.status === 404) return false;
+      throw e;
+    }
+  }
+
+  /** A repository's visibility and the template it was generated from (null on 404). */
+  async getRepo(coords: RepoCoords): Promise<{ private: boolean; template: string | null } | null> {
+    try {
+      const r = await this.request<{ private: boolean; template_repository?: { full_name?: string } | null }>(
+        "GET", `/repos/${coords.owner}/${coords.repo}`);
+      return { private: r.private, template: r.template_repository?.full_name ?? null };
+    } catch (e) {
+      if (e instanceof GitHubError && e.status === 404) return null;
       throw e;
     }
   }

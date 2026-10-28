@@ -11,7 +11,7 @@ import { RefreshWhile } from "./refresh-while";
 export const dynamic = "force-dynamic";
 
 type Outcome =
-  | { status: "committed"; decisions: Array<{ unit: string; result: "pass" | "kept"; why: string[] }>; published: string[] }
+  | { status: "committed"; decisions: Array<{ unit: string; result: "pass" | "kept"; why: string[] }>; published: string[]; anywayKeys?: Record<string, string> }
   | { status: "stopped" | "failed"; reason: string; drift?: string[] };
 
 /** Publish (A11): what each chapter needs, the publisher's choices, and the last run. */
@@ -26,11 +26,14 @@ export default async function PublishPage({ params, searchParams }: { params: Pr
   if (!roleRaw) redirect("/workspace");
   const role = roleRaw as Role;
 
-  const [{ data: course }, { data: requests }, { data: approvals }] = await Promise.all([
+  const [{ data: course }, { data: requests }, { data: approvals }, { data: runs }] = await Promise.all([
     supabase.from("packages").select("title, public_repo").eq("id", packageId).maybeSingle(),
     supabase.from("publish_requests").select("id, status, outcome, created_at, finished_at").eq("package_id", packageId).order("created_at", { ascending: false }).limit(1),
     supabase.from("approvals").select("part_path, version").eq("package_id", packageId),
+    supabase.from("publish_runs").select("status, results").eq("package_id", packageId).in("status", ["committed", "site-built", "site-failed"]).order("committed_at", { ascending: false }).limit(1),
   ]);
+  const lastRun = runs?.[0] as { status: string; results: { site?: { url?: string; error?: string; superseded?: boolean } } } | undefined;
+  const siteUrl = (runs ?? []).length && lastRun?.status === "site-built" && typeof lastRun.results.site?.url === "string" && /^https:\/\/[a-z0-9-]+\.github\.io\//i.test(lastRun.results.site.url) ? lastRun.results.site.url : null;
   const c = await courseRepo(packageId);
   if (!c) return <main className="mx-auto max-w-2xl p-6"><p>This course's repository can't be reached right now.</p></main>;
   const head = await c.repo.head();
@@ -41,15 +44,17 @@ export default async function PublishPage({ params, searchParams }: { params: Pr
     const parts = await Promise.all(["concepts", "assessment-support"].map(async (space) => {
       const path = `${space}/${ch.slug}.md`;
       const text = await c.repo.readFile(head, path);
-      return { path, present: text !== null, approved: text !== null && approved.has(`${path}@${textVersion(text)}`) };
+      const version = text === null ? null : textVersion(text);
+      return { path, version, present: text !== null, approved: version !== null && approved.has(`${path}@${version}`) };
     }));
     return { ...ch, parts };
   }));
 
   const last = requests?.[0] as { id: string; status: string; outcome: Outcome | null; finished_at: string | null } | undefined;
-  const busy = last?.status === "queued" || last?.status === "running";
+  const busy = last?.status === "queued" || last?.status === "running" || lastRun?.status === "committed";
   const lastDecisions = last?.outcome?.status === "committed" ? last.outcome.decisions : [];
   const keptFor = (slug: string) => lastDecisions.find((d) => d.unit === `chapter:${slug}`);
+  const anywayKeys = last?.outcome?.status === "committed" ? (last.outcome.anywayKeys ?? {}) : {};
   const pub = course?.public_repo as { owner: string; name: string } | null;
   const canPublish = can(role, "publish.later");
   const canApprove = can(role, "approve.plan");
@@ -66,6 +71,13 @@ export default async function PublishPage({ params, searchParams }: { params: Pr
         A chapter is ready when it isn't a draft, its course plan is approved, and the checks pass.
       </p>
       {message ? <p className="mt-3 rounded border border-amber-300 bg-amber-50 p-2 text-sm">{message}</p> : null}
+      {lastRun ? (
+        <p className="mt-3 text-sm">
+          Website: {siteUrl ? <a className="underline" href={siteUrl}>{siteUrl}</a>
+            : lastRun.status === "site-failed" ? <>not updated — {lastRun.results.site?.error ?? "the build failed"}; the previous one stays up.</>
+            : "being built…"}
+        </p>
+      ) : null}
 
       <section className="mt-5 rounded border p-3">
         <h2 className="font-medium">Last Publish</h2>
@@ -110,15 +122,15 @@ export default async function PublishPage({ params, searchParams }: { params: Pr
                       <>Not written yet <button className="ml-1 underline" formAction={startPlanAction.bind(null, packageId, ch.slug)}>Start it</button></>
                     ) : toApprove.length === 0 ? "Approved" : canApprove ? (
                       <label className="flex items-start gap-1">
-                        <input type="checkbox" name="approve" value={toApprove.map((p) => p.path).join("|")} className="mt-1" />
+                        <input type="checkbox" name="approve" value={toApprove.map((p) => `${p.path}@${p.version}`).join("|")} className="mt-1" />
                         <span>Approve the course plan as it is now ({ch.parts.map((p) => <Link key={p.path} className="underline" href={`/workspace/${packageId}/doc/${p.path}`}>{p.path.split("/")[0] === "concepts" ? "concept map" : "assessment guide"}</Link>).reduce<React.ReactNode[]>((a, x, i) => (i ? [...a, " and ", x] : [x]), [])})</span>
                       </label>
                     ) : "Waiting for the owner or deputy"}
                   </td>
                   <td className="py-2">
-                    {findings.length && can(role, "publish.anyway") ? (
+                    {findings.length && anywayKeys[ch.slug] && can(role, "publish.anyway") ? (
                       <label className="flex items-start gap-1" title={findings.join("; ")}>
-                        <input type="checkbox" name="anyway" value={ch.slug} className="mt-1" /> <span>Publish anyway</span>
+                        <input type="checkbox" name="anyway" value={`${ch.slug}@${anywayKeys[ch.slug]}`} className="mt-1" /> <span>Publish anyway</span>
                       </label>
                     ) : null}
                   </td>

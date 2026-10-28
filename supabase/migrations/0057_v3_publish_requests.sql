@@ -30,12 +30,15 @@ create policy "members read" on public.publish_requests for select to authentica
   using ((select public.course_role(package_id)) is not null);
 
 -- request_publish: owner or deputy asks for a Publish. One open request per
--- course: asking again while one is queued or running returns that one.
+-- course: asking again while one is queued replaces its asker and choices
+-- (the latest click is what runs); while one is running it is refused
+-- ("Publish is already running"), never silently merged. A non-member's or
+-- banned user's role is null, which must refuse too (review H1).
 create function public.request_publish(p text, p_choices jsonb)
 returns uuid language plpgsql security definer set search_path = '' as $$
-declare v_role text := public.course_role(p); v_id uuid;
+declare v_role text := public.course_role(p); v_id uuid; v_status text;
 begin
-  if v_role not in ('owner', 'deputy') then
+  if coalesce(v_role, '') not in ('owner', 'deputy') then
     raise exception 'Only the owner or deputy publishes' using errcode = '42501';
   end if;
   if jsonb_typeof(p_choices) <> 'object'
@@ -45,8 +48,18 @@ begin
     raise exception 'Malformed publish choices' using errcode = '22023';
   end if;
   perform pg_advisory_xact_lock(hashtextextended('publish_request:' || p, 0));
-  select id into v_id from public.publish_requests where package_id = p and status in ('queued', 'running') limit 1;
-  if v_id is not null then return v_id; end if;
+  select id, status into v_id, v_status from public.publish_requests where package_id = p and status in ('queued', 'running') limit 1 for update;
+  if v_status = 'running' then
+    raise exception 'Publish is already running' using errcode = '55006';
+  end if;
+  if v_id is not null then
+    update public.publish_requests set by_user = (select auth.uid()), created_at = now(), choices = jsonb_build_object(
+      'publishAnyway', coalesce(p_choices->'publishAnyway', '[]'),
+      'approveAndPublish', coalesce(p_choices->'approveAndPublish', '[]'))
+     where id = v_id and status = 'queued';
+    if not found then raise exception 'Publish is already running' using errcode = '55006'; end if;
+    return v_id;
+  end if;
   insert into public.publish_requests (package_id, by_user, choices)
   values (p, (select auth.uid()), jsonb_build_object(
     'publishAnyway', coalesce(p_choices->'publishAnyway', '[]'),
@@ -58,15 +71,17 @@ revoke execute on function public.request_publish(text, jsonb) from public, anon
 grant execute on function public.request_publish(text, jsonb) to authenticated;
 
 -- claim_publish_request: the worker takes the oldest queued request of a
--- course with nothing running; a run left 'running' for 20 minutes (a worker
+-- course with nothing running; a run left 'running' for 60 minutes (a worker
 -- died) is failed first so its course can publish again (its pending record
--- is recovered from the commit trailer by the next run).
+-- is recovered from the commit trailer by the next run). The worker finishes
+-- a request only while it still holds it (status 'running' with the
+-- started_at it claimed), so a reclaimed run can't be flipped back.
 create function public.claim_publish_request()
 returns setof public.publish_requests language plpgsql security definer set search_path = '' as $$
 begin
   update public.publish_requests set status = 'failed', finished_at = now(),
-         outcome = jsonb_build_object('status', 'stopped', 'reason', 'Publish stopped unexpectedly; run it again')
-   where status = 'running' and started_at < now() - interval '20 minutes';
+         outcome = jsonb_build_object('status', 'stopped', 'reason', 'Publish took too long and was stopped; run it again (anything it already published stays published)')
+   where status = 'running' and started_at < now() - interval '60 minutes';
   return query
   update public.publish_requests r set status = 'running', started_at = now()
    where r.id = (

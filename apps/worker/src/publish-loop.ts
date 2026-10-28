@@ -5,7 +5,7 @@
  * outcome on the request. The public repo is generated from the public
  * template on the first Publish. The request id is the run id.
  */
-import { CompareIncompleteError, GitHubClient, installationTokenSource, type ChainFile, type RepoCoords } from "@alembic/github-bridge";
+import { CompareIncompleteError, fetchPublicRepoBytes, fetchPublicTree, GitHubClient, GitHubError, installationTokenSource, type ChainFile, type RepoCoords } from "@alembic/github-bridge";
 import {
   classifyBytes,
   copyChecks,
@@ -28,7 +28,7 @@ export interface PublishConfig {
   log?: (m: string) => void;
 }
 
-interface Claimed { id: string; package_id: string; by_user: string; choices: unknown }
+interface Claimed { id: string; package_id: string; by_user: string; choices: unknown; started_at: unknown }
 
 const parse = <T>(v: unknown): T => (typeof v === "string" ? (JSON.parse(v) as T) : (v as T));
 const coordsOf = (v: unknown): RepoCoords | null => {
@@ -42,7 +42,7 @@ export function publicRepoName(privateName: string): string {
 }
 
 export async function publishPass(cfg: PublishConfig): Promise<void> {
-  const { rows } = await cfg.sql.query<Claimed>(`select id, package_id, by_user, choices from public.claim_publish_request()`);
+  const { rows } = await cfg.sql.query<Claimed>(`select id, package_id, by_user, choices, started_at::text as started_at from public.claim_publish_request()`);
   const req = rows[0];
   if (!req) return;
   let outcome: PublishOutcome | { status: "failed"; reason: string };
@@ -50,15 +50,29 @@ export async function publishPass(cfg: PublishConfig): Promise<void> {
     outcome = await publishOne(cfg, req);
   } catch (e) {
     cfg.log?.(`publish ${req.id} failed: ${(e as Error).message}`);
-    outcome = { status: "failed", reason: "Publish couldn't finish; nothing was changed on the public copy. Try again in a moment." };
+    outcome = { status: "failed", reason: "Publish couldn't finish. Try again in a moment; the next run picks up anything this one already published." };
   }
+  // Only while this worker still holds the request (review M2): a reclaimed request isn't flipped back.
   await cfg.sql.query(
-    `update public.publish_requests set status = $2, outcome = $3::text::jsonb, finished_at = now() where id = $1`,
-    [req.id, outcome.status === "failed" ? "failed" : "done", JSON.stringify(outcome)]);
+    `update public.publish_requests set status = $2, outcome = $3::text::jsonb, finished_at = now()
+      where id = $1 and status = 'running' and started_at = $4::text::timestamptz`, // as text: a Date would drop the microseconds
+    [req.id, outcome.status === "failed" ? "failed" : "done", JSON.stringify(outcome), req.started_at]);
   cfg.log?.(`publish ${req.id} (${req.package_id}): ${outcome.status}${"reason" in outcome ? ` — ${outcome.reason}` : ""}`);
 }
 
+/** A stop with a reason for the person (not a crash). */
+class PublishStop extends Error {}
+
 async function publishOne(cfg: PublishConfig, req: Claimed): Promise<PublishOutcome> {
+  try {
+    return await publishRun(cfg, req);
+  } catch (e) {
+    if (e instanceof PublishStop) return { status: "stopped", reason: e.message };
+    throw e;
+  }
+}
+
+async function publishRun(cfg: PublishConfig, req: Claimed): Promise<PublishOutcome> {
   const { rows } = await cfg.sql.query<{ installation_id: string; private_repo: unknown; public_repo: unknown; role: Role | null }>(
     `select i.installation_id, p.private_repo, p.public_repo, public.course_role_of(p.id, $2) as role
        from public.packages p join public.course_installations i on i.package_id = p.id where p.id = $1`, [req.package_id, req.by_user]);
@@ -84,11 +98,27 @@ async function publishOne(cfg: PublishConfig, req: Claimed): Promise<PublishOutc
     async create() {
       const owner = working.owner;
       const name = publicRepoName(working.repo);
-      const any = client();
-      const created = await any.generateFromTemplate({
-        templateOwner: cfg.templateOwner, templateRepo: cfg.publicTemplate, owner, name, private: false,
-        description: "Open course materials published with Alembic",
-      });
+      const any = client(); // creating a repository needs the installation's own token
+      let created: RepoCoords;
+      try {
+        created = await any.generateFromTemplate({
+          templateOwner: cfg.templateOwner, templateRepo: cfg.publicTemplate, owner, name, private: false,
+          description: "Open course materials published with Alembic",
+        });
+      } catch (e) {
+        // Already there (an earlier run made it and didn't record it, review M4): adopt it only if it is
+        // public and was generated from the public template; never publish into an unrelated repository.
+        if (!(e instanceof GitHubError && e.status === 422)) throw e;
+        const existing = await client([name]).getRepo({ owner, repo: name });
+        const template = `${cfg.templateOwner}/${cfg.publicTemplate}`.toLowerCase();
+        const { rows: taken } = await cfg.sql.query<{ id: string }>(
+          `select id from public.packages where id <> $1 and lower(public_repo->>'owner') = lower($2) and lower(public_repo->>'name') = lower($3)`,
+          [req.package_id, owner, name]);
+        if (!existing || existing.private || existing.template?.toLowerCase() !== template || taken.length) {
+          throw new PublishStop(`A repository named ${owner}/${name} already exists and isn't this course's public copy. Rename or remove it on GitHub, then publish again.`);
+        }
+        created = { owner, repo: name };
+      }
       pubCoords = created;
       await cfg.sql.query(`update public.packages set public_repo = $2::text::jsonb where id = $1`,
         [req.package_id, JSON.stringify({ owner: created.owner, name: created.repo })]);
@@ -132,7 +162,7 @@ async function publishOne(cfg: PublishConfig, req: Claimed): Promise<PublishOutc
     {
       runId: req.id, packageId: req.package_id, by: req.by_user, role: c.role,
       choices: { publishAnyway: list(choices.publishAnyway), approveAndPublish: list(choices.approveAndPublish) },
-      generated: await siteBuildFiles(client(), cfg),
+      generated: await siteBuildFiles(cfg),
     },
     w, pub, store, checks,
   );
@@ -219,20 +249,30 @@ function publicSide(o: {
   };
 }
 
-/** The site build the public template carries (`.github/`, `.alembic/`, `.gitignore`), read once per process. */
-let siteBuild: Promise<Record<string, string>> | null = null;
-function siteBuildFiles(client: GitHubClient, cfg: PublishConfig): Promise<Record<string, string>> {
-  siteBuild ??= (async () => {
+/**
+ * The site build the public template carries (`.alembic/`, `.gitignore`; never
+ * `.github/`, which Publish doesn't touch), read without any token (the
+ * template is public) and kept for an hour. Binary files are skipped.
+ */
+let siteBuild: { at: number; files: Promise<Record<string, string>> } | null = null;
+const SITE_BUILD_TTL_MS = 60 * 60_000;
+function siteBuildFiles(cfg: PublishConfig): Promise<Record<string, string>> {
+  if (siteBuild && Date.now() - siteBuild.at < SITE_BUILD_TTL_MS) return siteBuild.files;
+  const files = (async () => {
     const coords = { owner: cfg.templateOwner, repo: cfg.publicTemplate };
-    const head = await client.getRefSha(coords, "heads/main");
-    if (!head) throw new Error("the public template can't be read");
+    const tree = await fetchPublicTree(coords, "main");
+    if (!tree || tree.truncated) throw new Error("the public template can't be read");
     const out: Record<string, string> = {};
-    for (const e of (await client.listTreeEntries(coords, head)).entries) {
-      if (e.type !== "blob" || e.path === "alembic.json" || !isPublishGenerated(e.path)) continue;
-      const text = await client.getFileAtRef(coords, e.path, head);
-      if (text !== null) out[e.path] = text;
+    for (const path of tree.paths) {
+      if (path === "alembic.json" || path.startsWith(".github/") || !isPublishGenerated(path)) continue;
+      const bytes = await fetchPublicRepoBytes(coords, path, "main");
+      if (!bytes) continue;
+      const f = classifyBytes(bytes);
+      if ("text" in f) out[path] = f.text;
     }
     return out;
-  })().catch((e) => { siteBuild = null; throw e; });
-  return siteBuild;
+  })();
+  siteBuild = { at: Date.now(), files };
+  files.catch(() => { siteBuild = null; });
+  return files;
 }

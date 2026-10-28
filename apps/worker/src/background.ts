@@ -12,6 +12,8 @@ import { runDigests } from "./digest-job";
 import { committerPass } from "./committer-loop";
 import { doorCPass } from "./door-c-loop";
 import { publishPass } from "./publish-loop";
+import { siteBuildPass, type SiteBuilder } from "./site-build-loop";
+import { orzSiteBuilder } from "./orz-site-builder";
 
 const log = (m: string) => console.log(`[alembic-worker] ${m}`);
 
@@ -40,6 +42,7 @@ if (databaseUrl && appId && appKey) {
   const sql = { query: async <T,>(text: string, params?: unknown[]) => ({ rows: (await pg.unsafe(text, (params ?? []) as never[])) as unknown as T[] }) };
   const templateOwner = process.env["GITHUB_TEMPLATE_OWNER"]?.trim();
   const publicTemplate = process.env["GITHUB_PUBLIC_TEMPLATE"]?.trim();
+  let site: Promise<SiteBuilder> | null = null;
   const holder = `worker-${hostname()}-${process.pid}`;
   startSchedules(async () => null, {
     schedules: [
@@ -48,6 +51,7 @@ if (databaseUrl && appId && appKey) {
       ...(templateOwner && publicTemplate
         ? [{ name: "publish", everyMs: 4000, run: () => publishPass({ sql, appId, privateKey: appKey, templateOwner, publicTemplate, log }) }]
         : []),
+      { name: "site-build", everyMs: 10_000, run: async () => { site ??= orzSiteBuilder(); await siteBuildPass({ sql, appId, privateKey: appKey, log, site: await site }); } },
     ],
     log,
   });

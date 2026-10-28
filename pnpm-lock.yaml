@@ -141,6 +141,21 @@ importers:
       '@alembic/renderer':
         specifier: workspace:*
         version: link:../../packages/renderer
+      orz-markdown:
+        specifier: 2.5.0
+        version: 2.5.0
+      orz-mdhtml:
+        specifier: 1.1.0
+        version: 1.1.0
+      orz-paged:
+        specifier: 1.1.0
+        version: 1.1.0
+      orz-site:
+        specifier: 0.1.0
+        version: 0.1.0(orz-markdown@2.5.0)(orz-mdhtml@1.1.0)(orz-paged@1.1.0)(orz-slides@1.1.0)
+      orz-slides:
+        specifier: 1.1.0
+        version: 1.1.0
       postgres:
         specifier: ^3.4.9
         version: 3.4.9
@@ -2703,11 +2718,25 @@ packages:
       playwright-core:
         optional: true
 
+  orz-markdown@2.5.0:
+    resolution: {integrity: sha512-B/rd6oFnN0LeTlOIOxmcY/UXQGzicHCVispPwMjfJ1+u7i2BMQBjJ0cBHDyzf+mLYTbe2heWpkrZAVr13gxMsg==}
+    engines: {node: '>=20.16'}
+    peerDependencies:
+      playwright-core: '>=1.40.0'
+    peerDependenciesMeta:
+      playwright-core:
+        optional: true
+
   orz-mdhtml-browser@1.1.0:
     resolution: {integrity: sha512-+Ch7g0cgJCWFQxPnVOIvi7Uf7GYOnjEFr4XZsTQNgj7Vp/XrJUoP1YNymceuqvHDmijvTxB8p57m38M0pYtcZA==}
 
   orz-mdhtml@0.9.0:
     resolution: {integrity: sha512-nD7sUJ5Jq+B2giecS7Ix3J36fSprHptl3gzkIOfO6TYRllyq9khU5BDNH28KES+XJLx+NW2aMcR43R08FQRpYA==}
+    hasBin: true
+
+  orz-mdhtml@1.1.0:
+    resolution: {integrity: sha512-gXxTbYyc++anNtddFewtvhnAOB9Ut9QK+jGKggZWVM6dthHfPDWaOuQvvCKdmzCspctNb+ENMUGDwW70uN0seQ==}
+    engines: {node: '>=20.16'}
     hasBin: true
 
   orz-paged-browser@1.1.0:
@@ -2717,11 +2746,38 @@ packages:
     resolution: {integrity: sha512-NGBGCv0EBpAD4z74FnnNCu82ehIMEUJmjVjNlG6alfRbwPk4TyKZkQ+PnEv/V1zWu0LgDPFzLU6In6BbHEf8dA==}
     hasBin: true
 
+  orz-paged@1.1.0:
+    resolution: {integrity: sha512-DtaLM+vkH6A7jjMcC9yh6TQ3MQOFbPcWdWR538v1yT6hyWC9Srso9PzdFQUBlc7ufWwkLLbXGNQyCeDjih3Qog==}
+    engines: {node: '>=20.16'}
+    hasBin: true
+
+  orz-site@0.1.0:
+    resolution: {integrity: sha512-K/jFyAaChS11jWhyJfDgt6BRbb3aXJZy5cW/CZOgU1u2Jn8n/aMmV0KrGOv5u+zL0VRLpbirQYmuy6AhvPz9dA==}
+    engines: {node: '>=20.16'}
+    hasBin: true
+    peerDependencies:
+      orz-markdown: ^2.5.0
+      orz-mdhtml: ^1.1.0
+      orz-paged: ^1.1.0
+      orz-slides: ^1.1.0
+    peerDependenciesMeta:
+      orz-mdhtml:
+        optional: true
+      orz-paged:
+        optional: true
+      orz-slides:
+        optional: true
+
   orz-slides-browser@1.1.0:
     resolution: {integrity: sha512-mHWHsDbjJ1FlFcOhoVEMWAlvPO4qgHdzTSbUo1PF/C6vrlPbFj/IZkitbHAgIZjCy8sDXG6Swd0XAYz/x6bv2Q==}
 
   orz-slides@0.8.2:
     resolution: {integrity: sha512-zG4pFlbNnxemZLDm50n6+Jq4zr5GpoU9Nb7nQTdIcp7NbLCvve47l6ycvZLB9zAqW4y96AwIi/CiSPGZJWf3Uw==}
+    hasBin: true
+
+  orz-slides@1.1.0:
+    resolution: {integrity: sha512-9TNZwvFG0YbyvezmaAi+5czZjq5D5m9GK+egXTLNGNmGL+sB5Co3Rc2bIdGrFCe/YD5JQBGav5AFSTd+ATVZXQ==}
+    engines: {node: '>=20.16'}
     hasBin: true
 
   own-keys@1.0.1:
@@ -4867,8 +4923,8 @@ snapshots:
       '@next/eslint-plugin-next': 16.2.9
       eslint: 9.39.4(jiti@2.7.0)
       eslint-import-resolver-node: 0.3.10
-      eslint-import-resolver-typescript: 3.10.1(eslint-plugin-import@2.32.0)(eslint@9.39.4(jiti@2.7.0))
-      eslint-plugin-import: 2.32.0(@typescript-eslint/parser@8.61.0(eslint@9.39.4(jiti@2.7.0))(typescript@5.9.3))(eslint-import-resolver-typescript@3.10.1)(eslint@9.39.4(jiti@2.7.0))
+      eslint-import-resolver-typescript: 3.10.1(eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.61.0(eslint@9.39.4(jiti@2.7.0))(typescript@5.9.3))(eslint@9.39.4(jiti@2.7.0)))(eslint@9.39.4(jiti@2.7.0))
+      eslint-plugin-import: 2.32.0(@typescript-eslint/parser@8.61.0(eslint@9.39.4(jiti@2.7.0))(typescript@5.9.3))(eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.61.0(eslint@9.39.4(jiti@2.7.0))(typescript@5.9.3))(eslint@9.39.4(jiti@2.7.0)))(eslint@9.39.4(jiti@2.7.0)))(eslint@9.39.4(jiti@2.7.0))
       eslint-plugin-jsx-a11y: 6.10.2(eslint@9.39.4(jiti@2.7.0))
       eslint-plugin-react: 7.37.5(eslint@9.39.4(jiti@2.7.0))
       eslint-plugin-react-hooks: 7.1.1(eslint@9.39.4(jiti@2.7.0))
@@ -4890,7 +4946,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0)(eslint@9.39.4(jiti@2.7.0)):
+  eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.61.0(eslint@9.39.4(jiti@2.7.0))(typescript@5.9.3))(eslint@9.39.4(jiti@2.7.0)))(eslint@9.39.4(jiti@2.7.0)):
     dependencies:
       '@nolyfill/is-core-module': 1.0.39
       debug: 4.4.3
@@ -4901,22 +4957,22 @@ snapshots:
       tinyglobby: 0.2.17
       unrs-resolver: 1.12.2
     optionalDependencies:
-      eslint-plugin-import: 2.32.0(@typescript-eslint/parser@8.61.0(eslint@9.39.4(jiti@2.7.0))(typescript@5.9.3))(eslint-import-resolver-typescript@3.10.1)(eslint@9.39.4(jiti@2.7.0))
+      eslint-plugin-import: 2.32.0(@typescript-eslint/parser@8.61.0(eslint@9.39.4(jiti@2.7.0))(typescript@5.9.3))(eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.61.0(eslint@9.39.4(jiti@2.7.0))(typescript@5.9.3))(eslint@9.39.4(jiti@2.7.0)))(eslint@9.39.4(jiti@2.7.0)))(eslint@9.39.4(jiti@2.7.0))
     transitivePeerDependencies:
       - supports-color
 
-  eslint-module-utils@2.13.0(@typescript-eslint/parser@8.61.0(eslint@9.39.4(jiti@2.7.0))(typescript@5.9.3))(eslint-import-resolver-node@0.3.10)(eslint-import-resolver-typescript@3.10.1)(eslint@9.39.4(jiti@2.7.0)):
+  eslint-module-utils@2.13.0(@typescript-eslint/parser@8.61.0(eslint@9.39.4(jiti@2.7.0))(typescript@5.9.3))(eslint-import-resolver-node@0.3.10)(eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.61.0(eslint@9.39.4(jiti@2.7.0))(typescript@5.9.3))(eslint@9.39.4(jiti@2.7.0)))(eslint@9.39.4(jiti@2.7.0)))(eslint@9.39.4(jiti@2.7.0)):
     dependencies:
       debug: 3.2.7
     optionalDependencies:
       '@typescript-eslint/parser': 8.61.0(eslint@9.39.4(jiti@2.7.0))(typescript@5.9.3)
       eslint: 9.39.4(jiti@2.7.0)
       eslint-import-resolver-node: 0.3.10
-      eslint-import-resolver-typescript: 3.10.1(eslint-plugin-import@2.32.0)(eslint@9.39.4(jiti@2.7.0))
+      eslint-import-resolver-typescript: 3.10.1(eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.61.0(eslint@9.39.4(jiti@2.7.0))(typescript@5.9.3))(eslint@9.39.4(jiti@2.7.0)))(eslint@9.39.4(jiti@2.7.0))
     transitivePeerDependencies:
       - supports-color
 
-  eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.61.0(eslint@9.39.4(jiti@2.7.0))(typescript@5.9.3))(eslint-import-resolver-typescript@3.10.1)(eslint@9.39.4(jiti@2.7.0)):
+  eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.61.0(eslint@9.39.4(jiti@2.7.0))(typescript@5.9.3))(eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.61.0(eslint@9.39.4(jiti@2.7.0))(typescript@5.9.3))(eslint@9.39.4(jiti@2.7.0)))(eslint@9.39.4(jiti@2.7.0)))(eslint@9.39.4(jiti@2.7.0)):
     dependencies:
       '@rtsao/scc': 1.1.0
       array-includes: 3.1.9
@@ -4927,7 +4983,7 @@ snapshots:
       doctrine: 2.1.0
       eslint: 9.39.4(jiti@2.7.0)
       eslint-import-resolver-node: 0.3.10
-      eslint-module-utils: 2.13.0(@typescript-eslint/parser@8.61.0(eslint@9.39.4(jiti@2.7.0))(typescript@5.9.3))(eslint-import-resolver-node@0.3.10)(eslint-import-resolver-typescript@3.10.1)(eslint@9.39.4(jiti@2.7.0))
+      eslint-module-utils: 2.13.0(@typescript-eslint/parser@8.61.0(eslint@9.39.4(jiti@2.7.0))(typescript@5.9.3))(eslint-import-resolver-node@0.3.10)(eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.61.0(eslint@9.39.4(jiti@2.7.0))(typescript@5.9.3))(eslint@9.39.4(jiti@2.7.0)))(eslint@9.39.4(jiti@2.7.0)))(eslint@9.39.4(jiti@2.7.0))
       hasown: 2.0.4
       is-core-module: 2.16.2
       is-glob: 4.0.3
@@ -5796,6 +5852,24 @@ snapshots:
       node-emoji: 2.2.0
       qrcode-svg: 1.1.0
 
+  orz-markdown@2.5.0:
+    dependencies:
+      '@traptitech/markdown-it-katex': 3.6.0
+      '@types/markdown-it': 14.1.2
+      katex: 0.16.47
+      markdown-it: 14.3.3
+      markdown-it-anchor: 9.2.0(@types/markdown-it@14.1.2)(markdown-it@14.3.3)
+      markdown-it-cjk-breaks: 2.0.1
+      markdown-it-container: 4.0.0
+      markdown-it-footnote: 4.0.0
+      markdown-it-ins: 4.0.0
+      markdown-it-mark: 4.0.0
+      markdown-it-sub: 2.0.0
+      markdown-it-sup: 2.0.0
+      markdown-it-task-lists: 2.1.1
+      node-emoji: 2.2.0
+      qrcode-svg: 1.1.0
+
   orz-mdhtml-browser@1.1.0: {}
 
   orz-mdhtml@0.9.0(@types/markdown-it@14.1.2):
@@ -5803,6 +5877,12 @@ snapshots:
       orz-markdown: 1.6.0(@types/markdown-it@14.1.2)
     transitivePeerDependencies:
       - '@types/markdown-it'
+
+  orz-mdhtml@1.1.0:
+    dependencies:
+      orz-markdown: 2.5.0
+    transitivePeerDependencies:
+      - playwright-core
 
   orz-paged-browser@1.1.0: {}
 
@@ -5813,6 +5893,20 @@ snapshots:
     transitivePeerDependencies:
       - '@types/markdown-it'
 
+  orz-paged@1.1.0:
+    dependencies:
+      orz-markdown: 2.5.0
+    transitivePeerDependencies:
+      - playwright-core
+
+  orz-site@0.1.0(orz-markdown@2.5.0)(orz-mdhtml@1.1.0)(orz-paged@1.1.0)(orz-slides@1.1.0):
+    dependencies:
+      orz-markdown: 2.5.0
+    optionalDependencies:
+      orz-mdhtml: 1.1.0
+      orz-paged: 1.1.0
+      orz-slides: 1.1.0
+
   orz-slides-browser@1.1.0: {}
 
   orz-slides@0.8.2(@types/markdown-it@14.1.2):
@@ -5821,6 +5915,13 @@ snapshots:
       reveal.js: 5.2.1
     transitivePeerDependencies:
       - '@types/markdown-it'
+
+  orz-slides@1.1.0:
+    dependencies:
+      orz-markdown: 2.5.0
+      reveal.js: 5.2.1
+    transitivePeerDependencies:
+      - playwright-core
 
   own-keys@1.0.1:
     dependencies:
