@@ -99,6 +99,12 @@ export default async function WorkspacePage({ searchParams }: { searchParams: Pr
           <h2 className="text-lg font-medium text-ink">New course (new workspace, testing)</h2>
           <p className="mt-1 text-sm text-muted">Creates the course's own private repository in your GitHub account; documents open in the new editor and sync on their own.</p>
           {v3 && V3_NOTICE[v3] ? <p className="mt-2 text-sm text-red-700" role="alert">{V3_NOTICE[v3]}</p> : null}
+          {v3 === "connect" && process.env["GITHUB_APP_SLUG"] ? (
+            <p className="mt-1 text-sm">
+              <a className="underline" href={`https://github.com/apps/${process.env["GITHUB_APP_SLUG"]}/installations/new`}>Connect GitHub</a>
+              {" "}— choose your account; if the App is already installed there, open its settings and press Save. You come back here when it's done.
+            </p>
+          ) : null}
           <form action={createCourseV3Action} className="mt-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
             <input name="title" required placeholder="Course title" className="input flex-1" />
             <input name="chapter" placeholder="First chapter (optional)" className="input flex-1" />
