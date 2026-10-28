@@ -213,8 +213,9 @@ class GovernedProvider implements AIProvider {
       kind: this.ctx.kind,
       provider: this.inner.name,
       model: result.model,
-      prompt: routed.prompt,
-      output: result.text,
+      // No prompt or answer storage (design §11.1, C2): who, what kind, which model, how many tokens.
+      prompt: null,
+      output: null,
       input_tokens: result.usage?.inputTokens ?? null,
       output_tokens: result.usage?.outputTokens ?? null,
     });

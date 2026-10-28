@@ -18,6 +18,12 @@ importers:
         specifier: ^4.1.8
         version: 4.1.8(@types/node@22.19.21)(vite@8.0.16(@types/node@22.19.21)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.4))
 
+  apps/gateway:
+    dependencies:
+      postgres:
+        specifier: ^3.4.9
+        version: 3.4.9
+
   apps/web:
     dependencies:
       '@alembic/a11y':
