@@ -74,9 +74,14 @@ export default async function AdminPage() {
           <h1 className="font-serif text-3xl tracking-tight text-ink">Admin &amp; operations</h1>
           <p className="mt-1 text-muted">Study readiness — status, research export, reports.</p>
         </div>
-        <Link href="/admin/users" className="btn btn-ghost btn-sm">
-          Users →
-        </Link>
+<span className="flex gap-1">
+          <Link href="/admin/credit" className="btn btn-ghost btn-sm">
+            AI credit →
+          </Link>
+          <Link href="/admin/users" className="btn btn-ghost btn-sm">
+            Users →
+          </Link>
+        </span>
       </header>
 
       <section className="grid grid-cols-1 gap-3 sm:grid-cols-3">
