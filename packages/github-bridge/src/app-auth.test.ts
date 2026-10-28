@@ -132,3 +132,14 @@ describe("lookupGithubUser", () => {
     await expect(lookupGithubUser("rate", reply(403, {}))).rejects.toThrow();
   });
 });
+
+describe("findUserInstallation", () => {
+  const reply = (status: number, body: unknown): FetchLike => async () => ({ ok: status < 300, status, json: async () => body, text: async () => JSON.stringify(body) });
+  it("returns the installation with its account, or null when not installed", async () => {
+    const { findUserInstallation } = await import("./app-auth");
+    expect(await findUserInstallation({ appId: "1", privateKey: pem, login: "fishdream25", fetchImpl: reply(200, { id: 176234555, account: { login: "fishdream25", type: "User", id: 218741430 } }) }))
+      .toEqual({ id: 176234555, account: { login: "fishdream25", type: "User", id: 218741430 } });
+    expect(await findUserInstallation({ appId: "1", privateKey: pem, login: "nobody", fetchImpl: reply(404, {}) })).toBeNull();
+    expect(await findUserInstallation({ appId: "1", privateKey: pem, login: "../x", fetchImpl: reply(200, {}) })).toBeNull();
+  });
+});

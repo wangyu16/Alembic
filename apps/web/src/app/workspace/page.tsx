@@ -2,7 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createPackageAction } from "./actions";
-import { createCourseV3Action } from "./v3-actions";
+import { connectGithubAction, createCourseV3Action } from "./v3-actions";
 import { v3Enabled } from "@/lib/db";
 import { reconcileArchivedPackages } from "./lifecycle-actions";
 import { PackageActions } from "./_components/package-actions";
@@ -37,7 +37,9 @@ const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 const V3_NOTICE: Record<string, string> = {
   missing: "Give the course a title and choose a licence.",
-  connect: "Connect GitHub first: install the Alembic App on your account, then try again.",
+  connect: "Connect GitHub first, then create the course again.",
+  connected: "GitHub is connected. You can create the course now.",
+  "not-yours": "That GitHub installation belongs to another account. Sign in with the account the App is installed on.",
   unconfigured: "GitHub isn't set up on this server.",
   failed: "The course couldn't be created. Please try again.",
 };
@@ -98,12 +100,12 @@ export default async function WorkspacePage({ searchParams }: { searchParams: Pr
         <section className="panel p-6">
           <h2 className="text-lg font-medium text-ink">New course (new workspace, testing)</h2>
           <p className="mt-1 text-sm text-muted">Creates the course's own private repository in your GitHub account; documents open in the new editor and sync on their own.</p>
-          {v3 && V3_NOTICE[v3] ? <p className="mt-2 text-sm text-red-700" role="alert">{V3_NOTICE[v3]}</p> : null}
-          {v3 === "connect" && process.env["GITHUB_APP_SLUG"] ? (
-            <p className="mt-1 text-sm">
-              <a className="underline" href={`https://github.com/apps/${process.env["GITHUB_APP_SLUG"]}/installations/new`}>Connect GitHub</a>
-              {" "}— choose your account; if the App is already installed there, open its settings and press Save. You come back here when it's done.
-            </p>
+          {v3 && V3_NOTICE[v3] ? <p className={`mt-2 text-sm ${v3 === "connected" ? "text-green-700" : "text-red-700"}`} role={v3 === "connected" ? "status" : "alert"}>{V3_NOTICE[v3]}</p> : null}
+          {v3 === "connect" || v3 === "not-yours" ? (
+            <form action={connectGithubAction} className="mt-2">
+              <button type="submit" className="btn btn-ghost btn-sm">Connect GitHub</button>
+              <span className="ml-2 text-sm text-muted">Finds the Alembic App on your own GitHub account, or takes you to install it.</span>
+            </form>
           ) : null}
           <form action={createCourseV3Action} className="mt-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
             <input name="title" required placeholder="Course title" className="input flex-1" />

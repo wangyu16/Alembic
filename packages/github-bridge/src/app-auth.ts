@@ -235,3 +235,30 @@ export async function lookupGithubUser(
   if (typeof data.id !== "number" || typeof data.login !== "string" || data.type !== "User") return null;
   return { id: String(data.id), login: data.login };
 }
+
+/**
+ * The App's installation on a user account, asked as the App (JWT), or null if
+ * the App isn't installed there (GET /users/{login}/installation). Used to
+ * connect an account where the App is already installed, which GitHub does
+ * not redirect back for.
+ */
+export async function findUserInstallation(opts: {
+  appId: string;
+  privateKey: string;
+  login: string;
+  fetchImpl?: FetchLike;
+  nowMs?: number;
+}): Promise<{ id: number; account: { login: string; type: string; id: number | null } } | null> {
+  if (!/^[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38}$/.test(opts.login)) return null;
+  const jwt = mintAppJwt(opts.appId, opts.privateKey, opts.nowMs);
+  const f = opts.fetchImpl ?? defaultFetch;
+  const res = await f(`https://api.github.com/users/${encodeURIComponent(opts.login)}/installation`, {
+    method: "GET",
+    headers: { Authorization: `Bearer ${jwt}`, Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" },
+  });
+  if (res.status === 404) return null;
+  if (!res.ok) throw new GitHubError("Could not look up the installation", res.status, await res.text().catch(() => undefined));
+  const d = (await res.json()) as { id?: unknown; account?: { login?: unknown; type?: unknown; id?: unknown } };
+  if (typeof d.id !== "number" || typeof d.account?.login !== "string") return null;
+  return { id: d.id, account: { login: d.account.login, type: String(d.account.type ?? ""), id: typeof d.account.id === "number" ? d.account.id : null } };
+}

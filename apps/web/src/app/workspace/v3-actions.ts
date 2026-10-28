@@ -3,6 +3,8 @@
 import { redirect } from "next/navigation";
 import { LicenseSchema } from "@alembic/package-contract";
 import { createCourseRepoV3 } from "@alembic/package-ops";
+import { findUserInstallation } from "@alembic/github-bridge";
+import { githubUserIdOf, installationOwnership } from "@/lib/github-installation-owner";
 import { clientForInstallation, githubConfig } from "@/lib/github";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
@@ -72,4 +74,36 @@ export async function createCourseV3Action(formData: FormData): Promise<void> {
     if (text !== null) await recordDocVersion(created.packageId, guide, text, created.head);
   }
   redirect(`/workspace/${created.packageId}/course`);
+}
+
+/**
+ * Connect GitHub without relying on GitHub's redirect (it doesn't come back
+ * for an account where the App is already installed): ask GitHub, as the App,
+ * for the installation on the person's own account and record it if it is
+ * theirs (same ownership check as /api/github/installed). Not installed yet →
+ * GitHub's install page, whose redirect records it.
+ */
+export async function connectGithubAction(): Promise<void> {
+  const supabase = await createSupabaseServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect("/signin");
+  const cfg = githubConfig();
+  const admin = createServiceClient();
+  if (!cfg || !admin) redirect("/workspace?v3=unconfigured");
+  const gh = (user.identities ?? []).find((i) => i.provider === "github");
+  const login = typeof gh?.identity_data?.["user_name"] === "string" ? (gh.identity_data["user_name"] as string) : null;
+  const install = `https://github.com/apps/${cfg.appSlug}/installations/new`;
+  if (!login) redirect(install);
+  let found: Awaited<ReturnType<typeof findUserInstallation>> = null;
+  try {
+    found = await findUserInstallation({ appId: cfg.appId, privateKey: cfg.privateKey, login });
+  } catch {
+    redirect("/workspace?v3=failed");
+  }
+  if (!found) redirect(install);
+  if (installationOwnership(found.account, githubUserIdOf(user)) !== "own") redirect("/workspace?v3=not-yours");
+  await admin.from("profiles").update({ github_installation_id: found.id, github_username: found.account.login }).eq("id", user.id);
+  redirect("/workspace?v3=connected");
 }
