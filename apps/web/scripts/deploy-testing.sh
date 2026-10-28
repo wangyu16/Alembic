@@ -20,7 +20,7 @@ find $OUT -path "*sharp*darwin*" -prune -exec rm -rf {} +   # macOS-only image b
 BUILD=$(cat .next/BUILD_ID)
 # A tar stream into a fresh folder, then a swap: the VM never runs a half-copied app.
 # (macOS's openrsync silently skipped files in this tree.)
-tar -C $OUT -czf - . | "${SSH[@]}" $VM 'rm -rf ~/alembic-testing/web.new && mkdir -p ~/alembic-testing/web.new && tar -xzf - -C ~/alembic-testing/web.new'
+COPYFILE_DISABLE=1 tar --no-xattrs -C $OUT -czf - . | "${SSH[@]}" $VM 'rm -rf ~/alembic-testing/web.new && mkdir -p ~/alembic-testing/web.new && tar -xzf - -C ~/alembic-testing/web.new'
 rm -rf $OUT
 "${SSH[@]}" $VM "set -e; cd ~/alembic-testing
   [ \"\$(cat web.new/apps/web/.next/BUILD_ID)\" = \"$BUILD\" ] || { echo 'copy incomplete; keeping the running version'; exit 1; }
