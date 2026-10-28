@@ -14,14 +14,14 @@ export type NeedsYouKind =
   | "approve" | "question" | "to-confirm" | "problem" | "review" | "edited-elsewhere"
   | "both-changed" | "suggestion" | "update" | "ready" | "credit" | "method-version" | "reconnect";
 
-const RANK: Record<NeedsYouKind, number> = {
+export const NEEDS_YOU_RANK: Record<NeedsYouKind, number> = {
   approve: 0,
   problem: 1, "both-changed": 1, reconnect: 1, credit: 1,
   question: 2, "to-confirm": 2,
   review: 3, "edited-elsewhere": 3, suggestion: 3, update: 3, ready: 3, "method-version": 3,
 };
 
-const LABEL: Record<NeedsYouKind, string> = {
+export const NEEDS_YOU_LABEL: Record<NeedsYouKind, string> = {
   approve: "Approve",
   question: "Question from the agent",
   "to-confirm": "Please confirm",
@@ -74,7 +74,7 @@ interface Ranked { course: DigestCourse; item: DigestItem }
 export function rankItems(courses: DigestCourse[]): Ranked[] {
   return courses
     .flatMap((course) => course.items.map((item) => ({ course, item })))
-    .sort((a, b) => RANK[a.item.kind] - RANK[b.item.kind] || a.item.createdAt.localeCompare(b.item.createdAt));
+    .sort((a, b) => NEEDS_YOU_RANK[a.item.kind] - NEEDS_YOU_RANK[b.item.kind] || a.item.createdAt.localeCompare(b.item.createdAt));
 }
 
 export function buildDigest(input: DigestInput): Email {
@@ -108,7 +108,7 @@ export function buildDigest(input: DigestInput): Email {
       if (chapter) { text.push(`  ${chapter}`); html.push(`<h3 style="font-size:14px">${esc(chapter)}</h3>`); }
       html.push("<ul>");
       for (const item of items) {
-        const line = item.title ? `${LABEL[item.kind]}: ${item.title}` : LABEL[item.kind];
+        const line = item.title ? `${NEEDS_YOU_LABEL[item.kind]}: ${item.title}` : NEEDS_YOU_LABEL[item.kind];
         const one = item.canDecide === false ? undefined : ONE_CLICK[item.kind];
         const link = one ? input.actionLink(item, one.action) : null;
         text.push(`  - ${line}${link ? ` (${one!.label}: ${link})` : ""}`);
