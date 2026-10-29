@@ -20,6 +20,8 @@ import { activeProfile, fileKind, isSvgPath, MAX_UPLOAD_BYTES, unitPartForPath }
 
 /** At most this many pushed files are fetched to check per push (the rest are checked again at Publish). */
 const MAX_PUSH_CHECKS = 50;
+/** A push that fails this many times is set aside (marked processed with its error) instead of blocking the line. */
+const MAX_EVENT_ATTEMPTS = 10;
 
 export interface DoorCConfig { sql: SqlClient; appId: string; privateKey: string; log?: (m: string) => void }
 
@@ -39,7 +41,7 @@ export async function doorCPass(cfg: DoorCConfig): Promise<number> {
   await sql.query(`update public.github_events set processed_at = now() where processed_at is null and event <> 'push'`);
   const { rows } = await sql.query<Ev>(
     `select delivery_id, repo_full_name, ref, before_sha, after_sha, forced, pusher_login, commit_ids
-       from public.github_events where processed_at is null and event = 'push' order by received_at limit 20`);
+       from public.github_events where processed_at is null and event = 'push' order by attempts, received_at limit 20`);
   let n = 0;
   for (const ev of rows) {
     try {
@@ -47,7 +49,13 @@ export async function doorCPass(cfg: DoorCConfig): Promise<number> {
       await done(sql, ev.delivery_id);
       n++;
     } catch (e) {
-      cfg.log?.(`door C ${ev.delivery_id}: ${(e as Error).message}`); // left unprocessed: tried again next pass
+      // Tried again next pass, behind the others; after MAX_EVENT_ATTEMPTS it is set aside with its error (audit r2 L6).
+      const msg = (e as Error).message.slice(0, 500);
+      cfg.log?.(`door C ${ev.delivery_id}: ${msg}`);
+      await sql.query(
+        `update public.github_events set attempts = attempts + 1, last_error = $2,
+                processed_at = case when attempts + 1 >= $3 then now() else null end where delivery_id = $1`,
+        [ev.delivery_id, msg, MAX_EVENT_ATTEMPTS]).catch(() => {});
     }
   }
   return n;

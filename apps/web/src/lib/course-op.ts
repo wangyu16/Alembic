@@ -9,10 +9,11 @@ import { randomUUID } from "node:crypto";
 import { SqlQueueStore, type CourseOp } from "@alembic/package-ops";
 import { directDb } from "./db";
 
-export async function queueCourseOp(packageId: string, actorId: string, op: CourseOp, tag: string = op.op): Promise<boolean> {
+export async function queueCourseOp(packageId: string, actorId: string, op: CourseOp, tag: string = op.op, key?: string): Promise<boolean> {
   const sql = directDb();
   if (!sql) return false;
-  await new SqlQueueStore(sql).insert({ packageId, kind: "courseop", idem: `${tag}:${randomUUID()}`, actorId, payload: { files: [], op } });
+  // `key`: a stable request key, so the same request twice is one row (e.g. Restore from one Needs-you item).
+  await new SqlQueueStore(sql).insert({ packageId, kind: "courseop", idem: `${tag}:${key ?? randomUUID()}`, actorId, payload: { files: [], op } });
   return true;
 }
 

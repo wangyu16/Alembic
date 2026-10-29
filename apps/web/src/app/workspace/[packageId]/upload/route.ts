@@ -35,9 +35,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ package
   if (!role) return json(404, { ok: false, message: "Not found." });
   const sql = directDb();
   if (!sql) return json(503, { ok: false, message: "Files can't be added right now." });
-  const path = decodeURIComponent(req.headers.get("x-alembic-path") ?? "");
+  const header = (name: string) => { try { return decodeURIComponent(req.headers.get(name) ?? ""); } catch { return null; } };
+  const path = header("x-alembic-path");
   // The document the figure is added from: a private document's figures must stay private (round 1 audit H2).
-  const fromDoc = decodeURIComponent(req.headers.get("x-alembic-doc") ?? "");
+  const fromDoc = header("x-alembic-doc");
+  if (path === null || fromDoc === null) return json(400, { ok: false, message: "That file name can't be used." });
   const baseBlob = req.headers.get("x-alembic-base-blob");
   if (baseBlob !== null && !/^[0-9a-f]{40}$/.test(baseBlob)) return json(400, { ok: false, message: "Bad request." });
   // Every attempt counts (round 1 audit M1: re-sending the same file used to add no ledger row).

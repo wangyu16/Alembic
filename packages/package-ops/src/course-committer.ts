@@ -419,6 +419,7 @@ async function decideFilesOnTree(row: QueueRow, store: QueueStore, repo: Working
     if (restoring) break;
     const kind = fileKind(f.path);
     if (!f.blob && !f.movedFrom && f.text !== null) {
+      if (kind === null) return { refused: `${f.path}: not a kind of file this course can hold` };
       if (kind !== "text") return { refused: `${f.path}: a picture can't be saved as text` };
       if (isSvgPath(f.path)) {
         const problems = svgProblems(f.text);

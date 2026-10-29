@@ -76,3 +76,40 @@ content profile).
 - **Edits pushed to GitHub by collaborators may change chapter order and mode.** That's deliberate under §13.6: collaborators on GitHub are the owner's choice.
 
 **Lesson:** pattern checks for security are only as good as their adversarial corpus; the payloads are now a regression test.
+
+## Round 2 audit (2026-10-29)
+
+**2 HIGH, 2 MEDIUM, 3 LOW.** All are fixed.
+
+**Round 1's fixes, checked:**
+- **Held:** H2, M2, M3, M4, M5, L1, L3, L5.
+- **Not held:**
+  - **H1:** still bypassable (below).
+  - **M1:** the buckets counted per server instance.
+  - **L4:** opened a regression (below).
+
+**HIGH:**
+- **H1 (K1.11):**
+  - **Was:** the regex scanner never saw tags whose namespace prefix starts with a non-ASCII letter (`<é:script>`); processing instructions (`<?xml-stylesheet href=…?>`), CSS escapes (`@\69mport`, `u\72l(`), `image-set()` and `fill="url(https://…)"` passed.
+  - **Now:** the regexes are replaced by one linear left-to-right reader:
+    - every element and end tag is checked against the allowlist by local name;
+    - comments and CDATA are skipped as XML skips them;
+    - any processing instruction but the leading `<?xml …?>` is refused, and so are `ENTITY`/`ATTLIST`/`ELEMENT` declarations and DOCTYPE subsets;
+    - a backslash anywhere in CSS is refused;
+    - every `url()`, in any attribute, must point inside the figure.
+  - All the payloads from rounds 1 and 2 are refused, and 128 of 128 real figures pass.
+- **H2:** catastrophic backtracking: 80 KB of `<a` took 20 s, and a 4 MB file would have taken hours, blocking the shared worker. The reader is linear, and a timing test bounds it (400 KB of hostile input in under 1.5 s each).
+
+**MEDIUM:**
+- **M3 (from L4):**
+  - **Was:** "unknown extension = text" let `.xhtml`/`.xml`/`.xsl`/`.js` be stored and published; Pages runs scripts in them.
+  - **Now:** an explicit text list (`md json cff txt yml yaml csv bib tex gitignore`).
+  - Plain HTML is a later, deliberate addition (FD-10), so `.html` is off the list too.
+- **M4 (M1):** the upload buckets are counted in Postgres, shared across instances.
+
+**LOW:**
+- **L5:** Restore is queued under a key derived from the item before the item is answered. A failure leaves it open; two clicks are one row.
+- **L6:** Door C counts failures per event (migration 0065). Failing events go to the back, and are set aside after 10 attempts, so they no longer starve every course.
+- **L7:** a malformed upload header is a 400, not a 500.
+
+**Found while fixing, for Coursewerk (D-126 item 9):** GenChem holds 32 saved third-party web pages under `metadata/evidence/*.html` (rights evidence). `metadata/` is a public space, so they are projected to the public copy. Whether evidence snapshots should be published at all is a content question for Coursewerk. Alembic no longer accepts edits to them.

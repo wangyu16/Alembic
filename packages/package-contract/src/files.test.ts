@@ -13,7 +13,9 @@ describe("files that aren't text (contract v3 §11.4)", () => {
     expect(fileKind("study-guide/gases.md")).toBe("text");
     expect(fileKind("assets/run.exe")).toBeNull();
     expect(fileKind("assets/page.pdf")).toBeNull();
-    expect(fileKind("metadata/refs.bib")).toBe("text"); // unknown text kinds are text (round 1 audit L4)
+    expect(fileKind("metadata/refs.bib")).toBe("text");
+    // Round 2 audit: types a browser runs scripts in are not course files.
+    for (const p of ["assets/a/x.xhtml", "assets/a/x.htm", "assets/a/x.html", "assets/a/x.xml", "assets/a/x.xsl", "assets/a/x.js"]) expect(fileKind(p), p).toBeNull();
   });
   it("[K1.11] bytes must be what they claim: a renamed file is refused", () => {
     expect(mediaProblems("png", PNG)).toEqual([]);
@@ -49,6 +51,25 @@ describe("files that aren't text (contract v3 §11.4)", () => {
       '<svg><image href="https:\\\\evil.example/x.png"/></svg>',
       '<svg><a xlink:href = " javascript:alert(1)"><text>x</text></a></svg>',
       '<svg><rect style="background:url(&#104;ttps://evil.example/x)"/></svg>',
+      // Round 2 audit: non-ASCII prefixes, processing instructions, CSS escapes and url() in presentation attributes.
+      '<svg><é:script xmlns:é="http://www.w3.org/2000/svg">alert(1)</é:script></svg>',
+      '<svg><ñ:iframe xmlns:ñ="http://www.w3.org/1999/xhtml" src="javascript:alert(1)"/></svg>',
+      '<?xml-stylesheet type="text/css" href="https://evil.example/x.css"?><svg/>',
+      '<svg><?xml-stylesheet href="https://evil.example/x.xsl"?></svg>',
+      '<svg><style>@\\69mport "https://evil.example/x.css"</style></svg>',
+      '<svg><style>rect{fill:u\\72l("https://evil.example/x")}</style></svg>',
+      '<svg><style>rect{background:image-set("https://evil.example/x" 1x)}</style></svg>',
+      '<svg><rect fill="url(https://evil.example/p.svg#g)"/></svg>',
+      '<svg><style><![CDATA[@\\000069mport "https://evil.example/x"]]></style></svg>',
+      '<svg><g',
     ]) expect(svgProblems(bad), bad).not.toEqual([]);
   });
+  it("[K1.11] the SVG check runs in linear time: crafted input can't stall the worker (round 2 audit)", () => {
+    for (const bad of ["<a".repeat(200_000), '<a "'.repeat(100_000), "<svg " + "a=".repeat(200_000), "<svg>" + "<!--".repeat(100_000)]) {
+      const t0 = performance.now();
+      svgProblems(bad);
+      expect(performance.now() - t0, `${bad.length} chars`).toBeLessThan(1500);
+    }
+  });
 });
+
