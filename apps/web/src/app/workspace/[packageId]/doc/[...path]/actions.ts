@@ -5,6 +5,7 @@ import { enqueueSync, SyncRefused } from "@alembic/package-ops";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { directDb } from "@/lib/db";
 import { courseRepo, textVersion } from "@/lib/course-v3";
+import { githubBusy } from "@/lib/github-busy";
 import type { SendResult } from "@/lib/device-save/scheduler";
 
 async function signedIn() {
@@ -38,7 +39,7 @@ export async function readCourseTextAction(packageId: string, path: string): Pro
   try { p = normalizePath(path); } catch { return null; }
   const c = await courseRepo(packageId);
   if (!c) return null;
-  return c.repo.readFile(await c.repo.head(), p);
+  return c.repo.readFile(await c.repo.head(), p).catch((e) => { if (githubBusy(e)) return null; throw e; }); // RC.12: the include shows as unavailable
 }
 
 export async function mintUidAction(): Promise<string> {
@@ -54,6 +55,6 @@ export async function readVersionAction(packageId: string, path: string, commitS
   let p: string;
   try { p = normalizePath(path); } catch { return null; }
   const c = await courseRepo(packageId);
-  const text = c ? await c.repo.readFile(commitSha, p) : null;
+  const text = c ? await c.repo.readFile(commitSha, p).catch((e) => { if (githubBusy(e)) return null; throw e; }) : null; // RC.12: the update arrives with the next one
   return text !== null && textVersion(text) === version ? text : null;
 }

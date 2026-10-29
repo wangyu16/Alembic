@@ -22,35 +22,37 @@ export function assetContentType(path: string): string | null {
 export const assetUrl = (packageId: string, path: string) =>
   `/workspace/${encodeURIComponent(packageId)}/asset/${path.split("/").map(encodeURIComponent).join("/")}`;
 
-/** How long a signed image address works. */
-export const ASSET_SIGNATURE_SECONDS = 12 * 60 * 60;
 
-const mac = (secret: string, packageId: string, path: string, exp: number) =>
-  createHmac("sha256", secret).update(`asset\n${packageId}\n${path}\n${exp}`).digest("base64url");
+const mac = (secret: string, packageId: string, path: string, blob: string, exp: number) =>
+  createHmac("sha256", secret).update(`asset\n${packageId}\n${path}\n${blob}\n${exp}`).digest("base64url");
 
-/** `?e=<expiry>&s=<signature>` for one course file. */
-export function signAsset(secret: string, packageId: string, path: string, nowSeconds = Math.floor(Date.now() / 1000)): string {
-  const exp = nowSeconds + ASSET_SIGNATURE_SECONDS;
-  return `e=${exp}&s=${mac(secret, packageId, path, exp)}`;
+/**
+ * `?b=<blob id>&e=<expiry>&s=<signature>` for one version of one course file. The expiry is rounded
+ * to whole days, so the same image keeps the same address all day and the browser can cache it (RC.9).
+ */
+export function signAsset(secret: string, packageId: string, path: string, blob: string, nowSeconds = Math.floor(Date.now() / 1000)): string {
+  const day = 86_400;
+  const exp = (Math.floor(nowSeconds / day) + 2) * day; // between 24 and 48 hours from now
+  return `b=${blob}&e=${exp}&s=${mac(secret, packageId, path, blob, exp)}`;
 }
 
-/** Is this a valid, unexpired signature for exactly this course file? */
-export function verifyAsset(secret: string, packageId: string, path: string, e: string | null, s: string | null, nowSeconds = Math.floor(Date.now() / 1000)): boolean {
-  if (!e || !s || !/^\d{1,12}$/.test(e)) return false;
+/** Is this a valid, unexpired signature for exactly this version of this course file? */
+export function verifyAsset(secret: string, packageId: string, path: string, blob: string | null, e: string | null, s: string | null, nowSeconds = Math.floor(Date.now() / 1000)): boolean {
+  if (!blob || !/^[0-9a-f]{40}$/.test(blob) || !e || !s || !/^\d{1,12}$/.test(e)) return false;
   const exp = Number(e);
-  if (exp < nowSeconds || exp > nowSeconds + ASSET_SIGNATURE_SECONDS + 60) return false;
-  const want = Buffer.from(mac(secret, packageId, path, exp));
+  if (exp < nowSeconds || exp > nowSeconds + 2 * 86_400 + 60) return false;
+  const want = Buffer.from(mac(secret, packageId, path, blob, exp));
   const got = Buffer.from(s);
   return want.length === got.length && timingSafeEqual(want, got);
 }
 
 /** Course path → signed address, for every servable file the person may see (instructor-only files only for those allowed). */
-export function assetUrlMap(packageId: string, paths: readonly string[], mayReadPrivate: boolean, secret: string): Map<string, string> {
+export function assetUrlMap(packageId: string, files: ReadonlyArray<{ path: string; sha: string }>, mayReadPrivate: boolean, secret: string): Map<string, string> {
   const out = new Map<string, string>();
-  for (const p of paths) {
-    if (!assetContentType(p)) continue;
-    if (p.startsWith("private/") && !mayReadPrivate) continue;
-    out.set(p, `${assetUrl(packageId, p)}?${signAsset(secret, packageId, p)}`);
+  for (const f of files) {
+    if (!assetContentType(f.path)) continue;
+    if (f.path.startsWith("private/") && !mayReadPrivate) continue;
+    out.set(f.path, `${assetUrl(packageId, f.path)}?${signAsset(secret, packageId, f.path, f.sha)}`);
   }
   return out;
 }

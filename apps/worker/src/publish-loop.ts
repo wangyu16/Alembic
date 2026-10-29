@@ -5,7 +5,7 @@
  * outcome on the request. The public repo is generated from the public
  * template on the first Publish. The request id is the run id.
  */
-import { CompareIncompleteError, fetchPublicRepoBytes, fetchPublicTree, GitHubClient, GitHubError, installationTokenSource, type ChainFile, type RepoCoords } from "@alembic/github-bridge";
+import { CompareIncompleteError, fetchPublicRepoBytes, fetchPublicTree, GitHubClient, GitHubError, installationTokenSource, treeReader, type ChainFile, type RepoCoords } from "@alembic/github-bridge";
 import {
   classifyBytes,
   copyChecks,
@@ -181,22 +181,8 @@ async function publishRun(cfg: PublishConfig, req: Claimed): Promise<PublishOutc
 }
 
 /** The working repo pinned at W (every read is at that commit). */
-/**
- * A repo's files at a commit, from ONE archive request, kept for the run
- * (RC.11): a 19-chapter course is ~330 files, and per-file reads spent the
- * owner's hourly GitHub budget in a few Publishes.
- */
-export function archiveReader(client: Pick<GitHubClient, "getTreeArchive">, coords: RepoCoords) {
-  const bySha = new Map<string, Promise<Map<string, Uint8Array>>>();
-  return async (sha: string, path: string): Promise<Uint8Array | null> => {
-    let a = bySha.get(sha);
-    if (!a) { a = client.getTreeArchive(coords, sha); bySha.set(sha, a); a.catch(() => bySha.delete(sha)); }
-    return (await a).get(path) ?? null;
-  };
-}
-
 function workingSide(client: GitHubClient, coords: RepoCoords, W: string): WorkingSide {
-  const read = archiveReader(client, coords);
+  const read = treeReader(client, coords); // one archive, or blob by blob for a big course (RC.11, RC.18)
   return {
     async head() { return W; },
     async listTree(sha) {
@@ -221,10 +207,10 @@ function publicSide(o: {
     if (!c || !co) throw new Error("the public repository doesn't exist yet");
     return { c, co };
   };
-  let pubRead: ReturnType<typeof archiveReader> | null = null;
+  let pubRead: ReturnType<typeof treeReader> | null = null;
   const readPub = (sha: string, path: string) => {
     const { c, co } = need();
-    pubRead ??= archiveReader(c, co);
+    pubRead ??= treeReader(c, co);
     return pubRead(sha, path);
   };
   const tree = async (sha: string) => {

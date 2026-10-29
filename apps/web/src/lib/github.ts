@@ -169,7 +169,8 @@ export async function clientForCourse(
     courseTokens.set(key, tokens);
   }
   await tokens.token();
-  return { client: new GitHubClient(tokens), owner: scope.owner, repos: scope.names };
+  // A page never sleeps through GitHub's rate-limit wait (up to a minute): it shows the busy page instead (RC.12).
+  return { client: new GitHubClient(tokens, undefined, { retry: { maxWaitMs: 3_000 } }), owner: scope.owner, repos: scope.names };
 }
 
 const courseTokens = new Map<string, ReturnType<typeof installationTokenSource>>();

@@ -11,7 +11,7 @@
  */
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { SyncScheduler, statusLabel, type SendResult, type SyncStatus } from "@/lib/device-save/scheduler";
-import { IndexedDbDraftStore, draftKey, requestPersistentStorage, type DraftStore } from "@/lib/device-save/store";
+import { IndexedDbDraftStore, draftKey, requestPersistentStorage, resumeFrom, type DraftStore } from "@/lib/device-save/store";
 import { diffEdit, loadKit, type OrzEditor, type OrzKind } from "./kit";
 import { mergeRemote } from "./merge";
 import { makeHooks } from "./hooks";
@@ -52,6 +52,7 @@ export const EmbeddedEditor = forwardRef<EmbeddedEditorHandle, EmbeddedEditorPro
   const baseText = useRef<string>(p.text); // the text of `base`: the merge base for others' changes
   const [conflict, setConflict] = useState<string | null>(null);
   const quiet = useRef(false); // the next change event is a remote update, not typing
+  const lastSent = useRef<string | null>(null); // our own text the course accepted last (its echo is not someone else's change)
   const props = useRef(p);
   props.current = p;
 
@@ -59,6 +60,13 @@ export const EmbeddedEditor = forwardRef<EmbeddedEditorHandle, EmbeddedEditorPro
     applyRemote(text: string, version: string) {
       const e = editor.current;
       if (!e || version === base.current) return;
+      // Our own sync coming back (RC.17): move the merge base forward; typing since then is based on it.
+      if (text === lastSent.current) {
+        base.current = version;
+        baseText.current = text;
+        scheduler.current?.rebase(version);
+        return;
+      }
       const local = e.getText();
       const m = mergeRemote(baseText.current, local, text);
       if (!m.applied) {
@@ -96,11 +104,12 @@ export const EmbeddedEditor = forwardRef<EmbeddedEditorHandle, EmbeddedEditorPro
       send: (d, syncId) => props.current.sync({ packageId: c.packageId, path: c.docPath, text: d.text, baseVersion: d.baseVersion, syncId }),
       onStatus: (x) => { statusRef.current = x.kind; if (!disposed) setStatus(x); },
       onSynced: (d) => {
+        lastSent.current = d.text;
         // The editor's own bar says Saved only once the course has this text (RC.13).
         if (editor.current?.getText() === d.text) editor.current.markSaved();
         // Private text leaves the device once it is in the course (design §7.1).
         void store.get(key).then((cur) => {
-          if (cur && cur.text === d.text) return c.isPrivate ? store.delete(key) : store.put({ ...cur, savedAt: Date.now() });
+          if (cur && cur.text === d.text) return c.isPrivate ? store.delete(key) : store.put({ ...cur, savedAt: Date.now(), synced: true });
         });
       },
     });
@@ -108,16 +117,16 @@ export const EmbeddedEditor = forwardRef<EmbeddedEditorHandle, EmbeddedEditorPro
 
     const keep = (text: string) => {
       s.edit({ text, baseVersion: base.current });
-      return store.put({ key, text, baseVersion: base.current, savedAt: Date.now(), private: c.isPrivate });
+      return store.put({ key, text, baseVersion: base.current, savedAt: Date.now(), private: c.isPrivate, synced: false });
     };
 
     void (async () => {
       try {
         const kit = await loadKit(c.kind);
         if (disposed || !host.current) return;
-        // Unsynced text from an earlier visit on this device wins over the synced copy.
-        const kept = await store.get(key);
-        const startText = kept && kept.baseVersion === c.baseVersion ? kept.text : c.text;
+        // Text from an earlier visit that never reached the course wins, and is sent again (RC.17).
+        const resume = resumeFrom(await store.get(key), { text: c.text, version: c.baseVersion });
+        const startText = resume.text;
         const e = kit.mountEditor(host.current, {
           text: startText,
           mode: "split",
@@ -139,7 +148,7 @@ export const EmbeddedEditor = forwardRef<EmbeddedEditorHandle, EmbeddedEditorPro
           // Kept on the device at once; the editor's bar says Saved only when the course has it (onSynced).
           void keep(text);
         });
-        if (startText !== c.text) s.edit({ text: startText, baseVersion: c.baseVersion });
+        if (resume.pending) s.edit(resume.pending);
       } catch (err) {
         if (!disposed) setFailed((err as Error).message || "The editor could not load.");
       }

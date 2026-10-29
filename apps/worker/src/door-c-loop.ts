@@ -13,7 +13,7 @@
  *   again, and an urgent item names the pusher (§4 force-push restore).
  */
 import { createHash } from "node:crypto";
-import { CompareIncompleteError, GitHubClient, GitHubError, installationTokenSource, type RepoCoords } from "@alembic/github-bridge";
+import { CompareIncompleteError, GitHubClient, GitHubError, installationTokenSource, treeReader, type RepoCoords } from "@alembic/github-bridge";
 import { editActionForPath } from "@alembic/package-contract";
 import { classifyOutside, mapLimit, outsideCommits, READ_CONCURRENCY, SqlQueueStore, undoKey, type SqlClient } from "@alembic/package-ops";
 
@@ -79,8 +79,10 @@ async function handlePush(cfg: DoorCConfig, ev: Ev): Promise<void> {
   if (verdict.undo.length) {
     const files = [];
     for (const u of verdict.undo) {
-      // Restore what the course held before this push (absent then → remove it now).
-      const before = await client.getFileAtRef(coords, u.path, ev.before_sha).catch(() => null);
+      // Restore what the course held before this push (absent then → remove it now). Only a real 404 means
+      // absent (getFileAtRef returns null for it); any other failure leaves the event to be retried, so a
+      // rate limit or outage never turns into deleting the file (audit r2 #6).
+      const before = await client.getFileAtRef(coords, u.path, ev.before_sha);
       files.push({ path: u.path, baseVersion: null, text: before });
     }
     await new SqlQueueStore(sql).insert({
@@ -97,7 +99,13 @@ async function handlePush(cfg: DoorCConfig, ev: Ev): Promise<void> {
   // The new versions are the merge bases for later syncs (read 8 at a time).
   const statusOf = new Map(changed.map((c) => [c.path, c.status]));
   const texts = verdict.edits.filter((p) => statusOf.get(p) !== "removed" && TEXT.test(p));
-  const read = await mapLimit(texts, READ_CONCURRENCY, (p) => client.getFileAtRef(coords, p, ev.after_sha!));
+  // Many files (a course moved in by hand): the whole tree in one archive request instead of one per file.
+  const many = texts.length > EDITED_ITEMS_MAX ? treeReader(client, coords) : null;
+  const read = await mapLimit(texts, READ_CONCURRENCY, async (p) => {
+    if (!many) return client.getFileAtRef(coords, p, ev.after_sha!);
+    const b = await many(ev.after_sha!, p);
+    return b === null ? null : new TextDecoder().decode(b);
+  });
   for (const [k, path] of texts.entries()) {
     const text = read[k];
     if (text != null) {

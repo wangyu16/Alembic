@@ -913,10 +913,10 @@ export class GitHubClient {
    * unpacked. Counts as one request against the installation's hourly budget.
    */
   async getTreeArchive(coords: RepoCoords, ref: string, maxBytes = 200 * 1024 * 1024): Promise<Map<string, Uint8Array>> {
-    const get = async (token: string) => this.fetchImpl(`https://api.github.com/repos/${coords.owner}/${coords.repo}/tarball/${encodeURIComponent(ref)}`, {
+    const get = async (token: string) => sendWithRetry(this.fetchImpl, `https://api.github.com/repos/${coords.owner}/${coords.repo}/tarball/${encodeURIComponent(ref)}`, {
       method: "GET",
       headers: { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" },
-    });
+    }, { replayable: true, policy: this.retry });
     let res = await get(await this.tokens.token());
     if (res.status === 401) { const fresh = await this.tokens.refresh(); if (fresh !== null) res = await get(fresh); }
     if (!res.ok || !res.arrayBuffer) {
@@ -949,4 +949,46 @@ export class GitHubClient {
     const bytes = await this.getFileBytesAtRef(coords, path, ref);
     return bytes === null ? null : Buffer.from(bytes).toString("utf8");
   }
+}
+
+/**
+ * Many files of one tree, read the cheapest safe way (RC.11, RC.18): the tree
+ * is listed once; a tree up to `archiveMaxBytes` comes in ONE archive request,
+ * a bigger one blob by blob (bounded memory). Every archived file is checked
+ * against its blob id from the tree, and read by blob id when it differs
+ * (export-ignore / export-subst attributes, LFS). Absent from the tree: null.
+ */
+export function treeReader(
+  client: Pick<GitHubClient, "listTreeEntries" | "getTreeArchive" | "getBlob">,
+  coords: RepoCoords,
+  opts: { archiveMaxBytes?: number } = {},
+) {
+  const max = opts.archiveMaxBytes ?? 80 * 1024 * 1024;
+  const trees = new Map<string, Promise<{ entries: Map<string, { sha: string; size: number }>; archive: Promise<Map<string, Uint8Array>> | null }>>();
+  const load = (sha: string) => {
+    let t = trees.get(sha);
+    if (!t) {
+      t = (async () => {
+        const listing = await client.listTreeEntries(coords, sha);
+        const entries = new Map(listing.entries.filter((e) => e.type === "blob").map((e) => [e.path, { sha: e.sha, size: e.size ?? 0 }]));
+        const total = [...entries.values()].reduce((n, e) => n + e.size, 0);
+        const archive = !listing.truncated && total <= max ? client.getTreeArchive(coords, sha, Math.ceil(total * 1.2) + 1024 * 1024) : null;
+        archive?.catch(() => trees.delete(sha));
+        return { entries, archive };
+      })();
+      t.catch(() => trees.delete(sha));
+      trees.set(sha, t);
+    }
+    return t;
+  };
+  return async (sha: string, path: string): Promise<Uint8Array | null> => {
+    const t = await load(sha);
+    const e = t.entries.get(path);
+    if (!e) return null;
+    if (t.archive) {
+      const b = (await t.archive).get(path);
+      if (b && gitBlobSha(b) === e.sha) return b;
+    }
+    return client.getBlob(coords, e.sha);
+  };
 }

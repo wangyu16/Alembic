@@ -13,7 +13,7 @@ export function githubBusy(e: unknown): { until: Date | null } | null {
 }
 
 export function GithubBusy({ until, back }: { until: Date | null; back: string }) {
-  const at = until ? until.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZoneName: "short" }) : null;
+  const at = until ? until.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/Chicago", timeZoneName: "short" }) : null;
   return (
     <main className="mx-auto max-w-xl p-6" data-testid="github-busy">
       <h1 className="text-xl font-semibold">This course is busy for a moment</h1>

@@ -33,23 +33,6 @@ describe("the website config (review r2 H-A)", () => {
   });
 });
 
-import { archiveReader } from "./publish-loop";
-
-describe("reading a course for Publish (RC.11)", () => {
-  it("[RC.11] reading every file of a 330-file course at one commit costs one archive request; a failed request isn't kept", async () => {
-    let calls = 0;
-    let fail = true;
-    const files = new Map(Array.from({ length: 330 }, (_, k) => [`study-guide/ch${k}.md`, new TextEncoder().encode(`# ${k}`)]));
-    const client = { async getTreeArchive() { calls++; if (fail) { fail = false; throw new Error("rate limited"); } return files; } };
-    const read = archiveReader(client as never, { owner: "o", repo: "r" });
-    await expect(read("W", "study-guide/ch0.md")).rejects.toThrow("rate limited");
-    const got = await Promise.all([...files.keys()].map((p) => read("W", p)));
-    expect(got.every((b) => b !== null)).toBe(true);
-    expect(await read("W", "missing.md")).toBeNull();
-    expect(calls).toBe(2); // the failed one, then one for all 330 reads
-  });
-});
-
 import { GitHubError } from "@alembic/github-bridge";
 import { failureReason } from "./publish-loop";
 

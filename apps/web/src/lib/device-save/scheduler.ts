@@ -59,6 +59,11 @@ export class SyncScheduler {
   get current(): SyncStatus { return this.status; }
   get hasUnsynced(): boolean { return this.draft !== null; }
 
+  /** The course now holds our own earlier text as `baseVersion`: unsent typing is based on it from now on (RC.17). */
+  rebase(baseVersion: string): void {
+    if (this.draft) this.draft = { ...this.draft, baseVersion };
+  }
+
   /** The person typed: `text` is already on the device. */
   edit(draft: Draft): void {
     const t = this.d.now();

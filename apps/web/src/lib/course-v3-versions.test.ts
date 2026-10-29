@@ -6,7 +6,7 @@ vi.mock("@/lib/db", () => ({ directDb: () => null }));
 import { textVersion, versionsAt } from "./course-v3";
 
 describe("plan versions on the Publish page", () => {
-  it("[RC.8] a 19-chapter page makes one tree listing per render; each file is read once ever (cached by its blob id)", async () => {
+  it("[RC.8] [RC.19] a 19-chapter page lists the tree once per commit; each file is read once ever (cached by its blob id)", async () => {
     const files: Record<string, string> = {};
     for (let k = 0; k < 19; k++) { files[`concepts/ch${k}.md`] = `map ${k}`; files[`assessment-support/ch${k}.md`] = `guide ${k}`; }
     const blobs = new Map(Object.entries(files).map(([p, t]) => [`blob-${p}`, t]));
@@ -21,6 +21,8 @@ describe("plan versions on the Publish page", () => {
     expect(first.get("concepts/missing.md")).toBeNull();
     expect(calls).toEqual({ tree: 1, blob: 38 });
     await versionsAt(client as never, { owner: "o", repo: "r" }, "H", paths);
-    expect(calls).toEqual({ tree: 2, blob: 38 }); // the second render reads no file
+    expect(calls).toEqual({ tree: 1, blob: 38 }); // a second render at the same commit asks GitHub nothing (RC.19)
+    await versionsAt(client as never, { owner: "o", repo: "r" }, "H2", paths);
+    expect(calls).toEqual({ tree: 2, blob: 38 }); // a new commit: one listing, and still no file read
   });
 });

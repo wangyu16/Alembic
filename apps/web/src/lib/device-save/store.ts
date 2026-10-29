@@ -11,6 +11,19 @@ export interface DeviceDraft {
   baseVersion: string | null;
   savedAt: number;
   private: boolean;
+  /** The course has this text (set after a sync; absent on records from before RC.17: treated as not sent). */
+  synced?: boolean;
+}
+
+/**
+ * What an opened document starts from (RC.17): text kept on this device that
+ * hasn't reached the course always wins, and is sent again with the version
+ * it was edited from, so the course merges it with what changed meanwhile.
+ * Never silently dropped because the course moved on.
+ */
+export function resumeFrom(kept: DeviceDraft | null | undefined, course: { text: string; version: string | null }): { text: string; pending: { text: string; baseVersion: string | null } | null } {
+  if (kept && kept.synced !== true && kept.text !== course.text) return { text: kept.text, pending: { text: kept.text, baseVersion: kept.baseVersion } };
+  return { text: course.text, pending: null };
 }
 
 export interface DraftStore {

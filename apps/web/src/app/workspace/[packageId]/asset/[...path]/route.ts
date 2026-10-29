@@ -2,6 +2,7 @@ import { can, normalizePath, type Role } from "@alembic/package-contract";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { courseRepo } from "@/lib/course-v3";
 import { assetContentType, assetSecret, verifyAsset } from "@/lib/course-assets";
+import { githubBusy } from "@/lib/github-busy";
 
 export const dynamic = "force-dynamic";
 const MAX_BYTES = 15 * 1024 * 1024;
@@ -19,7 +20,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ packageI
   if (!type) return new Response(null, { status: 404 });
   const url = new URL(req.url);
   const secret = assetSecret();
-  const signed = secret !== null && verifyAsset(secret, packageId, path, url.searchParams.get("e"), url.searchParams.get("s"));
+  const blob = url.searchParams.get("b");
+  const signed = secret !== null && verifyAsset(secret, packageId, path, blob, url.searchParams.get("e"), url.searchParams.get("s"));
   if (!signed) {
     const supabase = await createSupabaseServerClient();
     const { data: { user } } = await supabase.auth.getUser();
@@ -31,12 +33,19 @@ export async function GET(req: Request, { params }: { params: Promise<{ packageI
   const c = await courseRepo(packageId);
   if (!c) return new Response(null, { status: 503 });
   const coords = { owner: c.owner, repo: c.name };
-  const bytes = await c.client.getFileBytesAtRef(coords, path, await c.repo.head()).catch(() => null);
+  // A signed address names the exact version (blob id): one request, and the browser may keep it (RC.9).
+  let bytes: Uint8Array | null;
+  try {
+    bytes = signed ? await c.client.getBlob(coords, blob!) : await c.client.getFileBytesAtRef(coords, path, await c.repo.head());
+  } catch (e) {
+    if (githubBusy(e)) return new Response(null, { status: 503, headers: { "retry-after": "60" } });
+    bytes = null;
+  }
   if (!bytes || bytes.length > MAX_BYTES) return new Response(null, { status: 404 });
   const headers: Record<string, string> = {
     "content-type": type,
     "x-content-type-options": "nosniff",
-    "cache-control": "private, max-age=300",
+    "cache-control": signed ? "private, max-age=86400, immutable" : "private, max-age=300",
     "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; img-src data:; sandbox",
   };
   return new Response(Buffer.from(bytes), { headers });

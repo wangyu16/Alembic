@@ -36,7 +36,13 @@ export async function recordDocVersion(packageId: string, path: string, text: st
 export async function versionsAt(
   client: Pick<GitHubClient, "listTreeEntries" | "getBlob">, coords: RepoCoords, head: string, paths: readonly string[],
 ): Promise<Map<string, string | null>> {
-  const tree = await client.listTreeEntries(coords, head);
+  const treeKey = `${coords.owner}/${coords.repo}@${head}`;
+  let tree = treeByCommit.get(treeKey);
+  if (!tree) {
+    tree = await client.listTreeEntries(coords, head);
+    if (treeByCommit.size >= 200) treeByCommit.delete(treeByCommit.keys().next().value!);
+    treeByCommit.set(treeKey, tree); // a commit's tree never changes
+  }
   const blobOf = new Map(tree.entries.filter((e) => e.type === "blob").map((e) => [e.path, e.sha]));
   const out = new Map<string, string | null>();
   await Promise.all(paths.map(async (p) => {
@@ -53,3 +59,15 @@ export async function versionsAt(
   return out;
 }
 const versionByBlob = new Map<string, string>();
+const treeByCommit = new Map<string, Awaited<ReturnType<GitHubClient["listTreeEntries"]>>>();
+
+/** A file's text at a commit, cached by commit (a commit never changes): the Publish page's manifest (RC.19). */
+export async function textAtCommit(repo: WorkingRepoAdapter, key: string, head: string, path: string): Promise<string | null> {
+  const k = `${key}@${head}:${path}`;
+  if (textByCommit.has(k)) return textByCommit.get(k)!;
+  const t = await repo.readFile(head, path);
+  if (textByCommit.size >= 500) textByCommit.delete(textByCommit.keys().next().value!);
+  textByCommit.set(k, t);
+  return t;
+}
+const textByCommit = new Map<string, string | null>();

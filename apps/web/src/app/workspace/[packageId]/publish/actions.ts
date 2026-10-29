@@ -7,9 +7,22 @@ import { enqueueSync, firstStudyGuide, SqlQueueStore, SyncRefused } from "@alemb
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { directDb } from "@/lib/db";
 import { courseRepo, textVersion } from "@/lib/course-v3";
+import { githubBusy } from "@/lib/github-busy";
 
 const back = (packageId: string, msg?: string) =>
   redirect(`/workspace/${packageId}/publish${msg ? `?m=${encodeURIComponent(msg)}` : ""}`);
+
+/** A GitHub rate limit inside an action becomes a message on the page, not an error page (RC.12). */
+async function withGithub<T>(packageId: string, fn: () => Promise<T>): Promise<T> {
+  try {
+    return await fn();
+  } catch (e) {
+    const busy = githubBusy(e);
+    if (!busy) throw e; // includes Next's redirects
+    const at = busy.until ? ` after ${busy.until.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/Chicago", timeZoneName: "short" })}` : " in a few minutes";
+    return back(packageId, `GitHub is limiting how often Alembic may read this course right now; nothing was changed. Please try again${at}.`);
+  }
+}
 
 async function member(packageId: string) {
   const supabase = await createSupabaseServerClient();
@@ -40,6 +53,10 @@ export async function requestPublishAction(packageId: string, form: FormData): P
  * documents (each passes the permission matrix like any edit).
  */
 export async function startPlanAction(packageId: string, slug: string): Promise<void> {
+  return withGithub(packageId, () => startPlan(packageId, slug));
+}
+
+async function startPlan(packageId: string, slug: string): Promise<void> {
   const { user } = await member(packageId);
   const sql = directDb();
   const c = await courseRepo(packageId);
@@ -64,6 +81,10 @@ export async function startPlanAction(packageId: string, slug: string): Promise<
 
 /** Mark a chapter ready for publishing, or back to draft (the manifest is changed by a system row, owner or deputy only). */
 export async function setChapterModeAction(packageId: string, slug: string, mode: "draft" | "package"): Promise<void> {
+  return withGithub(packageId, () => setChapterMode(packageId, slug, mode));
+}
+
+async function setChapterMode(packageId: string, slug: string, mode: "draft" | "package"): Promise<void> {
   const { user, role } = await member(packageId);
   if (!can(role, "edit.course-files")) back(packageId, "Only the owner or deputy changes this.");
   const sql = directDb();

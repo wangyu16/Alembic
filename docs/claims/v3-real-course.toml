@@ -77,7 +77,7 @@ id = "RC.8"
 claim = "A Publish page render reads the course plan's versions from one tree listing; each plan file is read once ever (cached by its blob id), not on every render."
 oracle = "conformance"
 bound_to = [
-  "apps/web/src/lib/course-v3-versions.test.ts :: a 19-chapter page makes one tree listing per render; each file is read once ever (cached by its blob id)",
+  "apps/web/src/lib/course-v3-versions.test.ts :: a 19-chapter page lists the tree once per commit; each file is read once ever (cached by its blob id)",
 ]
 note = "Audit r1 F3: ~40 GitHub calls per render, re-rendered every 3 s while publishing."
 
@@ -87,7 +87,7 @@ claim = "A course's own images show in the workspace editor: each is served from
 oracle = "conformance"
 bound_to = [
   "apps/web/src/lib/course-assets.test.ts :: every course image gets a members-only address; instructor-only files only for those allowed; other files none",
-  "apps/web/src/lib/course-assets.test.ts :: a signature opens exactly its course file until it expires; another file, another course, a forged or expired one doesn't",
+  "apps/web/src/lib/course-assets.test.ts :: a signature opens exactly its course file at that version until it expires; another file, version or course, a forged or expired one doesn't",
 ]
 note = "Audit r1 F4: the editor was never given asset addresses, so every relative image was broken. Live check on the GenChem copy after relinking its figures (RC.10)."
 
@@ -106,7 +106,7 @@ claim = "Publish and the website build read a whole tree with one GitHub request
 oracle = "scenario"
 bound_to = [
   "packages/github-bridge/src/tar.test.ts :: a real .tar.gz gives every regular file by its path under the top folder, long and non-ASCII names included, bytes exact",
-  "apps/worker/src/publish-loop.test.ts :: reading every file of a 330-file course at one commit costs one archive request; a failed request isn't kept",
+  "packages/github-bridge/src/tree-reader.test.ts :: a course-size tree costs one listing and one archive for all its files; each file is checked against its blob id",
 ]
 note = "Blind r1 (B5/A9): the installation's 5,000 requests/hour ran out at 04:03 UTC after a few GenChem Publishes plus normal use; every course page of the owner returned 500 for ~10 min. Live: the GenChem working tree, 331 files in one request (3.6 s), every blob id matching the tree; a full GenChem Publish plus its website then used 8 GitHub requests (before: ~1,000)."
 
@@ -152,3 +152,42 @@ bound_to = [
   "apps/worker/src/site-build.real.test.ts :: the website opens on the course: title, then chapters in the course's order with their parts by name, not folders in file-name order",
 ]
 note = "Blind r1 B3 friction."
+
+[[claim]]
+id = "RC.17"
+claim = "Text typed on a device is never silently lost: text that never reached the course wins when the document is reopened and is sent again on its own base (the course merges it), and our own sync coming back moves the editor's base forward instead of raising a false conflict; an ended session says sign in again."
+oracle = "conformance"
+bound_to = [
+  "apps/web/src/lib/device-save/store.test.ts :: text on this device that never reached the course wins on reopening and is sent again with its own base, even after the course moved on; text the course already has never comes back",
+  "apps/web/src/lib/device-save/scheduler.test.ts :: after the course echoes our own text, typing still unsent is sent on the new version, not the old one (no false 'both changed')",
+]
+note = "Audit r2 #1 (HIGH), #3, #5a, #9."
+
+[[claim]]
+id = "RC.18"
+claim = "Reading many files of a tree is bounded: up to 80 MB in one archive request, bigger trees blob by blob; every archived file is checked against its blob id."
+oracle = "conformance"
+bound_to = [
+  "packages/github-bridge/src/tree-reader.test.ts :: a course-size tree costs one listing and one archive for all its files; each file is checked against its blob id",
+  "packages/github-bridge/src/tree-reader.test.ts :: a tree bigger than the archive limit is read blob by blob (bounded memory), never as one archive",
+]
+note = "Audit r2 #2 (HIGH): the archive was unbounded against the worker's 512 MB; #10 (no blob check, no retry)."
+
+[[claim]]
+id = "RC.19"
+claim = "Everyday use stays well inside the owner's GitHub budget: a sync that landed isn't read back, the Publish page's refresh asks GitHub only where the course is now (manifest and tree cached by commit), and images are addressed by version and cached by the browser."
+oracle = "conformance"
+bound_to = [
+  "apps/web/src/lib/course-v3-versions.test.ts :: a 19-chapter page lists the tree once per commit; each file is read once ever (cached by its blob id)",
+  "apps/web/src/lib/course-assets.test.ts :: a signature opens exactly its course file at that version until it expires; another file, version or course, a forged or expired one doesn't",
+]
+note = "Audit r2 #4 and #8. Open: a request ledger per installation with tests counting requests per view/sync/job (audit's improvement 1)."
+
+[[claim]]
+id = "RC.20"
+claim = "A course member sees each write-queue row's status, never another member's queued text, its result or its error."
+oracle = "invariant"
+bound_to = [
+  "apps/web/src/lib/write-queue-columns.sql.test.ts :: a co-author sees each row's status but not another member's queued text or its result",
+]
+note = "Audit r2 #11; migration 0060 (column-level grant)."

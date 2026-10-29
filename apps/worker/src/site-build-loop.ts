@@ -8,7 +8,7 @@
  * newer one). A failed build leaves the previous site live and marks the run
  * `site-failed` with the reasons; a run is tried at most MAX_ATTEMPTS times.
  */
-import { gitBlobSha, GitHubClient, installationTokenSource, type RepoCoords } from "@alembic/github-bridge";
+import { gitBlobSha, GitHubClient, installationTokenSource, treeReader, type RepoCoords } from "@alembic/github-bridge";
 import type { SqlClient } from "@alembic/package-ops";
 import { siteInputFiles } from "./orz-site-builder";
 
@@ -120,10 +120,10 @@ async function buildOne(cfg: SiteBuildConfig, run: { id: string; package_id: str
     });
     return "input too large";
   }
-  // The whole public tree in one request (RC.11), not one per file.
-  const archive = await client.getTreeArchive(coords, run.public_sha, SITE_IN.maxTotalBytes * 4);
+  // The public tree in one archive request (RC.11), each file checked against its blob id (RC.18).
+  const read = treeReader(client, coords);
   const files = new Map<string, Uint8Array>();
-  for (const e of blobs) { const b = archive.get(e.path); if (b) files.set(e.path, b); }
+  for (const e of blobs) { const b = await read(run.public_sha, e.path); if (b) files.set(e.path, b); }
 
   // The course's own site settings when it has them (orz-site.json is a course file); the builder forces the safe parts.
   let input: ReturnType<typeof siteInputFiles>;

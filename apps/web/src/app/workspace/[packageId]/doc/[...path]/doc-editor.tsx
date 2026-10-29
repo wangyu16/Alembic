@@ -105,10 +105,13 @@ function usePresence(packageId: string, path: string): string[] {
  */
 async function sendSync(a: { packageId: string; path: string; text: string; baseVersion: string | null; syncId: string }): Promise<SendResult> {
   const body = JSON.stringify({ path: a.path, text: a.text, baseVersion: a.baseVersion, syncId: a.syncId });
+  const url = `/workspace/${encodeURIComponent(a.packageId)}/sync`;
+  const send = (keepalive: boolean) => fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body, keepalive });
   try {
-    const res = await fetch(`/workspace/${encodeURIComponent(a.packageId)}/sync`, {
-      method: "POST", headers: { "content-type": "application/json" }, body, keepalive: body.length < 60_000,
-    });
+    // keepalive allows 64 KB of BYTES (not characters: Greek, arrows and subscripts take more); past it, or if
+    // the browser refuses it, a normal request (RC.17).
+    const small = new TextEncoder().encode(body).length < 60_000;
+    const res = await (small ? send(true).catch(() => send(false)) : send(false));
     const r = (await res.json().catch(() => null)) as SendResult | null;
     return r ?? { ok: false, retryable: true, reason: "Couldn't reach Alembic." };
   } catch {

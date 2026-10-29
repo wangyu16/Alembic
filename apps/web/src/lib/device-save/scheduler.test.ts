@@ -116,3 +116,19 @@ describe("what the status says (RC.13)", () => {
     expect(IDLE_MS).toBeLessThanOrEqual(30_000);
   });
 });
+
+describe("our own sync coming back (RC.17)", () => {
+  it("[RC.17] after the course echoes our own text, typing still unsent is sent on the new version, not the old one (no false 'both changed')", async () => {
+    const bases: Array<string | null> = [];
+    const s = new SyncScheduler({
+      now: () => 0, setTimer: () => 0, clearTimer: () => {}, newSyncId: () => crypto.randomUUID(),
+      send: async (d) => { bases.push(d.baseVersion); return { ok: true }; },
+    });
+    s.edit({ text: "first", baseVersion: "v0" });
+    await s.syncNow();
+    s.edit({ text: "first, more", baseVersion: "v0" }); // typed on before the echo arrived
+    s.rebase("v1"); // the course now holds "first" as v1
+    await s.syncNow();
+    expect(bases).toEqual(["v0", "v1"]);
+  });
+});

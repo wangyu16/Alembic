@@ -35,9 +35,12 @@ async function DocPageInner({ params }: { params: Promise<{ packageId: string; p
   if (text === null) redirect(`/workspace/${packageId}/course`);
   const version = await recordDocVersion(packageId, path, text, head);
   // The course's images, for the editor's preview (one tree listing; RC.9).
-  const tree = await c.client.listTreeEntries({ owner: c.owner, repo: c.name }, head).catch(() => ({ entries: [] as Array<{ path: string; type: string }> }));
+  const tree = await c.client.listTreeEntries({ owner: c.owner, repo: c.name }, head).catch((e) => {
+    if (githubBusy(e)) throw e;
+    return { entries: [] as Array<{ path: string; type: string; sha: string }> };
+  });
   const secret = assetSecret();
-  const assets = secret ? assetUrlMap(packageId, tree.entries.filter((e) => e.type === "blob").map((e) => e.path), can(role as Role, "edit.private"), secret) : new Map<string, string>();
+  const assets = secret ? assetUrlMap(packageId, tree.entries.filter((e) => e.type === "blob"), can(role as Role, "edit.private"), secret) : new Map<string, string>();
 
   return (
     <main className="flex h-[calc(100dvh-3.75rem)] flex-col">

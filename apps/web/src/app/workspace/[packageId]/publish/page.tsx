@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { can, WorkingManifestV3Schema, type Role } from "@alembic/package-contract";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { v3Enabled } from "@/lib/db";
-import { courseRepo, versionsAt } from "@/lib/course-v3";
+import { courseRepo, textAtCommit, versionsAt } from "@/lib/course-v3";
 import { approvePlanNowAction, requestPublishAction, setChapterModeAction, startPlanAction } from "./actions";
 import { SubmitButton } from "../../submit-button";
 import { RefreshWhile } from "./refresh-while";
@@ -34,10 +34,19 @@ async function PublishPageInner({ params, searchParams }: { params: Promise<{ pa
     supabase.from("approvals").select("part_path, version").eq("package_id", packageId),
     supabase.from("publish_runs").select("status, results").eq("package_id", packageId).in("status", ["committed", "site-built", "site-failed"]).order("committed_at", { ascending: false }).limit(1),
     // Chapter status changes still on their way into the course (RC.15): shown as "saving", not as the old state.
-    supabase.from("write_queue").select("idem_key").eq("package_id", packageId).in("status", ["queued", "processing", "retry"]).like("idem_key", "system:mode:%"),
+    supabase.from("write_queue").select("idem_key, status, finished_at").eq("package_id", packageId).like("idem_key", "system:mode:%")
+      .or(`status.in.(queued,processing,retry),finished_at.gt.${new Date(Date.now() - 15 * 60_000).toISOString()}`),
   ]);
+  // Status changes still on their way (shown as saving; no other change is offered meanwhile, so none is
+  // refused for being made on an older version), and any refused in the last minutes (said, not lost).
   const pendingMode = new Map<string, string>();
-  for (const r of (pendingRows ?? []) as Array<{ idem_key: string }>) { const m = /^system:mode:([a-z0-9-]+):(draft|package):/.exec(r.idem_key); if (m) pendingMode.set(m[1]!, m[2]!); }
+  const refusedMode: string[] = [];
+  for (const r of (pendingRows ?? []) as Array<{ idem_key: string; status: string }>) {
+    const m = /^system:mode:([a-z0-9-]+):(draft|package):/.exec(r.idem_key);
+    if (!m) continue;
+    if (["queued", "processing", "retry"].includes(r.status)) pendingMode.set(m[1]!, m[2]!);
+    else if (r.status === "refused" || r.status === "failed") refusedMode.push(m[1]!);
+  }
   const lastRun = runs?.[0] as { status: string; results: { site?: { url?: string; error?: string; superseded?: boolean } } } | undefined;
   const site = siteView(lastRun);
   const c = await courseRepo(packageId);
@@ -45,8 +54,9 @@ async function PublishPageInner({ params, searchParams }: { params: Promise<{ pa
   const head = await c.repo.head();
   let manifest: ReturnType<typeof WorkingManifestV3Schema.parse>;
   try {
-    manifest = WorkingManifestV3Schema.parse(JSON.parse((await c.repo.readFile(head, "alembic.json")) ?? "null"));
-  } catch {
+    manifest = WorkingManifestV3Schema.parse(JSON.parse((await textAtCommit(c.repo, `${c.owner}/${c.name}`, head, "alembic.json")) ?? "null"));
+  } catch (e) {
+    if (githubBusy(e)) throw e; // the busy page (RC.12)
     return <main className="mx-auto max-w-2xl p-6"><p>The course&apos;s settings file (alembic.json) can&apos;t be read, so it can&apos;t be published until it is fixed.</p></main>;
   }
   const approved = new Set((approvals ?? []).map((a) => `${a.part_path as string}@${a.version as string}`));
@@ -79,7 +89,7 @@ async function PublishPageInner({ params, searchParams }: { params: Promise<{ pa
 
   return (
     <main className="mx-auto max-w-3xl p-6">
-      <RefreshWhile active={busy || siteBuilding || pendingMode.size > 0} everyMs={busy || pendingMode.size ? 3000 : 10_000} />
+      <RefreshWhile active={busy || siteBuilding || pendingMode.size > 0} everyMs={busy || pendingMode.size ? 5000 : 15_000} />
       <p className="text-sm"><Link prefetch={false} href={`/workspace/${packageId}/course`}>← {(course?.title as string | undefined) ?? "Course"}</Link></p>
       <h1 className="mt-2 text-2xl font-semibold">Publish</h1>
       <p className="mt-1 text-sm text-gray-600">
@@ -99,6 +109,11 @@ async function PublishPageInner({ params, searchParams }: { params: Promise<{ pa
         </div>
       ) : null}
 
+      {refusedMode.length ? (
+        <p className="mt-3 rounded border border-amber-400 bg-amber-100 p-2 text-sm text-amber-950" role="status">
+          A change to {[...new Set(refusedMode)].map((s2) => titleOf.get(s2) ?? s2).join(", ")} couldn&apos;t be saved because the course&apos;s settings changed at the same time. Please make it again.
+        </p>
+      ) : null}
       <section className="mt-5 rounded border p-3">
         <h2 className="font-medium">Last Publish</h2>
         {!last ? <p className="mt-1 text-sm">Not published yet.</p> : busy ? (
@@ -134,7 +149,7 @@ async function PublishPageInner({ params, searchParams }: { params: Promise<{ pa
                       : ch.mode === "draft" ? "Draft"
                       : missing || toApprove.length ? "Ready once the course plan is approved"
                       : "Ready"}
-                    {canMode && !pendingMode.has(ch.slug) ? (
+                    {canMode && pendingMode.size === 0 ? (
                       <button className="ml-2 underline" formAction={setChapterModeAction.bind(null, packageId, ch.slug, ch.mode === "draft" ? "package" : "draft")}>
                         {ch.mode === "draft" ? "Mark ready" : "Back to draft"}
                       </button>

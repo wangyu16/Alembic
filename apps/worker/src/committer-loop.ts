@@ -61,9 +61,12 @@ export async function drainOne(cfg: CommitterConfig, packageId: string): Promise
       const head = (i.result as { head?: string } | undefined)?.head;
       const row = payloads.get(i.id);
       if (i.status !== "done" || !head || !row) return;
+      // A file that landed holds exactly the text sent (version rule: write = incoming), so it needn't be
+      // read back from GitHub; combined or kept versions are read (RC.19: GitHub budget per sync).
+      const outcomeOf = new Map(((i.result as { files?: Array<{ path: string; outcome: string }> } | undefined)?.files ?? []).map((x) => [x.path, x.outcome]));
       for (const f of row.payload.files) {
         if (f.text === null) continue;
-        const text = await repo.readFile(head, f.path);
+        const text = outcomeOf.get(f.path) === "landed" ? f.text : await repo.readFile(head, f.path);
         if (text === null) continue;
         await cfg.sql.query(`insert into public.doc_versions (package_id, path, version, commit_sha) values ($1, $2, $3, $4) on conflict do nothing`,
           [packageId, f.path, sha256(text), head]);

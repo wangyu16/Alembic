@@ -32,7 +32,10 @@ async function CourseHomeV3Inner({ params }: { params: Promise<{ packageId: stri
   let chapters: Array<{ slug: string; title: string; mode?: string }> = [];
   try {
     chapters = (JSON.parse((await c.client.getFileAtRef(coords, "alembic.json", head)) ?? "{}") as { chapters?: typeof chapters }).chapters ?? [];
-  } catch { /* an unreadable manifest: everything shows under course files */ }
+  } catch (e) {
+    if (githubBusy(e)) throw e; // the busy page, not a course with no chapters (RC.12)
+    /* an unreadable manifest: everything shows under course files */
+  }
   const o = courseOutline(Array.isArray(chapters) ? chapters : [], docs);
   const href = (p: string) => `/workspace/${packageId}/doc/${p.split("/").map(encodeURIComponent).join("/")}`;
   const list = (items: Array<{ label: string; path: string }>) => (

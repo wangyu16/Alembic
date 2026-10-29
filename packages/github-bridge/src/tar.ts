@@ -46,7 +46,7 @@ export function readTarGz(gz: Uint8Array, maxBytes: number): Map<string, Uint8Ar
     if (type !== "0") continue; // regular files only (no links, folders)
     const slash = name.indexOf("/");
     if (slash < 0) continue;
-    out.set(name.slice(slash + 1), new Uint8Array(data));
+    out.set(name.slice(slash + 1), data); // a view into the unpacked archive (no copy per file)
   }
   return out;
 }
