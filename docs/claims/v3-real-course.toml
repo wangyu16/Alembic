@@ -162,7 +162,7 @@ bound_to = [
   "apps/web/src/lib/device-save/scheduler.test.ts :: after the course echoes our own text, typing still unsent is sent on the new version, not the old one (no false 'both changed')",
   "apps/web/src/lib/device-save/scheduler.test.ts :: syncNow during a sync waits for it, then sends what was typed meanwhile; nothing is dropped",
 ]
-note = "Audit r2 #1 (HIGH), #3, #5a, #9; audit r3 HIGH-1 (a resumed text now edits from its own base and is sent at once; records from before the synced flag are resumed only if the course hasn't moved) and MEDIUM-4."
+note = "Audit r2 #1 (HIGH), #3, #5a, #9; audit r3 HIGH-1 (a resumed text now edits from its own base and is sent at once; records from before the synced flag are resumed only if the course hasn't moved) and MEDIUM-4; audit r4 H-1 (a device text the course already holds at any version is never resumed: the editor checks the course for its hash first) and M-1 (no edit is queued while a resume is being decided)."
 
 [[claim]]
 id = "RC.18"
@@ -217,7 +217,7 @@ oracle = "conformance"
 bound_to = [
   "apps/web/src/lib/orz-editor/download-figures.test.ts :: the course's own figures are embedded in the file (size hints kept); web images and unknown figures stay as they are; the course text is untouched",
 ]
-note = "Blind r2 A8: all 9 figures broken in a downloaded study guide."
+note = "Blind r2 A8: all 9 figures broken in a downloaded study guide. Re-verifier r3: embedded SVG figures showed as base64 text, because the renderer refuses data: addresses in Markdown image syntax; embedded figures are now written as <img> tags (checked against the real renderer)."
 
 [[claim]]
 id = "RC.24"
@@ -234,5 +234,6 @@ claim = "Presenting slides from the workspace never runs course content as Alemb
 oracle = "conformance"
 bound_to = [
   "apps/web/src/app/workspace/[packageId]/present/route.test.ts :: the deck is served to a member's same-site post as its own sandboxed document (no Alembic origin); other sites and non-members get nothing",
+  "apps/web/src/lib/orz-editor/download-figures.test.ts :: a deck shown away from the course points its figures at their absolute signed addresses (nothing embedded); figures in ~~~ code blocks are left alone",
 ]
-note = "Audit r3 HIGH-2 (stored XSS across members through Present). Open: a course over 80 MB is read blob by blob (audit r3 MEDIUM-6; a streaming archive parse would fix it); signed image addresses outlive a member's removal by up to 48 h (L11, accepted)."
+note = "Audit r3 HIGH-2 (stored XSS across members through Present). Audit r4 M-2: the deck is posted as multipart with CDN delivery and linked (not embedded) figures, so a figure-heavy deck stays under the size cap. Open: a course over 80 MB is read blob by blob (audit r3 MEDIUM-6; a streaming archive parse would fix it); signed image addresses outlive a member's removal by up to 48 h (L11, accepted)."

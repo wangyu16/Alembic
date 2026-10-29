@@ -15,7 +15,7 @@ import { IndexedDbDraftStore, draftKey, requestPersistentStorage, resumeFrom, ty
 import { diffEdit, loadKit, type OrzEditor, type OrzKind } from "./kit";
 import { mergeRemote } from "./merge";
 import { makeHooks, resolveCoursePath } from "./hooks";
-import { assembleDownload, embedFigures } from "./download";
+import { assembleDownload, embedFigures, linkFigures } from "./download";
 
 export interface EmbeddedEditorProps {
   kind: OrzKind;
@@ -29,6 +29,8 @@ export interface EmbeddedEditorProps {
   nonce?: string;
   assetUrls?: ReadonlyMap<string, string>;
   readCourseText(path: string): Promise<string | null>;
+  /** Does the course hold this version (sha256) of this document? (Resume never resends what already arrived.) */
+  courseHasVersion?(version: string): Promise<boolean>;
   mintUid(): Promise<string>;
   /** Send the text to the course (the sync entry); idempotent per syncId. */
   sync(a: { packageId: string; path: string; text: string; baseVersion: string | null; syncId: string }): Promise<SendResult>;
@@ -53,7 +55,8 @@ export const EmbeddedEditor = forwardRef<EmbeddedEditorHandle, EmbeddedEditorPro
   const baseText = useRef<string>(p.text); // the text of `base`: the merge base for others' changes
   const [conflict, setConflict] = useState<string | null>(null);
   const quiet = useRef(false); // the next change event is a remote update, not typing
-  const lastSent = useRef<string | null>(null); // our own text the course accepted last (its echo is not someone else's change)
+  const lastSent = useRef<string | null>(null);
+  const resuming = useRef(false); // a resumed text not yet in the course: others' versions don't merge into it (audit r4 M-1) // our own text the course accepted last (its echo is not someone else's change)
   const props = useRef(p);
   props.current = p;
 
@@ -66,6 +69,10 @@ export const EmbeddedEditor = forwardRef<EmbeddedEditorHandle, EmbeddedEditorPro
         base.current = version;
         baseText.current = text;
         scheduler.current?.rebase(version);
+        return;
+      }
+      if (resuming.current && scheduler.current?.hasUnsynced) {
+        setConflict("This document changed elsewhere while your earlier text was waiting to be sent. Your text is kept; when it reaches the course, both are kept.");
         return;
       }
       const local = e.getText();
@@ -106,6 +113,7 @@ export const EmbeddedEditor = forwardRef<EmbeddedEditorHandle, EmbeddedEditorPro
       onStatus: (x) => { statusRef.current = x.kind; if (!disposed) setStatus(x); },
       onSynced: (d) => {
         lastSent.current = d.text;
+        resuming.current = false;
         // The editor's own bar says Saved only once the course has this text (RC.13).
         if (editor.current?.getText() === d.text) editor.current.markSaved();
         // Private text leaves the device once it is in the course (design §7.1).
@@ -126,7 +134,15 @@ export const EmbeddedEditor = forwardRef<EmbeddedEditorHandle, EmbeddedEditorPro
         const kit = await loadKit(c.kind);
         if (disposed || !host.current) return;
         // Text from an earlier visit that never reached the course wins, and is sent again (RC.17).
-        const resume = resumeFrom(await store.get(key), { text: c.text, version: c.baseVersion });
+        const kept = await store.get(key);
+        let has = false;
+        if (kept && kept.text !== c.text && c.courseHasVersion) {
+          // Sent while the tab was closing, its reply never came back: ask the course (audit r4 H-1).
+          const v = [...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(kept.text)))].map((b) => b.toString(16).padStart(2, "0")).join("");
+          has = await c.courseHasVersion(v).catch(() => false);
+          if (has) await store.put({ ...kept, synced: true });
+        }
+        const resume = resumeFrom(kept, { text: c.text, version: c.baseVersion }, has);
         const startText = resume.text;
         const e = kit.mountEditor(host.current, {
           text: startText,
@@ -164,6 +180,7 @@ export const EmbeddedEditor = forwardRef<EmbeddedEditorHandle, EmbeddedEditorPro
           // what changed meanwhile; the merged echo then diffs cleanly against this text.
           base.current = resume.pending.baseVersion;
           baseText.current = resume.text;
+          resuming.current = true;
           s.edit(resume.pending);
           void s.syncNow();
         }
@@ -194,10 +211,11 @@ export const EmbeddedEditor = forwardRef<EmbeddedEditorHandle, EmbeddedEditorPro
     const e = editor.current;
     if (!e) return;
     const kit = await loadKit(p.kind);
-    const html = await kit.assemble(await embedFigures(e.getText(), (t) => resolveCoursePath(p.docPath, t), (path) => p.assetUrls?.get(path)), { delivery: "inline" });
+    // Small enough to post (audit r4 M-2): the engine from the CDN, figures by their signed addresses.
+    const html = await kit.assemble(await linkFigures(e.getText(), (t) => resolveCoursePath(p.docPath, t), (path) => p.assetUrls?.get(path), window.location.origin), { delivery: "cdn" });
     // The deck goes to the Present route, which serves it sandboxed (RC.25): it plays, but course content
     // never runs as Alembic. A form post opens it in a new tab with no link back to this page.
-    const form = Object.assign(document.createElement("form"), { method: "POST", action: `/workspace/${encodeURIComponent(p.packageId)}/present`, target: "_blank", rel: "noopener" });
+    const form = Object.assign(document.createElement("form"), { method: "POST", enctype: "multipart/form-data", action: `/workspace/${encodeURIComponent(p.packageId)}/present`, target: "_blank", rel: "noopener" });
     const field = Object.assign(document.createElement("textarea"), { name: "html", value: html });
     form.append(field);
     form.style.display = "none";

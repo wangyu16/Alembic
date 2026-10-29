@@ -13,7 +13,7 @@ import { POST } from "./route";
 const deck = `<html><body><script>steal(document.cookie)</script></body></html>`;
 const post = (headers: Record<string, string>) => {
   const body = new URLSearchParams({ html: deck });
-  return POST(new Request("https://alembic.test/workspace/p/present", { method: "POST", body, headers: { "content-type": "application/x-www-form-urlencoded", ...headers } }), { params: Promise.resolve({ packageId: "p" }) });
+  return POST(new Request("https://alembic.test/workspace/p/present", { method: "POST", body, headers: { "content-type": "application/x-www-form-urlencoded", "content-length": String(body.toString().length), ...headers } }), { params: Promise.resolve({ packageId: "p" }) });
 };
 
 describe("presenting slides (RC.25)", () => {

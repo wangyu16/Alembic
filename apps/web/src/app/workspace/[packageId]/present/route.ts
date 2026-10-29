@@ -15,7 +15,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ package
   const site = req.headers.get("sec-fetch-site");
   const origin = req.headers.get("origin");
   if ((site && site !== "same-origin") || (origin && origin !== requestOrigin(req))) return new Response("Not allowed.", { status: 403 });
-  if (Number(req.headers.get("content-length") ?? 0) > MAX_BYTES) return new Response("Too large.", { status: 413 });
+  // A declared, bounded size only (a chunked body has none, audit r4 L-1).
+  const length = Number(req.headers.get("content-length") ?? NaN);
+  if (!Number.isFinite(length)) return new Response("Length required.", { status: 411 });
+  if (length > MAX_BYTES) return new Response("Too large.", { status: 413 });
   const supabase = await createSupabaseServerClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return new Response("Sign in again.", { status: 401 });

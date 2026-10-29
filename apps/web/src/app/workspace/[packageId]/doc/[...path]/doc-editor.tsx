@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { EmbeddedEditor, type EmbeddedEditorHandle } from "@/lib/orz-editor/embedded-editor";
 import type { OrzKind } from "@/lib/orz-editor/kit";
 import { browserSupabase } from "@/lib/supabase/browser";
-import { mintUidAction, readCourseTextAction, readVersionAction } from "./actions";
+import { hasVersionAction, mintUidAction, readCourseTextAction, readVersionAction } from "./actions";
 import type { SendResult } from "@/lib/device-save/scheduler";
 
 export function DocEditor(p: { kind: OrzKind; packageId: string; path: string; text: string; version: string; isPrivate: boolean; nonce?: string; assets?: Array<[string, string]> }) {
@@ -55,6 +55,7 @@ export function DocEditor(p: { kind: OrzKind; packageId: string; path: string; t
       {...(p.nonce ? { nonce: p.nonce } : {})}
       assetUrls={assetMap}
       readCourseText={(path) => readCourseTextAction(p.packageId, path)}
+      courseHasVersion={(v) => hasVersionAction(p.packageId, p.path, v)}
       mintUid={() => mintUidAction()}
       sync={(a) => sendSync(a)}
     />

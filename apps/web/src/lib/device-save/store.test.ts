@@ -26,5 +26,7 @@ describe("reopening a document (RC.17)", () => {
     expect(resumeFrom(draft({ synced: true }), { text: "course v2", version: "v2" })).toEqual({ text: "course v2", pending: null });
     expect(resumeFrom(draft({ text: "same" }), { text: "same", version: "v1" })).toEqual({ text: "same", pending: null });
     expect(resumeFrom(undefined, { text: "course", version: "v1" })).toEqual({ text: "course", pending: null });
+    // Sent while the tab was closing (the reply never came back): the course has it, so it isn't resent over newer work.
+    expect(resumeFrom(draft({ baseVersion: "v0", synced: false }), { text: "course v2", version: "v2" }, true)).toEqual({ text: "course v2", pending: null });
   });
 });

@@ -6,7 +6,7 @@ import { unitOf } from "@alembic/package-ops";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { v3Enabled } from "@/lib/db";
 import { blobsAt, courseRepo, textAtCommit, versionsAt } from "@/lib/course-v3";
-import { courseTime } from "@/lib/course-time";
+import { LocalTime } from "@/lib/local-time";
 import { approvePlanNowAction, requestPublishAction, setChapterModeAction, startPlanAction } from "./actions";
 import { SubmitButton } from "../../submit-button";
 import { RefreshWhile } from "./refresh-while";
@@ -109,8 +109,8 @@ async function PublishPageInner({ params, searchParams }: { params: Promise<{ pa
       <p className="text-sm"><Link prefetch={false} href={`/workspace/${packageId}/course`}>← {(course?.title as string | undefined) ?? "Course"}</Link></p>
       <h1 className="mt-2 text-2xl font-semibold">Publish</h1>
       <p className="mt-1 text-sm text-gray-600">
-        Publishing copies the chapters that are ready to the course's public copy
-        {pub ? <> (<a className="underline" href={`https://github.com/${pub.owner}/${pub.name}`}>on GitHub</a>)</> : " (made on the first Publish)"} and updates its website.
+        Publishing copies the chapters that are ready to the course&apos;s public copy{" "}
+        {pub ? <>(<a className="underline" href={`https://github.com/${pub.owner}/${pub.name}`}>on GitHub</a>)</> : "(made on the first Publish)"}{" "}and updates its website.
         A chapter is ready when it isn&apos;t a draft, its course plan is approved, and the checks pass (nothing in it repeats an
         answer key or copies a source). A draft chapter stays on the website as it was last published (or isn&apos;t there yet); its new edits wait.
       </p>
@@ -132,15 +132,15 @@ async function PublishPageInner({ params, searchParams }: { params: Promise<{ pa
         </p>
       ) : null}
       <section className="mt-5 rounded border p-3">
-        <h2 className="font-medium">Last Publish</h2>
+        <h2 className="font-medium">The most recent Publish</h2>
         {!last ? <p className="mt-1 text-sm">Not published yet.</p> : busy ? (
           <p className="mt-1 text-sm">Publishing… this page updates by itself.</p>
         ) : last.outcome?.status === "committed" ? (
           <div className="mt-1 text-sm">
-            <p><strong>Published</strong> {last.finished_at ? courseTime(last.finished_at) : ""}{last.outcome.unchanged ? " (nothing had changed since the last Publish)" : ""}. {last.outcome.published.length} of {manifest.chapters.length} chapters are public.</p>
+            <p><strong>Published</strong> {last.finished_at ? <LocalTime at={last.finished_at} /> : ""}{last.outcome.unchanged ? " (nothing had changed since the last Publish)" : ""}. {last.outcome.published.length} of {manifest.chapters.length} chapters are public.</p>
             <ul className="mt-2 list-disc pl-5">
               {last.outcome.decisions.filter((d) => d.result === "kept").map((d) => (
-                <li key={d.unit}>{unitName(d.unit)} stayed as it was: {d.why.map((w) => (w === "Draft chapter" ? "it is a draft" : w === "Course plan not approved" ? "its course plan isn't approved" : w)).join("; ")}</li>
+                <li key={d.unit}>{unitName(d.unit)} stayed as it was then: {d.why.map((w) => (w === "Draft chapter" ? "it is a draft" : w === "Course plan not approved" ? "its course plan isn't approved" : w)).join("; ")}</li>
               ))}
             </ul>
           </div>

@@ -58,3 +58,11 @@ export async function readVersionAction(packageId: string, path: string, commitS
   const text = c ? await c.repo.readFile(commitSha, p).catch((e) => { if (githubBusy(e)) return null; throw e; }) : null; // RC.12: the update arrives with the next one
   return text !== null && textVersion(text) === version ? text : null;
 }
+
+/** Does the course hold this exact version of the document? (members only; resume never resends what arrived, RC.17) */
+export async function hasVersionAction(packageId: string, path: string, version: string): Promise<boolean> {
+  const { supabase, user } = await signedIn();
+  if (!user || !/^[0-9a-f]{64}$/.test(version)) return false;
+  const { data } = await supabase.from("doc_versions").select("version").eq("package_id", packageId).eq("path", path).eq("version", version).limit(1);
+  return (data ?? []).length > 0;
+}
