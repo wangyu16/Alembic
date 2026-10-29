@@ -80,3 +80,20 @@ export async function setChapterModeAction(packageId: string, slug: string, mode
   });
   back(packageId, "Saved; it takes a few seconds to show.");
 }
+
+/**
+ * Approve a chapter's course plan now, as it was shown (path@version of each part; owner or deputy,
+ * checked by approve_part). Takes effect at once, so the page shows it (RC.15).
+ */
+export async function approvePlanNowAction(packageId: string, form: FormData): Promise<void> {
+  const { supabase } = await member(packageId);
+  const parts = String(form.get("approveNow") ?? "").split("|")
+    .map((v) => /^((?:concepts|assessment-support)\/[a-z0-9-]{1,60}\.md)@([0-9a-f]{64})$/.exec(v))
+    .filter((m): m is RegExpExecArray => m !== null);
+  if (!parts.length) back(packageId, "Nothing to approve.");
+  for (const m of parts) {
+    const { error } = await supabase.rpc("approve_part", { p: packageId, p_path: m[1], p_version: m[2] });
+    if (error) back(packageId, error.code === "42501" ? "Only the owner or deputy approves the course plan." : "The approval couldn't be saved. Try again.");
+  }
+  back(packageId, "Course plan approved.");
+}

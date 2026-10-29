@@ -100,7 +100,7 @@ export default async function WorkspacePage({ searchParams }: { searchParams: Pr
       {v3On ? (
         <section className="panel p-6">
           <h2 className="text-lg font-medium text-ink">New course (new workspace, testing)</h2>
-          <p className="mt-1 text-sm text-muted">Creates the course's own private repository in your GitHub account; documents open in the new editor and sync on their own.</p>
+          <p className="mt-1 text-sm text-muted">Keeps the course privately in your own GitHub account; its documents open in the editor and save to the course on their own.</p>
           {v3 && V3_NOTICE[v3] ? <p className={`mt-2 text-sm ${v3 === "connected" ? "text-green-700" : "text-red-700"}`} role={v3 === "connected" ? "status" : "alert"}>{V3_NOTICE[v3]}</p> : null}
           {v3 === "connect" || v3 === "not-yours" ? (
             <form action={connectGithubAction} className="mt-2">

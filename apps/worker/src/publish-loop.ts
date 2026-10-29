@@ -52,7 +52,7 @@ export async function publishPass(cfg: PublishConfig): Promise<void> {
     outcome = await publishOne(cfg, req);
   } catch (e) {
     cfg.log?.(`publish ${req.id} failed: ${(e as Error).message}`);
-    outcome = { status: "failed", reason: "Publish couldn't finish. Try again in a moment; the next run picks up anything this one already published." };
+    outcome = { status: "failed", reason: failureReason(e) };
   }
   // Only while this worker still holds the request (review M2): a reclaimed request isn't flipped back.
   await cfg.sql.query(
@@ -60,6 +60,15 @@ export async function publishPass(cfg: PublishConfig): Promise<void> {
       where id = $1 and status = 'running' and started_at = $4::text::timestamptz`, // as text: a Date would drop the microseconds
     [req.id, outcome.status === "failed" ? "failed" : "done", JSON.stringify(outcome), req.started_at]);
   cfg.log?.(`publish ${req.id} (${req.package_id}): ${outcome.status}${"reason" in outcome ? ` — ${outcome.reason}` : ""}`);
+}
+
+/** What the person is told when a Publish fails (RC.12: a GitHub rate limit says so, and when). */
+export function failureReason(e: unknown): string {
+  if (e instanceof GitHubError && e.rateLimited) {
+    const at = e.retryAt ? ` after ${e.retryAt.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/Chicago", timeZoneName: "short" })}` : " in a few minutes";
+    return `GitHub is limiting how often Alembic may use this course's account right now, so Publish stopped before changing anything. Publish again${at}.`;
+  }
+  return "Publish couldn't finish. Try again in a moment; the next run picks up anything this one already published.";
 }
 
 /** A stop with a reason for the person (not a crash). */
@@ -172,7 +181,22 @@ async function publishRun(cfg: PublishConfig, req: Claimed): Promise<PublishOutc
 }
 
 /** The working repo pinned at W (every read is at that commit). */
+/**
+ * A repo's files at a commit, from ONE archive request, kept for the run
+ * (RC.11): a 19-chapter course is ~330 files, and per-file reads spent the
+ * owner's hourly GitHub budget in a few Publishes.
+ */
+export function archiveReader(client: Pick<GitHubClient, "getTreeArchive">, coords: RepoCoords) {
+  const bySha = new Map<string, Promise<Map<string, Uint8Array>>>();
+  return async (sha: string, path: string): Promise<Uint8Array | null> => {
+    let a = bySha.get(sha);
+    if (!a) { a = client.getTreeArchive(coords, sha); bySha.set(sha, a); a.catch(() => bySha.delete(sha)); }
+    return (await a).get(path) ?? null;
+  };
+}
+
 function workingSide(client: GitHubClient, coords: RepoCoords, W: string): WorkingSide {
+  const read = archiveReader(client, coords);
   return {
     async head() { return W; },
     async listTree(sha) {
@@ -180,7 +204,7 @@ function workingSide(client: GitHubClient, coords: RepoCoords, W: string): Worki
       return { entries: t.entries.map((e): TreeEntry => ({ path: e.path, mode: e.mode, type: e.type, blobSha: e.sha })), truncated: t.truncated };
     },
     async readFile(sha, path) {
-      const bytes = await client.getFileBytesAtRef(coords, path, sha).catch(() => null);
+      const bytes = await read(sha, path);
       return bytes === null ? null : classifyBytes(bytes);
     },
   };
@@ -197,6 +221,12 @@ function publicSide(o: {
     if (!c || !co) throw new Error("the public repository doesn't exist yet");
     return { c, co };
   };
+  let pubRead: ReturnType<typeof archiveReader> | null = null;
+  const readPub = (sha: string, path: string) => {
+    const { c, co } = need();
+    pubRead ??= archiveReader(c, co);
+    return pubRead(sha, path);
+  };
   const tree = async (sha: string) => {
     const { c, co } = need();
     const t = await c.listTreeEntries(co, sha);
@@ -210,8 +240,7 @@ function publicSide(o: {
     create: () => o.create(),
     listTree: tree,
     async readText(sha, path) {
-      const { c, co } = need();
-      const bytes = await c.getFileBytesAtRef(co, path, sha);
+      const bytes = await readPub(sha, path);
       if (bytes === null) return null;
       const f = classifyBytes(bytes);
       return "text" in f ? f.text : null;

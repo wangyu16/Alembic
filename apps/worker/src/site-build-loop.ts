@@ -9,7 +9,7 @@
  * `site-failed` with the reasons; a run is tried at most MAX_ATTEMPTS times.
  */
 import { gitBlobSha, GitHubClient, installationTokenSource, type RepoCoords } from "@alembic/github-bridge";
-import { mapLimit, READ_CONCURRENCY, type SqlClient } from "@alembic/package-ops";
+import type { SqlClient } from "@alembic/package-ops";
 import { siteInputFiles } from "./orz-site-builder";
 
 export const PAGES_BRANCH = "gh-pages";
@@ -33,7 +33,7 @@ export interface SiteBuildConfig {
 export interface SiteBuilder {
   build(
     files: Map<string, Uint8Array>,
-    o: { ownConfig: unknown; title: string | null; baseUrl: string },
+    o: { ownConfig: unknown; title: string | null; baseUrl: string; courseIndex?: boolean },
   ): Promise<{ ok: boolean; files: Map<string, Uint8Array>; errors: string[]; warnings: number }>;
 }
 
@@ -120,8 +120,10 @@ async function buildOne(cfg: SiteBuildConfig, run: { id: string; package_id: str
     });
     return "input too large";
   }
-  const bytes = await mapLimit(blobs, READ_CONCURRENCY, (e) => client.getBlob(coords, e.sha));
-  const files = new Map<string, Uint8Array>(blobs.map((e, k) => [e.path, bytes[k]!]));
+  // The whole public tree in one request (RC.11), not one per file.
+  const archive = await client.getTreeArchive(coords, run.public_sha, SITE_IN.maxTotalBytes * 4);
+  const files = new Map<string, Uint8Array>();
+  for (const e of blobs) { const b = archive.get(e.path); if (b) files.set(e.path, b); }
 
   // The course's own site settings when it has them (orz-site.json is a course file); the builder forces the safe parts.
   let input: ReturnType<typeof siteInputFiles>;
@@ -132,7 +134,7 @@ async function buildOne(cfg: SiteBuildConfig, run: { id: string; package_id: str
     return "bad JSON";
   }
   const url = pagesUrl(coords);
-  const built = await cfg.site.build(input.files, { ownConfig: input.ownConfig, title: input.title, baseUrl: url });
+  const built = await cfg.site.build(input.files, { ownConfig: input.ownConfig, title: input.title, baseUrl: url, courseIndex: !input.ownIndex });
   if (!built.ok) {
     await mark(cfg.sql, run.id, "site-failed", { error: "The website build found problems; the previous one stays up.", problems: built.errors.slice(0, 20) });
     return `build failed (${built.errors.length} problems)`;

@@ -4,7 +4,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { EmbeddedEditor, type EmbeddedEditorHandle } from "@/lib/orz-editor/embedded-editor";
 import type { OrzKind } from "@/lib/orz-editor/kit";
 import { browserSupabase } from "@/lib/supabase/browser";
-import { mintUidAction, readCourseTextAction, readVersionAction, syncDocAction } from "./actions";
+import { mintUidAction, readCourseTextAction, readVersionAction } from "./actions";
+import type { SendResult } from "@/lib/device-save/scheduler";
 
 export function DocEditor(p: { kind: OrzKind; packageId: string; path: string; text: string; version: string; isPrivate: boolean; nonce?: string; assets?: Array<[string, string]> }) {
   const ed = useRef<EmbeddedEditorHandle>(null);
@@ -38,7 +39,7 @@ export function DocEditor(p: { kind: OrzKind; packageId: string; path: string; t
   return (
     <div className="flex h-full flex-col">
       {others.length ? (
-        <div data-testid="presence" className="border-b bg-sky-50 px-3 py-1 text-xs">
+        <div data-testid="presence" className="border-b border-sky-300 bg-sky-100 px-3 py-1.5 text-sm font-medium text-sky-950" role="status">
           Also here: {others.join(", ")}
         </div>
       ) : null}
@@ -55,7 +56,7 @@ export function DocEditor(p: { kind: OrzKind; packageId: string; path: string; t
       assetUrls={assetMap}
       readCourseText={(path) => readCourseTextAction(p.packageId, path)}
       mintUid={() => mintUidAction()}
-      sync={(a) => syncDocAction(a)}
+      sync={(a) => sendSync(a)}
     />
       </div>
     </div>
@@ -95,4 +96,22 @@ function usePresence(packageId: string, path: string): string[] {
     return () => { gone = true; if (channel) void sb.removeChannel(channel); };
   }, [packageId, path]);
   return others;
+}
+
+/**
+ * Send to the course through the sync route (RC.13). keepalive lets the browser finish it while the
+ * person leaves (it allows bodies up to 64 KB); a larger text is sent normally, which still completes
+ * on navigation inside the workspace.
+ */
+async function sendSync(a: { packageId: string; path: string; text: string; baseVersion: string | null; syncId: string }): Promise<SendResult> {
+  const body = JSON.stringify({ path: a.path, text: a.text, baseVersion: a.baseVersion, syncId: a.syncId });
+  try {
+    const res = await fetch(`/workspace/${encodeURIComponent(a.packageId)}/sync`, {
+      method: "POST", headers: { "content-type": "application/json" }, body, keepalive: body.length < 60_000,
+    });
+    const r = (await res.json().catch(() => null)) as SendResult | null;
+    return r ?? { ok: false, retryable: true, reason: "Couldn't reach Alembic." };
+  } catch {
+    return { ok: false, retryable: true, reason: "Couldn't reach Alembic." };
+  }
 }

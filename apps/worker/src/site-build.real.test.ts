@@ -29,3 +29,27 @@ describe("website build, real orz-site", () => {
     expect([...built.files.keys()]).not.toContain("alembic.json");
   }, 60_000);
 });
+
+describe("the course website's front page (RC.16)", () => {
+  it("[RC.16] the website opens on the course: title, then chapters in the course's order with their parts by name, not folders in file-name order", async () => {
+    const site = await inProcessBuilder();
+    const doc = (t: string) => enc(`{{nyml\nkind: document\nformat: 1\ntitle: ${t}\n}}\n\n# ${t}\n`);
+    const manifest = { title: "General Chemistry", description: "A two-semester course.", chapters: [
+      { slug: "introduction", title: "Introduction to Chemistry" }, { slug: "stoichiometry", title: "Stoichiometry" }, { slug: "gases", title: "Gases" },
+    ] };
+    const files = new Map<string, Uint8Array>([
+      ["alembic.json", enc(JSON.stringify(manifest))],
+      ["study-guide/gases.md", doc("Gases")], ["practice/gases.md", doc("Practice: Gases")],
+      ["study-guide/introduction.md", doc("Introduction")], ["study-guide/stoichiometry.md", doc("Stoichiometry")],
+      ["metadata/ATTRIBUTION.md", doc("Attribution")],
+    ]);
+    const input = siteInputFiles(files);
+    const built = await site.build(input.files, { ownConfig: input.ownConfig, title: input.title, baseUrl: "https://x.github.io/y/", courseIndex: !input.ownIndex });
+    expect(built.errors).toEqual([]);
+    const index = new TextDecoder().decode(built.files.get("index.md.html")!);
+    const order = ["Introduction to Chemistry", "Stoichiometry", "Gases"].map((t) => index.indexOf(t));
+    expect(order.every((i) => i > 0)).toBe(true);
+    expect(order).toEqual([...order].sort((a, b) => a - b));
+    expect(new TextDecoder().decode(built.files.get("index.html")!)).toMatch(/url=index\.md\.html/);
+  }, 60_000);
+});

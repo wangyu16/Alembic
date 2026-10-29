@@ -155,14 +155,24 @@ function TryEditor({ file }: { file: File }) {
         mode: "split",
         chrome: "full",
         fileName: file.path.split("/").pop() ?? "sample.md",
-        hooks: { save: async () => { /* a demo: nothing is saved */ } },
+        // A demo keeps nothing here: Save gives the visitor their own copy, a file that opens and edits itself.
+        hooks: {
+          save: async (text: string) => {
+            const html = await kit.assemble(text, { delivery: "inline" });
+            const name = (file.path.split("/").pop() ?? "sample.md").replace(/\.md$/i, "") + (file.kind === "slides" ? ".html" : ".md.html");
+            const url = URL.createObjectURL(new Blob([html], { type: "text/html" }));
+            const a = Object.assign(document.createElement("a"), { href: url, download: name.replace(/\.slides\.html$/, ".slides.html") });
+            document.body.append(a); a.click(); a.remove();
+            setTimeout(() => URL.revokeObjectURL(url), 10_000);
+          },
+        },
       });
     }).catch((e: Error) => setFailed(e.message));
     return () => { gone = true; ed?.destroy(); };
   }, [file]);
   return (
     <div className="mt-2">
-      <p className="text-xs text-muted">{file.path}: you can edit; nothing is kept when you leave.</p>
+      <p className="text-xs text-muted">You can edit this. Nothing is kept here when you leave; Save downloads your own copy to your computer.</p>
       {failed ? <p className="text-red-700">{failed}</p> : null}
       <div ref={host} className="h-[70vh] rounded border" />
     </div>

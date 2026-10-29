@@ -15,6 +15,7 @@ import { IndexedDbDraftStore, draftKey, requestPersistentStorage, type DraftStor
 import { diffEdit, loadKit, type OrzEditor, type OrzKind } from "./kit";
 import { mergeRemote } from "./merge";
 import { makeHooks } from "./hooks";
+import { assembleDownload } from "./download";
 
 export interface EmbeddedEditorProps {
   kind: OrzKind;
@@ -45,6 +46,7 @@ export const EmbeddedEditor = forwardRef<EmbeddedEditorHandle, EmbeddedEditorPro
   const editor = useRef<OrzEditor | null>(null);
   const scheduler = useRef<SyncScheduler | null>(null);
   const [status, setStatus] = useState<SyncStatus>({ kind: "synced", at: null });
+  const statusRef = useRef<SyncStatus["kind"]>("synced");
   const [failed, setFailed] = useState<string | null>(null);
   const base = useRef<string | null>(p.baseVersion);
   const baseText = useRef<string>(p.text); // the text of `base`: the merge base for others' changes
@@ -92,8 +94,10 @@ export const EmbeddedEditor = forwardRef<EmbeddedEditorHandle, EmbeddedEditorPro
       clearTimer: (h) => clearTimeout(h as ReturnType<typeof setTimeout>),
       newSyncId: () => crypto.randomUUID(),
       send: (d, syncId) => props.current.sync({ packageId: c.packageId, path: c.docPath, text: d.text, baseVersion: d.baseVersion, syncId }),
-      onStatus: (x) => { if (!disposed) setStatus(x); },
+      onStatus: (x) => { statusRef.current = x.kind; if (!disposed) setStatus(x); },
       onSynced: (d) => {
+        // The editor's own bar says Saved only once the course has this text (RC.13).
+        if (editor.current?.getText() === d.text) editor.current.markSaved();
         // Private text leaves the device once it is in the course (design §7.1).
         void store.get(key).then((cur) => {
           if (cur && cur.text === d.text) return c.isPrivate ? store.delete(key) : store.put({ ...cur, savedAt: Date.now() });
@@ -132,8 +136,8 @@ export const EmbeddedEditor = forwardRef<EmbeddedEditorHandle, EmbeddedEditorPro
         editor.current = e;
         e.on("change", ({ text }) => {
           if (quiet.current) { e.markSaved(); return; } // a remote update with nothing of ours on top: already synced
-          // Kept on the device at once: the editor's own bar says Saved too (its Save button syncs now).
-          void keep(text).then(() => { if (e.getText() === text) e.markSaved(); });
+          // Kept on the device at once; the editor's bar says Saved only when the course has it (onSynced).
+          void keep(text);
         });
         if (startText !== c.text) s.edit({ text: startText, baseVersion: c.baseVersion });
       } catch (err) {
@@ -141,24 +145,45 @@ export const EmbeddedEditor = forwardRef<EmbeddedEditorHandle, EmbeddedEditorPro
       }
     })();
 
-    // Leaving the page counts as leaving the document.
+    // Leaving the page counts as leaving the document; closing it with text not yet in the course asks first.
     const onHide = () => { if (document.visibilityState === "hidden") void s.syncNow(); };
+    const onLeave = (ev: BeforeUnloadEvent) => {
+      if (statusRef.current !== "synced") { void s.syncNow(); ev.preventDefault(); }
+    };
     document.addEventListener("visibilitychange", onHide);
+    window.addEventListener("beforeunload", onLeave);
     return () => {
       disposed = true;
       document.removeEventListener("visibilitychange", onHide);
+      window.removeEventListener("beforeunload", onLeave);
       void s.syncNow().finally(() => s.dispose());
       editor.current?.destroy();
       editor.current = null;
     };
   }, []);
 
+  /** Download (K4 step 4): the current text as a self-contained file that opens and edits itself in a browser. */
+  const download = async () => {
+    const e = editor.current;
+    if (!e) return;
+    const kit = await loadKit(p.kind);
+    const html = await assembleDownload(kit, e.getText(), { packageId: p.packageId, path: p.docPath, baseVersion: base.current ?? "" });
+    const name = (p.docPath.split("/").pop() ?? "document.md").replace(/\.md$/i, "") + ".html";
+    const url = URL.createObjectURL(new Blob([html], { type: "text/html" }));
+    const a = Object.assign(document.createElement("a"), { href: url, download: name.endsWith(".slides.html") || name.endsWith(".paged.html") ? name : name.replace(/\.html$/, ".md.html") });
+    document.body.append(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10_000);
+  };
+
   const label = statusLabel(status, (ms) => new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center justify-end gap-3 border-b px-3 py-1 text-sm" aria-live="polite">
         <span data-testid="sync-status">{label}</span>
-        <button type="button" className="underline" onClick={() => void scheduler.current?.syncNow()}>Sync now</button>
+        <button type="button" className="underline" onClick={() => void scheduler.current?.syncNow()}>Save to the course now</button>
+        <button type="button" className="underline" data-testid="download" onClick={() => void download()}>Download</button>
       </div>
       {failed ? <p className="p-4 text-red-700" role="alert">{failed}</p> : null}
       {conflict ? (

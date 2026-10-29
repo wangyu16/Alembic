@@ -52,11 +52,11 @@ describe("SyncScheduler cadence", () => {
     expect(h.s.current).toEqual({ kind: "synced", at: IDLE_MS });
   });
 
-  it("syncs at most 5 minutes after the first edit while typing continues", async () => {
+  it("syncs at most MAX_WAIT_MS after the first edit while typing continues", async () => {
     const h = harness([{ ok: true }]);
-    for (let t = 0; t < MAX_WAIT_MS; t += 30_000) { h.edit(`v${t}`); await h.advance(30_000); }
+    for (let t = 0; t < MAX_WAIT_MS; t += 10_000) { h.edit(`v${t}`); await h.advance(10_000); }
     expect(h.sent).toHaveLength(1);
-    expect(h.sent[0]!.text).toBe(`v${MAX_WAIT_MS - 30_000}`);
+    expect(h.sent[0]!.text).toBe(`v${MAX_WAIT_MS - 10_000}`);
   });
 
   it("Sync now sends at once; nothing to send is a no-op", async () => {
@@ -87,7 +87,7 @@ describe("SyncScheduler cadence", () => {
     h.edit("a");
     await h.s.syncNow();
     expect(h.s.current.kind).toBe("retrying");
-    expect(statusLabel(h.s.current, String)).toBe("Saved — will sync when back online");
+    expect(statusLabel(h.s.current, String)).toBe("Kept on this device — will save to the course when back online");
     await h.advance(RETRY_MS);
     expect(h.sent).toHaveLength(2);
     expect(h.sent[1]!.syncId).toBe(h.sent[0]!.syncId);
@@ -105,5 +105,14 @@ describe("SyncScheduler cadence", () => {
     await h.advance(10 * 60_000);
     expect(h.sent).toHaveLength(1);
     expect(h.s.hasUnsynced).toBe(true);
+  });
+});
+
+describe("what the status says (RC.13)", () => {
+  it("[RC.13] the status never says Saved for text that is only on this device; it says so plainly, and when the course has it", () => {
+    expect(statusLabel({ kind: "saved" }, String)).toBe("Kept on this device — not in the course yet");
+    expect(statusLabel({ kind: "synced", at: 0 }, () => "10:53 PM")).toBe("Saved to the course at 10:53 PM");
+    expect(statusLabel({ kind: "refused", reason: "not allowed" }, String)).toMatch(/^Kept on this device only/);
+    expect(IDLE_MS).toBeLessThanOrEqual(30_000);
   });
 });

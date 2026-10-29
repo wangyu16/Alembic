@@ -32,3 +32,31 @@ describe("the website config (review r2 H-A)", () => {
     expect(c).not.toHaveProperty("index");
   });
 });
+
+import { archiveReader } from "./publish-loop";
+
+describe("reading a course for Publish (RC.11)", () => {
+  it("[RC.11] reading every file of a 330-file course at one commit costs one archive request; a failed request isn't kept", async () => {
+    let calls = 0;
+    let fail = true;
+    const files = new Map(Array.from({ length: 330 }, (_, k) => [`study-guide/ch${k}.md`, new TextEncoder().encode(`# ${k}`)]));
+    const client = { async getTreeArchive() { calls++; if (fail) { fail = false; throw new Error("rate limited"); } return files; } };
+    const read = archiveReader(client as never, { owner: "o", repo: "r" });
+    await expect(read("W", "study-guide/ch0.md")).rejects.toThrow("rate limited");
+    const got = await Promise.all([...files.keys()].map((p) => read("W", p)));
+    expect(got.every((b) => b !== null)).toBe(true);
+    expect(await read("W", "missing.md")).toBeNull();
+    expect(calls).toBe(2); // the failed one, then one for all 330 reads
+  });
+});
+
+import { GitHubError } from "@alembic/github-bridge";
+import { failureReason } from "./publish-loop";
+
+describe("a Publish that fails (RC.12)", () => {
+  it("[RC.12] a GitHub rate limit is named, with when to publish again; other failures stay general", () => {
+    const limited = new GitHubError("GitHub GET x failed", 403, "API rate limit exceeded", { rateLimited: true, retryAt: new Date("2026-10-29T05:03:00Z") });
+    expect(failureReason(limited)).toMatch(/GitHub is limiting how often Alembic may use this course's account.*Publish again after 12:03 AM CDT\./);
+    expect(failureReason(new Error("boom"))).toMatch(/^Publish couldn't finish/);
+  });
+});

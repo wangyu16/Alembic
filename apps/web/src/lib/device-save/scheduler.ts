@@ -11,8 +11,10 @@
  *   the same request (enqueueSync is idempotent by sync id).
  */
 
-export const IDLE_MS = 2 * 60_000;
-export const MAX_WAIT_MS = 5 * 60_000;
+// Shortened from 2 / 5 minutes (design §7.1) after the real-course review (RC.13): a teacher who
+// stopped typing expects the course to have it within seconds, not minutes. Owner to confirm.
+export const IDLE_MS = 30_000;
+export const MAX_WAIT_MS = 2 * 60_000;
 export const RETRY_MS = 30_000;
 
 export interface Draft {
@@ -133,10 +135,10 @@ export class SyncScheduler {
 /** The words in the document bar. */
 export function statusLabel(s: SyncStatus, fmt: (ms: number) => string): string {
   switch (s.kind) {
-    case "synced": return s.at === null ? "Synced" : `Synced at ${fmt(s.at)}`;
-    case "saved": return "Saved";
-    case "syncing": return "Syncing…";
-    case "retrying": return "Saved — will sync when back online";
-    case "refused": return `Saved on this device only — couldn't sync: ${s.reason}`;
+    case "synced": return s.at === null ? "Saved to the course" : `Saved to the course at ${fmt(s.at)}`;
+    case "saved": return "Kept on this device — not in the course yet";
+    case "syncing": return "Saving to the course…";
+    case "retrying": return "Kept on this device — will save to the course when back online";
+    case "refused": return `Kept on this device only — couldn't save to the course: ${s.reason}`;
   }
 }

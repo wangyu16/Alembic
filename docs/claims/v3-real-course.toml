@@ -99,3 +99,56 @@ bound_to = [
   "apps/web/src/lib/course-move.test.ts :: figures named by 0.x permalinks become relative course paths, keeping the size hint; unknown ids are listed, never dropped",
 ]
 note = "Audit r1 F5. GenChem: 157 permalinks in 38 documents, 157 matched; the testing copy was relinked through the sync queue."
+
+[[claim]]
+id = "RC.11"
+claim = "Publish and the website build read a whole tree with one GitHub request (an archive), not one per file, with exact bytes: a 19-chapter Publish no longer spends the owner's hourly GitHub budget."
+oracle = "scenario"
+bound_to = [
+  "packages/github-bridge/src/tar.test.ts :: a real .tar.gz gives every regular file by its path under the top folder, long and non-ASCII names included, bytes exact",
+  "apps/worker/src/publish-loop.test.ts :: reading every file of a 330-file course at one commit costs one archive request; a failed request isn't kept",
+]
+note = "Blind r1 (B5/A9): the installation's 5,000 requests/hour ran out at 04:03 UTC after a few GenChem Publishes plus normal use; every course page of the owner returned 500 for ~10 min. Live: the GenChem working tree, 331 files in one request (3.6 s), every blob id matching the tree."
+
+[[claim]]
+id = "RC.12"
+claim = "When GitHub rate-limits Alembic, the course, document and Publish pages show a calm 'busy, try again after HH:MM' page instead of an error, and a Publish stopped by it says so and when to publish again."
+oracle = "conformance"
+bound_to = [
+  "apps/web/src/lib/github-busy.test.tsx :: only a GitHub rate limit becomes the calm busy page, and the course, document and Publish pages all use it",
+  "apps/worker/src/publish-loop.test.ts :: a GitHub rate limit is named, with when to publish again; other failures stay general",
+]
+
+[[claim]]
+id = "RC.13"
+claim = "The editor never says Saved for text that is only on this device: the status says 'kept on this device — not in the course yet' until the course has it; a stop in typing sends it within 30 s, leaving the page still sends it, and closing with unsent text asks first."
+oracle = "conformance"
+bound_to = [
+  "apps/web/src/lib/device-save/scheduler.test.ts :: the status never says Saved for text that is only on this device; it says so plainly, and when the course has it",
+]
+note = "Blind r1 A3 (FAIL): 'Saved' meant this browser only; leaving within ~2 min lost the sync (a server action from an unmounting component). Now a keepalive request to a sync route; idle 30 s (design §7.1 said 2 min — owner to confirm). Live re-check by a fresh verifier."
+
+[[claim]]
+id = "RC.14"
+claim = "The course page reads as a course: chapters in the course's order with their titles and parts by name; course-wide and instructor-only files after, collapsed."
+oracle = "conformance"
+bound_to = [
+  "apps/web/src/lib/course-outline.test.ts :: chapters come in the course's order with their titles and parts by name; course-wide and instructor-only files come after, never a raw file list",
+]
+note = "Blind r1 A1 (PARTIAL): raw file names, alphabetical, a 'metadata' group."
+
+[[claim]]
+id = "RC.15"
+claim = "The Publish page says what each chapter really is (Draft, ready once the plan is approved, Ready), shows a status change as saving until it lands, approves a course plan at once with one button, and names chapters by title."
+oracle = "human"
+bound_to = []
+note = "Blind r1 B1/B4/B5. Verified by a fresh blind re-verifier (round 2)."
+
+[[claim]]
+id = "RC.16"
+claim = "The course website opens on the course: its title, then the chapters in the course's order with their parts by name (not folders in file-name order)."
+oracle = "scenario"
+bound_to = [
+  "apps/worker/src/site-build.real.test.ts :: the website opens on the course: title, then chapters in the course's order with their parts by name, not folders in file-name order",
+]
+note = "Blind r1 B3 friction."

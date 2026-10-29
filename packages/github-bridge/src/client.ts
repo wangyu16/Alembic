@@ -1,9 +1,11 @@
 import { createHash } from "node:crypto";
+import { readTarGz } from "./tar";
 import { staticTokenSource, type TokenSource } from "./app-auth";
 import {
   defaultFetch,
   GitHubError,
   isRateLimitResponse,
+  retryAtOf,
   sendWithRetry,
   type FetchLike,
   type RetryPolicy,
@@ -260,8 +262,9 @@ export class GitHubClient {
     }
     if (!res.ok) {
       const text = await res.text().catch(() => "");
+      const rateLimited = isRateLimitResponse(res, text);
       throw new GitHubError(`GitHub ${method} ${path} failed`, res.status, text || undefined, {
-        rateLimited: isRateLimitResponse(res, text),
+        rateLimited, retryAt: rateLimited ? retryAtOf(res) : null,
       });
     }
     return (await res.json()) as T;
@@ -902,6 +905,25 @@ export class GitHubClient {
       if (!sha) throw new Error(`no blob id for ${path} at ${ref}`);
     }
     return this.getBlob(coords, sha);
+  }
+
+  /**
+   * Every file of the tree at `ref`, in ONE API request (GitHub's tarball,
+   * served from its download host): path → bytes. Throws past `maxBytes`
+   * unpacked. Counts as one request against the installation's hourly budget.
+   */
+  async getTreeArchive(coords: RepoCoords, ref: string, maxBytes = 200 * 1024 * 1024): Promise<Map<string, Uint8Array>> {
+    const get = async (token: string) => this.fetchImpl(`https://api.github.com/repos/${coords.owner}/${coords.repo}/tarball/${encodeURIComponent(ref)}`, {
+      method: "GET",
+      headers: { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" },
+    });
+    let res = await get(await this.tokens.token());
+    if (res.status === 401) { const fresh = await this.tokens.refresh(); if (fresh !== null) res = await get(fresh); }
+    if (!res.ok || !res.arrayBuffer) {
+      const text = await res.text().catch(() => "");
+      throw new GitHubError(`GitHub tarball ${coords.owner}/${coords.repo}@${ref} failed`, res.status, text, { rateLimited: isRateLimitResponse(res, text), retryAt: retryAtOf(res) });
+    }
+    return readTarGz(new Uint8Array(await res.arrayBuffer()), maxBytes);
   }
 
   /** A blob's bytes by its id (git blobs API: up to 100 MB, always base64). */

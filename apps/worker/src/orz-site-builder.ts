@@ -22,9 +22,11 @@ const CHILD_TIMEOUT_MS = 120_000;
  * the worker never allows forced: no network includes, pages that load the
  * engine from the CDN (never inlined into every page).
  */
-export function siteConfig(own: unknown, title: string | null, defaults: Record<string, unknown>): Record<string, unknown> {
+export function siteConfig(own: unknown, title: string | null, defaults: Record<string, unknown>, o: { courseIndex?: boolean } = {}): Record<string, unknown> {
   const base = own && typeof own === "object" && !Array.isArray(own) ? { ...(own as Record<string, unknown>) } : { ...defaults };
   if (!own && title) base["index"] = { ...((defaults["index"] as Record<string, unknown> | undefined) ?? {}), title: title.slice(0, 200) };
+  // Alembic wrote the course's own front page (index.md + index.html): orz-site's generated index stays off.
+  if (!own && o.courseIndex) base["index"] = { ...((base["index"] as Record<string, unknown> | undefined) ?? {}), mode: "off" };
   const includes = base["includes"] && typeof base["includes"] === "object" ? (base["includes"] as Record<string, unknown>) : {};
   return { ...base, delivery: "cdn", inline: [], includes: { ...includes, network: false } };
 }
@@ -34,15 +36,47 @@ export function siteConfig(own: unknown, title: string | null, defaults: Record<
  * own files that aren't pages (the public manifest, the site settings), which
  * are read here for the title and the course's own settings.
  */
-export function siteInputFiles(files: Map<string, Uint8Array>): { files: Map<string, Uint8Array>; ownConfig: unknown; title: string | null } {
+export function siteInputFiles(files: Map<string, Uint8Array>): { files: Map<string, Uint8Array>; ownConfig: unknown; title: string | null; ownIndex: boolean } {
   const decode = (b: Uint8Array | undefined) => (b ? (JSON.parse(new TextDecoder().decode(b)) as unknown) : null);
   const ownConfig = decode(files.get("orz-site.json")); // throws on invalid JSON: the caller reports it
-  const manifest = decode(files.get("alembic.json")) as { title?: unknown } | null;
+  const manifest = decode(files.get("alembic.json")) as { title?: unknown; description?: unknown; chapters?: unknown } | null;
   const title = typeof manifest?.title === "string" && manifest.title.trim() ? manifest.title.trim() : null;
   const out = new Map(files);
   out.delete("orz-site.json");
   out.delete("alembic.json");
-  return { files: out, ownConfig, title };
+  // The course's own index, from its chapters in order (RC.16), unless the course has its own site settings or index.
+  const ownIndex = ownConfig !== null || out.has("index.md") || out.has("index.html");
+  if (!ownIndex && manifest) {
+    out.set("index.md", new TextEncoder().encode(courseIndexText(manifest, [...out.keys()])));
+    out.set("index.html", new TextEncoder().encode('<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0; url=index.md.html"><title>Course</title><a href="index.md.html">Open the course</a>\n'));
+  }
+  return { files: out, ownConfig, title, ownIndex };
+}
+
+const PART_LINKS: ReadonlyArray<[string, (s: string) => string]> = [
+  ["Concept map", (s) => `concepts/${s}.md`], ["Study guide", (s) => `study-guide/${s}.md`], ["Slides", (s) => `slides/${s}.slides.md`],
+  ["Assessment guide", (s) => `assessment-support/${s}.md`], ["Practice", (s) => `practice/${s}.md`],
+];
+
+/** The course website's front page: title, description, then each chapter in order with its parts (only those published). */
+export function courseIndexText(m: { title?: unknown; description?: unknown; chapters?: unknown }, paths: readonly string[]): string {
+  const has = new Set(paths);
+  const clean = (t: string) => t.replace(/[\r\n]+/g, " ").replace(/\}\}/g, "} }").trim();
+  const title = typeof m.title === "string" && m.title.trim() ? clean(m.title) : "Course";
+  const lines = ["{{nyml", "kind: document", "format: 1", `title: ${title}`, "}}", "", `# ${title}`, ""];
+  if (typeof m.description === "string" && m.description.trim()) lines.push(clean(m.description), "");
+  const chapters = Array.isArray(m.chapters) ? (m.chapters as Array<{ slug?: unknown; title?: unknown }>) : [];
+  const listed = chapters.filter((c) => typeof c.slug === "string" && PART_LINKS.some(([, p]) => has.has(p(c.slug as string))));
+  if (listed.length) {
+    lines.push("## Chapters", "");
+    listed.forEach((c, k) => {
+      const links = PART_LINKS.filter(([, p]) => has.has(p(c.slug as string))).map(([label, p]) => `[${label}](${p(c.slug as string)})`);
+      lines.push(`${k + 1}. **${clean(typeof c.title === "string" ? c.title : (c.slug as string))}** — ${links.join(" · ")}`);
+    });
+    lines.push("");
+  }
+  for (const [name, p] of [["README", "README.md"], ["Course map", "concepts/course.md"]] as const) if (has.has(p)) lines.push(`[${name}](${p})  `);
+  return lines.join("\n") + "\n";
 }
 
 /** The builder as run inside the child: orz-site in this process. */
@@ -52,7 +86,7 @@ export async function inProcessBuilder(): Promise<SiteBuilder> {
   const versions = await site.installedVersions();
   return {
     async build(files, o) {
-      const config = siteConfig(o.ownConfig, o.title, { ...site.defaultConfig(), carriers: versions } as unknown as Record<string, unknown>);
+      const config = siteConfig(o.ownConfig, o.title, { ...site.defaultConfig(), carriers: versions } as unknown as Record<string, unknown>, { courseIndex: o.courseIndex === true });
       const r = await site.buildSite(files, config, { carriers, baseUrl: o.baseUrl, offline: true });
       return {
         ok: r.ok,

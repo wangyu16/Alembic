@@ -26,16 +26,19 @@ export class GitHubError extends Error {
   /** GitHub refused the request because of a (primary or secondary) rate
    *  limit — the request was NOT processed, and retrying later is correct. */
   readonly rateLimited: boolean;
+  /** When a rate-limited request may succeed again (GitHub's reset or Retry-After), when known. */
+  readonly retryAt: Date | null;
 
   constructor(
     message: string,
     public readonly status: number,
     public readonly detail?: string,
-    opts: { rateLimited?: boolean } = {},
+    opts: { rateLimited?: boolean; retryAt?: Date | null } = {},
   ) {
     super(`${message} (HTTP ${status})${detail ? `: ${detail}` : ""}`);
     this.name = "GitHubError";
     this.rateLimited = opts.rateLimited ?? false;
+    this.retryAt = opts.retryAt ?? null;
   }
 
   /** Worth trying again later: GitHub was busy or briefly unavailable. Used to
@@ -179,4 +182,17 @@ export async function sendWithRetry(
     if (wait === null) return settled;
     await policy.sleep(wait);
   }
+}
+
+/** When GitHub says a rate-limited request may be sent again (x-ratelimit-reset or Retry-After), or null. */
+export function retryAtOf(res: FetchResponse, now = Date.now()): Date | null {
+  const reset = Number(res.headers?.get("x-ratelimit-reset"));
+  if (res.headers?.get("x-ratelimit-remaining") === "0" && Number.isFinite(reset) && reset > 0) return new Date(reset * 1000);
+  const after = res.headers?.get("retry-after");
+  if (after) {
+    const secs = Number(after);
+    const at = Number.isFinite(secs) ? now + secs * 1000 : Date.parse(after);
+    if (Number.isFinite(at)) return new Date(at);
+  }
+  return null;
 }
