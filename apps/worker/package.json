@@ -11,6 +11,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@alembic/ai-assist": "workspace:*",
     "@alembic/generators": "workspace:*",
     "@alembic/github-bridge": "workspace:*",
     "@alembic/notify": "workspace:*",

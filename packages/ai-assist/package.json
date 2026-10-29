@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@alembic/package-contract": "workspace:*",
-    "@google/genai": "^2.8.0"
+    "@google/genai": "^2.8.0",
+    "zod": "^4.4.3"
   }
 }

@@ -42,6 +42,7 @@ export async function SiteHeader() {
     { href: "/portal", label: "Discover" },
     ...(user ? [{ href: "/workspace", label: "Workspace" }] : []),
     { href: "/guide", label: "Guide" },
+    { href: "/contact", label: "Contact" },
     ...(isAdmin ? [{ href: "/admin", label: "Admin" }] : []),
     ...(user ? [] : [{ href: "/signin", label: "Sign in" }]),
   ];

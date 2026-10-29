@@ -75,6 +75,9 @@ export default async function AdminPage() {
           <p className="mt-1 text-muted">Study readiness — status, research export, reports.</p>
         </div>
 <span className="flex gap-1">
+          <Link href="/admin/messages" className="btn btn-ghost btn-sm">
+            Messages →
+          </Link>
           <Link href="/admin/credit" className="btn btn-ghost btn-sm">
             AI credit →
           </Link>

@@ -253,3 +253,48 @@ bound_to = [
   "packages/package-ops/src/course-create-v3.test.ts :: someone who knows their table of contents gets every chapter, and with startParts every part, in the first commit",
 ]
 note = "Owner, 2026-10-29: before the guides; experienced users must not walk through the basic steps each time (one-step skeleton at creation, many chapters at once, start all parts)."
+
+# Contact form with automatic sorting (owner, 2026-10-29: "a contact form ...,
+# letting an Agent process and sort in the backend, so I can handle many
+# digested questions at once"). Migration 0062; /contact, /admin/messages,
+# the worker's contact-triage schedule.
+
+[[claim]]
+id = "RC.27"
+claim = "Contact messages are the operator's alone: visitors and signed-in people can neither read nor file them directly (nor call the functions); the server files them through the service role, and only an operator (profiles.is_admin) can read or change them."
+oracle = "invariant"
+bound_to = [
+  "apps/web/src/lib/contact-messages.sql.test.ts :: visitors and signed-in people can neither read nor file messages directly; only the operator reads them",
+]
+
+[[claim]]
+id = "RC.28"
+claim = "The contact form checks every field (name, email, topic from the fixed list, message up to 4000 characters, a page on this site only), silently drops a filled honeypot without counting or keeping it, and refuses past 5 an hour per network and 3 an hour per email, filing nothing; the network is kept only as a keyed hash."
+oracle = "conformance"
+bound_to = [
+  "apps/web/src/lib/contact.test.ts :: checks name, email, topic and message lengths; keeps only a path on this site as the page it came from",
+  "apps/web/src/lib/contact.test.ts :: a filled honeypot gets the normal confirmation and nothing is counted or kept",
+  "apps/web/src/lib/contact.test.ts :: is limited per network (5 an hour) and per email (3 an hour, any capitalisation); past either, nothing is filed",
+]
+
+[[claim]]
+id = "RC.29"
+claim = "The AI's answer can only choose four fields: malformed answers are refused, an unknown category becomes Other, the summary is one line of at most 300 characters with web addresses blanked, and anything else in the answer (actions, addresses, extra keys) is dropped, even when the message's injected instructions are obeyed."
+oracle = "probe"
+bound_to = [
+  "packages/ai-assist/src/contact-triage.test.ts :: a malformed or shapeless answer is refused (the message stays unsorted); chatter and code fences around a good answer are ignored",
+  "packages/ai-assist/src/contact-triage.test.ts :: an unknown category becomes other, an unknown urgency normal, and only a real true marks spam",
+  "packages/ai-assist/src/contact-triage.test.ts :: an oversized or multi-line summary becomes one line of at most 300 characters, with web addresses blanked",
+  "packages/ai-assist/src/contact-triage.test.ts :: instructions injected in the message can only choose the four fields: extra keys and actions in the answer are dropped",
+]
+
+[[claim]]
+id = "RC.30"
+claim = "Sorting runs on the low-cost model under a hard daily cap kept in the database (CONTACT_TRIAGE_DAILY_CAP, default 200, never above 1000), writes back only the four checked fields, and a message the AI can't sort (down, bad answer, cap reached) stays open and listed unsorted, never lost."
+oracle = "scenario"
+bound_to = [
+  "apps/web/src/lib/contact-messages.sql.test.ts :: sorting takes at most the day's cap, writes only the four fields, and a message it can't sort stays open and listed",
+  "apps/worker/src/contact-triage-job.test.ts :: asks the low-cost model for each taken message within the daily cap and writes back only the four checked fields",
+  "apps/worker/src/contact-triage-job.test.ts :: when the AI is down or answers badly, nothing is written (the message stays new, shown unsorted) and no message text is logged",
+]
+note = "Not verified live: the real model's answers to real messages, and the worker's AI settings on testing."
