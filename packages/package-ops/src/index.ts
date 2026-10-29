@@ -47,3 +47,4 @@ export * from "./publish-job";
 export * from "./publish-sql-store";
 export * from "./chapter-parts";
 export * from "./course-ops";
+export * from "./both-changed-items";

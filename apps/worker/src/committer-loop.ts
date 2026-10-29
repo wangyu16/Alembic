@@ -8,7 +8,8 @@
  */
 import { createHash } from "node:crypto";
 import { GitHubClient, installationTokenSource, workingRepo } from "@alembic/github-bridge";
-import { drainCourse, SqlQueueStore, type QueueRow, type QueueStore, type SqlClient } from "@alembic/package-ops";
+import { drainCourse, itemsForLandedChange, SqlQueueStore, type FileOutcome, type QueueRow, type QueueStore, type RemovedChapter, type SqlClient } from "@alembic/package-ops";
+import { unitPartForPath, WorkingManifestV3Schema } from "@alembic/package-contract";
 
 export interface CommitterConfig {
   sql: SqlClient;
@@ -82,6 +83,7 @@ export async function drainOne(cfg: CommitterConfig, packageId: string): Promise
         await cfg.sql.query(`insert into public.doc_versions (package_id, path, version, commit_sha) values ($1, $2, $3, $4) on conflict do nothing`,
           [packageId, f.path, sha256(text), head]);
       }
+      await raiseBothChanged(cfg, packageId, row, i.result, repo).catch((e) => console.error("[committer] raising items failed", (e as Error).message));
     },
     async baseText(p, path, version) {
       const { rows: v } = await cfg.sql.query<{ commit_sha: string }>(
@@ -105,4 +107,39 @@ export async function committerPass(cfg: CommitterConfig): Promise<number> {
     }
   }
   return n;
+}
+
+/**
+ * Needs-you items for a landed change (write-path §5, contract v3 §13.4): one
+ * per file where two changes met; for typing that arrived in a removed
+ * chapter, an item for its author and a Restore offer for the owner and deputy.
+ */
+async function raiseBothChanged(cfg: CommitterConfig, packageId: string, row: QueueRow, result: unknown, repo: { readFile(ref: string, path: string): Promise<string | null> }): Promise<void> {
+  const res = (result ?? {}) as { files?: FileOutcome[]; commits?: string[]; head?: string };
+  const both = (res.files ?? []).filter((f) => f.outcome === "both-changed");
+  if (!both.length || !res.head) return;
+  const removed = new Map<string, RemovedChapter>();
+  const deletes = both.filter((f) => f.reason === "edit-vs-delete" && unitPartForPath(f.path));
+  if (deletes.length) {
+    const slugs = (text: string | null) => { try { return WorkingManifestV3Schema.parse(JSON.parse(text ?? "null")).chapters; } catch { return []; } };
+    const listed = new Set(slugs(await repo.readFile(res.head, "alembic.json")).map((c) => c.slug));
+    for (const f of deletes) {
+      const slug = unitPartForPath(f.path)!.slug;
+      if (listed.has(slug)) continue;
+      const { rows } = await cfg.sql.query<{ base: string | null }>(
+        `select result->>'base' as base from public.write_queue where package_id = $1 and kind = 'courseop' and status = 'done'
+           and payload->'op'->>'op' = 'removeChapter' and payload->'op'->>'slug' = $2 order by finished_at desc nulls last limit 1`, [packageId, slug]);
+      const base = rows[0]?.base;
+      if (!base) continue;
+      const title = slugs(await repo.readFile(base, "alembic.json")).find((c) => c.slug === slug)?.title ?? slug;
+      removed.set(f.path, { slug, title, fromCommit: base });
+    }
+  }
+  const { rows: who } = await cfg.sql.query<{ user_id: string }>(
+    `select user_id from public.course_members where package_id = $1 and role in ('owner', 'deputy')`, [packageId]);
+  const items = itemsForLandedChange({ rowId: row.id, actorId: row.actorId ?? null, files: both, commits: res.commits ?? [], removed, deciders: who.map((w) => w.user_id) });
+  for (const it of items) {
+    await cfg.sql.query(`select public.needs_you_raise($1, 'both-changed', 'platform', $2, $3::text::jsonb, $4, $5, false, $6::uuid[])`,
+      [packageId, it.dedupe, JSON.stringify(it.payload), it.chapter, it.target, it.addressed]);
+  }
 }

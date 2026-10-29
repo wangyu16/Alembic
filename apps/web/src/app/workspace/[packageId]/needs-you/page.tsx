@@ -2,16 +2,16 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { NEEDS_YOU_LABEL, NEEDS_YOU_RANK, type NeedsYouKind } from "@alembic/notify";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { answerItemAction } from "./actions";
+import { answerItemAction, restoreChapterFromItemAction } from "./actions";
 
 export const dynamic = "force-dynamic";
 
 /** Kinds only the owner (or deputy) decides — mirrors needs_you_answer. */
 const OWNER_KINDS = new Set(["approve", "to-confirm", "suggestion", "update", "method-version", "reconnect", "ready"]);
 /** Kinds this page answers itself; the rest open where they are decided. */
-const HERE = new Set(["question", "to-confirm", "update", "suggestion"]);
+const HERE = new Set(["question", "to-confirm", "update", "suggestion", "both-changed"]);
 
-interface Item { id: string; kind: NeedsYouKind; chapter: string | null; payload: { title?: string; detail?: string } | null; created_at: string; addressed_to: string[] }
+interface Item { id: string; kind: NeedsYouKind; chapter: string | null; payload: { title?: string; detail?: string; action?: { op?: string } } | null; created_at: string; addressed_to: string[] }
 
 export default async function NeedsYouPage({ params }: { params: Promise<{ packageId: string }> }) {
   const { packageId } = await params;
@@ -66,6 +66,13 @@ export default async function NeedsYouPage({ params }: { params: Promise<{ packa
                         </>
                       ) : i.kind === "to-confirm" ? (
                         <button className="rounded bg-black px-3 py-1 text-white">Confirm</button>
+                      ) : i.kind === "both-changed" && i.payload?.action?.op === "restoreChapter" ? (
+                        <>
+                          {decides ? <button className="rounded bg-black px-3 py-1 text-white" formAction={restoreChapterFromItemAction.bind(null, packageId, i.id)}>Restore the chapter</button> : null}
+                          <button className="underline">Leave it removed</button>
+                        </>
+                      ) : i.kind === "both-changed" ? (
+                        <button className="underline" title="Both versions are kept.">OK, seen</button>
                       ) : (
                         <button className="underline" title="It won't come back unless it changes.">Dismiss</button>
                       )}

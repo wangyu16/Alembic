@@ -197,7 +197,7 @@ export interface FileOutcome {
  * -------------------------------------------------------------------------- */
 
 export type RowResult =
-  | { status: "done"; result: { head: string; commits: string[]; files: FileOutcome[]; recovered?: boolean } }
+  | { status: "done"; result: { head: string; commits: string[]; files: FileOutcome[]; recovered?: boolean; base?: string } }
   | { status: "refused"; reason: string }
   | { status: "bounced"; reason: string; records: string[] }
   | { status: "retry"; error: string; retryAfterSeconds: number; access?: boolean }
@@ -567,7 +567,7 @@ async function processCourseOp(row: QueueRow, store: QueueStore, repo: WorkingRe
             if (opts.claim && store.recordPlanned) await store.recordPlanned(row.id, opts.claim.holder, opts.claim.fence, row.attempts, shas);
           },
         });
-        return { status: "done", result: { head: out.head, commits: out.commitShas, files } };
+        return { status: "done", result: { head: out.head, commits: out.commitShas, files, base: head } }; // base: what a restore reads (§13.4)
       } catch (e) {
         if (isHeadMoved(e)) continue;
         if (e instanceof AttemptSuperseded) return { status: "retry", error: "attempt superseded", retryAfterSeconds: 0 };

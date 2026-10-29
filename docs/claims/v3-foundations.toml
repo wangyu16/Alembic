@@ -32,6 +32,7 @@ claim = "A non-text file or SVG whose base isn't current is both-changed: a kept
 oracle = "conformance"
 bound_to = [
   "packages/package-ops/src/course-committer.test.ts :: a picture replaced since the uploader's base keeps both: the incoming one as a kept version, the current one on top",
+  "packages/package-ops/src/both-changed-items.test.ts :: each file where two changes met raises one item everyone in the course sees, pointing at the kept version",
 ]
 
 [[claim]]
@@ -81,8 +82,9 @@ bound_to = [
   "packages/package-ops/src/course-ops.test.ts :: removing a chapter removes it and its part files in one change",
   "packages/package-ops/src/course-committer.test.ts :: removing a chapter removes its parts in the same commit; an operation on it afterwards is refused with a reason",
   "packages/package-ops/src/course-committer.test.ts :: restoreChapter (from the removal's parent) brings the chapter and its parts back; a reused slug comes back under a free one, marked restored",
+  "packages/package-ops/src/both-changed-items.test.ts :: typing that arrives for a removed chapter: its author is told the text is kept, and the owner and deputy are offered Restore (once per removal)",
 ]
-note = "Built: removal and restoreChapter. Not yet: the Needs-you item that offers Restore when a late sync arrives for a removed chapter."
+note = "Built: removal, restoreChapter, and the Needs-you items (author told; owner and deputy offered Restore on the Needs-you page)."
 
 [[claim]]
 id = "K1.17"
