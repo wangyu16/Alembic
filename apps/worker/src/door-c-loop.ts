@@ -15,7 +15,8 @@
 import { createHash } from "node:crypto";
 import { CompareIncompleteError, GitHubClient, GitHubError, installationTokenSource, treeReader, type RepoCoords } from "@alembic/github-bridge";
 import { editActionForPath } from "@alembic/package-contract";
-import { classifyOutside, mapLimit, outsideCommits, READ_CONCURRENCY, SqlQueueStore, undoKey, type SqlClient } from "@alembic/package-ops";
+import { classifyOutside, classifyPushedContent, mapLimit, outsideCommits, READ_CONCURRENCY, SqlQueueStore, undoKey, type PushedFile, type RowFile, type SqlClient } from "@alembic/package-ops";
+import { fileKind, isSvgPath, unitPartForPath } from "@alembic/package-contract";
 
 export interface DoorCConfig { sql: SqlClient; appId: string; privateKey: string; log?: (m: string) => void }
 
@@ -76,12 +77,51 @@ async function handlePush(cfg: DoorCConfig, ev: Ev): Promise<void> {
   const verdict = classifyOutside(changed.map((c) => ({ path: c.path, mode: c.status === "removed" ? null : (modeOf.get(c.path) ?? "100644") })));
   const who = ev.pusher_login ?? "someone";
 
+  // Second stage, by content (contract v3 §13.6): fetch only what the rules look at.
+  const shaOf = new Map(entries.map((e) => [e.path, e.sha]));
+  const relevant = changed.filter((c) => verdict.edits.includes(c.path) && (
+    c.path === "alembic.json" || c.path === "LICENSE" || c.path === "CITATION.cff" || c.path === "private/README.md" ||
+    (c.status === "removed" && unitPartForPath(c.path) !== null) ||
+    (c.status !== "removed" && (isSvgPath(c.path) || (fileKind(c.path) ?? "text") !== "text"))));
+  if (relevant.length) {
+    const needManifest = relevant.some((c) => c.path === "alembic.json" || c.status === "removed");
+    const [mBefore, mAfter] = needManifest
+      ? await Promise.all([client.getFileAtRef(coords, "alembic.json", ev.before_sha), client.getFileAtRef(coords, "alembic.json", ev.after_sha)])
+      : [null, null];
+    const files: PushedFile[] = await mapLimit(relevant, READ_CONCURRENCY, async (c) => {
+      const sha = shaOf.get(c.path);
+      const wantBytes = c.status !== "removed" && sha && (isSvgPath(c.path) || (fileKind(c.path) ?? "text") !== "text");
+      return { path: c.path, status: c.status, ...(wantBytes ? { bytes: await client.getBlob(coords, sha!) } : {}) };
+    });
+    const { rows: own } = await sql.query<{ login: string | null; id: string }>(
+      `select pr.github_username as login, pr.id from public.course_members m join public.profiles pr on pr.id = m.user_id where m.package_id = $1 and m.role = 'owner'`, [course.id]);
+    const owner0 = own[0];
+    const pusherIsOwner = !!(owner0?.login && ev.pusher_login && owner0.login.toLowerCase() === ev.pusher_login.toLowerCase());
+    const content = classifyPushedContent({ files, manifestBefore: mBefore, manifestAfter: mAfter ?? mBefore, pathsAfter: new Set(entries.filter((e) => e.type === "blob").map((e) => e.path)), pusherIsOwner });
+    for (const u of content.undo) {
+      verdict.undo.push(u);
+      verdict.edits = verdict.edits.filter((p) => p !== u.path);
+    }
+    // The owner changed the licence on GitHub: kept, and the licence files regenerated (a course operation as the owner).
+    if (content.regenerateLicense && owner0) {
+      await new SqlQueueStore(sql).insert({ packageId: course.id, kind: "courseop", idem: `license:${ev.after_sha}`, actorId: owner0.id, payload: { files: [], op: { op: "setLicense", license: content.regenerateLicense } } });
+    }
+  }
+
   if (verdict.undo.length) {
-    const files = [];
+    let beforeTree: Map<string, string> | undefined;
+    const files: RowFile[] = [];
     for (const u of verdict.undo) {
       // Restore what the course held before this push (absent then → remove it now). Only a real 404 means
       // absent (getFileAtRef returns null for it); any other failure leaves the event to be retried, so a
       // rate limit or outage never turns into deleting the file (audit r2 #6).
+      // A non-text file comes back as the blob it was (never decoded as text).
+      const kind = fileKind(u.path);
+      if (kind && kind !== "text" && !isSvgPath(u.path)) {
+        const was = (beforeTree ??= new Map((await client.listTreeEntries(coords, ev.before_sha)).entries.map((e) => [e.path, e.sha]))).get(u.path);
+        files.push(was ? { path: u.path, baseVersion: null, text: null, blob: { sha: was, size: 0 } } : { path: u.path, baseVersion: null, text: null });
+        continue;
+      }
       const before = await client.getFileAtRef(coords, u.path, ev.before_sha);
       files.push({ path: u.path, baseVersion: null, text: before });
     }

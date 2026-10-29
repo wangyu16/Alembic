@@ -22,8 +22,9 @@ bound_to = [
   "packages/package-contract/src/files.test.ts :: an SVG with a script, an event handler, embedded content, a script link or an outside reference is refused; a plain one passes",
   "packages/package-ops/src/course-committer.test.ts :: text with a script can't be saved to an SVG path, and text can't be saved to a picture's path",
   "apps/web/src/lib/upload.test.ts :: the bytes must be what the name says, and an SVG must be safe",
+  "packages/package-ops/src/door-c-content.test.ts :: an unsafe SVG or a file whose bytes don't match its kind, pushed on GitHub, is undone",
 ]
-note = "Built: checks on upload and on every committed text write; the asset route already serves nosniff + a sandbox CSP. Not yet: the check at Publish, and Door C undoing unsafe pushed SVGs."
+note = "Built: checks on upload and on every committed text write; the asset route already serves nosniff + a sandbox CSP. Door C undoes unsafe pushed SVGs and mismatched bytes. Not yet: the check at Publish."
 
 [[claim]]
 id = "K1.12"
@@ -41,6 +42,7 @@ bound_to = [
   "packages/package-contract/src/profile/profile.test.ts :: deleting in private/ is the owner's and deputy's only",
   "packages/package-ops/src/course-committer.test.ts :: a move takes the file from the head and removes the source in one commit; a stale base, a kind change or an occupied target is refused",
   "packages/package-ops/src/course-committer.test.ts :: a listed chapter's part can't be deleted or moved away; deleting in private/ needs the owner or deputy",
+  "packages/package-ops/src/door-c-content.test.ts :: removing a listed chapter's part on GitHub is undone; removing another file is taken",
 ]
 note = "Built: delete.private, blob/move/delete rules in the committer."
 
@@ -67,6 +69,7 @@ bound_to = [
   "packages/package-ops/src/course-committer.test.ts :: a sync queued before an operation lands first (no queue jumping), and the operation applies on top of it",
   "packages/package-ops/src/course-committer.test.ts :: a head that moves under an operation (a push on GitHub) makes it decide again on the new head",
   "apps/web/src/lib/course-ops.sql.test.ts :: a courseop row needs an actor, and Publish waits while one is on its way",
+  "packages/package-ops/src/door-c-content.test.ts :: pushed course settings that are invalid, change Alembic's own fields, or list a chapter with no study guide are undone; a title change is taken",
 ]
 note = "Built: addChapters, renameChapter, moveChapter, removeChapter, setChapterMode, setCourseDetails. Also built: setLicense (K1.18), restoreChapter (K1.16)."
 
@@ -97,8 +100,9 @@ claim = "Only the owner changes the licence, and LICENSE/CITATION.cff follow in 
 oracle = "conformance"
 bound_to = [
   "packages/package-ops/src/course-committer.test.ts :: only the owner changes the licence, and LICENSE and the citation's licence line follow in the same commit",
+  "packages/package-ops/src/door-c-content.test.ts :: a licence change pushed by anyone but the owner is undone; the owner's is kept and the licence files regenerated; edits to LICENSE are undone",
 ]
-note = "Built: setLicense. Not yet: Door C undoing a non-owner licence change pushed on GitHub."
+note = "Built: setLicense. Door C undoes a non-owner licence change pushed on GitHub; the owner's is kept and regenerated."
 
 [[claim]]
 id = "K1.19"

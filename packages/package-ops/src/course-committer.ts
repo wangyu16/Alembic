@@ -448,7 +448,12 @@ async function decideFilesOnTree(row: QueueRow, store: QueueStore, repo: Working
     return null;
   };
   for (const f of row.payload.files) {
-    if (f.blob) {
+    if (f.blob && row.kind === "system" && row.payload.force === true) {
+      // Door C's undo puts back exactly the blob the course had (it is in the repo's history, not the upload ledger).
+      const current = tree.get(f.path);
+      if (current?.sha !== f.blob.sha) out.top.push({ path: f.path, blobSha: f.blob.sha, mode: current?.mode === "100755" ? "100755" : "100644" });
+      out.outcomes.push({ path: f.path, outcome: "landed" });
+    } else if (f.blob) {
       const kind = fileKind(f.path);
       if (!kind || kind === "text") return { refused: `${f.path}: not a kind of file this course can hold` };
       if (!store.blobKnown || !(await store.blobKnown(row.packageId, f.blob.sha, kind))) return { refused: `${f.path}: that file wasn't uploaded to this course` };

@@ -5,7 +5,7 @@
  * the payload's own file lists are never trusted).
  */
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { REGULAR_FILE_MODES, isHarnessPath, normalizePath, spaceForPathV3 } from "@alembic/package-contract";
+import { REGULAR_FILE_MODES, activeProfile, fileKind, isHarnessPath, isSvgPath, isTextBytes, mediaProblems, normalizePath, spaceForPathV3, svgProblems, unitPartForPath, WorkingManifestV3Schema } from "@alembic/package-contract";
 
 /** `X-Hub-Signature-256: sha256=<hex>` over the raw body. */
 export function verifyGithubWebhook(rawBody: string, header: string | null, secret: string): boolean {
@@ -103,3 +103,83 @@ export function classifyOutside(changes: readonly ChangedEntry[]): OutsideVerdic
 
 /** The one system row per head that undoes forbidden content (never re-enqueued for the same head). */
 export const undoKey = (head: string) => `undo:${head}`;
+
+/* -------------------------------------------------------------------------- *
+ * Content checks on a push (package-contract-v3 §13.6, §11.4; queue §4 amended)
+ * -------------------------------------------------------------------------- */
+
+/** The manifest fields that are Alembic's (contract v3 §13.5): never taken from a push. */
+export const MECHANICS_FIELDS = ["packageId", "privateRepo", "publicRepo", "createdAt", "coursewerk", "upstream"] as const;
+
+export interface PushedFile {
+  path: string;
+  /** "removed" when the push deleted it. */
+  status: "added" | "modified" | "removed";
+  /** The pushed bytes (absent for removals). */
+  bytes?: Uint8Array;
+}
+
+export interface ContentVerdict {
+  undo: Array<{ path: string; why: string }>;
+  /** The owner changed the licence on GitHub: accepted, and the licence files are regenerated. */
+  regenerateLicense?: string;
+}
+
+/**
+ * The second stage of Door C: what a push may not change by content. Pure; the
+ * worker fetches the pushed files and both manifests. `pusherIsOwner` comes from
+ * matching the pusher's GitHub login to the owner's (an unmatched pusher is not
+ * the owner).
+ */
+export function classifyPushedContent(i: {
+  files: readonly PushedFile[];
+  manifestBefore: string | null;
+  manifestAfter: string | null;
+  /** Every path at the pushed head. */
+  pathsAfter: ReadonlySet<string>;
+  pusherIsOwner: boolean;
+}): ContentVerdict {
+  const v: ContentVerdict = { undo: [] };
+  const undo = (path: string, why: string) => { if (!v.undo.some((u) => u.path === path)) v.undo.push({ path, why }); };
+  const parse = (t: string | null) => { try { return WorkingManifestV3Schema.parse(JSON.parse(t ?? "null")); } catch { return null; } };
+  const before = parse(i.manifestBefore);
+  const touched = new Set(i.files.map((f) => f.path));
+  // The manifest: valid under the profile, Alembic's fields unchanged, the licence only by the owner.
+  if (touched.has("alembic.json")) {
+    const after = parse(i.manifestAfter);
+    const raw = (t: string | null) => { try { return JSON.parse(t ?? "null") as Record<string, unknown>; } catch { return null; } };
+    const rb = raw(i.manifestBefore) ?? {};
+    const ra = raw(i.manifestAfter) ?? {};
+    if (!after) undo("alembic.json", "the course settings aren't valid");
+    else if (!activeProfile.licences.allowed.includes(after.license)) undo("alembic.json", "that licence isn't allowed");
+    else if (MECHANICS_FIELDS.some((k) => JSON.stringify(rb[k]) !== JSON.stringify(ra[k]))) undo("alembic.json", "Alembic's own settings can only change in Alembic");
+    else {
+      const problemsBefore = new Set(before ? activeProfile.unitProblems(before.chapters, i.pathsAfter) : []);
+      const introduced = activeProfile.unitProblems(after.chapters, i.pathsAfter).filter((p) => !problemsBefore.has(p));
+      if (introduced.length) undo("alembic.json", introduced[0]!);
+      else if (before && after.license !== before.license) {
+        if (i.pusherIsOwner) v.regenerateLicense = after.license;
+        else undo("alembic.json", "only the owner changes the licence");
+      }
+    }
+  }
+  const listed = new Set((parse(i.manifestAfter) ?? before)?.chapters.map((c) => c.slug) ?? []);
+  for (const f of i.files) {
+    if (f.path === "LICENSE" || f.path === "CITATION.cff") { undo(f.path, "the licence files are written by Alembic"); continue; }
+    if (f.path === "private/README.md") { undo(f.path, "Alembic's own note"); continue; }
+    if (f.status === "removed") {
+      const part = unitPartForPath(f.path);
+      if (part && listed.has(part.slug)) undo(f.path, "a chapter's parts are removed with the chapter");
+      continue;
+    }
+    const kind = fileKind(f.path);
+    if (kind && kind !== "text" && f.bytes) {
+      const problems = mediaProblems(kind, f.bytes);
+      if (problems.length) undo(f.path, problems[0]!);
+    } else if (isSvgPath(f.path) && f.bytes) {
+      const problems = isTextBytes(f.bytes) ? svgProblems(new TextDecoder().decode(f.bytes)) : ["it isn't an SVG picture"];
+      if (problems.length) undo(f.path, problems[0]!);
+    }
+  }
+  return v;
+}
