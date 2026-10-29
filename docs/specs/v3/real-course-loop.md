@@ -97,3 +97,36 @@ Blind acceptance spec: [docs/blind-critique/v3-workspace-spec.md](../../blind-cr
 - binary undo by Door C (it restores text only);
 - a request ledger per installation;
 - a real-browser test of the editor's sync paths. That is covered for now by the blind re-verifier and live checks.
+
+## Round 4 (2026-10-29): the free-roam critic and re-verifier 2
+
+**Re-verifier 2:** 9 of 10 items passed (A1, A3, A4, A6, A9, B1, B4, B5); B7 blocked; A8 partial. Spot-checks (a), (b) and (d) passed; (c) failed; (e) wasn't verified.
+
+**Fixed (Alembic `f535030`):**
+- **RC.21:**
+  - **Was:** "Approve it as it is now" approved nothing. Next replaces a formAction button's name, so its value never arrived; this was reproduced live. The bug left Gases stuck out of every Publish.
+  - **Now:** the value is a bound argument, and a scan pins the class. Live: approved.
+- **RC.22:** a single, honest Save; "Opening…" while things load; Present for slides.
+- **RC.23:** downloads embed the course's figures (A8 had 9 of 9 broken).
+- **RC.24:**
+  - Publish can't publish a chapter's old status (re-verifier B4 trap);
+  - each chapter shows "edited since the last Publish";
+  - times are in the course's time zone;
+  - the course page says what the person may do.
+- **Home page:** links to try mode when v3 is on, and the try buttons are readable.
+
+**Not reproduced (with evidence):** critic #2's "← Course loses the edit". On the current build, a leave 2 s after typing sent the text (sync request 200, queue row done). The critic's session overlapped two deploys.
+
+**Dismissed or deferred, with reasons:**
+- **Raw markup in the editor (critic #4):** the editors are the family's text-plus-preview carriers by design (FD-07, the self-contained editing decision). A visual editor is a product decision for the owner, not a defect here.
+- **The public site's "Edit and more" pencil (critic #11):** self-editing pages are the family's published format (FD-07/FD-08). Whether student sites hide it is a carrier or orz-site option to request (family).
+- **The slides card follows the cursor, not the preview's scroll (A6):** orz-slides behaviour, for the family.
+- **A plan awaiting approval doesn't appear in Needs you (critic #1):** a new Needs-you kind, deferred to the A10 approvals work.
+- **No per-document history or "changed by" (critic #12):** a feature, deferred.
+- **The deputy sees "Admin":** that's the test setup; this test user was made an operator for the workshop-code check.
+- **Two create-course forms on the workspace:** the old 0.x form is still on the testing build; v3 replaces it.
+
+**Open:**
+- a 404 in the console on website pages;
+- multiple-choice options running together in practice (content or kit, to look at);
+- the owner's calls carried forward: idle interval, public assessment guides, workshop contact.
