@@ -43,10 +43,14 @@ const V3_NOTICE: Record<string, string> = {
   "not-yours": "That GitHub installation belongs to another account. Sign in with the account the App is installed on.",
   unconfigured: "GitHub isn't set up on this server.",
   failed: "The course couldn't be created. Please try again.",
+  "too-many": "That's more than 30 chapters. Create the course with up to 30, then add the rest on the course page.",
+  "failed-connect": "GitHub couldn't be connected. Please try again.",
 };
 
-export default async function WorkspacePage({ searchParams }: { searchParams: Promise<{ v3?: string }> }) {
-  const { v3 } = await searchParams;
+export default async function WorkspacePage({ searchParams }: { searchParams: Promise<{ v3?: string; connected?: string }> }) {
+  const sp = await searchParams;
+  // Back from installing the GitHub app (its callback says connected=1 / 0): the same notice as connecting here.
+  const v3 = sp.v3 ?? (sp.connected === "1" ? "connected" : sp.connected === "0" ? "failed-connect" : undefined);
   const v3On = v3Enabled();
   const supabase = await createSupabaseServerClient();
   const {

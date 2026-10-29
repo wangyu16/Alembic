@@ -27,7 +27,8 @@ export async function createCourseV3Action(formData: FormData): Promise<void> {
   const title = String(formData.get("title") ?? "").trim().slice(0, 200);
   const license = LicenseSchema.safeParse(formData.get("license"));
   // One title per line: someone who knows their table of contents sets up the whole course at once (RC.26).
-  const chapters = String(formData.get("chapters") ?? "").split(/\r?\n/).map((t) => t.trim()).filter(Boolean).slice(0, 30);
+  const chapters = String(formData.get("chapters") ?? "").split(/\r?\n/).map((t) => t.trim()).filter(Boolean);
+  if (chapters.length > 30) redirect("/workspace?v3=too-many");
   const startParts = formData.get("start") === "on";
   if (!title || !license.success) redirect("/workspace?v3=missing");
 

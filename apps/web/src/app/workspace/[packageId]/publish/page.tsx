@@ -63,6 +63,7 @@ async function PublishPageInner({ params, searchParams }: { params: Promise<{ pa
     return <main className="mx-auto max-w-2xl p-6"><p>The course&apos;s settings file (alembic.json) can&apos;t be read, so it can&apos;t be published until it is fixed.</p></main>;
   }
   const approved = new Set((approvals ?? []).map((a) => `${a.part_path as string}@${a.version as string}`));
+  const everApproved = new Set((approvals ?? []).map((a) => a.part_path as string)); // "changed since" only if it ever was
 
   // Plan versions from one tree listing, cached by blob id (RC.8): a warm render reads no plan file.
   const planPaths = manifest.chapters.flatMap((ch) => [`concepts/${ch.slug}.md`, `assessment-support/${ch.slug}.md`]);
@@ -177,7 +178,7 @@ async function PublishPageInner({ params, searchParams }: { params: Promise<{ pa
                       <>Not written yet <button className="ml-1 underline" formAction={startPlanAction.bind(null, packageId, ch.slug)}>Start it</button></>
                     ) : toApprove.length === 0 ? "Approved" : canApprove ? (
                       <span>
-                        Changed since it was approved: read the {ch.parts.map((p) => <Link key={p.path} prefetch={false} className="underline" href={`/workspace/${packageId}/doc/${p.path.split("/").map(encodeURIComponent).join("/")}`}>{p.path.split("/")[0] === "concepts" ? "concept map" : "assessment guide"}</Link>).reduce<React.ReactNode[]>((a, x, i) => (i ? [...a, " and ", x] : [x]), [])}, then{" "}
+                        {toApprove.some((p) => everApproved.has(p.path)) ? "Changed since it was approved" : "Not approved yet"}: read the {ch.parts.map((p) => <Link key={p.path} prefetch={false} className="underline" href={`/workspace/${packageId}/doc/${p.path.split("/").map(encodeURIComponent).join("/")}`}>{p.path.split("/")[0] === "concepts" ? "concept map" : "assessment guide"}</Link>).reduce<React.ReactNode[]>((a, x, i) => (i ? [...a, " and ", x] : [x]), [])}, then{" "}
                         <button className="rounded border px-2 py-0.5" formAction={approvePlanNowAction.bind(null, packageId, toApprove.map((p) => `${p.path}@${p.version}`).join("|"))}>Approve it as it is now</button>
                       </span>
                     ) : "Waiting for the owner or deputy to approve the course plan"}

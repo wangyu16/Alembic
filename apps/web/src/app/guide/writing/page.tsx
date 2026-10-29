@@ -137,7 +137,7 @@ export default function WritingPage() {
         <p>
           If you both changed the same place, a yellow note says so:{" "}
           <em>
-            Someone else also changed the part you are editing. When you sync, both
+            Someone else also changed the part you are editing. When your text is saved to the course, both
             versions are kept.
           </em>{" "}
           Alembic never throws either away. One version is what the document shows;

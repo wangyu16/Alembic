@@ -85,7 +85,7 @@ export const EmbeddedEditor = forwardRef<EmbeddedEditorHandle, EmbeddedEditorPro
       const m = mergeRemote(baseText.current, local, text);
       if (!m.applied) {
         // Same place changed on both sides: leave the screen alone; the next sync keeps both versions.
-        setConflict("Someone else also changed the part you are editing. When you sync, both versions are kept.");
+        setConflict("Someone else also changed the part you are editing. When your text is saved to the course, both versions are kept.");
         return;
       }
       base.current = version;

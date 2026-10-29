@@ -89,7 +89,8 @@ export default function StartPage() {
             Alembic app: choose your own account and press <strong>Install</strong>. If
             GitHub asks which of your projects Alembic may use, choose{" "}
             <strong>All repositories</strong>, so Alembic can reach each new course it
-            makes for you. You come back to your Workspace. Type the title and chapters
+            makes for you. You come back to your Workspace, which says GitHub is
+            connected. Type the title and chapters
             again and press <strong>Create course</strong>.
           </p>
         </GuideNote>
