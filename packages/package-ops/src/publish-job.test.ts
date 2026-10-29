@@ -140,6 +140,20 @@ describe("runPublish", () => {
     expect(st.drift.flat()).toContain("study-guide/chapters/atoms/notes.md");
   });
 
+  it("a Publish with nothing new records the run on the current head, without an empty commit", async () => {
+    const pub = new FakePublic(); const st = new FakeStore(); approveAll(st, W);
+    const first = await runPublish(input(), working(W), pub, st, noChecks);
+    const commits = pub.commits.length;
+    const again = await runPublish(input({ runId: id(2) }), working(W), pub, st, noChecks);
+    expect(again).toMatchObject({ status: "committed", unchanged: true, publicSha: first.status === "committed" ? first.publicSha : "" });
+    expect(pub.commits.length).toBe(commits);
+    expect(st.runs.get(id(2))!.status).toBe("committed");
+    // A real change still commits.
+    const third = await runPublish(input({ runId: id(3) }), working({ ...W, "study-guide/atoms.md": "# Atoms, changed" }), pub, st, noChecks);
+    expect(third.status === "committed" && third.unchanged).toBeFalsy();
+    expect(pub.commits.length).toBe(commits + 1);
+  });
+
   it("review r2 L-B: a run that no longer holds its request doesn't commit", async () => {
     const pub = new FakePublic(); const st = new FakeStore(); approveAll(st, W);
     const out = await runPublish(input({ stillHeld: async () => false }), working(W), pub, st, noChecks);

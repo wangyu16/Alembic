@@ -130,7 +130,7 @@ export interface PublishInput {
 }
 
 export type PublishOutcome =
-  | { status: "committed"; runId: string; publicSha: string; decisions: Decision[]; published: string[]; anywayKeys: Record<string, string> }
+  | { status: "committed"; runId: string; publicSha: string; decisions: Decision[]; published: string[]; anywayKeys: Record<string, string>; unchanged?: true }
   | { status: "stopped"; reason: string; drift?: string[] };
 
 const TRAILER = "Alembic-Publish-Run";
@@ -156,6 +156,16 @@ export async function gitBlobSha(text: string): Promise<string> {
   all.set(body, head.length);
   const d = await globalThis.crypto.subtle.digest("SHA-1", all);
   return [...new Uint8Array(d)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/** Would writing `files` leave the tree as it is (every file already there, at the same blob)? */
+async function sameAsTree(entries: TreeEntry[], files: Array<{ path: string; text?: string; blobSha?: string }>): Promise<boolean> {
+  const at = new Map(entries.map((e) => [e.path, e.blobSha]));
+  for (const f of files) {
+    const sha = f.text !== undefined ? await gitBlobSha(f.text) : f.blobSha;
+    if (!sha || at.get(f.path) !== sha) return false;
+  }
+  return true;
 }
 
 /**
@@ -369,6 +379,15 @@ export async function runPublish(i: PublishInput, w: WorkingSide, pub: PublicSid
       .map((e) => ({ path: e.path, delete: true as const }));
     if (i.stillHeld && !(await i.stillHeld())) {
       return { status: "stopped", reason: "This Publish was taken over by a newer run" };
+    }
+    // Nothing would change: record the run on the current head, with no commit (no empty commits).
+    if (attempt === 0 && deletions.length === 0 && (await sameAsTree(current.entries, files))) {
+      await store.insertPendingRun({ id: i.runId, packageId: i.packageId, by: i.by, workingSha: W, publicParent: P, choices: i.choices, intendedFiles: records });
+      pendingInserted = true;
+      await store.markCommitted(i.runId, P, records, { decisions: [...decisions.values()], unchanged: true });
+      finished = true;
+      await store.acknowledge(i.packageId, P);
+      return { status: "committed", runId: i.runId, publicSha: P, decisions: [...decisions.values()], published: [...assembled.publishedChapters], anywayKeys, unchanged: true };
     }
     if (attempt === 0) {
       await store.insertPendingRun({ id: i.runId, packageId: i.packageId, by: i.by, workingSha: W, publicParent: P, choices: i.choices, intendedFiles: records });

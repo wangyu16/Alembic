@@ -11,7 +11,7 @@ import { RefreshWhile } from "./refresh-while";
 export const dynamic = "force-dynamic";
 
 type Outcome =
-  | { status: "committed"; decisions: Array<{ unit: string; result: "pass" | "kept"; why: string[] }>; published: string[]; anywayKeys?: Record<string, string> }
+  | { status: "committed"; decisions: Array<{ unit: string; result: "pass" | "kept"; why: string[] }>; published: string[]; anywayKeys?: Record<string, string>; unchanged?: boolean }
   | { status: "stopped" | "failed"; reason: string; drift?: string[] };
 
 /** Publish (A11): what each chapter needs, the publisher's choices, and the last run. */
@@ -89,7 +89,7 @@ export default async function PublishPage({ params, searchParams }: { params: Pr
           <p className="mt-1 text-sm">Publishing… this page updates by itself.</p>
         ) : last.outcome?.status === "committed" ? (
           <div className="mt-1 text-sm">
-            <p>Published {last.finished_at ? new Date(last.finished_at).toLocaleString() : ""}. Public chapters: {last.outcome.published.length ? last.outcome.published.join(", ") : "none yet"}.</p>
+            <p>Published {last.finished_at ? new Date(last.finished_at).toLocaleString() : ""}{last.outcome.unchanged ? " (nothing had changed since the last Publish)" : ""}. Public chapters: {last.outcome.published.length ? last.outcome.published.join(", ") : "none yet"}.</p>
             <ul className="mt-2 list-disc pl-5">
               {last.outcome.decisions.filter((d) => d.result === "kept").map((d) => (
                 <li key={d.unit}>{d.unit.replace(/^chapter:/, "Chapter ")} stayed as before: {d.why.join("; ")}</li>
