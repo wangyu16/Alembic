@@ -22,3 +22,4 @@ export * from "./contract-v3";
 export * from "./manifest-v3";
 export * from "./access";
 export * from "./fetch-policy";
+export * from "./profile";

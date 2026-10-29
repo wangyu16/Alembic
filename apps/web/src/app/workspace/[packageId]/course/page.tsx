@@ -7,7 +7,7 @@ import { clientForCourse } from "@/lib/github";
 import { v3Enabled } from "@/lib/db";
 import { kindOfPath } from "@/lib/orz-editor/kit";
 import { courseOutline } from "@/lib/course-outline";
-import { can, type Role } from "@alembic/package-contract";
+import { can, isServerOnlyPath, type Role } from "@alembic/package-contract";
 import { CHAPTER_PARTS } from "@alembic/package-ops";
 import { SubmitButton } from "../../submit-button";
 import { RefreshWhile } from "../publish/refresh-while";
@@ -41,7 +41,7 @@ async function CourseHomeV3Inner({ params, searchParams }: { params: Promise<{ p
   const coords = { owner: c.owner, repo: c.repos[0]! };
   const head = (await c.client.getBranchHead(coords)).commitSha;
   const { paths } = await c.client.listTree(coords, head);
-  const docs = paths.filter((p) => kindOfPath(p) && !p.startsWith("."));
+  const docs = paths.filter((p) => kindOfPath(p) && !p.startsWith(".") && !isServerOnlyPath(p)); // e.g. the template's private/README.md (contract v3 §12.1)
   let chapters: Array<{ slug: string; title: string; mode?: string }> = [];
   try {
     chapters = (JSON.parse((await c.client.getFileAtRef(coords, "alembic.json", head)) ?? "{}") as { chapters?: typeof chapters }).chapters ?? [];

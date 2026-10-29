@@ -99,9 +99,9 @@ function parseToml(text, file) {
 }
 
 // ── test sources ────────────────────────────────────────────────────────
-const TAG = /\[((?:P5|RC)\.[A-Za-z0-9.]+)\]/g;
+const TAG = /\[((?:P5|RC|K1)\.[A-Za-z0-9.]+)\]/g;
 // A string literal that starts with one or more [id] tags.
-const TAGGED_LITERAL = /(["'`])((?:\[(?:P5|RC)\.[A-Za-z0-9.]+\]\s*)+)((?:\\.|(?!\1)[^\\\n])*)\1/g;
+const TAGGED_LITERAL = /(["'`])((?:\[(?:P5|RC|K1)\.[A-Za-z0-9.]+\]\s*)+)((?:\\.|(?!\1)[^\\\n])*)\1/g;
 
 function taggedTitles(source) {
   const found = [];

@@ -4,13 +4,9 @@
  * instructor-only files. Pure: from the manifest's chapters and the paths of
  * the documents in the working tree.
  */
-const PARTS: ReadonlyArray<{ label: string; path: (slug: string) => string }> = [
-  { label: "Concept map", path: (s) => `concepts/${s}.md` },
-  { label: "Study guide", path: (s) => `study-guide/${s}.md` },
-  { label: "Slides", path: (s) => `slides/${s}.slides.md` },
-  { label: "Assessment guide", path: (s) => `assessment-support/${s}.md` },
-  { label: "Practice", path: (s) => `practice/${s}.md` },
-];
+import { activeProfile } from "@alembic/package-contract";
+// The chapter's parts are the content profile's (FD-10).
+const PARTS: ReadonlyArray<{ label: string; path: (slug: string) => string }> = activeProfile.unitParts.map((p) => ({ label: p.label, path: p.path }));
 
 export interface OutlineLink { label: string; path: string }
 export interface Outline {

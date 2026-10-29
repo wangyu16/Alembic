@@ -11,6 +11,7 @@
  * contract.
  */
 
+import { activeProfile } from "./profile";
 import { z } from "zod";
 import { PathLayerError } from "./layers";
 import { SpaceBoundaryViolation, type PackageSpace } from "./spaces";
@@ -58,29 +59,13 @@ export function normalizePath(path: string): string {
  * §2.2 Classification (v3 space table)
  * -------------------------------------------------------------------------- */
 
-export const ROOT_FILES_V3 = [
-  "alembic.json",
-  "README.md",
-  "LICENSE",
-  "CITATION.cff",
-  ".gitignore",
-  "orz-site.json",
-] as const;
+/** Root files: the active content profile's (FD-10; Coursewerk's, D-126). */
+export const ROOT_FILES_V3: readonly string[] = activeProfile.rootFiles;
 
 export const ROOT_DIRS_V3 = [".alembic", ".github"] as const;
 
-const SPACE_DIRS_V3: Record<string, PackageSpace> = {
-  "study-guide": "study-guide",
-  slides: "slides",
-  practice: "practice",
-  concepts: "concepts",
-  "assessment-support": "assessment-support",
-  assets: "assets",
-  current: "current",
-  metadata: "metadata",
-  provenance: "provenance",
-  private: "private",
-};
+/** Top-level folders: the active content profile's (FD-10). */
+const SPACE_DIRS_V3: Readonly<Record<string, PackageSpace>> = activeProfile.folders;
 
 /** v3 classification: hygiene first, then the first segment decides. */
 export function spaceForPathV3(path: string): PackageSpace {
@@ -123,6 +108,7 @@ export function isServerOnlyPath(path: string): boolean {
     p.startsWith(".github/") ||
     p.startsWith(".alembic/") ||
     p === ".gitignore" ||
+    p === "private/README.md" || // the template's note: not a document (contract v3 §12.1)
     p.startsWith("private/sources/")
   );
 }
@@ -199,7 +185,8 @@ export function assertRegularTree(entries: ReadonlyArray<{ path: string; mode: s
  * §3 The private space
  * -------------------------------------------------------------------------- */
 
-export const PRIVATE_SUBFOLDERS = ["instructor", "sources", "coursewerk", "legacy"] as const;
+/** Private subfolders: the active content profile's (FD-10; interim, D-126). */
+export const PRIVATE_SUBFOLDERS: readonly string[] = activeProfile.privateSubfolders;
 
 /** Throw unless a `private/…` path sits in one of the four known subfolders (fail closed). */
 export function assertPrivatePath(path: string): void {
@@ -248,7 +235,8 @@ export function sourcePointerPath(id: string): string {
  * §6 Reserved chapter slugs
  * -------------------------------------------------------------------------- */
 
-export const RESERVED_CHAPTER_SLUGS = ["course"] as const;
+/** Reserved unit slugs: the active content profile's (FD-10). */
+export const RESERVED_CHAPTER_SLUGS: readonly string[] = activeProfile.reservedUnitSlugs;
 
 export function isReservedChapterSlug(slug: string): boolean {
   return (RESERVED_CHAPTER_SLUGS as readonly string[]).includes(slug);

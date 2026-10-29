@@ -1,0 +1,72 @@
+# Foundations, step 1: the course contract (package-contract-v3 draft 5,
+# §0, §11–§14; FD-09, FD-10). Claims K1.10–K1.19. Unbound claims are not yet
+# built and stay red until their tests exist.
+
+[[claim]]
+id = "K1.10"
+claim = "A non-text file reaches the course only through the upload route; the committer accepts a blob reference only from the course_blobs ledger with a matching kind; bytes never enter the database; over 4 MB is refused with a plain message."
+oracle = "conformance"
+bound_to = []
+
+[[claim]]
+id = "K1.11"
+claim = "Every course file Alembic serves carries nosniff and a sandbox CSP; bytes that don't match their kind are refused; an SVG with scripts, foreignObject, on* handlers, javascript:/data: links or external references is refused on every write and at Publish."
+oracle = "conformance"
+bound_to = []
+
+[[claim]]
+id = "K1.12"
+claim = "A non-text file or SVG whose base isn't current is both-changed: a kept version, nothing lost, never combined."
+oracle = "conformance"
+bound_to = []
+
+[[claim]]
+id = "K1.13"
+claim = "Deletes and moves check every path by role and space in one commit and keep the file mode; a listed chapter's part files, the manifest and server-only files can't be deleted or moved through them; deleting in private/ needs delete.private (owner, deputy)."
+oracle = "conformance"
+bound_to = [
+  "packages/package-contract/src/profile/profile.test.ts :: deleting in private/ is the owner's and deputy's only",
+]
+note = "Partly built: the delete.private action. Delete and move entries in the committer are next."
+
+[[claim]]
+id = "K1.14"
+claim = "private/instructor/<name>.md can be created and edited by edit.private roles and is never projectable; private/README.md is neither listed nor writable."
+oracle = "conformance"
+bound_to = [
+  "packages/package-contract/src/profile/profile.test.ts :: instructor documents are writable by edit.private roles; the template's private/README.md and the licence files by nobody",
+]
+
+[[claim]]
+id = "K1.15"
+claim = "Course operations are courseop rows (operation and arguments, actor re-checked at execution) applied at the head in order; two made at once both land unless one no longer applies; Publish waits for open ones."
+oracle = "conformance"
+bound_to = []
+
+[[claim]]
+id = "K1.16"
+claim = "removeChapter and restoreChapter are inverses; a sync arriving for a removed chapter's file is kept and offers Restore to the owner and deputy."
+oracle = "scenario"
+bound_to = []
+
+[[claim]]
+id = "K1.17"
+claim = "Course content rules live in the active content profile (package-contract/src/profile/, Coursewerk's OER profile, versioned); core code reads them through activeProfile; no file outside the profile gains course paths or licence names (ratchet over today's legacy)."
+oracle = "conformance"
+bound_to = [
+  "packages/package-contract/src/profile/profile-boundary.scan.test.ts :: no file outside the profile gains course paths or licence names; legacy files only go down",
+  "packages/package-contract/src/profile/profile.test.ts :: the active profile is Coursewerk's OER profile, versioned, and every part path maps back to its part",
+  "packages/package-contract/src/profile/profile.test.ts :: a listed chapter without its study guide is a problem the profile names",
+]
+
+[[claim]]
+id = "K1.18"
+claim = "Only the owner changes the licence, and LICENSE/CITATION.cff follow in the same commit; Door C undoes a non-owner licence change and edits to the licence files."
+oracle = "conformance"
+bound_to = []
+
+[[claim]]
+id = "K1.19"
+claim = "Upload quota and rate limits are counted from the ledger (created blobs, committed or not)."
+oracle = "conformance"
+bound_to = []
