@@ -1,6 +1,6 @@
 # Package contract v3 (FC-15 v3) — mini-spec
 
-**Status:** draft 3, 2026-10-29: the FD-09 ownership split (§0) and three new mechanics sections (§11–§13) for gate G0 round 2. Draft 2 (2026-10-27) passed round 1 (resolutions in §10). Module K1 of the build plan
+**Status:** draft 4, 2026-10-29: the FD-09 ownership split (§0) and new mechanics sections (§11–§14). G0 round 2 passed with fixes, all applied (§15). Draft 2 (2026-10-27) passed round 1 (resolutions in §10). Module K1 of the build plan
 (orz-family `docs/ALEMBIC-BUILD-PLAN.md`). Design source: orz-family
 `docs/ALEMBIC-WORKSPACE-DESIGN.md` §4, §13, §18.2 (owner rulings R18, R20,
 R24, R27, R31). Replaces v1 (`layers.ts`) and v2 (`spaces.ts`) as the only
@@ -17,7 +17,8 @@ materials, including the licence, accessibility and the file tree, is
 | The file tree: folders, root files, chapter parts and their paths, where figures and instructor material live | **Coursewerk** | §2 space list, §3 private subfolders, §4 slots, §12.1 — an **interim mirror** |
 | Manifest content fields: title, licence and its allowed list, description, audience, level, chapters, order, draft/ready | **Coursewerk** | §6 content fields, §13.2 validity — interim mirror |
 | Part formats and starter structures, accessibility, copyright, provenance, the content gate | **Coursewerk** | not defined here; Alembic runs Coursewerk's checks (I8) |
-| Path hygiene, the two repositories, projection, regular files only | **Alembic** | §1, §2 rules 1–6 |
+| Path hygiene, the two repositories, projection, regular files only | **Alembic** | §1, §2 rules 1 and 3–6 |
+| The list of root files and root folders (§2 rule 2), the reserved slug `course` (it follows from `concepts/course.md`), which parts appear on the student site (§4 `published`) | **Coursewerk** | interim mirror (D-126) |
 | Roles and who may change which path class | **Alembic** | permissions-v3.md; §12.2, §13.3 |
 | Storage: files that aren't text, size and type safety, serving | **Alembic** | §11 |
 | Source pointers and the source store | **Alembic** | §5 |
@@ -227,64 +228,107 @@ course's working repo on GitHub, directly** (owner, 2026-10-29). Which folder
 holds them is Coursewerk's (interim: `assets/…`). The source store (R2, §5) is
 for private sources only.
 
-**11.2 How they enter.** The server receives the bytes, creates the GitHub
-blob first (the bridge's blob call), and only then queues the change. A queued
-file entry is either text or a blob reference, never bytes:
+**11.2 How they enter: the upload route.**
+1. The browser checks the size first, then sends the file as a raw or
+   multipart body, never base64 JSON.
+2. The server checks the person's role for the target path, the size, the
+   quota and rate limits (§11.3), and the type (§11.4).
+3. Only then does it create the GitHub blob, and record it in the
+   **`course_blobs` ledger**: `(package_id, sha, size, kind, path,
+   uploaded_by, created_at, committed_at)`. The ledger is service-role only.
+4. Then it queues the change. A queued file entry is either text or a blob
+   reference, never bytes:
 
 ```
-{ path, baseVersion, text }                 text file (existing)
-{ path, baseBlob, blob: { sha, size } }     non-text file; baseBlob = the blob id it replaces, null if new
+{ path, baseVersion, text }                     text file (existing)
+{ path, baseBlob, blob: { sha, size } }         non-text; baseBlob = the blob it replaces, null if new
 { path, baseVersion | baseBlob, delete: true }
-{ path, movedFrom, baseVersion | baseBlob }  a move: delete + create in one commit
+{ path, movedFrom, baseVersion | baseBlob }     a move: delete + create in one commit
 ```
 
-The bytes never pass through the database. The committer places the blob in
-the tree by its id; GitHub keeps an unreferenced blob harmlessly if the row is
-refused.
+**The committer accepts a blob reference only if `(package_id, sha)` is in the
+ledger** (G0r2 H1). A member calling `enqueue_write` directly with any other
+sha is refused, so every upload check is unavoidable. A move takes its content
+from the current tree, never from a supplied sha.
+
+**Online only.** This is the one exception to write-path §2 ("no GitHub calls
+in the request"), and that spec is amended to say so. If GitHub can't be
+reached, the upload is refused at once: "Couldn't upload now; try again in a
+few minutes." The person still has the file. If a queued row finds its blob
+gone when it commits (a 422 from GitHub after a long outage), the row is
+refused with "Upload the file again", and the uploader gets a Needs-you item.
+Bytes are never kept by Alembic.
 
 **11.3 Limits (Alembic's, for hosting).**
-- At most **4 MB per file** through the web app (the host refuses larger
-  request bodies). Larger media wait for staged uploads (later); the message
-  says so plainly.
-- A course's files total: a warning at 500 MB and a refusal at 1 GB.
+- At most **4 MB per file** through the web app, checked in the browser
+  before sending. Larger media wait for staged uploads (later), and the
+  message says so plainly.
+- **Quota per course, counted from the ledger:** every blob created, committed
+  or not, plus the text tree. A warning at 500 MB, a refusal at 1 GB. Git
+  history keeps replaced files, so the count only grows. It is shown to the
+  owner.
+- **Rate limits:** 60 uploads an hour per person and 200 per course. Each
+  upload is one GitHub call on the owner's installation.
 - At most 50 files in one change (as for sync).
 
-**11.4 Type safety (Alembic).** Which kinds of figure are allowed is
-Coursewerk's (interim: PNG, JPEG, GIF, WebP, SVG). Alembic checks mechanically:
-- the bytes match the declared kind (magic bytes; SVG must parse as XML with
-  an `svg` root);
-- every course file Alembic serves carries `X-Content-Type-Options: nosniff`
-  and `Content-Security-Policy: sandbox`, so an SVG opened on its own can't
-  run as Alembic;
-- a file is text exactly when the path's kind is a text kind (FC-17 registry)
-  **and** the bytes are valid UTF-8 with no NUL; text kinds never take a blob
-  entry.
+**11.4 Type safety (Alembic's checks, on Coursewerk's list).** Which figure
+kinds a course may hold is Coursewerk's (interim: PNG, JPEG, GIF, WebP, SVG).
+Alembic checks mechanically:
+- **One kind function:** `fileKind(path)` from the FC-17 registry, used by the
+  upload route, the committer, Door C and Publish (G0r2 M5).
+- **Bytes match the kind:** magic bytes for raster images. An SVG must parse
+  as XML with an `svg` root.
+- **Every SVG is checked on every write** (upload, text sync of
+  `.ketcher.svg`/`.plot.svg`, Door C, the agent) **and again at Publish**. It
+  is refused if it contains `script`, `foreignObject`, any `on*` attribute,
+  `javascript:` or `data:` URLs in links, or external references. GitHub Pages
+  can't send a CSP, and an SVG opened directly there runs on the owner's
+  shared `<owner>.github.io` origin, so this check is the protection.
+- **SVGs are never merged:** they follow §11.5, as non-text files do.
+- **Alembic's own serving:** every course file carries
+  `X-Content-Type-Options: nosniff` and `Content-Security-Policy: sandbox`.
+- **Text means:** a text kind in the registry **and** valid UTF-8 with no
+  NUL. Text kinds never take a blob entry, and a move keeps its kind (a blob
+  can't be moved to a `.md` path).
 
-**11.5 The version rule for non-text files.**
+**11.5 The version rule for non-text files (and SVGs).**
 - `baseBlob` equals the current blob → landed.
 - They differ → **both changed**. The incoming file is committed as a kept
-  version, and the top follows the write-path §5 rules. Nothing is lost.
+  version, and the current one stays on top: an upload is never
+  `fromOpenEditor`. Both people get a Both-changed item showing the two
+  pictures side by side, with "Use this one" for each. Nothing is lost.
 - They are never combined.
 
 **11.6 Deletes and moves.**
-- Each path is checked by role and space, and a move checks both paths.
-- Course-plan files and the manifest can't be deleted or moved through these
-  entries (§13 does that).
-- A delete whose base doesn't match the current version is **both changed**,
-  and the current version stays.
+- `path` and `movedFrom` both go through path hygiene, are de-duplicated
+  within a change, and are each checked by role and space.
+- A move keeps the file mode of the current tree entry (`100644` or
+  `100755`).
+- **Deleting needs a delete right:**
+  - outside `private/`: the space's edit action;
+  - in `private/`: `delete.private` (owner, deputy; new in the permission
+    matrix);
+  - moving a file out of `private/` counts as deleting it, and needs the
+    target space's edit right as well.
+- **A chapter's part files can't be deleted or moved** while the chapter is
+  in the manifest, except by `removeChapter` (§13). This holds for every
+  role, which keeps Coursewerk's "every chapter has a study guide".
+- The manifest and server-only files can't be deleted or moved.
+- A delete whose base isn't the current version is **both changed**, and the
+  current version stays.
 
 ## 12. Instructor-only documents
 
 **12.1 Where (Coursewerk's, interim).** `private/instructor/<name>.md`, where
 `<name>` is lowercase and hyphen-joined (`^[a-z0-9]+(?:-[a-z0-9]+)*$`), at most
 60 characters. Folders under `instructor/` follow the same rule.
-`private/README.md` (from the template) is a server-generated note: it is not a
-document, isn't listed, and can't be written. It joins `isServerGenerated` with
-`.github/` and `.alembic/`.
+`private/README.md` (from the template) is a server-only note: it is added to
+`isServerOnlyPath`, isn't listed as a document, and can't be written. It is
+the stated exception to `assertPrivatePath` (K1.4).
 
 **12.2 Who (Alembic's).**
 - **Read:** every member. **Create and edit:** `edit.private` (owner, deputy,
-  co-author, agent). **Delete:** owner and deputy.
+  co-author, agent). **Delete:** `delete.private` (owner, deputy).
 - A new document is a sync with `baseVersion: null`, through the usual write
   path.
 - Never projectable (§2 rule 4 already holds).
@@ -292,63 +336,130 @@ document, isn't listed, and can't be written. It joins `isServerGenerated` with
 ## 13. Course operations
 
 **13.1 The operations.** The course settings (`alembic.json`) change only
-through these named operations, each one system row applied by
-compare-and-swap on the manifest's version (write-path rule 8):
+through these named operations:
 
-| Operation | Effect on the manifest | Effect on files, in the same commit |
-|---|---|---|
-| `addChapters(titles[], startParts)` | appended as drafts; slugs from titles, never colliding | the study guide, or all five parts, created from the starter structures (Coursewerk's; interim in `chapter-parts.ts`) |
-| `renameChapter(slug, title)` | title only; the slug is the chapter's path identity and doesn't change | none |
-| `moveChapter(slug, toIndex)` | reorders | none |
-| `removeChapter(slug)` | removed | its five part files deleted; history keeps them (A9 restore) |
-| `setChapterMode(slug, draft\|package)` | mode | none |
-| `setCourseFields({title?, license?, description?, audience?, level?})` | those fields | none |
+| Operation | Who | Effect on the manifest | Effect on files, in the same commit |
+|---|---|---|---|
+| `addChapters(titles[], startParts)` | owner, deputy | appended as drafts; slugs from titles, never colliding | the study guide, or all five parts, created from the starter structures (Coursewerk's; interim in `chapter-parts.ts`) |
+| `renameChapter(slug, title)` | owner, deputy | title only; the slug is the chapter's path identity and doesn't change | none |
+| `moveChapter(slug, toIndex)` | owner, deputy | reorders | none |
+| `removeChapter(slug)` | owner, deputy | removed | its part files deleted **at their current versions**; the commit records them |
+| `restoreChapter(slug, fromCommit)` | owner, deputy | the entry back (at the end if its place is gone) | its part files as they were at `fromCommit` |
+| `setChapterMode(slug, draft\|package)` | owner, deputy | mode (shown as Draft / Ready) | none |
+| `setCourseDetails({title?, description?, audience?, level?})` | owner, deputy | those fields | none |
+| `setLicense(license)` | **owner** (`license.change`) | licence | `LICENSE` and `CITATION.cff` regenerated (permissions §3) |
 
 A slug change (renaming files and their links) is not an operation. It is
-raised with Coursewerk.
+raised with Coursewerk. If Coursewerk changes a path rule (for example, the
+slides file name), existing courses move only through a course-upgrade job
+(D6) or the move helper, never silently. Each course records the Coursewerk
+content version it follows (`coursewerk`, §6).
 
 **13.2 Validity (Coursewerk's, interim).** The resulting manifest must pass
-the content rules: today `WorkingManifestV3Schema` and the licence list
-(D-126: Coursewerk's public-OER profile allows only open licences). An
-operation whose result fails is refused, and nothing is written.
+the content rules held in the mirror: today `WorkingManifestV3Schema` and the
+licence list (D-126). An operation whose result fails is refused, and nothing
+is written.
 
 **13.3 Mechanics (Alembic's).**
-- **Who:** owner and deputy (`edit.course-files`). A co-author can't run an
-  operation; the agent may propose one inside its hand-over (C4) and it is
-  approved as usual.
-- **Concurrency:** each row carries the manifest version it was made from. Of
-  two operations made from the same version, one lands and the other is
-  refused with "the course settings changed meanwhile; try again", and the
-  workspace re-applies it on the new version once, automatically. No change
-  is ever silently lost.
-- **Idempotency:** the key is `system:courseop:<op>:<uuid>`; a repeated
-  request is the same row.
-- **Publish:** a Publish waits while any course operation is open. This
-  generalises today's `system:mode:%` guard to `system:courseop:%`.
-- **History:** every operation's commit message names it (e.g. `Removed
-  chapter “Gases”`) with the actor trailer, so history lists it in plain
-  words.
+- **A row kind of its own:** `courseop`. The row stores the **operation and
+  its arguments**, not a finished manifest (G0r2 H3). It has an actor, and at
+  execution the committer re-checks the actor's right (`edit.course-files`, or
+  `license.change` for `setLicense`; G0r2 M2).
+- **Applied at the head:** the committer works one row at a time per course.
+  It reads the manifest at the head, applies the operation with the pure
+  `applyCourseOp(manifest, tree, op)`, and refuses only if the operation no
+  longer applies or the result is invalid. Examples: renaming a chapter
+  someone just removed, or a co-author's typing still open in a removed
+  chapter's part file.
+  - **Two renames at once:** both land, in order.
+  - **No browser re-apply** is needed, so no change is lost to a closed tab.
+- **Order:** `priority 0`, first in first out with syncs. A course operation
+  doesn't jump ahead of typing queued earlier.
+- **Idempotency:** the client supplies an operation id, which becomes the
+  queue key `courseop:<uuid>`.
+- **Publish waits** while any open row of kind `courseop` exists. This is
+  checked in SQL (`request_publish`) and in the action by kind, not by key
+  pattern. The migration converts the open `system:mode:%` and
+  `chapters:add:%` rows (G0r2 L1).
+- **History:** every commit message names the operation in plain words (e.g.
+  `Removed chapter “Gases”`) with the actor trailer.
 
-## 14. New claims (draft 3)
+**13.4 Removing a chapter while someone types (G0r2 M1).**
+- The part files are deleted at their current versions; nothing waits on a
+  base.
+- A sync that arrives later for a removed chapter's file is kept as a kept
+  version. Its author gets a Needs-you item: "Chapter “Gases” was removed by
+  Ana. Your text is kept. **Restore the chapter**". The button runs
+  `restoreChapter` with the removal commit and then lands the kept text on
+  top.
+- The open editor shows the same notice when the removal arrives.
+- Nothing is orphaned unseen.
 
-- **K1.10** A non-text file reaches the course only as a blob the server
-  created. Its bytes never enter the database; over 4 MB it is refused with a
-  plain message.
+**13.5 One manifest (G0r2 M8).** The repo's `alembic.json` is authoritative.
+The `packages.manifest` column becomes a mirror, updated when a row touching
+it lands. `update_manifest` is retired for v3 courses at the cut-over.
+
+**13.6 Edits on GitHub (G0r2 M7).** Door C undoes, with a front-of-line
+system commit:
+- a pushed `alembic.json` that fails §13.2 (restoring the last valid one);
+- any push to `private/README.md`;
+- removals of a listed chapter's part files.
+
+Valid manifest edits on GitHub are accepted as outside changes, as today.
+
+## 14. New claims (draft 4)
+
+- **K1.10** A non-text file reaches the course only through the upload route.
+  The committer accepts a blob reference only from the `course_blobs` ledger
+  (a direct `enqueue_write` with another sha is refused). Bytes never enter
+  the database, and over 4 MB is refused with a plain message.
 - **K1.11** Every course file Alembic serves carries `nosniff` and a sandbox
-  CSP. A file whose bytes don't match its declared kind is refused.
-- **K1.12** For a non-text file whose base isn't current: both changed, a
+  CSP. A file whose bytes don't match its kind is refused. An SVG with
+  scripts, `foreignObject`, `on*`, `javascript:`/`data:` links or external
+  references is refused on every write and at Publish.
+- **K1.12** Non-text files and SVGs whose base isn't current: both changed, a
   kept version, nothing lost; never combined.
-- **K1.13** Deletes and moves check every path by role and space in one
-  commit. The manifest and course-plan files can't be deleted or moved
-  through them.
+- **K1.13** Deletes and moves check every path (both ends of a move) by role
+  and space in one commit, and keep the file mode. A listed chapter's part
+  files, the manifest and server-only files can't be deleted or moved through
+  them. Deleting in `private/` needs `delete.private`.
 - **K1.14** `private/instructor/<name>.md` can be created and edited by
   `edit.private` roles and is never projectable. `private/README.md` is
   neither listed nor writable.
-- **K1.15** Each course operation is one compare-and-swap row. Of two made
-  from the same version, one lands and the other is refused and re-applied
-  once; Publish waits for open operations.
-- **K1.16** `removeChapter` removes the chapter and its part files in one
-  commit, and they are restorable from history.
-- **K1.17** Co-authors can't run course operations. Every content-validity
-  rule used is labelled as Coursewerk's (mirror or interim), and the code
-  holds no Alembic-only content rule (a scan test).
+- **K1.15** Course operations are `courseop` rows (operation and arguments,
+  actor re-checked at execution) applied at the head in order. Two operations
+  made at once both land unless one no longer applies; Publish waits for open
+  ones.
+- **K1.16** `removeChapter` and `restoreChapter` are inverses. A sync arriving
+  for a removed chapter's file is kept and offers Restore.
+- **K1.17** Every content-validity rule lives in one versioned mirror module
+  (`content-mirror.ts`, `COURSEWERK_CONTENT_VERSION`). A scan test forbids
+  space names, slot paths and licence literals elsewhere in `package-contract`,
+  `package-ops` and `apps`, except through the mirror.
+- **K1.18** Only the owner changes the licence, and `LICENSE`/`CITATION.cff`
+  follow in the same commit.
+- **K1.19** Upload quota and rate limits are counted from the ledger (created
+  blobs, committed or not).
+
+## 15. Review resolutions (G0 round 2, 2026-10-29)
+
+| Finding | Resolution |
+|---|---|
+| H1 co-author bypasses upload checks via raw blob refs | `course_blobs` ledger; committer accepts only ledger blobs (§11.2, K1.10) |
+| H2 deputy licence change; LICENSE not regenerated | `setLicense` owner-only, regenerates `LICENSE`/`CITATION.cff` (§13.1, K1.18) |
+| H3 "never silently lost" relied on a browser re-apply; priority 1 jumps the queue | rows store operation + arguments, applied at head by the committer; priority 0 (§13.3) |
+| M1 removal vs typing; orphans | delete at current; `restoreChapter`; Needs-you "Restore the chapter" (§13.4) |
+| M2 no role re-check for system rows | row kind `courseop` with actor, re-checked (§13.3) |
+| M3 upload calls GitHub in the request | stated exception to write-path §2; online-only; blob-gone → "upload again" (§11.2) |
+| M4 quota undefined | counted from the ledger incl. uncommitted blobs; rate limits (§11.3, K1.19) |
+| M5 SVG paths that skip checks; public site has no CSP | one `fileKind`; SVG checks on every write and at Publish; never merged (§11.4) |
+| M6 delete rights | `delete.private`; part files only via `removeChapter` (§11.6) |
+| M7 pushed `alembic.json` not undone | Door C undo list extended (§13.6) |
+| M8 two manifests | repo file authoritative; column a mirror; `update_manifest` retired (§13.5) |
+| L1 publish guard by key pattern | by row kind, SQL and TS; open old rows converted (§13.3) |
+| L2 move checks, file mode | §11.4 last bullet, §11.6 |
+| L3 `isServerOnlyPath`, K1.4 exception | §12.1 |
+| L4 unlabelled content rules; `level` vs `courseContext.level`; `orz-site.json` | §0 table row; D-126 items 7–8; `level`/`upstream` added to the code schema |
+| L5 base64 body over the host limit | raw/multipart body, size checked in the browser (§11.2) |
+| L6 scan can't define content rules | one mirror module + scan (K1.17) |
+| Goldfish Q2, Q4, Q5, Q7, Q8 ambiguities | §11.5 what each sees; §13.4; §13.3 two renames; §13.1 path changes; §11.4 public site |

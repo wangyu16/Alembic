@@ -26,6 +26,15 @@ handOver(changeset: AgentChangeset)          // C4; same queue, kind 'changeset'
 applyOutside(change: OutsideChange)          // B1; same queue, kind 'outside'
 ```
 
+**Amended 2026-10-29 (package-contract-v3 §11, §13):**
+- `upload(file)` is the one entry point that calls GitHub. It creates the
+  blob after its checks, records it in `course_blobs`, then queues a
+  blob-reference row. It is online only.
+- `courseOp(op)` queues kind `courseop`: an operation and its arguments,
+  applied at the head by the committer.
+- File entries may be text, a blob reference, a delete or a move
+  (package-contract-v3 §11.2).
+
 Each call validates its input (path rules, `can()`, size) and inserts **one
 row** into `write_queue(package_id, seq, kind, payload, idem_key, status,
 result, created_at)` in a single fast transaction. `idem_key` (`syncId`,
