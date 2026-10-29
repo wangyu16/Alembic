@@ -25,6 +25,12 @@ materials, including the licence, accessibility and the file tree, is
 | How course settings change: one checked operation, compare-and-swap, history | **Alembic** | §13 |
 | Manifest mechanics fields: `packageId`, `repos`, `createdAt`, `coursewerk` version pin, `upstream` | **Alembic** | §6 |
 
+**Profile rule (FD-10).** Alembic is a general publishing platform, and the
+content rules come from a **content profile**: the `ContentProfile`
+interface in `package-contract/src/profile/`, implemented for now by the
+Coursewerk OER profile (`profile/coursewerk-oer/`). Core code takes the
+profile as a parameter. "The mirror" below means that profile module.
+
 **Mirror rule.** `package-contract` holds the content rules as a mirror of
 Coursewerk's definitions, labelled with the Coursewerk version it follows
 (`COURSEWERK_CONTENT_VERSION`). Rules Coursewerk hasn't published are marked
