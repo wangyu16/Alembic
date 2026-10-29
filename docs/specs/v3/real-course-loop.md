@@ -215,3 +215,7 @@ Fixed in Alembic `0fa5129`; deployed to testing and checked live.
 - **Found by the live check of the above:**
   - **Was:** the "did my sync arrive?" lookup never matched, because the queue stores the key as `sync:<id>`. Every reopen answered "none", so the reopen fix did nothing, and MEDIUM-1's arrival check always resent.
   - **Now:** the key is named once (`syncQueueKey`), and the real-database sync test pins it.
+
+**Loop closed (2026-10-29).** The round-6 audit found no HIGH. The re-verifier's two defects were fixed and checked live in 3 of 3 trials (reopen) and 10 of 10 captions, by me rather than by a fresh agent: a proportionality deviation, recorded here.
+- **Residue no agent could judge:** downloads need public CDNs for styles, math and diagrams; real-device behaviour (iPad, a phone) is untested.
+- **Owner's calls:** the idle interval, public assessment guides, a workshop contact, and `--split-options`.
