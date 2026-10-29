@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MemoryDraftStore, draftKey } from "./store";
+import { MemoryDraftStore, arrivalToCheck, draftKey } from "./store";
 
 describe("MemoryDraftStore", () => {
   it("keeps drafts per course and path, lists by course, deletes", async () => {
@@ -28,5 +28,24 @@ describe("reopening a document (RC.17)", () => {
     expect(resumeFrom(undefined, { text: "course", version: "v1" })).toEqual({ text: "course", pending: null });
     // Sent while the tab was closing (the reply never came back): the course has it, so it isn't resent over newer work.
     expect(resumeFrom(draft({ baseVersion: "v0", synced: false }), { text: "course v2", version: "v2" }, true)).toEqual({ text: "course v2", pending: null });
+  });
+});
+
+describe("asking whether a kept text arrived (audit r5 MEDIUM-1, LOW-2)", () => {
+  const rec = (o: Partial<import("./store").DeviceDraft>) => ({ key: "k", text: "A", baseVersion: "v1", savedAt: 0, private: false, ...o });
+  it("[RC.17] resume asks only about the sync that carried exactly the kept text; a revert never sent is resent, never taken for an arrival", () => {
+    // The device holds "A" again after "AX" was synced: the course once held "A", but this text was never sent.
+    expect(arrivalToCheck(rec({ synced: false }), "AX")).toBeNull();
+    expect(arrivalToCheck(rec({ synced: false, sentId: "s-1" }), "AX")).toBe("s-1");
+    expect(arrivalToCheck(rec({ synced: true, sentId: "s-1" }), "AX")).toBeNull();
+    expect(arrivalToCheck(rec({ synced: false, sentId: "s-1" }), "A")).toBeNull();
+  });
+  it("[RC.17] update reads and writes one record together: an older text never overwrites a newer one", async () => {
+    const s = new MemoryDraftStore();
+    await s.put(rec({ text: "new", synced: false }));
+    await s.update("k", (cur) => (cur && cur.text === "old" ? { ...cur, synced: true } : undefined));
+    expect(await s.get("k")).toMatchObject({ text: "new", synced: false });
+    await s.update("k", (cur) => (cur && cur.text === "new" ? null : undefined));
+    expect(await s.get("k")).toBeNull();
   });
 });

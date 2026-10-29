@@ -29,5 +29,8 @@ describe("presenting slides with figures (audit r4 M-2)", () => {
     const text = "![A](../assets/a.png)\n~~~\n![A](../assets/a.png)\n~~~\n";
     const out = await linkFigures(text, (t) => resolveCoursePath("slides/gases.slides.md", t), (p) => urls.get(p), "https://alembic.test");
     expect(out).toBe("![A](https://alembic.test/workspace/p/asset/assets/a.png?b=x&e=1&s=y)\n~~~\n![A](../assets/a.png)\n~~~\n");
+    // Inline code too (audit r5 LOW-4).
+    const inline = "Write `![A](../assets/a.png)` or ``![A](../assets/a.png)`` to show it.";
+    expect(await linkFigures(inline, (t) => resolveCoursePath("slides/gases.slides.md", t), (p) => urls.get(p), "https://alembic.test")).toBe(inline);
   });
 });

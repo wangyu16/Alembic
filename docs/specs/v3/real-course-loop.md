@@ -181,3 +181,24 @@ Fixed in Alembic `0fa5129`; deployed to testing and checked live.
   - The move helper has an opt-in `--split-options` that keeps `A. …` / `(A) …` option runs on separate lines with hard breaks (checked with the real renderer: `<br>` between options, inline math intact).
   - GenChem dry run: 53 runs in 19 files.
   - Off by default and not applied to the testing copy.
+
+## Round 7 (2026-10-29): audit of round 6
+
+**No HIGH.** H-1 was only partly fixed, and that hole is MEDIUM-1 below. Round 6's other fixes were verified, including signed addresses, the Present sandbox, `<img>` escaping, the Publish guards and the archive bounds.
+
+- **MEDIUM-1 (RC.17):**
+  - **Was:** resume asked "does the course hold this text at any version?". A revert to older text (delete what you just added, then the tab dies) matched, so it was dropped silently.
+  - **Now:** the device record notes the sync id that carried exactly its text, and resume asks whether *that* sync reached the course.
+  - The note is written alongside the request, never before it, so a closing page doesn't wait on storage (RC.13).
+  - A text with no recorded sync was never sent, so it is resent.
+- **MEDIUM-2 (RC.17):** others' versions that land before the editor opens are kept and applied once it opens. Versions recorded after the page was made but before the editor listened are caught up once on subscribing.
+- **LOW-1:** a deck too large to post says so in plain words, instead of showing the host's raw error page.
+- **LOW-2:** device records are read and written in one transaction.
+- **LOW-4:** inline code is left alone in downloads and Present.
+- **Unconfirmed → fixed (RC.11):** a rate-limited archive is reported as busy, not worked around with one request per file.
+
+**Open, with reasons:**
+- **LOW-3:** if the "did it arrive?" check itself fails, the text is resent. The server merges it on its old base. It now costs one database read, so failures are rare.
+- **Catch-up limit:** the catch-up misses a revert to a version recorded earlier (`doc_versions` keeps one row per text).
+- **Asset route:** it has no server cache. Signed addresses are handed only to members.
+- **Stuck `system:mode` rows:** a row stuck in `retry` would block Publish. Retries are bounded by the worker's attempt cap.

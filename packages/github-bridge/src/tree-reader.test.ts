@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { gitBlobSha, treeReader } from "./client";
+import { GitHubError } from "./http";
 
 const enc = (t: string) => new TextEncoder().encode(t);
 
@@ -52,5 +53,13 @@ describe("when the archive can't be had (audit r3 MEDIUM-5)", () => {
     expect(new TextDecoder().decode((await read("W", "study-guide/a.md"))!)).toBe("a");
     expect(new TextDecoder().decode((await read("W", "study-guide/b.md"))!)).toBe("b");
     expect(f.calls).toEqual({ list: 1, archive: 1, blob: 2 });
+  });
+
+  it("[RC.11] a rate-limited archive is reported as busy, not worked around with one request per file", async () => {
+    const f = fake({ "study-guide/a.md": "a", "study-guide/b.md": "b" });
+    f.client.getTreeArchive = async () => { f.calls.archive++; throw new GitHubError("rate limited", 403, undefined, { rateLimited: true }); };
+    const read = treeReader(f.client as never, { owner: "o", repo: "r" });
+    await expect(read("W", "study-guide/a.md")).rejects.toMatchObject({ rateLimited: true });
+    expect(f.calls.blob).toBe(0);
   });
 });

@@ -4,10 +4,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { EmbeddedEditor, type EmbeddedEditorHandle } from "@/lib/orz-editor/embedded-editor";
 import type { OrzKind } from "@/lib/orz-editor/kit";
 import { browserSupabase } from "@/lib/supabase/browser";
-import { hasVersionAction, mintUidAction, readCourseTextAction, readVersionAction } from "./actions";
+import { mintUidAction, syncArrivedAction, readCourseTextAction, readVersionAction } from "./actions";
 import type { SendResult } from "@/lib/device-save/scheduler";
 
-export function DocEditor(p: { kind: OrzKind; packageId: string; path: string; text: string; version: string; isPrivate: boolean; nonce?: string; assets?: Array<[string, string]> }) {
+export function DocEditor(p: { kind: OrzKind; packageId: string; path: string; text: string; version: string; renderedAt: string; isPrivate: boolean; nonce?: string; assets?: Array<[string, string]> }) {
   const ed = useRef<EmbeddedEditorHandle>(null);
   const others = usePresence(p.packageId, p.path);
   const assetMap = useMemo(() => new Map(p.assets ?? []), [p.assets]);
@@ -31,7 +31,19 @@ export function DocEditor(p: { kind: OrzKind; packageId: string; path: string; t
             if (text !== null) ed.current?.applyRemote(text, row.version!);
           });
         })
-        .subscribe();
+        .subscribe((state: string) => {
+          if (state !== "SUBSCRIBED" || gone) return;
+          // Catch up (audit r5 MEDIUM-2): a version recorded after this page was made, before we listened.
+          void sb.from("doc_versions").select("version, commit_sha").eq("package_id", p.packageId).eq("path", p.path)
+            .gt("recorded_at", p.renderedAt).order("recorded_at", { ascending: false }).limit(1)
+            .then(({ data: rows }: { data: unknown[] | null }) => {
+              const row = rows?.[0] as { version: string; commit_sha: string } | undefined;
+              if (!row || row.version === p.version) return;
+              void readVersionAction(p.packageId, p.path, row.commit_sha, row.version).then((text) => {
+                if (text !== null) ed.current?.applyRemote(text, row.version);
+              });
+            });
+        });
     })();
     return () => { gone = true; if (channel) void sb.removeChannel(channel); };
   }, [p.packageId, p.path]);
@@ -55,7 +67,7 @@ export function DocEditor(p: { kind: OrzKind; packageId: string; path: string; t
       {...(p.nonce ? { nonce: p.nonce } : {})}
       assetUrls={assetMap}
       readCourseText={(path) => readCourseTextAction(p.packageId, path)}
-      courseHasVersion={(v) => hasVersionAction(p.packageId, p.path, v)}
+      syncArrived={(id) => syncArrivedAction(p.packageId, id)}
       mintUid={() => mintUidAction()}
       sync={(a) => sendSync(a)}
     />

@@ -59,10 +59,14 @@ export async function readVersionAction(packageId: string, path: string, commitS
   return text !== null && textVersion(text) === version ? text : null;
 }
 
-/** Does the course hold this exact version of the document? (members only; resume never resends what arrived, RC.17) */
-export async function hasVersionAction(packageId: string, path: string, version: string): Promise<boolean> {
+/**
+ * Did this person's sync with this id reach the course (queued, under way or landed)? Resume asks this about the
+ * text it kept, so it never resends what arrived (RC.17) and never mistakes a revert for an arrival (audit r5 MEDIUM-1).
+ */
+export async function syncArrivedAction(packageId: string, syncId: string): Promise<boolean> {
   const { supabase, user } = await signedIn();
-  if (!user || !/^[0-9a-f]{64}$/.test(version)) return false;
-  const { data } = await supabase.from("doc_versions").select("version").eq("package_id", packageId).eq("path", path).eq("version", version).limit(1);
-  return (data ?? []).length > 0;
+  if (!user || !/^[0-9a-f-]{36}$/i.test(syncId)) return false;
+  const { data, error } = await supabase.from("write_queue").select("status").eq("package_id", packageId).eq("idem_key", syncId).eq("actor_id", user.id).limit(1);
+  if (error) throw new Error("couldn't check");
+  return (data ?? []).some((r) => ["queued", "processing", "retry", "done"].includes(r.status as string));
 }

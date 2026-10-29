@@ -11,11 +11,14 @@
  */
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { SyncScheduler, statusLabel, type SendResult, type SyncStatus } from "@/lib/device-save/scheduler";
-import { IndexedDbDraftStore, draftKey, requestPersistentStorage, resumeFrom, type DraftStore } from "@/lib/device-save/store";
+import { IndexedDbDraftStore, arrivalToCheck, draftKey, requestPersistentStorage, resumeFrom, type DraftStore } from "@/lib/device-save/store";
 import { diffEdit, loadKit, type OrzEditor, type OrzKind } from "./kit";
 import { mergeRemote } from "./merge";
 import { makeHooks, resolveCoursePath } from "./hooks";
 import { assembleDownload, embedFigures, linkFigures } from "./download";
+
+/** Above this a Present post would be refused by the host before reaching Alembic. */
+const PRESENT_MAX_BYTES = 4_000_000;
 
 export interface EmbeddedEditorProps {
   kind: OrzKind;
@@ -29,8 +32,8 @@ export interface EmbeddedEditorProps {
   nonce?: string;
   assetUrls?: ReadonlyMap<string, string>;
   readCourseText(path: string): Promise<string | null>;
-  /** Does the course hold this version (sha256) of this document? (Resume never resends what already arrived.) */
-  courseHasVersion?(version: string): Promise<boolean>;
+  /** Did the sync with this id reach the course (queued or landed)? Resume never resends what already arrived. */
+  syncArrived?(syncId: string): Promise<boolean>;
   mintUid(): Promise<string>;
   /** Send the text to the course (the sync entry); idempotent per syncId. */
   sync(a: { packageId: string; path: string; text: string; baseVersion: string | null; syncId: string }): Promise<SendResult>;
@@ -55,15 +58,18 @@ export const EmbeddedEditor = forwardRef<EmbeddedEditorHandle, EmbeddedEditorPro
   const baseText = useRef<string>(p.text); // the text of `base`: the merge base for others' changes
   const [conflict, setConflict] = useState<string | null>(null);
   const quiet = useRef(false); // the next change event is a remote update, not typing
-  const lastSent = useRef<string | null>(null);
-  const resuming = useRef(false); // a resumed text not yet in the course: others' versions don't merge into it (audit r4 M-1) // our own text the course accepted last (its echo is not someone else's change)
+  const lastSent = useRef<string | null>(null); // our own text the course accepted last (its echo is not someone else's change)
+  const resuming = useRef(false); // a resumed text not yet in the course: others' versions don't merge into it (audit r4 M-1)
+  const early = useRef<{ text: string; version: string } | null>(null); // another person's version that came before the editor opened (audit r5 MEDIUM-2)
   const props = useRef(p);
   props.current = p;
 
-  useImperativeHandle(ref, () => ({
+  const handle = useRef<EmbeddedEditorHandle | null>(null);
+  useImperativeHandle(ref, () => (handle.current = {
     applyRemote(text: string, version: string) {
       const e = editor.current;
-      if (!e || version === base.current) return;
+      if (version === base.current) return;
+      if (!e) { early.current = { text, version }; return; } // applied once the editor is open
       // Our own sync coming back (RC.17): move the merge base forward; typing since then is based on it.
       if (text === lastSent.current) {
         base.current = version;
@@ -109,7 +115,14 @@ export const EmbeddedEditor = forwardRef<EmbeddedEditorHandle, EmbeddedEditorPro
       setTimer: (fn, ms) => setTimeout(fn, ms),
       clearTimer: (h) => clearTimeout(h as ReturnType<typeof setTimeout>),
       newSyncId: () => crypto.randomUUID(),
-      send: (d, syncId) => props.current.sync({ packageId: c.packageId, path: c.docPath, text: d.text, baseVersion: d.baseVersion, syncId }),
+      send: async (d, syncId) => {
+        // Remember which sync carries this text, so a lost reply can be asked about on the next visit. Started
+        // alongside the request, never before it: a page that is closing must not wait on storage (RC.13).
+        const noted = store.update(key, (cur) => (cur && cur.text === d.text && cur.sentId !== syncId ? { ...cur, sentId: syncId } : undefined)).catch(() => {});
+        const sent = props.current.sync({ packageId: c.packageId, path: c.docPath, text: d.text, baseVersion: d.baseVersion, syncId });
+        await noted;
+        return sent;
+      },
       onStatus: (x) => { statusRef.current = x.kind; if (!disposed) setStatus(x); },
       onSynced: (d) => {
         lastSent.current = d.text;
@@ -117,9 +130,7 @@ export const EmbeddedEditor = forwardRef<EmbeddedEditorHandle, EmbeddedEditorPro
         // The editor's own bar says Saved only once the course has this text (RC.13).
         if (editor.current?.getText() === d.text) editor.current.markSaved();
         // Private text leaves the device once it is in the course (design §7.1).
-        void store.get(key).then((cur) => {
-          if (cur && cur.text === d.text) return c.isPrivate ? store.delete(key) : store.put({ ...cur, savedAt: Date.now(), synced: true });
-        });
+        void store.update(key, (cur) => (cur && cur.text === d.text ? (c.isPrivate ? null : { ...cur, savedAt: Date.now(), synced: true }) : undefined));
       },
     });
     scheduler.current = s;
@@ -136,11 +147,11 @@ export const EmbeddedEditor = forwardRef<EmbeddedEditorHandle, EmbeddedEditorPro
         // Text from an earlier visit that never reached the course wins, and is sent again (RC.17).
         const kept = await store.get(key);
         let has = false;
-        if (kept && kept.text !== c.text && c.courseHasVersion) {
-          // Sent while the tab was closing, its reply never came back: ask the course (audit r4 H-1).
-          const v = [...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(kept.text)))].map((b) => b.toString(16).padStart(2, "0")).join("");
-          has = await c.courseHasVersion(v).catch(() => false);
-          if (has) await store.put({ ...kept, synced: true });
+        const ask = arrivalToCheck(kept, c.text);
+        if (ask && c.syncArrived) {
+          // Sent while the tab was closing, its reply never came back: ask whether THAT sync arrived (audit r4 H-1, r5 MEDIUM-1).
+          has = await c.syncArrived(ask).catch(() => false);
+          if (has) await store.update(key, (cur) => (cur && cur.text === kept!.text ? { ...cur, synced: true } : undefined));
         }
         const resume = resumeFrom(kept, { text: c.text, version: c.baseVersion }, has);
         const startText = resume.text;
@@ -184,6 +195,9 @@ export const EmbeddedEditor = forwardRef<EmbeddedEditorHandle, EmbeddedEditorPro
           s.edit(resume.pending);
           void s.syncNow();
         }
+        const missed = early.current;
+        early.current = null;
+        if (missed) handle.current?.applyRemote(missed.text, missed.version);
       } catch (err) {
         if (!disposed) setFailed((err as Error).message || "The editor could not load.");
       }
@@ -215,6 +229,11 @@ export const EmbeddedEditor = forwardRef<EmbeddedEditorHandle, EmbeddedEditorPro
     const html = await kit.assemble(await linkFigures(e.getText(), (t) => resolveCoursePath(p.docPath, t), (path) => p.assetUrls?.get(path), window.location.origin), { delivery: "cdn" });
     // The deck goes to the Present route, which serves it sandboxed (RC.25): it plays, but course content
     // never runs as Alembic. A form post opens it in a new tab with no link back to this page.
+    // Hosting refuses request bodies past about 4.5 MB with a bare error page (audit r5 LOW-1): say so here instead.
+    if (new Blob([html]).size > PRESENT_MAX_BYTES) {
+      setConflict("This deck is too large to present from here (usually pictures pasted into it). Use Download, then open the file to present it.");
+      return;
+    }
     const form = Object.assign(document.createElement("form"), { method: "POST", enctype: "multipart/form-data", action: `/workspace/${encodeURIComponent(p.packageId)}/present`, target: "_blank", rel: "noopener" });
     const field = Object.assign(document.createElement("textarea"), { name: "html", value: html });
     form.append(field);

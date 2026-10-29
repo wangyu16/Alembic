@@ -976,8 +976,9 @@ export function treeReader(
         const limit = total + (listing.entries.length + 1) * 1536 + 1024 * 1024;
         // An archive that can't be had (too big unpacked, LFS, an outage) falls back to blob reads, once.
         const archive = !listing.truncated && total <= max
-          ? client.getTreeArchive(coords, sha, limit).catch(() => null)
+          ? client.getTreeArchive(coords, sha, limit).catch((e) => { if (e instanceof GitHubError && e.rateLimited) throw e; return null; }) // a rate limit isn't worked around file by file (audit r5)
           : null;
+        archive?.catch(() => {}); // rethrown to each read that awaits it; never an unhandled rejection
         return { entries, archive };
       })();
       t.catch(() => trees.delete(sha));

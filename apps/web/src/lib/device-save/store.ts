@@ -13,6 +13,8 @@ export interface DeviceDraft {
   private: boolean;
   /** The course has this text (set after a sync; absent on records from before RC.17: treated as not sent). */
   synced?: boolean;
+  /** The sync that carried exactly this text, recorded before it was sent: on reopening, the course is asked whether that sync arrived (audit r5 MEDIUM-1). */
+  sentId?: string;
 }
 
 /**
@@ -24,7 +26,7 @@ export interface DeviceDraft {
 export function resumeFrom(
   kept: DeviceDraft | null | undefined,
   course: { text: string; version: string | null },
-  /** The course already holds exactly the kept text as some version (it arrived while the tab was closing, audit r4 H-1). */
+  /** The sync that carried the kept text arrived (its reply was lost while the tab was closing, audit r4 H-1 / r5 MEDIUM-1). */
   courseHasKept = false,
 ): { text: string; pending: { text: string; baseVersion: string | null } | null } {
   if (!kept || kept.text === course.text || courseHasKept) return { text: course.text, pending: null };
@@ -34,11 +36,22 @@ export function resumeFrom(
   return unsent ? { text: kept.text, pending: { text: kept.text, baseVersion: kept.baseVersion } } : { text: course.text, pending: null };
 }
 
+/**
+ * Which sync to ask the course about before resuming (audit r5 MEDIUM-1): only the one recorded as carrying
+ * exactly the kept text. Never "does the course hold this text": a revert to older text would match and be
+ * dropped. Unsent text with no recorded sync was never sent, so it is resent without asking.
+ */
+export function arrivalToCheck(kept: DeviceDraft | null | undefined, courseText: string): string | null {
+  return kept && kept.text !== courseText && kept.synced === false && kept.sentId ? kept.sentId : null;
+}
+
 export interface DraftStore {
   put(d: DeviceDraft): Promise<void>;
   get(key: string): Promise<DeviceDraft | null>;
   delete(key: string): Promise<void>;
   list(prefix: string): Promise<DeviceDraft[]>;
+  /** Read, change and write one record atomically (audit r5 LOW-2): `fn` returns the new record, null to delete, undefined to leave it. */
+  update(key: string, fn: (cur: DeviceDraft | null) => DeviceDraft | null | undefined): Promise<void>;
 }
 
 export const draftKey = (packageId: string, path: string) => `${packageId}:${path}`;
@@ -49,6 +62,11 @@ export class MemoryDraftStore implements DraftStore {
   async get(key: string) { const d = this.m.get(key); return d ? { ...d } : null; }
   async delete(key: string) { this.m.delete(key); }
   async list(prefix: string) { return [...this.m.values()].filter((d) => d.key.startsWith(prefix)).map((d) => ({ ...d })); }
+  async update(key: string, fn: (cur: DeviceDraft | null) => DeviceDraft | null | undefined) {
+    const cur = this.m.get(key);
+    const next = fn(cur ? { ...cur } : null);
+    if (next === null) this.m.delete(key); else if (next) this.m.set(key, { ...next });
+  }
 }
 
 const DB = "alembic-device";
@@ -84,6 +102,17 @@ export class IndexedDbDraftStore implements DraftStore {
   async list(prefix: string) {
     const range = IDBKeyRange.bound(prefix, `${prefix}￿`);
     return (await this.tx("readonly", (s) => s.getAll(range))) as DeviceDraft[];
+  }
+  async update(key: string, fn: (cur: DeviceDraft | null) => DeviceDraft | null | undefined) {
+    // One readwrite transaction: a keystroke stored meanwhile can't be overwritten by an older record.
+    await this.tx("readwrite", (s) => {
+      const req = s.get(key);
+      req.onsuccess = () => {
+        const next = fn((req.result as DeviceDraft | undefined) ?? null);
+        if (next === null) s.delete(key); else if (next) s.put(next);
+      };
+      return req;
+    });
   }
 }
 

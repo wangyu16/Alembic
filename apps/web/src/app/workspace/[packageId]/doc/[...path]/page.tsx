@@ -30,6 +30,8 @@ async function DocPageInner({ params }: { params: Promise<{ packageId: string; p
   if (!role) redirect("/workspace");
   const c = await courseRepo(packageId);
   if (!c) return <main className="p-6">This course's repository can't be reached right now.</main>;
+  // Versions recorded after this moment are caught up by the editor once it listens (audit r5 MEDIUM-2; 2 s for clock skew).
+  const renderedAt = new Date(Date.now() - 2000).toISOString();
   const head = await c.repo.head();
   const text = await c.repo.readFile(head, path);
   if (text === null) redirect(`/workspace/${packageId}/course`);
@@ -50,7 +52,7 @@ async function DocPageInner({ params }: { params: Promise<{ packageId: string; p
         {docTitle(text) ? <span className="text-xs text-gray-500">{path}</span> : null}
       </div>
       <div className="min-h-0 flex-1">
-        <DocEditor kind={kind} packageId={packageId} path={path} text={text} version={version} isPrivate={path.startsWith("private/")} assets={[...assets]} nonce={(await headers()).get("x-nonce") ?? undefined} />
+        <DocEditor kind={kind} packageId={packageId} path={path} text={text} version={version} renderedAt={renderedAt} isPrivate={path.startsWith("private/")} assets={[...assets]} nonce={(await headers()).get("x-nonce") ?? undefined} />
       </div>
     </main>
   );

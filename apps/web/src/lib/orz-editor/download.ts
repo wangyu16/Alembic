@@ -104,9 +104,9 @@ async function replaceFigures(text: string, resolve: (target: string) => string 
     if (v) data.set(target, v);
   }));
   if (!data.size) return text;
-  // Code blocks are shown as written: figures are embedded only outside them (audit r3 L7).
+  // Code blocks and inline code are shown as written: figures are embedded only outside them (audit r3 L7, r5 LOW-4).
   const esc = (t: string) => t.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
-  return text.split(/(^[ \t]*(?:```|~~~)[\s\S]*?^[ \t]*(?:```|~~~)[ \t]*$)/m).map((part, k) => (k % 2 === 1 ? part : part
+  return text.split(/(^[ \t]*(?:```|~~~)[\s\S]*?^[ \t]*(?:```|~~~)[ \t]*$|``[^\n]*?``|`[^`\n]+`)/m).map((part, k) => (k % 2 === 1 ? part : part
     // Markdown images: an embedded (data:) figure becomes an <img>, because Markdown refuses data: SVG
     // addresses in image syntax (RC.23 r3: they printed as text); a linked one keeps the Markdown form.
     .replace(/!\[([^\]]*)\]\(\s*<?([^)\s>]+)>?((?:\s+=\d*x\d*)?)((?:\s+"[^"]*")?)\s*\)/g, (whole, alt: string, target: string, size: string, title: string) => {
