@@ -74,7 +74,7 @@ export function TryApp() {
       {phase === "intro" ? (
         <section className="mt-6 space-y-3">
           <h1 className="text-3xl font-semibold">See how a course chapter comes together</h1>
-          <p>In Alembic, an educator and an AI assistant build a course together, one chapter at a time, in a fixed order:</p>
+          <p>A chapter in Alembic has five parts, made in a fixed order. Here an AI assistant makes a short sample for you; in your own courses you write them yourself (an AI helper for real courses is coming later):</p>
           <ol className="list-decimal space-y-1 pl-6">
             <li><b>Concept map</b>: the chapter&apos;s key ideas and how they connect. The educator approves it first.</li>
             <li><b>Assessment guide</b>: what students should be able to do, and how it is checked.</li>

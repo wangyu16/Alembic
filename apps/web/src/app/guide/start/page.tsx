@@ -120,7 +120,7 @@ export default function StartPage() {
         <p>
           If you did not tick the box in step 3, each chapter has only its study guide.
           Press <strong>Start all 4</strong> beside <em>Not started</em> to add the
-          other parts. Changes like this appear after a few seconds; the page refreshes
+          other parts. Changes like this appear after a few seconds (up to a minute when the course is busy); the page refreshes
           by itself.
         </p>
       </GuideSection>
@@ -194,7 +194,7 @@ export default function StartPage() {
 
       <GuideSection heading="8 · Invite a co-author (optional)">
         <p>
-          On the course page press <strong>People</strong>. Under{" "}
+          As the course&rsquo;s owner, on the course page press <strong>People</strong>. Under{" "}
           <strong>Invite a co-author</strong>, type your colleague&rsquo;s GitHub user
           name and press <strong>Invite as co-author</strong>. A link appears; press{" "}
           <strong>Copy</strong> and send it to them. It is shown only once and works for
@@ -228,6 +228,14 @@ export default function StartPage() {
           alt="The Publish page: a short explanation of when a chapter is ready, the course website address, the most recent Publish, and a table of chapters with Status (Ready or Draft, with Mark ready or Back to draft) and Course plan (Approved, Approve it as it is now, or Not written yet with Start it), and the Publish button."
         />
       </GuideSection>
+
+      <GuideNote>
+        <p>
+          <strong>Before you mark a chapter ready:</strong> a part you started but never
+          changed is published as it is, starter text and all (&ldquo;Write the question
+          here.&rdquo;). Fill in or remove what you don&rsquo;t want students to see.
+        </p>
+      </GuideNote>
 
       <GuideSection heading="10 · Publish">
         <p>

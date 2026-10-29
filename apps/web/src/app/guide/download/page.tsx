@@ -88,8 +88,7 @@ export default function DownloadPage() {
           </li>
           <li>
             As a backup, <strong>Download</strong> the deck before class and open it
-            once while online. Its pencil menu also offers <strong>Print</strong> and{" "}
-            <strong>Print with notes</strong> for handouts.
+            once while online.
           </li>
           <li>
             Once the chapter is published, students find the same slides on the course

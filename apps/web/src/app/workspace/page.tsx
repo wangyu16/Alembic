@@ -103,7 +103,7 @@ export default async function WorkspacePage({ searchParams }: { searchParams: Pr
 
       {v3On ? (
         <section className="panel p-6">
-          <h2 className="text-lg font-medium text-ink">New course (new workspace, testing)</h2>
+          <h2 className="text-lg font-medium text-ink">New course</h2>
           <p className="mt-1 text-sm text-muted">Keeps the course privately in your own GitHub account; its documents open in the editor and save to the course on their own.</p>
           {v3 && V3_NOTICE[v3] ? <p className={`mt-2 text-sm ${v3 === "connected" ? "text-green-700" : "text-red-700"}`} role={v3 === "connected" ? "status" : "alert"}>{V3_NOTICE[v3]}</p> : null}
           {v3 === "connect" || v3 === "not-yours" ? (
@@ -124,13 +124,15 @@ export default async function WorkspacePage({ searchParams }: { searchParams: Pr
               <textarea name="chapters" rows={3} className="input mt-1 w-full" placeholder={"Introduction\nAtoms and Molecules"} />
             </label>
             <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" name="start" /> Start every chapter&apos;s five parts now (concept map, study guide, slides, assessment guide, practice)
+              <input type="checkbox" name="start" /> Start all five parts of each chapter now (concept map, study guide, slides, assessment guide, practice); without this, each starts with its study guide
             </label>
             <div><SubmitButton className="btn btn-primary" pending="Creating… (about 15 seconds)">Create course</SubmitButton></div>
           </form>
         </section>
       ) : null}
 
+      {/* The previous model's package box: hidden when the new workspace is on (newcomer review: two "create" boxes). */}
+      {!v3On ? (
       <section className="panel p-6">
         <h2 className="text-lg font-medium text-ink">Create a package</h2>
         <p className="mt-1 text-sm text-muted">
@@ -179,9 +181,10 @@ export default async function WorkspacePage({ searchParams }: { searchParams: Pr
           it in — images and all.
         </p>
       </section>
+      ) : null}
 
       <section>
-        <h2 className="text-lg font-medium text-ink">Your packages</h2>
+        <h2 className="text-lg font-medium text-ink">{v3On ? "Your courses" : "Your packages"}</h2>
         {!packages?.length ? (
           <p className="mt-3 text-muted">
             Nothing here yet — create your first package above.

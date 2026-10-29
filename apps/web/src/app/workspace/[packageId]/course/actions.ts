@@ -60,13 +60,14 @@ export async function addChaptersAction(packageId: string, form: FormData): Prom
     const files: Array<{ path: string; baseVersion: string | null; text: string }> = [
       { path: "alembic.json", baseVersion: textVersion(text!), text: `${JSON.stringify(next.manifest, null, 2)}\n` },
     ];
-    if (start) for (const ch of next.added) for (const { part } of CHAPTER_PARTS) files.push({ path: chapterPartPath(part, ch.slug), baseVersion: null, text: chapterPartText(part, ch.title, newDocId()) });
+    // Like a new course: without the tick, each chapter starts with its study guide (newcomer review).
+    for (const ch of next.added) for (const { part } of CHAPTER_PARTS) if (start || part === "study-guide") files.push({ path: chapterPartPath(part, ch.slug), baseVersion: null, text: chapterPartText(part, ch.title, newDocId()) });
     await new SqlQueueStore(sql!).insert({
       packageId, kind: "system", idem: `chapters:add:${randomUUID()}`, actorId: user.id, priority: 1,
       payload: { files, summary: `Added ${next.added.length === 1 ? `chapter “${next.added[0]!.title}”` : `${next.added.length} chapters`}` },
     });
     const n = next.added.length;
-    back(packageId, `${n === 1 ? "The chapter is" : `${n} chapters are`} being added${start ? (n === 1 ? " with its parts" : " with their parts") : ""}; ${n === 1 ? "it appears" : "they appear"} here in a few seconds.`);
+    back(packageId, `${n === 1 ? "The chapter is" : `${n} chapters are`} being added${start ? (n === 1 ? " with its parts" : " with their parts") : ""}; ${n === 1 ? "it appears" : "they appear"} here in a few seconds (up to a minute when the course is busy).`);
   });
 }
 
@@ -93,6 +94,6 @@ export async function startPartsAction(packageId: string, slug: string, which: C
     } catch (e) {
       back(packageId, e instanceof SyncRefused ? `Not allowed: ${e.reason}` : "Couldn't reach Alembic.");
     }
-    back(packageId, `${files.length === 1 ? "It is" : "They are"} being started; ${files.length === 1 ? "it appears" : "they appear"} here in a few seconds.`);
+    back(packageId, `${files.length === 1 ? "It is" : "They are"} being started; ${files.length === 1 ? "it appears" : "they appear"} here in a few seconds (up to a minute when the course is busy).`);
   });
 }

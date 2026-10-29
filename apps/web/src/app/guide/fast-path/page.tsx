@@ -41,7 +41,7 @@ export default function FastPathPage() {
           On the course page, open <strong>Add chapters</strong>, paste the titles one
           per line, keep <strong>Also start each chapter&rsquo;s five parts</strong>{" "}
           ticked, and press <strong>Add</strong>. The chapters are added at the end, as
-          drafts, and appear after a few seconds. Only the course&rsquo;s owner or deputy
+          drafts, and appear after a few seconds (up to a minute when the course is busy). Only the course&rsquo;s owner or deputy
           sees this box.
         </p>
       </GuideSection>

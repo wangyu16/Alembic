@@ -141,7 +141,7 @@ async function PublishPageInner({ params, searchParams }: { params: Promise<{ pa
             <p><strong>Published</strong> {last.finished_at ? <LocalTime at={last.finished_at} /> : ""}{last.outcome.unchanged ? " (nothing had changed since the last Publish)" : ""}. {last.outcome.published.length} of {manifest.chapters.length} chapters are public.</p>
             <ul className="mt-2 list-disc pl-5">
               {last.outcome.decisions.filter((d) => d.result === "kept").map((d) => (
-                <li key={d.unit}>{unitName(d.unit)} stayed as it was then: {d.why.map((w) => (w === "Draft chapter" ? "it is a draft" : w === "Course plan not approved" ? "its course plan isn't approved" : w)).join("; ")}</li>
+                <li key={d.unit}>{unitName(d.unit)} {d.unit.startsWith("chapter:") && !everPublished.has(d.unit.slice(8)) ? "isn't on the website yet" : "stayed as it was then"}: {d.why.map((w) => (w === "Draft chapter" ? "it is a draft" : w === "Course plan not approved" ? "its course plan isn't approved" : w)).join("; ")}</li>
               ))}
             </ul>
           </div>

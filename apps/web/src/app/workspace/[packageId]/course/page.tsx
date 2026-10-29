@@ -109,7 +109,7 @@ async function CourseHomeV3Inner({ params, searchParams }: { params: Promise<{ p
               <textarea name="titles" rows={4} required className="input mt-1 w-full font-normal" placeholder={"Atoms and Molecules\nStoichiometry\nGases"} />
             </label>
             <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" name="start" defaultChecked /> Also start each chapter&apos;s five parts (concept map, study guide, slides, assessment guide, practice)
+              <input type="checkbox" name="start" defaultChecked /> Start all five parts of each chapter (concept map, study guide, slides, assessment guide, practice); without this, each starts with its study guide
             </label>
             <SubmitButton className="btn btn-primary" pending="Adding…">Add</SubmitButton>
           </form>
