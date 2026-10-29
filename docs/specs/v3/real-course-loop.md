@@ -39,3 +39,33 @@ Blind acceptance spec: [docs/blind-critique/v3-workspace-spec.md](../../blind-cr
   - Recorded as not reproduced: 90/95 clean, median 5.8 s.
 
 **Blind critique:** verifiers for blocks A, B and C of the spec ran in parallel with this round; their findings start round 2.
+
+## Round 2 (2026-10-29)
+
+**Blind verifiers, round 1 of the spec (blocks A, B, C):**
+- C1–C3, B1–B3 and B6 passed, with friction.
+- Failed: A3 (saving), A8 (Download) and A9 (an outage plus developer words).
+- Partial: A1, A4 and A6. Blocked: B7.
+
+**Findings and fixes:**
+- **RC.11 (HIGH):** the outage the verifiers hit was the owner's GitHub budget (5,000 requests an hour) running out at 04:03 UTC. Every course page returned 500 for about 10 minutes, and a Publish failed with no reason. The cause was ~1,000 requests per GenChem Publish plus its website. Both now read whole trees from one archive request (a tar reader with a real-substrate test). Live: a Publish plus its website used 8 requests.
+- **RC.12:** a rate limit now shows a calm "busy until HH:MM" page, and a Publish stopped by one says so.
+- **RC.13 (A3):**
+  - **Was:** "Saved" meant this browser only, and leaving within about 2 minutes lost the sync (a server action from an unmounting component).
+  - **Now:** the sync is a keepalive request to a route, and the status says plainly where the text is. The editor says Saved only once the course has it. Idle sync is 30 s (design §7.1 said 2 minutes; owner to confirm), and closing with unsent text asks first.
+- **A8:** Download was wired into every document.
+- **RC.14 (A1):** the course page is organised by chapter.
+- **RC.15 (B1, B4, B5):** Publish page clarity. A pending status change shows as saving, plan approval is a single click, and chapters are named by title.
+- **RC.16 (B3):** the website opens on a course front page.
+- **Other fixes:**
+  - **readability:** the presence strip, notices and the Publish button are readable now;
+  - **document page:** shows the document title, and its top bar is visible on load;
+  - **wording:** "repository" is gone from the workspace text;
+  - **try mode:** Save downloads a copy.
+
+**Owner's call (surfaced, not decided):**
+- the idle sync interval (30 s vs the design's 2 min);
+- whether assessment guides stay public (the v3 contract publishes them);
+- a workshop contact for try mode's "Join a workshop".
+
+**Not Alembic's (family):** A6, the slides card following the preview's scroll, is orz-slides behaviour.
