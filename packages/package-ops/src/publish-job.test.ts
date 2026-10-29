@@ -23,6 +23,15 @@ const approveAll = (st: FakeStore, files: Record<string, string>) => {
 };
 
 describe("runPublish", () => {
+  it("[K1.11] a file the website can't serve safely (.html, .js) is left out and said so; never reaches the public copy (audit r3 HIGH-1)", async () => {
+    const pub = new FakePublic(); const st = new FakeStore(); approveAll(st, W);
+    const out = await runPublish(input(), working({ ...W, "metadata/evidence/page.html": "<script>x()</script>", "assets/run.js": "x()" }), pub, st, noChecks);
+    expect(out.status).toBe("committed");
+    expect(out.status === "committed" && [...(out.leftOut ?? [])].sort()).toEqual(["assets/run.js", "metadata/evidence/page.html"]);
+    expect(pub.file("metadata/evidence/page.html")).toBeUndefined();
+    expect(pub.file("assets/run.js")).toBeUndefined();
+  });
+
   it("[K1.11] an unsafe SVG in a chapter stops the Publish, naming the file; a safe one is published", async () => {
     const st = new FakeStore();
     st.approveText("concepts/atoms.md", "atoms plan"); st.approveText("assessment-support/atoms.md", "atoms assess");

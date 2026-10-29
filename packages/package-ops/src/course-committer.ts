@@ -482,7 +482,9 @@ async function decideFilesOnTree(row: QueueRow, store: QueueStore, repo: Working
       const src = tree.get(from);
       if (!src) return { refused: `${from}: the file to move is no longer there` };
       if ((f.baseBlob ?? null) !== src.sha) return { refused: `${from}: it changed meanwhile; try again` };
-      if (fileKind(from) !== fileKind(f.path)) return { refused: `${f.path}: a move can't change the kind of file` };
+      // Same extension, not just the same kind: a text file moved to an SVG name would skip the SVG check (audit r3 LOW-2).
+      const ext = (p: string) => (p.split("/").pop() ?? "").toLowerCase().replace(/^[^.]*/, "");
+      if (fileKind(from) !== fileKind(f.path) || ext(from) !== ext(f.path)) return { refused: `${f.path}: a move can't change the kind of file` };
       if (tree.has(f.path)) return { refused: `${f.path}: a file is already there` };
       if (role && !canWritePath(role, from)) return { refused: `not allowed to change ${from}` };
       const why = await mayDelete(from);

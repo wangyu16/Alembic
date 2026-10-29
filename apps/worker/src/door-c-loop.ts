@@ -49,13 +49,17 @@ export async function doorCPass(cfg: DoorCConfig): Promise<number> {
       await done(sql, ev.delivery_id);
       n++;
     } catch (e) {
-      // Tried again next pass, behind the others; after MAX_EVENT_ATTEMPTS it is set aside with its error (audit r2 L6).
+      // Tried again next pass, behind the others (audit r2 L6). A GitHub outage or rate limit isn't the push's
+      // fault and never counts (audit r3 MEDIUM-2); a push that fails MAX_EVENT_ATTEMPTS times for its own reasons
+      // is set aside, and the course is told: what it changed wasn't checked.
       const msg = (e as Error).message.slice(0, 500);
       cfg.log?.(`door C ${ev.delivery_id}: ${msg}`);
-      await sql.query(
-        `update public.github_events set attempts = attempts + 1, last_error = $2,
-                processed_at = case when attempts + 1 >= $3 then now() else null end where delivery_id = $1`,
-        [ev.delivery_id, msg, MAX_EVENT_ATTEMPTS]).catch(() => {});
+      const transient = (e instanceof GitHubError && (e.rateLimited || e.status >= 500)) || (e instanceof TypeError && /fetch|network/i.test(e.message));
+      const { rows: after } = await sql.query<{ attempts: number }>(
+        `update public.github_events set attempts = attempts + $4, last_error = $2,
+                processed_at = case when attempts + $4 >= $3 then now() else null end where delivery_id = $1 returning attempts`,
+        [ev.delivery_id, msg, MAX_EVENT_ATTEMPTS, transient ? 0 : 1]).catch(() => ({ rows: [] as Array<{ attempts: number }> }));
+      if (!transient && (after[0]?.attempts ?? 0) >= MAX_EVENT_ATTEMPTS) await setAside(cfg, ev, msg).catch(() => {});
     }
   }
   return n;
@@ -95,7 +99,7 @@ async function handlePush(cfg: DoorCConfig, ev: Ev): Promise<void> {
   const relevant = changed.filter((c) => verdict.edits.includes(c.path) && (
     c.path === "alembic.json" || c.path === "LICENSE" || c.path === "CITATION.cff" || activeProfile.serverOnlyFiles.includes(c.path) ||
     (c.status === "removed" && unitPartForPath(c.path) !== null) ||
-    (c.status !== "removed" && (isSvgPath(c.path) || (fileKind(c.path) ?? "text") !== "text"))));
+    (c.status !== "removed" && (isSvgPath(c.path) || fileKind(c.path) !== "text"))));
   if (relevant.length) {
     const needManifest = relevant.some((c) => c.path === "alembic.json" || c.status === "removed");
     const [mBefore, mAfter] = needManifest
@@ -107,7 +111,8 @@ async function handlePush(cfg: DoorCConfig, ev: Ev): Promise<void> {
     let fetched = 0;
     const files: PushedFile[] = await mapLimit(relevant, READ_CONCURRENCY, async (c) => {
       const sha = shaOf.get(c.path);
-      const wantBytes = c.status !== "removed" && sha && (isSvgPath(c.path) || (fileKind(c.path) ?? "text") !== "text");
+      const k = fileKind(c.path);
+      const wantBytes = c.status !== "removed" && sha && k !== null && (isSvgPath(c.path) || k !== "text");
       if (wantBytes && (sizeOf.get(c.path) ?? 0) > MAX_UPLOAD_BYTES) { tooBig.push(c.path); return { path: c.path, status: c.status }; }
       if (wantBytes && ++fetched > MAX_PUSH_CHECKS) return { path: c.path, status: c.status };
       return { path: c.path, status: c.status, ...(wantBytes ? { bytes: await client.getBlob(coords, sha!) } : {}) };
@@ -311,4 +316,18 @@ async function restoreAfterForcePush(cfg: DoorCConfig, packageId: string, client
     (binary.length ? `These files couldn't be put back automatically: ${binary.join(", ")}. ` : "") + `${files.length} file${files.length === 1 ? "" : "s"} restored.`.slice(0, 900),
   );
   return true;
+}
+
+/** A push Door C couldn't check after many tries: the course's owner and deputy are told (audit r3 MEDIUM-2). */
+async function setAside(cfg: DoorCConfig, ev: Ev, why: string): Promise<void> {
+  if (!ev.repo_full_name) return;
+  const [owner, name] = ev.repo_full_name.split("/");
+  const { rows } = await cfg.sql.query<{ id: string }>(
+    `select p.id from public.packages p where lower(p.private_repo->>'owner') = lower($1) and lower(p.private_repo->>'name') = lower($2)`, [owner, name]);
+  if (!rows[0]) return;
+  await raise(cfg.sql, rows[0].id, `set-aside:${ev.after_sha ?? ev.delivery_id}`, {
+    title: "Changes made on GitHub couldn't be checked",
+    detail: `A push by ${ev.pusher_login ?? "someone"} couldn't be checked after several tries (${why.slice(0, 200)}). Look at the course's recent changes on GitHub, or ask for help.`,
+    pusher: ev.pusher_login ?? "someone", materials: false,
+  }, null, true);
 }

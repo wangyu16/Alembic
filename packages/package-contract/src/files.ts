@@ -62,11 +62,13 @@ const LINK_ATTRS = new Set(["href", "src", "action", "formaction", "values", "fr
 /** Decode the XML character references a browser would decode in an attribute value. */
 function decodeRefs(v: string): string {
   return v
-    .replace(/&#x([0-9a-f]{1,6});?/gi, (_, h: string) => safeChar(parseInt(h, 16)))
-    .replace(/&#(\d{1,7});?/g, (_, d: string) => safeChar(Number(d)))
+    // Any number of digits (XML allows leading zeros: &#00000106; is "j"; audit r3 MEDIUM-1).
+    .replace(/&#x([0-9a-f]+);?/gi, (_, h: string) => safeChar(parseInt(h, 16)))
+    .replace(/&#(\d+);?/g, (_, d: string) => safeChar(Number(d)))
     .replace(/&(lt|gt|quot|apos|amp);/g, (_, n: string) => ({ lt: "<", gt: ">", quot: '"', apos: "'", amp: "&" })[n]!);
 }
-const safeChar = (n: number) => (n > 0 && n <= 0x10ffff ? String.fromCodePoint(n) : "�");
+// A reference too large to be a character decodes to a mark the checks refuse.
+const safeChar = (n: number) => (Number.isFinite(n) && n > 0 && n <= 0x10ffff ? String.fromCodePoint(n) : "\u0000BADREF");
 
 /** What a link-like value really points at: entities decoded, whitespace and control characters gone, lower case. */
 const linkOf = (v: string) => decodeRefs(v).replace(/[\u0000- \u007f-\u009f]+/g, "").replace(/\\/g, "/").toLowerCase();
@@ -78,6 +80,7 @@ const linkOf = (v: string) => decodeRefs(v).replace(/[\u0000- \u007f-\u009f]+/g,
 function cssProblems(css: string): string[] {
   const c = decodeRefs(css).toLowerCase();
   const out: string[] = [];
+  if (c.includes("badref")) out.push("it has a malformed character reference");
   if (c.includes("\\")) out.push("its styles contain escapes");
   if (/@import/.test(c)) out.push("it imports outside styles");
   if (/expression\s*\(|javascript:|behaviou?r\s*:|-moz-binding/.test(c)) out.push("it contains a script");
@@ -99,6 +102,8 @@ function cssProblems(css: string): string[] {
 export function svgProblems(text: string): string[] {
   const out = new Set<string>();
   const n = text.length;
+  const lead = text.search(/\S/); // where the document starts: the only place for <?xml …?> (computed once: audit r3 HIGH-2)
+  let styleDepth = 0;
   let i = 0;
   let sawRoot = false;
   let inStyle = false;
@@ -127,7 +132,7 @@ export function svgProblems(text: string): string[] {
       const end = text.indexOf("?>", i + 2);
       if (end < 0) { fail("it isn't well formed"); break; }
       // Only the XML declaration, and only before anything else.
-      if (!(/^<\?xml[\s?]/.test(text.slice(i, i + 6)) && !sawRoot && text.slice(0, i).trim() === "")) fail("it has a processing instruction");
+      if (!(/^<\?xml[\s?]/.test(text.slice(i, i + 6)) && i === lead)) fail("it has a processing instruction");
       i = end + 2;
       continue;
     }
@@ -186,7 +191,10 @@ export function svgProblems(text: string): string[] {
       if (!aName || aName === "xmlns" || aName.startsWith("xmlns:")) continue;
       const attr = aName.slice(aName.lastIndexOf(":") + 1);
       if (attr.startsWith("on")) { fail("it has an event handler"); continue; }
-      if (attr === "style" || /url\s*\(/i.test(value)) { for (const p of cssProblems(value)) fail(p); if (attr === "style") continue; }
+      // Decoded first: u&#114;l( is url( to a browser (audit r3 MEDIUM-1).
+      const decoded = decodeRefs(value);
+      if (decoded.includes("BADREF")) { fail("it has a malformed character reference"); continue; }
+      if (attr === "style" || /url\s*\(/i.test(decoded)) { for (const p of cssProblems(value)) fail(p); if (attr === "style") continue; }
       if (!LINK_ATTRS.has(attr)) continue;
       const link = linkOf(value);
       if (/(?:^|;)(?:javascript|vbscript):/.test(link)) fail("it links to a script");
@@ -196,8 +204,9 @@ export function svgProblems(text: string): string[] {
     if (!ended) { fail("it isn't well formed"); i = Math.max(j, i + 1); continue; }
     const selfClosing = text[j - 2] === "/";
     if (local === "style") {
-      if (closing) { for (const p of cssProblems(styleText)) fail(p); inStyle = false; styleText = ""; }
-      else if (!selfClosing) inStyle = true;
+      // No style inside a style (audit r3 MEDIUM-1: an inner close used to end the check early).
+      if (closing) { styleDepth--; if (styleDepth <= 0) { styleDepth = 0; for (const p of cssProblems(styleText)) fail(p); inStyle = false; styleText = ""; } }
+      else if (!selfClosing) { if (inStyle) fail("it nests styles"); styleDepth++; inStyle = true; }
     }
     i = j;
   }

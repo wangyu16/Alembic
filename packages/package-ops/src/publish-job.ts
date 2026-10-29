@@ -17,6 +17,7 @@ import {
   WorkingManifestV3Schema,
   type Role,
   type WorkingManifestV3,
+  fileKind,
   isSvgPath,
   svgProblems,
 } from "@alembic/package-contract";
@@ -146,7 +147,7 @@ export interface PublishInput {
 }
 
 export type PublishOutcome =
-  | { status: "committed"; runId: string; publicSha: string; decisions: Decision[]; published: string[]; anywayKeys: Record<string, string>; unchanged?: true }
+  | { status: "committed"; runId: string; publicSha: string; decisions: Decision[]; published: string[]; anywayKeys: Record<string, string>; unchanged?: true; leftOut?: string[] }
   | { status: "stopped"; reason: string; drift?: string[] };
 
 const TRAILER = "Alembic-Publish-Run";
@@ -311,7 +312,10 @@ export async function runPublish(i: PublishInput, w: WorkingSide, pub: PublicSid
   const working = new Map<string, TreeFile>();
   const byUnit = new Map<string, Array<{ path: string; text: string | null }>>();
   // Reads run READ_CONCURRENCY at a time (a real course has hundreds of files); results keep tree order.
-  const toRead = tree.entries.filter((e) => e.type !== "tree" && e.mode !== "040000")
+  // A file of a kind the website can't serve safely (not a course text or an allowed figure: .html, .js …) is
+  // left out, and a copy published earlier is removed (foundations audit r3 HIGH-1: scripts on <owner>.github.io).
+  const leftOut = tree.entries.filter((e) => e.type !== "tree" && e.mode !== "040000" && isProjectable(e.path) && fileKind(e.path) === null).map((e) => e.path);
+  const toRead = tree.entries.filter((e) => e.type !== "tree" && e.mode !== "040000" && fileKind(e.path) !== null)
     .map((e) => ({ e, u: unitOf(e.path, chapters, everPublished) }))
     .filter(({ u }) => u.kind !== "none" && u.kind !== "orphan");
   const contents = await mapLimit(toRead, READ_CONCURRENCY, ({ e }) => w.readFile(W, e.path));
@@ -427,7 +431,7 @@ export async function runPublish(i: PublishInput, w: WorkingSide, pub: PublicSid
       await store.markCommitted(i.runId, P, records, { decisions: [...decisions.values()], unchanged: true });
       finished = true;
       await store.acknowledge(i.packageId, P);
-      return { status: "committed", runId: i.runId, publicSha: P, decisions: [...decisions.values()], published: [...assembled.publishedChapters], anywayKeys, unchanged: true };
+      return { status: "committed", runId: i.runId, publicSha: P, decisions: [...decisions.values()], published: [...assembled.publishedChapters], anywayKeys, unchanged: true, ...(leftOut.length ? { leftOut } : {}) };
     }
     if (attempt === 0) {
       await store.insertPendingRun({ id: i.runId, packageId: i.packageId, by: i.by, workingSha: W, publicParent: P, choices: i.choices, intendedFiles: records });
@@ -439,7 +443,7 @@ export async function runPublish(i: PublishInput, w: WorkingSide, pub: PublicSid
       await store.markCommitted(i.runId, publicSha, records, { decisions: [...decisions.values()] });
       finished = true;
       await store.acknowledge(i.packageId, publicSha);
-      return { status: "committed", runId: i.runId, publicSha, decisions: [...decisions.values()], published: [...assembled.publishedChapters], anywayKeys };
+      return { status: "committed", runId: i.runId, publicSha, decisions: [...decisions.values()], published: [...assembled.publishedChapters], anywayKeys, ...(leftOut.length ? { leftOut } : {}) };
     } catch (e) {
       if (!(e instanceof Error && e.name === "HeadMovedError") || attempt >= 2) {
         if (e instanceof Error && e.name === "HeadMovedError") {

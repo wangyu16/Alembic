@@ -42,7 +42,8 @@ export async function restoreChapterFromItemAction(packageId: string, id: string
   if (!user) return;
   const { data: role } = await supabase.rpc("course_role", { p: packageId });
   if (!can((role ?? "none") as Role, "edit.course-files")) return;
-  const { data: item } = await supabase.from("needs_you").select("kind, payload").eq("id", id).eq("package_id", packageId).maybeSingle();
+  // Still open: a stale page can't restore after someone chose to leave it removed (audit r3 LOW-1).
+  const { data: item } = await supabase.from("needs_you").select("kind, payload").eq("id", id).eq("package_id", packageId).in("state", ["waiting", "shown"]).maybeSingle();
   const action = (item?.payload as { action?: unknown } | null)?.action;
   const op = item?.kind === "both-changed" ? parseCourseOp(action) : null;
   if (!op || op.op !== "restoreChapter") return;

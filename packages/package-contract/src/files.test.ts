@@ -62,10 +62,18 @@ describe("files that aren't text (contract v3 §11.4)", () => {
       '<svg><rect fill="url(https://evil.example/p.svg#g)"/></svg>',
       '<svg><style><![CDATA[@\\000069mport "https://evil.example/x"]]></style></svg>',
       '<svg><g',
+      // Round 3 audit: encoded url( in presentation attributes, long character references, nested styles.
+      '<svg><rect fill="u&#114;l(https://evil.example/x.svg#g)"/></svg>',
+      '<svg><rect filter="url&#40;https://evil.example/f)"/></svg>',
+      '<svg><a href="&#00000000104;ttps://evil.example/"><text>x</text></a></svg>',
+      '<svg><use href="&#x0000000064;ata:image/svg+xml,&lt;svg/&gt;"/></svg>',
+      '<svg><use href="&#000000000106;avascript:alert(1)"/></svg>',
+      '<svg><style>@imp&#00000000111;rt "https://evil.example/x.css"</style></svg>',
+      '<svg><style><style></style>@import "https://evil.example/x.css";</style></svg>',
     ]) expect(svgProblems(bad), bad).not.toEqual([]);
   });
   it("[K1.11] the SVG check runs in linear time: crafted input can't stall the worker (round 2 audit)", () => {
-    for (const bad of ["<a".repeat(200_000), '<a "'.repeat(100_000), "<svg " + "a=".repeat(200_000), "<svg>" + "<!--".repeat(100_000)]) {
+    for (const bad of ["<a".repeat(200_000), '<a "'.repeat(100_000), "<svg " + "a=".repeat(200_000), "<svg>" + "<!--".repeat(100_000), " ".repeat(1000) + "<?xml?>".repeat(60_000)]) {
       const t0 = performance.now();
       svgProblems(bad);
       expect(performance.now() - t0, `${bad.length} chars`).toBeLessThan(1500);

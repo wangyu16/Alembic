@@ -27,5 +27,8 @@ describe("Door C: what a push may not change by content (contract v3 §13.6)", (
     expect(run([{ path: "assets/x.png", status: "added", bytes: enc("<html>") }]).undo[0]!.why).toMatch(/isn't a PNG/);
     expect(run([{ path: "assets/mol.ketcher.svg", status: "modified", bytes: enc("<svg><script/></svg>") }]).undo[0]!.why).toMatch(/script/);
     expect(run([{ path: "assets/ok.svg", status: "added", bytes: enc('<svg viewBox="0 0 1 1"/>') }]).undo).toEqual([]);
+    // Round 3 audit HIGH-1: a kind of file a course can't hold, pushed on GitHub, is undone.
+    expect(run([{ path: "metadata/evidence/page.html", status: "added" }]).undo[0]!.why).toMatch(/can't hold/);
+    expect(run([{ path: "assets/run.js", status: "modified" }]).undo[0]!.why).toMatch(/can't hold/);
   });
 });

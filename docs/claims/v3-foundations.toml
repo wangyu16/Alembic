@@ -24,6 +24,8 @@ bound_to = [
   "apps/web/src/lib/upload.test.ts :: the bytes must be what the name says, and an SVG must be safe",
   "packages/package-ops/src/door-c-content.test.ts :: an unsafe SVG or a file whose bytes don't match its kind, pushed on GitHub, is undone",
   "packages/package-ops/src/course-committer.test.ts :: Door C's undo puts back what the course had even if today's check would refuse it (the rest of the undo isn't lost)",
+  "packages/package-ops/src/publish-job.test.ts :: a file the website can't serve safely (.html, .js) is left out and said so; never reaches the public copy (audit r3 HIGH-1)",
+  "packages/package-contract/src/files.test.ts :: the SVG check runs in linear time: crafted input can't stall the worker (round 2 audit)",
 ]
 note = "Built: checks on upload and on every committed text write; the asset route already serves nosniff + a sandbox CSP. Door C undoes unsafe pushed SVGs and mismatched bytes. Not yet: the check at Publish."
 

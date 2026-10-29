@@ -173,7 +173,9 @@ export function classifyPushedContent(i: {
       continue;
     }
     const kind = fileKind(f.path);
-    if (kind && kind !== "text" && f.bytes) {
+    // A kind of file a course can't hold (.html, .js …): scripts would run on the published site (audit r3 HIGH-1).
+    if (kind === null) { undo(f.path, "a kind of file a course can't hold"); continue; }
+    if (kind !== "text" && f.bytes) {
       const problems = mediaProblems(kind, f.bytes);
       if (problems.length) undo(f.path, problems[0]!);
     } else if (isSvgPath(f.path) && f.bytes) {
