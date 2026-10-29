@@ -9,7 +9,7 @@
  * `site-failed` with the reasons; a run is tried at most MAX_ATTEMPTS times.
  */
 import { gitBlobSha, GitHubClient, installationTokenSource, type RepoCoords } from "@alembic/github-bridge";
-import type { SqlClient } from "@alembic/package-ops";
+import { mapLimit, READ_CONCURRENCY, type SqlClient } from "@alembic/package-ops";
 import { siteInputFiles } from "./orz-site-builder";
 
 export const PAGES_BRANCH = "gh-pages";
@@ -116,8 +116,8 @@ async function buildOne(cfg: SiteBuildConfig, run: { id: string; package_id: str
     await mark(cfg.sql, run.id, "site-failed", { error: tooBig ? `${tooBig.path} is too large for the website` : "The course is too large for one website build" });
     return "input too large";
   }
-  const files = new Map<string, Uint8Array>();
-  for (const e of blobs) files.set(e.path, await client.getBlob(coords, e.sha));
+  const bytes = await mapLimit(blobs, READ_CONCURRENCY, (e) => client.getBlob(coords, e.sha));
+  const files = new Map<string, Uint8Array>(blobs.map((e, k) => [e.path, bytes[k]!]));
 
   // The course's own site settings when it has them (orz-site.json is a course file); the builder forces the safe parts.
   let input: ReturnType<typeof siteInputFiles>;

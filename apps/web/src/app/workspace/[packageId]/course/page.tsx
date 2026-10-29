@@ -50,7 +50,7 @@ export default async function CourseHomeV3({ params }: { params: Promise<{ packa
           <ul className="mt-2 divide-y rounded border">
             {list.map((p) => (
               <li key={p} className="p-2 text-sm">
-                <Link className="underline" href={`/workspace/${packageId}/doc/${p.split("/").map(encodeURIComponent).join("/")}`}>{p.split("/").slice(1).join("/") || p}</Link>
+                <Link prefetch={false} className="underline" href={`/workspace/${packageId}/doc/${p.split("/").map(encodeURIComponent).join("/")}`}>{p.split("/").slice(1).join("/") || p}</Link>
               </li>
             ))}
           </ul>

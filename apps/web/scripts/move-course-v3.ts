@@ -10,7 +10,7 @@
  */
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, sep } from "node:path";
-import { addHeader, findCollisions, planFile, type MoveAction } from "../src/lib/course-move";
+import { addHeader, findCollisions, isLegacyDeck, planFile, type MoveAction } from "../src/lib/course-move";
 
 type Kit = {
   extract(html: string): { text: string; kind: string; legacy?: { notes: string[] } } | null;
@@ -77,7 +77,17 @@ async function main() {
     const text = readFileSync(src, "utf8");
     if (a.kind === "header") {
       const kind = a.to.endsWith(".slides.md") ? "slides" : "md";
-      const out = addHeader(text, {});
+      // A 0.x deck (a <!-- deck --> block): orz-slides' own upgrade moves its settings into the
+      // format-1 header. A header alone would leave the block, which the website build refuses.
+      let out: string;
+      if (kind === "slides" && isLegacyDeck(text)) {
+        const { upgradeText } = (await import("orz-slides")) as unknown as { upgradeText(t: string): { text: string; moved: Record<string, string> } };
+        const up = upgradeText(text);
+        out = up.text;
+        report.push(`upgrade  ${a.from} → ${a.to} (0.x deck; moved into the header: ${Object.keys(up.moved).join(", ") || "nothing"})`);
+      } else {
+        out = addHeader(text, {});
+      }
       const errs = lintsOf(kind, out);
       if (errs.length) { counts.attention++; report.push(`CHECK    ${a.to}: ${errs.join("; ")}`); }
       if (a.to !== a.from) report.push(`rename   ${a.from} → ${a.to}`);

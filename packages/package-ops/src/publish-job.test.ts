@@ -5,7 +5,7 @@
 import { describe, expect, it } from "vitest";
 import { copyChecks, fingerprint } from "./copy-check";
 import { FakePublic, FakeStore, h, manifestJson, working } from "./publish-fakes";
-import { anywayKey, approvalKey, findingsDigest, runPublish, type PublishedRecord, type UnitCheck } from "./publish-job";
+import { anywayKey, approvalKey, findingsDigest, READ_CONCURRENCY, runPublish, type PublishedRecord, type UnitCheck, type WorkingSide } from "./publish-job";
 
 const M = manifestJson([{ slug: "atoms" }, { slug: "gases" }]);
 const W: Record<string, string> = {
@@ -152,6 +152,22 @@ describe("runPublish", () => {
     const third = await runPublish(input({ runId: id(3) }), working({ ...W, "study-guide/atoms.md": "# Atoms, changed" }), pub, st, noChecks);
     expect(third.status === "committed" && third.unchanged).toBeFalsy();
     expect(pub.commits.length).toBe(commits + 1);
+  });
+
+  it("[RC.2] a real-size course is read in parallel, never more than READ_CONCURRENCY at once, with the same result", async () => {
+    // 19 chapters x 5 parts, like General Chemistry.
+    const slugs = Array.from({ length: 19 }, (_, k) => `ch${k}`);
+    const files: Record<string, string> = { "alembic.json": manifestJson(slugs.map((slug) => ({ slug }))) };
+    for (const s2 of slugs) for (const sp of ["concepts", "assessment-support", "study-guide", "practice"]) files[`${sp}/${s2}.md`] = `# ${sp} ${s2}`;
+    const base = working(files);
+    let inFlight = 0, peak = 0, reads = 0;
+    const slow: WorkingSide = { ...base, async readFile(sha, p) { inFlight++; reads++; peak = Math.max(peak, inFlight); await new Promise((r) => setTimeout(r, 2)); inFlight--; return base.readFile(sha, p); } };
+    const st = new FakeStore(); approveAll(st, files);
+    const out = await runPublish(input(), slow, new FakePublic(), st, noChecks);
+    expect(out.status === "committed" && out.published.length).toBe(19);
+    expect(peak).toBeGreaterThan(1);
+    expect(peak).toBeLessThanOrEqual(READ_CONCURRENCY);
+    expect(reads).toBeLessThanOrEqual(19 * 4 + 1); // each file read once (the manifest once more)
   });
 
   it("review r2 L-B: a run that no longer holds its request doesn't commit", async () => {

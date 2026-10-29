@@ -135,6 +135,18 @@ export type PublishOutcome =
 
 const TRAILER = "Alembic-Publish-Run";
 
+/** File reads in flight at once (GitHub's guidance: modest parallelism, no bursts). */
+export const READ_CONCURRENCY = 8;
+
+/** `fn` over `items`, at most `limit` at a time; results in input order. */
+export async function mapLimit<T, R>(items: readonly T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const out = new Array<R>(items.length);
+  let next = 0;
+  const lane = async () => { for (let k = next++; k < items.length; k = next++) out[k] = await fn(items[k]!); };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, lane));
+  return out;
+}
+
 /** A course-plan part approved as it was shown: `path@version`. */
 export const approvalKey = (path: string, version: string) => `${path}@${version}`;
 /** "Publish anyway" for exactly the problems that were shown: `slug@digest`. */
@@ -277,11 +289,13 @@ export async function runPublish(i: PublishInput, w: WorkingSide, pub: PublicSid
   // 6. Read units at W; a text file that can't be read stops the run (fail closed, G3 M2).
   const working = new Map<string, TreeFile>();
   const byUnit = new Map<string, Array<{ path: string; text: string | null }>>();
-  for (const e of tree.entries) {
-    if (e.type === "tree" || e.mode === "040000") continue;
-    const u = unitOf(e.path, chapters, everPublished);
-    if (u.kind === "none" || u.kind === "orphan") continue;
-    const content = await w.readFile(W, e.path);
+  // Reads run READ_CONCURRENCY at a time (a real course has hundreds of files); results keep tree order.
+  const toRead = tree.entries.filter((e) => e.type !== "tree" && e.mode !== "040000")
+    .map((e) => ({ e, u: unitOf(e.path, chapters, everPublished) }))
+    .filter(({ u }) => u.kind !== "none" && u.kind !== "orphan");
+  const contents = await mapLimit(toRead, READ_CONCURRENCY, ({ e }) => w.readFile(W, e.path));
+  for (const [k, { e, u }] of toRead.entries()) {
+    const content = contents[k]!;
     if (content === null) return { status: "stopped", reason: `Couldn't read ${e.path} to check it` };
     const text = "text" in content ? content.text : null;
     // Text files carry their git blob id too, so stale-asset comparisons are blob to blob (G3 r3 M-b).
@@ -315,12 +329,9 @@ export async function runPublish(i: PublishInput, w: WorkingSide, pub: PublicSid
   // deleted assets they still link to (G3 H3; r2 M1: whatever the record's version; r2 M2: keyed by unit).
   const keptTexts = new Map<string, { unit: string; text: string }>();
   if (P !== null) {
-    for (const f of previously) {
-      if (f.unit.startsWith("chapter:") || f.unit === "course") {
-        const t = await pub.readText(P, f.path);
-        if (t !== null) keptTexts.set(f.path, { unit: f.unit, text: t });
-      }
-    }
+    const textual = previously.filter((f) => f.unit.startsWith("chapter:") || f.unit === "course");
+    const texts = await mapLimit(textual, READ_CONCURRENCY, (f) => pub.readText(P!, f.path));
+    for (const [k, f] of textual.entries()) if (texts[k] !== null) keptTexts.set(f.path, { unit: f.unit, text: texts[k]! });
   }
 
   // 7–9. Decide, assemble, link check.

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { addHeader, findCollisions, planFile } from "./course-move";
+import { upgradeText } from "orz-slides";
+import { addHeader, findCollisions, isLegacyDeck, planFile } from "./course-move";
 
 describe("planFile", () => {
   it("maps the 0.x trees onto the v3 working tree", () => {
@@ -37,5 +38,17 @@ describe("findCollisions", () => {
   it("names two sources writing one target", () => {
     const a = [planFile("public", "current/a.md"), planFile("public", "current/a.md.html"), planFile("public", "current/b.md")];
     expect(findCollisions(a)).toEqual([{ to: "current/a.md", from: ["current/a.md", "current/a.md.html"] }]);
+  });
+});
+
+describe("0.x decks (real course: GenChem)", () => {
+  const legacy = "<!-- deck\ntitle: Chapter 5: Gases\nratio: 16:9\n-->\n\n<!-- slide template=title -->\n# Gases\n\n<!-- slide -->\n## Pressure\n- force per area\n";
+  it("[RC.1] a 0.x deck is recognised, and orz-slides' upgrade leaves no deck block, keeps every slide and moves the settings into the header", () => {
+    expect(isLegacyDeck(legacy)).toBe(true);
+    expect(isLegacyDeck(addHeader(legacy, {}))).toBe(true); // a header alone keeps the block (what the website refused)
+    const up = upgradeText(legacy).text;
+    expect(isLegacyDeck(up)).toBe(false);
+    expect(up.match(/<!-- slide/g)?.length).toBe(2);
+    expect(up).toMatch(/^\{\{nyml\n[\s\S]*title: Chapter 5: Gases\n[\s\S]*ratio: 16:9\n[\s\S]*\}\}/);
   });
 });

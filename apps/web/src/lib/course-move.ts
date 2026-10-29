@@ -50,6 +50,13 @@ export function planFile(repo: "public" | "private", path: string): MoveAction {
 
 const HAS_HEADER = /^﻿?\{\{nyml[ \t]*\r?\n/;
 
+/**
+ * A 0.x deck source: its settings live in a `<!-- deck … -->` block. Such a
+ * deck must go through orz-slides' own upgrade (settings into the format-1
+ * header), not just get a header: the website build refuses the block.
+ */
+export const isLegacyDeck = (text: string): boolean => /<!--\s*deck\b/.test(text);
+
 /** Add an FC-18 format-1 header to a lean text, keeping its body exactly. */
 export function addHeader(text: string, o: { title?: string | null; uid?: string | null }): string {
   if (HAS_HEADER.test(text)) return text;

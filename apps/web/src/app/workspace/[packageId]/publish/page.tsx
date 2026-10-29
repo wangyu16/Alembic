@@ -7,6 +7,7 @@ import { courseRepo, textVersion } from "@/lib/course-v3";
 import { requestPublishAction, setChapterModeAction, startPlanAction } from "./actions";
 import { SubmitButton } from "../../submit-button";
 import { RefreshWhile } from "./refresh-while";
+import { siteView } from "@/lib/publish-view";
 
 export const dynamic = "force-dynamic";
 
@@ -33,8 +34,7 @@ export default async function PublishPage({ params, searchParams }: { params: Pr
     supabase.from("publish_runs").select("status, results").eq("package_id", packageId).in("status", ["committed", "site-built", "site-failed"]).order("committed_at", { ascending: false }).limit(1),
   ]);
   const lastRun = runs?.[0] as { status: string; results: { site?: { url?: string; error?: string; superseded?: boolean } } } | undefined;
-  const site = lastRun?.results.site as { url?: string; error?: string; pagesNote?: string; superseded?: boolean } | undefined;
-  const siteUrl = lastRun?.status === "site-built" && typeof site?.url === "string" && /^https:\/\/[a-z0-9-]+\.github\.io\//i.test(site.url) ? site.url : null;
+  const site = siteView(lastRun);
   const c = await courseRepo(packageId);
   if (!c) return <main className="mx-auto max-w-2xl p-6"><p>This course's repository can't be reached right now.</p></main>;
   const head = await c.repo.head();
@@ -54,7 +54,7 @@ export default async function PublishPage({ params, searchParams }: { params: Pr
   const last = requests?.[0] as { id: string; status: string; outcome: Outcome | null; finished_at: string | null } | undefined;
   const busy = last?.status === "queued" || last?.status === "running";
   // The website is built after Publish; that never blocks publishing again (review r2 M-C).
-  const siteBuilding = lastRun?.status === "committed";
+  const siteBuilding = site.kind === "building";
   const lastDecisions = last?.outcome?.status === "committed" ? last.outcome.decisions : [];
   const keptFor = (slug: string) => lastDecisions.find((d) => d.unit === `chapter:${slug}`);
   const anywayKeys = last?.outcome?.status === "committed" ? (last.outcome.anywayKeys ?? {}) : {};
@@ -74,13 +74,15 @@ export default async function PublishPage({ params, searchParams }: { params: Pr
         A chapter is ready when it isn't a draft, its course plan is approved, and the checks pass.
       </p>
       {message ? <p className="mt-3 rounded border border-amber-300 bg-amber-50 p-2 text-sm">{message}</p> : null}
-      {lastRun ? (
-        <p className="mt-3 text-sm">
-          Website: {siteUrl ? <><a className="underline" href={siteUrl}>{siteUrl}</a>{site?.pagesNote ? <> ({site.pagesNote})</> : null}</>
-            : lastRun.status === "site-failed" ? <>not updated — {site?.error ?? "the build failed"}</>
-            : lastRun.status === "site-built" ? "updated"
+      {site.kind !== "none" ? (
+        <div className="mt-3 text-sm">
+          Website: {site.kind === "live" ? <><a className="underline" href={site.url}>{site.url}</a>{site.note ? <> ({site.note})</> : null}</>
+            : site.kind === "failed" ? <>not updated — {site.error}{site.problems.length ? (
+              <ul className="mt-1 list-disc pl-5" data-testid="site-problems">{site.problems.map((x) => <li key={x}>{x}</li>)}</ul>
+            ) : null}</>
+            : site.kind === "updated" ? "updated"
             : "being built…"}
-        </p>
+        </div>
       ) : null}
 
       <section className="mt-5 rounded border p-3">
@@ -127,7 +129,7 @@ export default async function PublishPage({ params, searchParams }: { params: Pr
                     ) : toApprove.length === 0 ? "Approved" : canApprove ? (
                       <label className="flex items-start gap-1">
                         <input type="checkbox" name="approve" value={toApprove.map((p) => `${p.path}@${p.version}`).join("|")} className="mt-1" />
-                        <span>Approve the course plan as it is now ({ch.parts.map((p) => <Link key={p.path} className="underline" href={`/workspace/${packageId}/doc/${p.path}`}>{p.path.split("/")[0] === "concepts" ? "concept map" : "assessment guide"}</Link>).reduce<React.ReactNode[]>((a, x, i) => (i ? [...a, " and ", x] : [x]), [])})</span>
+                        <span>Approve the course plan as it is now ({ch.parts.map((p) => <Link key={p.path} prefetch={false} className="underline" href={`/workspace/${packageId}/doc/${p.path}`}>{p.path.split("/")[0] === "concepts" ? "concept map" : "assessment guide"}</Link>).reduce<React.ReactNode[]>((a, x, i) => (i ? [...a, " and ", x] : [x]), [])})</span>
                       </label>
                     ) : "Waiting for the owner or deputy"}
                   </td>

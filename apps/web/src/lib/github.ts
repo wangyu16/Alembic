@@ -154,15 +154,25 @@ export async function clientForCourse(
   if (!data || !inst?.installation_id) return null;
   const scope = courseRepoScope(data as Parameters<typeof courseRepoScope>[0]);
   if (!scope) return null;
-  const tokens = installationTokenSource({
-    appId: cfg.appId,
-    privateKey: cfg.privateKey,
-    installationId: inst.installation_id as number,
-    repositories: scope.names,
-  });
+  // One token source per installation and repository set, reused across requests: it keeps its
+  // one-hour token and refreshes it ahead of expiry, so a page doesn't mint a new token each time.
+  const key = `${inst.installation_id}:${[...scope.names].sort().join(",")}`;
+  let tokens = courseTokens.get(key);
+  if (!tokens) {
+    tokens = installationTokenSource({
+      appId: cfg.appId,
+      privateKey: cfg.privateKey,
+      installationId: inst.installation_id as number,
+      repositories: scope.names,
+    });
+    if (courseTokens.size >= 500) courseTokens.delete(courseTokens.keys().next().value!);
+    courseTokens.set(key, tokens);
+  }
   await tokens.token();
   return { client: new GitHubClient(tokens), owner: scope.owner, repos: scope.names };
 }
+
+const courseTokens = new Map<string, ReturnType<typeof installationTokenSource>>();
 
 export { advanceSyncedSha, recordOwnCommit, recordSyncedSha, syncedShaFor } from "./synced-sha";
 

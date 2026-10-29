@@ -1,0 +1,54 @@
+# Workspace v3 — real-course claims (closed loop, rounds on the testing site
+# with the owner's General Chemistry copied as a v3 course, 2026-10-29).
+#
+# Same format as phase5.toml (see scripts/claims-check.mjs). Ids RC.<n>.
+# Live oracles (crawls, timings on testing) are recorded in the note and the
+# round entry in docs/specs/v3/real-course-loop.md.
+
+[registry]
+name = "Alembic workspace v3, real course"
+round = "r1"
+baseline = "4411cc9"
+
+[[claim]]
+id = "RC.1"
+claim = "Moving a 0.x course leaves no 0.x deck block in any slides file: a 0.x deck goes through orz-slides' own upgrade, and the website build accepts the result (it refuses a deck that only got a header)."
+oracle = "scenario"
+bound_to = [
+  "apps/web/src/lib/course-move.test.ts :: a 0.x deck is recognised, and orz-slides' upgrade leaves no deck block, keeps every slide and moves the settings into the header",
+  "apps/worker/src/site-build.real.test.ts :: a 0.x deck with only a header added is refused; the same deck after orz-slides' upgrade builds",
+]
+note = "Found live: all 19 GenChem decks broke the website build after a clean Publish. The carrier's readDocument does not lint the block; orz-site does (family discrepancy, reported)."
+
+[[claim]]
+id = "RC.2"
+claim = "Publish reads a course's files in parallel, never more than READ_CONCURRENCY (8) at once, each file once, with the same result as reading them one by one."
+oracle = "conformance"
+bound_to = [
+  "packages/package-ops/src/publish-job.test.ts :: a real-size course is read in parallel, never more than READ_CONCURRENCY at once, with the same result",
+]
+note = "Before: ~450 sequential GitHub reads per GenChem Publish (1m42s first, 2m37s second). The website build's blob downloads and the instructor-file reads got the same bounded parallelism."
+
+[[claim]]
+id = "RC.3"
+claim = "When the website build fails, the Publish page names each problem with its file (up to 20), not only that it failed."
+oracle = "conformance"
+bound_to = [
+  "apps/web/src/lib/publish-view.test.ts :: a failed website build names each problem with its file (at most 20)",
+]
+
+[[claim]]
+id = "RC.4"
+claim = "No link to a course document is prefetched (each prefetch would render a document page on the server with its own GitHub reads; a 19-chapter course home has ~100 such links)."
+oracle = "conformance"
+bound_to = [
+  "apps/web/src/app/workspace/doc-links.scan.test.ts :: every <Link> to a course document turns prefetching off",
+]
+note = "Found live: the GenChem course home took ~10 s to settle and 9 of 95 document opens timed out during a crawl, while server time per page was 2-3 s."
+
+[[claim]]
+id = "RC.5"
+claim = "Every document of the real course (95: 19 chapters x 5 parts) opens in its editor with no page error and no CSP report."
+oracle = "human"
+bound_to = []
+note = "Live crawl /tmp/pgcheck/genchem-crawl.cjs on testing; r1 before fixes: 86/95 clean, 9 timeouts (not reproducible one by one). Re-run after RC.4."
