@@ -132,3 +132,29 @@ Blind acceptance spec: [docs/blind-critique/v3-workspace-spec.md](../../blind-cr
 - the move helper turns `A. …` option runs into separate lines (hard breaks or a list);
 - the content is fixed by hand.
 - the owner's calls carried forward: idle interval, public assessment guides, workshop contact.
+
+## Round 5 (2026-10-29): audit of rounds 3–4
+
+The audit found 2 HIGH, 4 MEDIUM and 5 LOW. Fixed in Alembic `79d8c27` and `d6b09e4`.
+
+- **HIGH-1:**
+  - **Was:** reopening with unsent text could revert others' changes. The resumed text was queued with its own base, but the editor kept the course's current base, so the next keystroke resent it on the wrong base.
+  - **Now:** the base follows the resumed text and it's sent at once. Records from before the `synced` flag resume only if the course hasn't moved (the old rule).
+- **HIGH-2 (RC.25):**
+  - **Was:** Present ran course content with Alembic's origin (stored XSS across members).
+  - **First fix:** a sandboxed frame. Live, it inherited the page's enforced CSP and showed 0 slides.
+  - **Now:** the deck goes by same-site form post to a members-only `/present` route, served under `sandbox allow-scripts`. Live: 29 slides, origin `null`.
+- **MEDIUM:**
+  - Save no longer reports "offline" while a sync is under way, and leaving mid-sync no longer drops text (`syncNow` waits, then sends);
+  - `rebase` updates the draft in place;
+  - the tar overhead is counted in the unpack limit;
+  - a failed archive falls back to blob reads.
+- **LOW:**
+  - migration 0061 (`approve_part` null role; `request_publish` refused while a status change is pending);
+  - edited-since-Publish uses the publisher's chapter rule;
+  - figures in code blocks are left alone.
+
+**Deferred, with reasons:**
+- **MEDIUM-6:** a course over 80 MB is read blob by blob and spends GitHub budget again. A streaming archive parse fixes it; GenChem is far below the limit.
+- **L11:** signed image addresses outlive a member's removal by up to 48 h. Accepted: the addresses are only ever handed to members, and shortening them breaks caching.
+- **MEDIUM-3 remainder:** two syncs before the first echo can still record a "both changed" item. No text is lost (the typist's text is on top). Fixing it means waiting for the echo before sending again.
