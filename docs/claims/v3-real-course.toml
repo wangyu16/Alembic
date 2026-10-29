@@ -108,7 +108,7 @@ bound_to = [
   "packages/github-bridge/src/tar.test.ts :: a real .tar.gz gives every regular file by its path under the top folder, long and non-ASCII names included, bytes exact",
   "apps/worker/src/publish-loop.test.ts :: reading every file of a 330-file course at one commit costs one archive request; a failed request isn't kept",
 ]
-note = "Blind r1 (B5/A9): the installation's 5,000 requests/hour ran out at 04:03 UTC after a few GenChem Publishes plus normal use; every course page of the owner returned 500 for ~10 min. Live: the GenChem working tree, 331 files in one request (3.6 s), every blob id matching the tree."
+note = "Blind r1 (B5/A9): the installation's 5,000 requests/hour ran out at 04:03 UTC after a few GenChem Publishes plus normal use; every course page of the owner returned 500 for ~10 min. Live: the GenChem working tree, 331 files in one request (3.6 s), every blob id matching the tree; a full GenChem Publish plus its website then used 8 GitHub requests (before: ~1,000)."
 
 [[claim]]
 id = "RC.12"
