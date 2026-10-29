@@ -109,14 +109,14 @@ export function rewritePermalinks(text: string, docPath: string, ids: ReadonlyMa
 }
 
 /**
- * Keep multiple-choice options on their own lines (opt-in: --split-options). 0.x content writes
- * `A. …` / `B. …` (or `(A) …`) on consecutive lines, which 1.x Markdown joins into one paragraph. A run of two
+ * Keep multiple-choice options on their own lines (the move helper's default; owner, 2026-10-29). 0.x content writes
+ * `A. …` / `B. …` (or `(A) …`, also escaped `\(C) …` so it doesn't become ©) on consecutive lines, which 1.x Markdown joins into one paragraph. A run of two
  * or more lettered lines in order (A, B, C…) gets a hard break (`\`) after each line but the last.
  * Code fences are left alone. Returns how many runs were split.
  */
 export function splitOptions(text: string): { text: string; runs: number } {
   const lines = text.split("\n");
-  const letter = (l: string) => { const m = /^(?:\(([A-H])\)|([A-H])[.)]) \S/.exec(l); return m ? m[1] ?? m[2] : null; };
+  const letter = (l: string) => { const m = /^(?:\\?\(([A-H])\)|([A-H])[.)]) \S/.exec(l); return m ? m[1] ?? m[2] : null; };
   let fence: string | null = null;
   let runs = 0;
   for (let i = 0; i < lines.length; i++) {

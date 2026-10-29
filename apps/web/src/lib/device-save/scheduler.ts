@@ -12,7 +12,7 @@
  */
 
 // Shortened from 2 / 5 minutes (design §7.1) after the real-course review (RC.13): a teacher who
-// stopped typing expects the course to have it within seconds, not minutes. Owner to confirm.
+// stopped typing expects the course to have it within seconds, not minutes. Confirmed by the owner 2026-10-29.
 export const IDLE_MS = 30_000;
 export const MAX_WAIT_MS = 2 * 60_000;
 export const RETRY_MS = 30_000;

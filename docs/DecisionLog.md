@@ -7,6 +7,21 @@ design, and what is deferred to the future. Complements [Status.md](Status.md)
 ---
 
 
+## 2026-10-29 — Owner rulings after the real-course loop (v3 workspace)
+
+1. **Idle sync: 30 seconds.** A document goes to the course 30 s after the
+   last keystroke (still at most 2 min while typing goes on). This replaces
+   design §7.1's 2 minutes. Teachers who stop typing expect the course to
+   have it within seconds (RC.13).
+2. **Assessment guides stay public.** The v3 contract publishes them with
+   their chapter. Answer keys remain instructor-only (`private/`).
+3. **Multiple-choice options go on their own lines in 1.x.** The move helper
+   does this by default for documents (not slides). `A. …`, `(A) …` and the
+   escaped `\(C) …` runs get Markdown hard breaks; `--keep-option-lines`
+   opts out. It was applied to the GenChem testing copy: 53 runs in 19
+   practice pages, checked in the live preview.
+4. **Workshop contact:** asked of the owner; open.
+
 ## 2026-10-27 — Owner rulings after blind-critique round 2
 
 | # | Decision | Why |

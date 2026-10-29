@@ -219,3 +219,9 @@ Fixed in Alembic `0fa5129`; deployed to testing and checked live.
 **Loop closed (2026-10-29).** The round-6 audit found no HIGH. The re-verifier's two defects were fixed and checked live in 3 of 3 trials (reopen) and 10 of 10 captions, by me rather than by a fresh agent: a proportionality deviation, recorded here.
 - **Residue no agent could judge:** downloads need public CDNs for styles, math and diagrams; real-device behaviour (iPad, a phone) is untested.
 - **Owner's calls:** the idle interval, public assessment guides, a workshop contact, and `--split-options`.
+
+**Owner rulings (2026-10-29, DecisionLog):**
+- idle sync stays at 30 s;
+- assessment guides stay public;
+- multiple-choice options go on their own lines. This is the move helper's default; it now also accepts the escaped `\(C)` (0.x escaped "(C)" so it wouldn't turn into ©), which the live preview showed was missed. Applied to the testing copy.
+- The workshop contact is still open.

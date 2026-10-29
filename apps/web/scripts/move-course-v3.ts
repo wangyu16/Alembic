@@ -2,7 +2,7 @@
  * A14 helper: move a 0.x course into one v3 working tree (R31, manual move).
  *
  *   pnpm --filter @alembic/web exec tsx scripts/move-course-v3.ts \
- *     --public <clone of the -oer repo> --private <clone of the -private repo> --out <new folder> [--write] [--resolve-permalinks] [--split-options]
+ *     --public <clone of the -oer repo> --private <clone of the -private repo> --out <new folder> [--write] [--resolve-permalinks] [--keep-option-lines]
  *
  * Without --write it only reports the plan. With --write it fills --out (which
  * must not exist or be empty); it never touches the source folders. Review the
@@ -13,9 +13,10 @@
  * and matched, by content (git blob id), to a file copied into the new tree;
  * matches become relative paths, the rest are listed for a person.
  *
- * --split-options: keep multiple-choice options (`A. …` lines in a row) on
- * their own lines in documents (not slides); 1.x Markdown would otherwise join
- * them into one paragraph. Off by default: an owner's choice.
+ * Multiple-choice options (`A. …` / `(A) …` lines in a row) are kept on
+ * their own lines in documents (not slides): 1.x Markdown would otherwise join
+ * them into one paragraph (owner, 2026-10-29). --keep-option-lines leaves
+ * them exactly as written.
  */
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, sep } from "node:path";
@@ -104,7 +105,7 @@ async function main() {
     mkdirSync(dirname(p), { recursive: true });
     writeFileSync(p, data);
   };
-  const split = process.argv.includes("--split-options");
+  const split = !process.argv.includes("--keep-option-lines");
   const options = (to: string, text: string) => {
     if (!split || !to.endsWith(".md") || to.endsWith(".slides.md")) return text;
     const r = splitOptions(text);

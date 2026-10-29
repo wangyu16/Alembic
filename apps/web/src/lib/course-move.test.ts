@@ -74,5 +74,7 @@ describe("splitOptions (opt-in)", () => {
     expect(text.split("\n").slice(6)).toEqual(src.split("\n").slice(6));
     expect(splitOptions(text).text).toBe(text); // idempotent
     expect(splitOptions("(A) Zero\n(B) One\n(C) Two").text).toBe("(A) Zero\\\n(B) One\\\n(C) Two");
+    // 0.x escapes (C) so it doesn't turn into ©: still an option.
+    expect(splitOptions("(A) Zero\n(B) One\n\\(C) Two\n(D) Three").text).toBe("(A) Zero\\\n(B) One\\\n\\(C) Two\\\n(D) Three");
   });
 });
