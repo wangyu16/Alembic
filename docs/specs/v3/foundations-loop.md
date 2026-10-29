@@ -113,3 +113,26 @@ content profile).
 - **L7:** a malformed upload header is a 400, not a 500.
 
 **Found while fixing, for Coursewerk (D-126 item 9):** GenChem holds 32 saved third-party web pages under `metadata/evidence/*.html` (rights evidence). `metadata/` is a public space, so they are projected to the public copy. Whether evidence snapshots should be published at all is a content question for Coursewerk. Alembic no longer accepts edits to them.
+
+## Round 3 audit (2026-10-29)
+
+**2 HIGH, 2 MEDIUM, 2 LOW.** All are fixed (Alembic `9b8badd`, deployed).
+
+- **HIGH-1:**
+  - **Was:** scripts reached the published site through `.html` files. After `.html` left the text list, Door C and Publish treated an unknown kind as harmless: GenChem's 32 evidence snapshots (all containing `<script>`) were projected and served on `<owner>.github.io`.
+  - **Now:**
+    - Publish leaves out any file of a kind the site can't serve safely and lists it (`leftOut`); a copy published earlier leaves the public copy and the site.
+    - Door C undoes such pushes.
+  - **Live:** after one Publish, the public copy and `gh-pages` hold 0 evidence HTML files and 0 `.js` files.
+- **HIGH-2:** the reader was quadratic on leading whitespace plus repeated `<?xml?>` (400 KB took 27 s). The document start is now computed once, and the timing test includes this shape.
+- **MEDIUM-1:** encoded `url(` in presentation attributes, very long character references (`&#00000000106;`) and nested `<style>` got past the check. Now:
+  - values are decoded before the url check;
+  - references of any length are decoded, and an impossible one is refused;
+  - nested styles are refused.
+- **MEDIUM-2:**
+  - **Was:** Door C set a push aside after 50 seconds, outages included, silently.
+  - **Now:** GitHub outages and rate limits don't count, and a push set aside raises an interrupting item for the course.
+- **LOW-1:** a stale page can't restore after the item was answered.
+- **LOW-2:** a move keeps the extension, so a text file can't become an SVG unchecked.
+
+**Unconfirmed, recorded:** `xml:base` on an ancestor, `<use>` of a text file as an SVG resource, and an XHTML default namespace on allowlisted names. No executable path was found; to revisit if browsers change.
