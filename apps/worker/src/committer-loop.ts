@@ -136,7 +136,7 @@ async function raiseBothChanged(cfg: CommitterConfig, packageId: string, row: Qu
     }
   }
   const { rows: who } = await cfg.sql.query<{ user_id: string }>(
-    `select user_id from public.course_members where package_id = $1 and role in ('owner', 'deputy')`, [packageId]);
+    `select user_id from public.course_members where package_id = $1 and public.course_role_of($1, user_id) in ('owner', 'deputy')` /* a deputy is a co-author with deputy_until: ask the role function */, [packageId]);
   const items = itemsForLandedChange({ rowId: row.id, actorId: row.actorId ?? null, files: both, commits: res.commits ?? [], removed, deciders: who.map((w) => w.user_id) });
   for (const it of items) {
     await cfg.sql.query(`select public.needs_you_raise($1, 'both-changed', 'platform', $2, $3::text::jsonb, $4, $5, false, $6::uuid[])`,
