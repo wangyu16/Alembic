@@ -39,6 +39,9 @@ async function CourseHomeV3Inner({ params, searchParams }: { params: Promise<{ p
   const c = admin ? await clientForCourse(admin, packageId) : null;
   if (!c) return <main className="mx-auto max-w-2xl p-6"><p>This course's repository can't be reached right now.</p></main>;
   const coords = { owner: c.owner, repo: c.repos[0]! };
+  // Changes on their way into the course (chapters being added, parts being started): the page refreshes until they land.
+  // Read BEFORE the head: a change that finished in between is then already in the head (live race, foundations 1b).
+  const { data: open } = await supabase.from("write_queue").select("id").eq("package_id", packageId).in("status", ["queued", "processing", "retry"]).limit(1);
   const head = (await c.client.getBranchHead(coords)).commitSha;
   const { paths } = await c.client.listTree(coords, head);
   const docs = paths.filter((p) => kindOfPath(p) && !p.startsWith(".") && !isServerOnlyPath(p)); // e.g. the template's private/README.md (contract v3 §12.1)
@@ -49,8 +52,6 @@ async function CourseHomeV3Inner({ params, searchParams }: { params: Promise<{ p
     if (githubBusy(e)) throw e; // the busy page, not a course with no chapters (RC.12)
     /* an unreadable manifest: everything shows under course files */
   }
-  // Changes on their way into the course (chapters being added, parts being started): the page refreshes until they land.
-  const { data: open } = await supabase.from("write_queue").select("id").eq("package_id", packageId).in("status", ["queued", "processing", "retry"]).limit(1);
   const mayAddChapters = can(role as Role, "edit.course-files");
   const partOf = new Map(CHAPTER_PARTS.map((x) => [x.label, x.part]));
   const o = courseOutline(Array.isArray(chapters) ? chapters : [], docs);
