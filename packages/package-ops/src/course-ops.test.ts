@@ -60,7 +60,10 @@ describe("course operations applied at the head (K1.15)", () => {
   });
   it("[K1.15] operations from a client are shape-checked; unknown operations and bad slugs are refused", () => {
     expect(parseCourseOp({ op: "renameChapter", slug: "gases", title: " A \n B " })).toEqual({ op: "renameChapter", slug: "gases", title: "A B" });
-    expect(parseCourseOp({ op: "setLicense", license: "CC0-1.0" })).toBeNull();
+    expect(parseCourseOp({ op: "deleteCourse" })).toBeNull();
+    expect(parseCourseOp({ op: "setLicense", license: "CC0-1.0" })).toEqual({ op: "setLicense", license: "CC0-1.0" });
+    expect(parseCourseOp({ op: "setLicense", license: "MIT" })).toBeNull(); // not in the profile's list
+    expect(parseCourseOp({ op: "restoreChapter", slug: "gases", fromCommit: "HEAD~1" })).toBeNull();
     expect(parseCourseOp({ op: "removeChapter", slug: "../x" })).toBeNull();
     expect(parseCourseOp({ op: "setCourseDetails" })).toBeNull();
     const d = applyCourseOp(manifest([]), new Set(), parseCourseOp({ op: "setCourseDetails", description: "An open course." })!, uid);

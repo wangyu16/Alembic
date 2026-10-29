@@ -4,6 +4,7 @@
  * Real multi-connection contention (A4.5, Q.4) runs against real Postgres on
  * the testing database.
  */
+import { applyCourseOp } from "./course-ops";
 import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import type { Role } from "@alembic/package-contract";
@@ -39,6 +40,7 @@ class FakeRepo implements WorkingRepo {
     return this.headSha;
   }
   async readFile(ref: string, path: string) {
+    if (!this.commits.some((c) => c.sha === ref)) throw Object.assign(new Error("Not Found"), { status: 404 }); // as GitHub answers
     return this.byId(ref).files.get(path) ?? null;
   }
   async listPaths(ref: string) {
@@ -422,4 +424,35 @@ describe("course operations in the committer (contract v3 §13.3)", () => {
     expect(repo.file("study-guide/atoms.md")).toBe(sg("pushed"));
     expect((JSON.parse(repo.file("alembic.json")!) as { chapters: Array<{ mode: string }> }).chapters[1]!.mode).toBe("draft");
   });
+
+  it("[K1.16] restoreChapter (from the removal's parent) brings the chapter and its parts back; a reused slug comes back under a free one, marked restored", async () => {
+    const { repo, q } = course();
+    q.add(op("o1", "owner", { op: "removeChapter", slug: "gases" }));
+    await drainCourse(P, "w", q, repo);
+    const removal = repo.headSha;
+    const parent = repo.commits.find((c) => c.sha === removal)!.parent!;
+    q.add(op("o2", "dep", { op: "addChapters", titles: ["Gases"], startParts: false })); // the slug is reused meanwhile
+    q.add(op("o3", "dep", { op: "restoreChapter", slug: "gases", fromCommit: parent.padEnd(40, "0") }));
+    await drainCourse(P, "w", q, repo);
+    expect(q.status("o3")).toBe("refused"); // no such commit in the fake: nothing restored, a reason given
+    // With the real parent id (the fake's ids aren't 40 hex), apply the operation directly.
+    const r = applyCourseOp(repo.file("alembic.json"), new Set(["alembic.json", "study-guide/atoms.md", "study-guide/gases.md"]),
+      { op: "restoreChapter", slug: "gases", fromCommit: "a".repeat(40) }, () => "doc-x",
+      { snapshot: { chapter: { slug: "gases", title: "Gases", mode: "package" }, files: [{ path: "study-guide/gases.md", content: base }] } });
+    expect(r.ok && r.writes.map((w) => w.path)).toEqual(["alembic.json", "study-guide/gases-restored.md"]);
+    expect(r.ok && r.manifest.chapters.at(-1)).toEqual({ slug: "gases-restored", title: "Gases (restored)", mode: "package" });
+  });
+  it("[K1.18] only the owner changes the licence, and LICENSE and the citation's licence line follow in the same commit", async () => {
+    const { repo, q } = course();
+    repo.push({ "CITATION.cff": 'cff-version: 1.2.0\ntitle: "Chem"\nlicense: CC-BY-4.0\nauthors: []' });
+    q.add(op("o1", "dep", { op: "setLicense", license: "CC-BY-SA-4.0" }));
+    q.add(op("o2", "owner", { op: "setLicense", license: "CC-BY-SA-4.0" }));
+    await drainCourse(P, "w", q, repo);
+    expect([q.status("o1"), q.status("o2")]).toEqual(["refused", "done"]);
+    expect(JSON.parse(repo.file("alembic.json")!).license).toBe("CC-BY-SA-4.0");
+    expect(repo.file("LICENSE")).toMatch(/ShareAlike|Share-?Alike|BY-SA/i);
+    expect(repo.file("CITATION.cff")).toContain("license: CC-BY-SA-4.0");
+    expect(repo.file("CITATION.cff")).not.toContain("CC-BY-4.0\n");
+  });
 });
+

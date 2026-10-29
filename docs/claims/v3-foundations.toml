@@ -53,7 +53,7 @@ bound_to = [
   "packages/package-ops/src/course-committer.test.ts :: a head that moves under an operation (a push on GitHub) makes it decide again on the new head",
   "apps/web/src/lib/course-ops.sql.test.ts :: a courseop row needs an actor, and Publish waits while one is on its way",
 ]
-note = "Built: addChapters, renameChapter, moveChapter, removeChapter, setChapterMode, setCourseDetails. Not yet: setLicense (owner-only, regenerates LICENSE/CITATION.cff; K1.18) and restoreChapter (K1.16)."
+note = "Built: addChapters, renameChapter, moveChapter, removeChapter, setChapterMode, setCourseDetails. Also built: setLicense (K1.18), restoreChapter (K1.16)."
 
 [[claim]]
 id = "K1.16"
@@ -62,8 +62,9 @@ oracle = "scenario"
 bound_to = [
   "packages/package-ops/src/course-ops.test.ts :: removing a chapter removes it and its part files in one change",
   "packages/package-ops/src/course-committer.test.ts :: removing a chapter removes its parts in the same commit; an operation on it afterwards is refused with a reason",
+  "packages/package-ops/src/course-committer.test.ts :: restoreChapter (from the removal's parent) brings the chapter and its parts back; a reused slug comes back under a free one, marked restored",
 ]
-note = "Partly built: removal. restoreChapter and the late-sync Restore item are next."
+note = "Built: removal and restoreChapter. Not yet: the Needs-you item that offers Restore when a late sync arrives for a removed chapter."
 
 [[claim]]
 id = "K1.17"
@@ -79,7 +80,10 @@ bound_to = [
 id = "K1.18"
 claim = "Only the owner changes the licence, and LICENSE/CITATION.cff follow in the same commit; Door C undoes a non-owner licence change and edits to the licence files."
 oracle = "conformance"
-bound_to = []
+bound_to = [
+  "packages/package-ops/src/course-committer.test.ts :: only the owner changes the licence, and LICENSE and the citation's licence line follow in the same commit",
+]
+note = "Built: setLicense. Not yet: Door C undoing a non-owner licence change pushed on GitHub."
 
 [[claim]]
 id = "K1.19"

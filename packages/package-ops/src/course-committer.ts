@@ -8,8 +8,8 @@
  * so it is tested with fakes and runs unchanged on the worker.
  */
 
-import { can, canWritePath, newDocId, normalizePath, sha256Hex, WorkingManifestV3Schema, type Role } from "@alembic/package-contract";
-import { applyCourseOp, parseCourseOp } from "./course-ops";
+import { activeProfile, can, canWritePath, newDocId, normalizePath, sha256Hex, WorkingManifestV3Schema, type Role } from "@alembic/package-contract";
+import { applyCourseOp, parseCourseOp, type ChapterSnapshot } from "./course-ops";
 import { decideFile, type FileDecision, type FileKind } from "./version-rule";
 
 /* -------------------------------------------------------------------------- *
@@ -376,6 +376,32 @@ export async function processRow(row: QueueRow, store: QueueStore, repo: Working
   }
 }
 
+/** A chapter's manifest entry and part files at an earlier commit (restoreChapter reads the removal's parent). */
+async function chapterAt(repo: WorkingRepo, commit: string, slug: string): Promise<ChapterSnapshot | undefined> {
+  let text: string | null;
+  try {
+    text = await repo.readFile(commit, "alembic.json");
+  } catch (e) {
+    // The head was just readable, so a missing commit means there is nothing to restore, not lost access.
+    const status = (e as { status?: unknown })?.status;
+    if (status === 404 || status === 422) return undefined;
+    throw e;
+  }
+  let chapter: ChapterSnapshot["chapter"] | undefined;
+  try {
+    chapter = WorkingManifestV3Schema.parse(JSON.parse(text ?? "null")).chapters.find((c) => c.slug === slug);
+  } catch {
+    return undefined;
+  }
+  if (!chapter) return undefined;
+  const files: ChapterSnapshot["files"] = [];
+  for (const p of activeProfile.unitParts) {
+    const content = await repo.readFile(commit, p.path(slug));
+    if (content !== null) files.push({ path: p.path(slug), content });
+  }
+  return { chapter, files };
+}
+
 /**
  * A course operation (contract v3 §13.3): re-check the actor's right, then
  * apply the operation to the manifest and file list at the head, commit it,
@@ -392,12 +418,18 @@ async function processCourseOp(row: QueueRow, store: QueueStore, repo: WorkingRe
     if ((row.abandons ?? 0) >= MAX_ABANDONS) return { status: "failed", error: "abandoned repeatedly while being processed" };
     if (!row.actorId) return { status: "refused", reason: "no actor" };
     const role = await store.roleOf(row.packageId, row.actorId);
-    if (!can(role, "edit.course-files")) return { status: "refused", reason: "only the owner or deputy changes the course's chapters and details" };
+    if (op.op === "setLicense" ? !can(role, "license.change") : !can(role, "edit.course-files")) {
+      return { status: "refused", reason: op.op === "setLicense" ? "only the owner changes the licence" : "only the owner or deputy changes the course's chapters and details" };
+    }
     if (!repo.listPaths) return { status: "failed", error: "this repository can't list files" };
     for (let round = 0; round < MAX_REDECIDE; round++) {
       const head = await repo.head();
       const [manifestText, paths] = await Promise.all([repo.readFile(head, "alembic.json"), repo.listPaths(head)]);
-      const r = applyCourseOp(manifestText, new Set(paths), op, newDocId);
+      // What some operations need from the repo: the removed chapter as it was, the current citation file.
+      const ctx: Parameters<typeof applyCourseOp>[4] = {};
+      if (op.op === "restoreChapter") ctx.snapshot = await chapterAt(repo, op.fromCommit, op.slug);
+      if (op.op === "setLicense") ctx.citation = await repo.readFile(head, "CITATION.cff");
+      const r = applyCourseOp(manifestText, new Set(paths), op, newDocId, ctx);
       if (!r.ok) return { status: "refused", reason: r.reason };
       const files: FileOutcome[] = r.writes.map((w) => ({ path: w.path, outcome: "landed" as const }));
       const summary = r.summary.replace(/[\u0000-\u001f\u007f]+/g, " ").slice(0, 200);
