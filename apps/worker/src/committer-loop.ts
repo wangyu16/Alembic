@@ -29,6 +29,18 @@ export async function dueCourses(sql: SqlClient, limit = 20): Promise<string[]> 
   return rows.map((r) => r.package_id);
 }
 
+/** An object's methods (own prototype chain, not Object's), bound to it: a wrapper that can't forget one. */
+export function bindAll<T extends object>(o: T): T {
+  const out: Record<string, unknown> = {};
+  for (let p = Object.getPrototypeOf(o); p && p !== Object.prototype; p = Object.getPrototypeOf(p)) {
+    for (const k of Object.getOwnPropertyNames(p)) {
+      const v = (o as Record<string, unknown>)[k];
+      if (k !== "constructor" && typeof v === "function" && !(k in out)) out[k] = (v as (...a: unknown[]) => unknown).bind(o);
+    }
+  }
+  return out as T;
+}
+
 export async function drainOne(cfg: CommitterConfig, packageId: string): Promise<number> {
   const { rows } = await cfg.sql.query<{ installation_id: string; private_repo: { owner: string; name: string } | null }>(
     `select i.installation_id, p.private_repo from public.packages p join public.course_installations i on i.package_id = p.id where p.id = $1`, [packageId]);
@@ -45,11 +57,10 @@ export async function drainOne(cfg: CommitterConfig, packageId: string): Promise
   const repo = workingRepo(client, coords);
   const raw = new SqlQueueStore(cfg.sql);
   const payloads = new Map<string, QueueRow>();
+  // Every method of the SQL store passes through (blobKnown went missing once: uploads were all refused live);
+  // only next, finish and baseText are wrapped below.
   const store: QueueStore = {
-    acquire: raw.acquire.bind(raw),
-    roleOf: raw.roleOf.bind(raw),
-    claimCurrent: raw.claimCurrent.bind(raw),
-    recordPlanned: raw.recordPlanned.bind(raw),
+    ...(bindAll(raw) as unknown as QueueStore),
     async next(p, holder, fence) {
       const row = await raw.next(p, holder, fence);
       if (row) payloads.set(row.id, row);

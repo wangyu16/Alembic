@@ -9,6 +9,7 @@ oracle = "conformance"
 bound_to = [
   "packages/package-ops/src/course-committer.test.ts :: a picture lands only as a blob in this course's upload ledger with the path's kind; a sha queued directly, or a PNG blob at an SVG path, is refused",
   "apps/web/src/lib/upload.test.ts :: a member who may write the path can add a picture of an allowed kind up to 4 MB; anything else gets a plain reason",
+  "apps/worker/src/committer-store.test.ts :: passes every SQL store method through to the committer (the ledger check reached the committer)",
 ]
 
 [[claim]]
