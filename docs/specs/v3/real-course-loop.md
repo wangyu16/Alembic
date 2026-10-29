@@ -158,3 +158,26 @@ The audit found 2 HIGH, 4 MEDIUM and 5 LOW. Fixed in Alembic `79d8c27` and `d6b0
 - **MEDIUM-6:** a course over 80 MB is read blob by blob and spends GitHub budget again. A streaming archive parse fixes it; GenChem is far below the limit.
 - **L11:** signed image addresses outlive a member's removal by up to 48 h. Accepted: the addresses are only ever handed to members, and shortening them breaks caching.
 - **MEDIUM-3 remainder:** two syncs before the first echo can still record a "both changed" item. No text is lost (the typist's text is on top). Fixing it means waiting for the echo before sending again.
+
+## Round 6 (2026-10-29): audit of round 5 and re-verifier 3
+
+Fixed in Alembic `0fa5129`; deployed to testing and checked live.
+
+- **H-1 (RC.17):**
+  - **Was:** a device text that the course already held at an older version could be resumed and sent again, reverting later changes.
+  - **Now:** before resuming, the editor asks the course whether it holds that text at any version (by hash). If it does, the device copy is dropped.
+- **M-1:** no edit is queued while a resume is being decided.
+- **M-2 (RC.25):**
+  - Present posts the deck as multipart, with CDN delivery and figures linked by their absolute signed addresses, so figure-heavy decks stay under the 40 MB cap.
+  - Live: 29 slides, origin `null`, 9 of 9 figures load.
+- **Re-verifier 3, A8 (RC.23):**
+  - **Was:** downloaded SVG figures showed as base64 text. The renderer refuses `data:` addresses in Markdown image syntax; this was confirmed with the real renderer.
+  - **Now:** embedded figures are written as `<img>` tags. Live (Gases study guide): 9 of 9 figures shown in the downloaded file, with no base64 text.
+- **Publish page:**
+  - times are shown in the reader's own time zone (live under a Tokyo browser: GMT+9);
+  - the "(on GitHub)" spacing is fixed;
+  - the heading "The most recent Publish" marks it as history ("stayed as it was then").
+- **Multiple-choice options (owner's call, made easy):**
+  - The move helper has an opt-in `--split-options` that keeps `A. …` / `(A) …` option runs on separate lines with hard breaks (checked with the real renderer: `<br>` between options, inline math intact).
+  - GenChem dry run: 53 runs in 19 files.
+  - Off by default and not applied to the testing copy.

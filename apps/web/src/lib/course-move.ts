@@ -107,3 +107,28 @@ export function rewritePermalinks(text: string, docPath: string, ids: ReadonlyMa
   });
   return { text: out, unresolved: [...unresolved] };
 }
+
+/**
+ * Keep multiple-choice options on their own lines (opt-in: --split-options). 0.x content writes
+ * `A. …` / `B. …` (or `(A) …`) on consecutive lines, which 1.x Markdown joins into one paragraph. A run of two
+ * or more lettered lines in order (A, B, C…) gets a hard break (`\`) after each line but the last.
+ * Code fences are left alone. Returns how many runs were split.
+ */
+export function splitOptions(text: string): { text: string; runs: number } {
+  const lines = text.split("\n");
+  const letter = (l: string) => { const m = /^(?:\(([A-H])\)|([A-H])[.)]) \S/.exec(l); return m ? m[1] ?? m[2] : null; };
+  let fence: string | null = null;
+  let runs = 0;
+  for (let i = 0; i < lines.length; i++) {
+    const f = /^\s*(`{3,}|~{3,})/.exec(lines[i]!)?.[1];
+    if (f && (fence === null || f[0] === fence[0] && f.length >= fence.length)) { fence = fence === null ? f : null; continue; }
+    if (fence !== null || letter(lines[i]!) !== "A") continue;
+    let j = i;
+    while (j + 1 < lines.length && letter(lines[j + 1]!) === String.fromCharCode(65 + j + 1 - i)) j++;
+    if (j === i) continue;
+    for (let k = i; k < j; k++) if (!/(\\|  )$/.test(lines[k]!)) lines[k] = `${lines[k]!.replace(/\s+$/, "")}\\`;
+    runs++;
+    i = j;
+  }
+  return { text: lines.join("\n"), runs };
+}

@@ -2,7 +2,7 @@
  * A14 helper: move a 0.x course into one v3 working tree (R31, manual move).
  *
  *   pnpm --filter @alembic/web exec tsx scripts/move-course-v3.ts \
- *     --public <clone of the -oer repo> --private <clone of the -private repo> --out <new folder> [--write] [--resolve-permalinks]
+ *     --public <clone of the -oer repo> --private <clone of the -private repo> --out <new folder> [--write] [--resolve-permalinks] [--split-options]
  *
  * Without --write it only reports the plan. With --write it fills --out (which
  * must not exist or be empty); it never touches the source folders. Review the
@@ -12,11 +12,15 @@
  * the old site (https://alembic.orz.how/d/doc-…). Each one is fetched once
  * and matched, by content (git blob id), to a file copied into the new tree;
  * matches become relative paths, the rest are listed for a person.
+ *
+ * --split-options: keep multiple-choice options (`A. …` lines in a row) on
+ * their own lines in documents (not slides); 1.x Markdown would otherwise join
+ * them into one paragraph. Off by default: an owner's choice.
  */
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, sep } from "node:path";
 import { createHash } from "node:crypto";
-import { addHeader, findCollisions, isLegacyDeck, permalinkIds, planFile, rewritePermalinks, type MoveAction } from "../src/lib/course-move";
+import { addHeader, findCollisions, isLegacyDeck, permalinkIds, planFile, rewritePermalinks, splitOptions, type MoveAction } from "../src/lib/course-move";
 
 type Kit = {
   extract(html: string): { text: string; kind: string; legacy?: { notes: string[] } } | null;
@@ -100,6 +104,13 @@ async function main() {
     mkdirSync(dirname(p), { recursive: true });
     writeFileSync(p, data);
   };
+  const split = process.argv.includes("--split-options");
+  const options = (to: string, text: string) => {
+    if (!split || !to.endsWith(".md") || to.endsWith(".slides.md")) return text;
+    const r = splitOptions(text);
+    if (r.runs) report.push(`options  ${to}: ${r.runs} multiple-choice option runs kept on separate lines`);
+    return r.text;
+  };
   const lintsOf = (kind: string, text: string) =>
     (kits[kind]!.readDocument(text).lints ?? []).filter((l) => l.level === "error").map((l) => `${l.code}: ${l.message}`);
 
@@ -126,7 +137,7 @@ async function main() {
       const errs = lintsOf(kind, out);
       if (errs.length) { counts.attention++; report.push(`CHECK    ${a.to}: ${errs.join("; ")}`); }
       if (a.to !== a.from) report.push(`rename   ${a.from} → ${a.to}`);
-      put(a.to, relink(a.to, out));
+      put(a.to, relink(a.to, options(a.to, out)));
       continue;
     }
     const ex = kits[a.carrier]!.extract(text);
@@ -135,7 +146,7 @@ async function main() {
     const errs = lintsOf(a.carrier, ex.text);
     if (errs.length) { counts.attention++; report.push(`CHECK    ${a.to}: ${errs.join("; ")}`); }
     report.push(`text     ${a.from} → ${a.to}`);
-    put(a.to, relink(a.to, ex.text));
+    put(a.to, relink(a.to, options(a.to, ex.text)));
   }
   console.log(report.join("\n"));
   console.log(`\n${write ? "Wrote" : "Would write"} ${counts.copy + counts.header + counts.extract - counts.attention} files ` +

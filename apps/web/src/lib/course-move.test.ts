@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { upgradeText } from "orz-slides";
-import { addHeader, findCollisions, isLegacyDeck, permalinkIds, planFile, relativePath, rewritePermalinks } from "./course-move";
+import { addHeader, findCollisions, isLegacyDeck, permalinkIds, planFile, relativePath, rewritePermalinks, splitOptions } from "./course-move";
 
 describe("planFile", () => {
   it("maps the 0.x trees onto the v3 working tree", () => {
@@ -62,5 +62,17 @@ describe("0.x permalinks (real course: GenChem's 157 figures)", () => {
     expect(r.unresolved).toEqual(["doc-zzzzzzzzzzzz"]);
     expect(relativePath("study-guide/chapters/gases/notes.md", "study-guide/chapters/gases/fig.png")).toBe("fig.png");
     expect(relativePath("README.md", "assets/x.png")).toBe("assets/x.png");
+  });
+});
+
+describe("splitOptions (opt-in)", () => {
+  it("puts each multiple-choice option on its own line; leaves prose, single lines and code alone", () => {
+    const src = ["Which?", "", "A. 2", "B. 4", "C. $\\ce{NH3}$", "D. 16", ":::", "", "A. lone line", "", "```", "A. x", "B. y", "```", "A. one", "C. skips B"].join("\n");
+    const { text, runs } = splitOptions(src);
+    expect(runs).toBe(1);
+    expect(text.split("\n").slice(2, 6)).toEqual(["A. 2\\", "B. 4\\", "C. $\\ce{NH3}$\\", "D. 16"]);
+    expect(text.split("\n").slice(6)).toEqual(src.split("\n").slice(6));
+    expect(splitOptions(text).text).toBe(text); // idempotent
+    expect(splitOptions("(A) Zero\n(B) One\n(C) Two").text).toBe("(A) Zero\\\n(B) One\\\n(C) Two");
   });
 });
