@@ -33,6 +33,9 @@ export interface SyncInput {
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
+/** The queue row's key for a sync (queue_insert prefixes the kind): what "did my sync arrive?" looks up. */
+export const syncQueueKey = (syncId: string): string => `sync:${syncId}`;
+
 export async function enqueueSync(sql: SqlClient, i: SyncInput): Promise<{ writeId: string; status: "queued" }> {
   if (!UUID.test(i.syncId)) throw new SyncRefused("bad sync id");
   if (i.files.length === 0 || i.files.length > MAX_SYNC_FILES) throw new SyncRefused("too many or no files");

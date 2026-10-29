@@ -164,6 +164,7 @@ bound_to = [
   "apps/web/src/lib/device-save/store.test.ts :: resume asks only about the sync that carried exactly the kept text; a revert never sent is resent, never taken for an arrival",
   "apps/web/src/lib/device-save/store.test.ts :: a text the course accepted but hasn't written yet is asked about on reopening, so the editor shows it rather than the older course text",
   "apps/web/src/lib/device-save/store.test.ts :: update reads and writes one record together: an older text never overwrites a newer one",
+  "apps/web/src/lib/sync-entry.sql.test.ts :: queues a member's allowed change, idempotently, under the key the editor asks about on reopening",
 ]
 note = "Audit r2 #1 (HIGH), #3, #5a, #9; audit r3 HIGH-1 (a resumed text now edits from its own base and is sent at once; records from before the synced flag are resumed only if the course hasn't moved) and MEDIUM-4; audit r4 H-1 (a device text the course already holds at any version is never resumed: the editor checks the course for its hash first) and M-1 (no edit is queued while a resume is being decided); audit r5 MEDIUM-1 (resume asks whether the recorded sync of exactly the kept text arrived, not whether the course ever held that text, so a revert is never dropped), MEDIUM-2 (others' versions that land before the editor opens, or before it listens, are caught up) and LOW-2 (device records change in one transaction); re-verifier r4 A3/j (a reopen within seconds of Saved showed the older course text: an accepted, unwritten sync is now shown and its echo taken as ours)."
 

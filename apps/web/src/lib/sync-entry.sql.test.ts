@@ -2,7 +2,7 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { PGlite } from "@electric-sql/pglite";
-import { enqueueSync, SyncRefused } from "@alembic/package-ops";
+import { enqueueSync, syncQueueKey, SyncRefused } from "@alembic/package-ops";
 import { asRole, freshDatabase, seedPackage, seedUser } from "./discovery-pglite";
 
 let db: PGlite;
@@ -24,11 +24,14 @@ beforeAll(async () => {
 afterAll(async () => { await db?.close(); });
 
 describe("enqueueSync", () => {
-  it("queues a member's allowed change, idempotently", async () => {
+  it("[RC.17] queues a member's allowed change, idempotently, under the key the editor asks about on reopening", async () => {
     const id = randomUUID();
     const a = await enqueueSync(sql, { actorId: co, packageId: pkg, syncId: id, files: f("study-guide/a.md"), fromOpenEditor: true });
     const b = await enqueueSync(sql, { actorId: co, packageId: pkg, syncId: id, files: f("study-guide/a.md"), fromOpenEditor: true });
     expect(a.writeId).toBe(b.writeId);
+    // The key the editor asks about on reopening (RC.17): it must find this row.
+    const { rows } = await db.query<{ idem_key: string }>(`select idem_key from public.write_queue where id = $1`, [a.writeId]);
+    expect(rows[0]!.idem_key).toBe(syncQueueKey(id));
   });
   it("refuses non-members, forbidden paths, and co-author-only limits", async () => {
     const bad = [

@@ -212,3 +212,6 @@ Fixed in Alembic `0fa5129`; deployed to testing and checked live.
   - the editor's own pill says "Unsaved changes" while the banner says "Kept on this device" (carrier wording);
   - try mode's Save toast says "Saved." for a download (carrier wording);
   - earlier reviewers' test sentences remain in the testing copy.
+- **Found by the live check of the above:**
+  - **Was:** the "did my sync arrive?" lookup never matched, because the queue stores the key as `sync:<id>`. Every reopen answered "none", so the reopen fix did nothing, and MEDIUM-1's arrival check always resent.
+  - **Now:** the key is named once (`syncQueueKey`), and the real-database sync test pins it.

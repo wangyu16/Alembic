@@ -1,7 +1,7 @@
 "use server";
 
 import { newDocId, normalizePath } from "@alembic/package-contract";
-import { enqueueSync, SyncRefused } from "@alembic/package-ops";
+import { enqueueSync, syncQueueKey, SyncRefused } from "@alembic/package-ops";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { directDb } from "@/lib/db";
 import { courseRepo, textVersion } from "@/lib/course-v3";
@@ -66,7 +66,7 @@ export async function readVersionAction(packageId: string, path: string, commitS
 export async function syncStatusAction(packageId: string, syncId: string): Promise<"pending" | "done" | "none"> {
   const { supabase, user } = await signedIn();
   if (!user || !/^[0-9a-f-]{36}$/i.test(syncId)) return "none";
-  const { data, error } = await supabase.from("write_queue").select("status").eq("package_id", packageId).eq("idem_key", syncId).eq("actor_id", user.id).limit(1);
+  const { data, error } = await supabase.from("write_queue").select("status").eq("package_id", packageId).eq("idem_key", syncQueueKey(syncId)).eq("actor_id", user.id).limit(1);
   if (error) throw new Error("couldn't check");
   const st = (data ?? [])[0]?.status as string | undefined;
   return st === "done" ? "done" : st === "queued" || st === "processing" || st === "retry" ? "pending" : "none";
