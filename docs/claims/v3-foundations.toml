@@ -41,13 +41,29 @@ bound_to = [
 id = "K1.15"
 claim = "Course operations are courseop rows (operation and arguments, actor re-checked at execution) applied at the head in order; two made at once both land unless one no longer applies; Publish waits for open ones."
 oracle = "conformance"
-bound_to = []
+bound_to = [
+  "packages/package-ops/src/course-ops.test.ts :: two operations made from the same version both land, in order (no lost change, no browser re-apply)",
+  "packages/package-ops/src/course-ops.test.ts :: an operation that no longer applies is refused with a reason, and nothing is written",
+  "packages/package-ops/src/course-ops.test.ts :: adding chapters starts the parts the profile requires (study guide), or all five; never a chapter without its study guide",
+  "packages/package-ops/src/course-ops.test.ts :: a course that already breaks a rule can still be changed; an operation can't introduce a new break",
+  "packages/package-ops/src/course-ops.test.ts :: operations from a client are shape-checked; unknown operations and bad slugs are refused",
+  "packages/package-ops/src/course-committer.test.ts :: two deputies' operations queued at the same moment both land, in order, each in its own commit",
+  "packages/package-ops/src/course-committer.test.ts :: the actor's right is re-checked when the operation runs: a co-author's, or a removed member's, is refused and nothing changes",
+  "packages/package-ops/src/course-committer.test.ts :: a sync queued before an operation lands first (no queue jumping), and the operation applies on top of it",
+  "packages/package-ops/src/course-committer.test.ts :: a head that moves under an operation (a push on GitHub) makes it decide again on the new head",
+  "apps/web/src/lib/course-ops.sql.test.ts :: a courseop row needs an actor, and Publish waits while one is on its way",
+]
+note = "Built: addChapters, renameChapter, moveChapter, removeChapter, setChapterMode, setCourseDetails. Not yet: setLicense (owner-only, regenerates LICENSE/CITATION.cff; K1.18) and restoreChapter (K1.16)."
 
 [[claim]]
 id = "K1.16"
 claim = "removeChapter and restoreChapter are inverses; a sync arriving for a removed chapter's file is kept and offers Restore to the owner and deputy."
 oracle = "scenario"
-bound_to = []
+bound_to = [
+  "packages/package-ops/src/course-ops.test.ts :: removing a chapter removes it and its part files in one change",
+  "packages/package-ops/src/course-committer.test.ts :: removing a chapter removes its parts in the same commit; an operation on it afterwards is refused with a reason",
+]
+note = "Partly built: removal. restoreChapter and the late-sync Restore item are next."
 
 [[claim]]
 id = "K1.17"

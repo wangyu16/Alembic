@@ -9,6 +9,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { directDb } from "@/lib/db";
 import { courseRepo, textVersion } from "@/lib/course-v3";
 import { githubBusy } from "@/lib/github-busy";
+import { queueCourseOp } from "@/lib/course-op";
 
 const back = (packageId: string, msg?: string) => {
   revalidatePath(`/workspace/${packageId}/publish`); // the page shows the new state at once (RC.24)
@@ -40,7 +41,7 @@ export async function requestPublishAction(packageId: string, form: FormData): P
   const { supabase } = await member(packageId);
   // A chapter status change still on its way would be published as it was (RC.24): wait for it.
   const { data: pending } = await supabase.from("write_queue").select("id").eq("package_id", packageId)
-    .in("status", ["queued", "processing", "retry"]).like("idem_key", "system:mode:%").limit(1);
+    .in("status", ["queued", "processing", "retry"]).or("kind.eq.courseop,idem_key.like.system:mode:%").limit(1);
   if (pending?.length) back(packageId, "A chapter's status change is still being saved. Publish again in a few seconds.");
   // Each choice names the version that was shown (path@version, slug@digest): the job applies it only to that.
   const approveAndPublish = form.getAll("approve").flatMap((v) => (typeof v === "string" ? v.split("|") : []))
@@ -95,18 +96,9 @@ export async function setChapterModeAction(packageId: string, slug: string, mode
 async function setChapterMode(packageId: string, slug: string, mode: "draft" | "package"): Promise<void> {
   const { user, role } = await member(packageId);
   if (!can(role, "edit.course-files")) back(packageId, "Only the owner or deputy changes this.");
-  const sql = directDb();
-  const c = await courseRepo(packageId);
-  if (!sql || !c) back(packageId, "That chapter can't be changed here.");
-  const head = await c!.repo.head();
-  const text = (await c!.repo.readFile(head, "alembic.json")) ?? "null";
-  const m = WorkingManifestV3Schema.parse(JSON.parse(text));
-  if (!m.chapters.some((x) => x.slug === slug)) back(packageId, "That chapter isn't in the course.");
-  const next = WorkingManifestV3Schema.parse({ ...m, chapters: m.chapters.map((x) => (x.slug === slug ? { ...x, mode } : x)) });
-  await new SqlQueueStore(sql!).insert({
-    packageId, kind: "system", idem: `mode:${slug}:${mode}:${randomUUID()}`, actorId: user!.id, priority: 1,
-    payload: { files: [{ path: "alembic.json", baseVersion: textVersion(text), text: `${JSON.stringify(next, null, 2)}\n` }], summary: `Chapter “${slug}” ${mode === "draft" ? "back to draft" : "ready for publishing"}` },
-  });
+  if (!/^[a-z0-9-]{1,60}$/.test(slug)) back(packageId, "That chapter isn't in the course.");
+  // A course operation (contract v3 §13): the worker applies it to the course as it is then.
+  if (!(await queueCourseOp(packageId, user!.id, { op: "setChapterMode", slug, mode }, `mode:${slug}:${mode}`))) back(packageId, "That chapter can't be changed here.");
   back(packageId, "Saved; it takes a few seconds to show.");
 }
 

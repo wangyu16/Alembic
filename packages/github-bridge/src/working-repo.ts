@@ -14,6 +14,8 @@ import type { GitHubClient, RepoCoords } from "./client";
 export interface WorkingRepoAdapter {
   head(): Promise<string>;
   readFile(ref: string, path: string): Promise<string | null>;
+  /** Every file path at `ref` (course operations check the tree, contract v3 §13). Refuses a truncated listing. */
+  listPaths(ref: string): Promise<string[]>;
   recentCommits(limit: number): Promise<Array<{ sha: string; message: string }>>;
   commitChain(input: {
     expectedHead: string;
@@ -30,6 +32,11 @@ export function workingRepo(client: GitHubClient, coords: RepoCoords, branch = "
     },
     readFile(ref, path) {
       return client.getFileAtRef(coords, path, ref);
+    },
+    async listPaths(ref) {
+      const t = await client.listTree(coords, ref);
+      if (t.truncated) throw new Error("the course has too many files to list");
+      return t.paths;
     },
     async recentCommits(limit) {
       const list = await client.listCommits(coords, { perPage: Math.min(limit, 100), sha: branch });

@@ -8,14 +8,15 @@
  * so it is tested with fakes and runs unchanged on the worker.
  */
 
-import { canWritePath, normalizePath, sha256Hex, WorkingManifestV3Schema, type Role } from "@alembic/package-contract";
+import { can, canWritePath, newDocId, normalizePath, sha256Hex, WorkingManifestV3Schema, type Role } from "@alembic/package-contract";
+import { applyCourseOp, parseCourseOp } from "./course-ops";
 import { decideFile, type FileDecision, type FileKind } from "./version-rule";
 
 /* -------------------------------------------------------------------------- *
  * Seams
  * -------------------------------------------------------------------------- */
 
-export type RowKind = "sync" | "changeset" | "outside" | "restore" | "system";
+export type RowKind = "sync" | "changeset" | "outside" | "restore" | "system" | "courseop";
 export type RowStatus = "done" | "bounced" | "refused" | "failed" | "retry";
 
 export interface QueueRow {
@@ -49,6 +50,8 @@ export interface RowPayload {
   /** Paths that already have an open Both-changed item involving another person. */
   openItemsWithOther?: string[];
   summary?: string;
+  /** `courseop` rows: the operation and its arguments (contract v3 §13), applied at the head. */
+  op?: unknown;
 }
 
 export interface QueueStore {
@@ -68,6 +71,8 @@ export interface QueueStore {
 export interface WorkingRepo {
   head(): Promise<string>;
   readFile(ref: string, path: string): Promise<string | null>;
+  /** Every file path at `ref` (needed by course operations). */
+  listPaths?(ref: string): Promise<string[]>;
   commitChain(input: {
     expectedHead: string;
     steps: Array<{ message: string; files: Array<{ path: string; content: string | null }> }>;
@@ -218,6 +223,7 @@ export interface ProcessOptions {
 export const MAX_ABANDONS = 8;
 
 export async function processRow(row: QueueRow, store: QueueStore, repo: WorkingRepo, opts: ProcessOptions = {}): Promise<RowResult> {
+  if (row.kind === "courseop") return processCourseOp(row, store, repo, opts);
   try {
     // 0. Every path must be a clean contract path (no dot segments etc.) and appear once (G2 r1 #8, r2 LOW).
     const paths = row.payload.files.map((f) => f.path);
@@ -351,6 +357,72 @@ export async function processRow(row: QueueRow, store: QueueStore, repo: Working
         return { status: "done", result: { head: out.head, commits: out.commitShas, files } };
       } catch (e) {
         if (isHeadMoved(e)) continue; // decide again on the new head (re-scanning first)
+        if (e instanceof AttemptSuperseded) return { status: "retry", error: "attempt superseded", retryAfterSeconds: 0 };
+        throw e;
+      }
+    }
+    return { status: "retry", error: "the course kept changing; trying again shortly", retryAfterSeconds: 30 };
+  } catch (caught) {
+    const e = classifyRepoError(caught);
+    if (e instanceof RepoUnavailableError) {
+      return e.kind === "access"
+        ? { status: "retry", error: e.message, retryAfterSeconds: 300, access: true }
+        : { status: "retry", error: e.message, retryAfterSeconds: Math.min(900, 60 * 2 ** Math.max(0, row.attempts - 1)) };
+    }
+    if (e instanceof DeterministicRefusal) return { status: "refused", reason: e.message };
+    const msg = e instanceof Error ? e.message : String(e);
+    if (row.attempts >= MAX_ATTEMPTS) return { status: "failed", error: msg };
+    return { status: "retry", error: msg, retryAfterSeconds: 60 };
+  }
+}
+
+/**
+ * A course operation (contract v3 §13.3): re-check the actor's right, then
+ * apply the operation to the manifest and file list at the head, commit it,
+ * and on a moved head decide again. Operations queued at the same moment
+ * therefore land one after another; one that no longer applies is refused
+ * with a reason, nothing written.
+ */
+async function processCourseOp(row: QueueRow, store: QueueStore, repo: WorkingRepo, opts: ProcessOptions): Promise<RowResult> {
+  try {
+    const op = parseCourseOp(row.payload.op);
+    if (!op) return { status: "refused", reason: "not a course operation" };
+    const landed = await alreadyLanded(row, repo);
+    if (landed) return landed;
+    if ((row.abandons ?? 0) >= MAX_ABANDONS) return { status: "failed", error: "abandoned repeatedly while being processed" };
+    if (!row.actorId) return { status: "refused", reason: "no actor" };
+    const role = await store.roleOf(row.packageId, row.actorId);
+    if (!can(role, "edit.course-files")) return { status: "refused", reason: "only the owner or deputy changes the course's chapters and details" };
+    if (!repo.listPaths) return { status: "failed", error: "this repository can't list files" };
+    for (let round = 0; round < MAX_REDECIDE; round++) {
+      const head = await repo.head();
+      const [manifestText, paths] = await Promise.all([repo.readFile(head, "alembic.json"), repo.listPaths(head)]);
+      const r = applyCourseOp(manifestText, new Set(paths), op, newDocId);
+      if (!r.ok) return { status: "refused", reason: r.reason };
+      const files: FileOutcome[] = r.writes.map((w) => ({ path: w.path, outcome: "landed" as const }));
+      const summary = r.summary.replace(/[\u0000-\u001f\u007f]+/g, " ").slice(0, 200);
+      const fileLines = files.map((f) => `Alembic-File: landed ${f.path}`).join("\n");
+      const meanwhile = await alreadyLanded(row, repo);
+      if (meanwhile) return meanwhile;
+      const stillMine = async () => {
+        if (opts.signal?.aborted) return false;
+        if (opts.claim && store.claimCurrent) return store.claimCurrent(row.id, opts.claim.holder, opts.claim.fence, row.attempts);
+        return true;
+      };
+      if (!(await stillMine())) return { status: "retry", error: "attempt superseded", retryAfterSeconds: 0 };
+      try {
+        const out = await repo.commitChain({
+          expectedHead: head,
+          steps: [{ message: `${summary}\n\n${trailers(row)}\n${fileLines}`, files: r.writes }],
+          ...(opts.signal ? { signal: opts.signal } : {}),
+          beforeMove: async (shas) => {
+            if (!(await stillMine())) throw new AttemptSuperseded();
+            if (opts.claim && store.recordPlanned) await store.recordPlanned(row.id, opts.claim.holder, opts.claim.fence, row.attempts, shas);
+          },
+        });
+        return { status: "done", result: { head: out.head, commits: out.commitShas, files } };
+      } catch (e) {
+        if (isHeadMoved(e)) continue;
         if (e instanceof AttemptSuperseded) return { status: "retry", error: "attempt superseded", retryAfterSeconds: 0 };
         throw e;
       }

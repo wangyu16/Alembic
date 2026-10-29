@@ -1,4 +1,5 @@
 import { GithubBusy, githubBusy } from "@/lib/github-busy";
+import { MODE_KEY } from "@/lib/course-op";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { can, WorkingManifestV3Schema, type Role } from "@alembic/package-contract";
@@ -36,7 +37,7 @@ async function PublishPageInner({ params, searchParams }: { params: Promise<{ pa
     supabase.from("approvals").select("part_path, version").eq("package_id", packageId),
     supabase.from("publish_runs").select("status, results").eq("package_id", packageId).in("status", ["committed", "site-built", "site-failed"]).order("committed_at", { ascending: false }).limit(1),
     // Chapter status changes still on their way into the course (RC.15): shown as "saving", not as the old state.
-    supabase.from("write_queue").select("idem_key, status, finished_at").eq("package_id", packageId).like("idem_key", "system:mode:%")
+    supabase.from("write_queue").select("idem_key, status, finished_at").eq("package_id", packageId).or("idem_key.like.system:mode:%,idem_key.like.courseop:mode:%")
       .or(`status.in.(queued,processing,retry),finished_at.gt.${new Date(Date.now() - 15 * 60_000).toISOString()}`),
     supabase.from("published_files").select("path, blob_sha, unit").eq("package_id", packageId),
   ]);
@@ -45,7 +46,7 @@ async function PublishPageInner({ params, searchParams }: { params: Promise<{ pa
   const pendingMode = new Map<string, string>();
   const refusedMode: string[] = [];
   for (const r of (pendingRows ?? []) as Array<{ idem_key: string; status: string }>) {
-    const m = /^system:mode:([a-z0-9-]+):(draft|package):/.exec(r.idem_key);
+    const m = MODE_KEY.exec(r.idem_key);
     if (!m) continue;
     if (["queued", "processing", "retry"].includes(r.status)) pendingMode.set(m[1]!, m[2]!);
     else if (r.status === "refused" || r.status === "failed") refusedMode.push(m[1]!);
@@ -129,7 +130,7 @@ async function PublishPageInner({ params, searchParams }: { params: Promise<{ pa
 
       {refusedMode.length ? (
         <p className="mt-3 rounded border border-amber-400 bg-amber-100 p-2 text-sm text-amber-950" role="status">
-          {`A change to ${[...new Set(refusedMode)].map((s2) => titleOf.get(s2) ?? s2).join(", ")} couldn't be saved because the course's settings changed at the same time. Please make it again.`}
+          {`A change to ${[...new Set(refusedMode)].map((s2) => titleOf.get(s2) ?? s2).join(", ")} couldn't be saved. Please make it again.`}
         </p>
       ) : null}
       <section className="mt-5 rounded border p-3">

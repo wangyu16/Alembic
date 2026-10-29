@@ -4,7 +4,8 @@ import { randomUUID } from "node:crypto";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { can, newDocId, WorkingManifestV3Schema, type Role } from "@alembic/package-contract";
-import { addChapters, CHAPTER_PARTS, chapterPartPath, chapterPartText, enqueueSync, SqlQueueStore, SyncRefused, type ChapterPart } from "@alembic/package-ops";
+import { CHAPTER_PARTS, chapterPartPath, chapterPartText, enqueueSync, MAX_NEW_CHAPTERS, SyncRefused, type ChapterPart } from "@alembic/package-ops";
+import { queueCourseOp } from "@/lib/course-op";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { directDb } from "@/lib/db";
 import { courseRepo, textVersion } from "@/lib/course-v3";
@@ -39,36 +40,16 @@ async function member(packageId: string) {
  * list is a course setting, changed by compare-and-swap like a status change.
  */
 export async function addChaptersAction(packageId: string, form: FormData): Promise<void> {
-  return withGithub(packageId, async () => {
-    const { user, role } = await member(packageId);
-    if (!can(role, "edit.course-files")) back(packageId, "Only the owner or deputy adds chapters.");
-    const titles = String(form.get("titles") ?? "").split(/\r?\n/);
-    const start = form.get("start") === "on";
-    const sql = directDb();
-    const c = await courseRepo(packageId);
-    if (!sql || !c) back(packageId, "Chapters can't be added right now.");
-    const head = await c!.repo.head();
-    const text = await c!.repo.readFile(head, "alembic.json");
-    if (text === null) back(packageId, "This course's settings can't be read.");
-    let next: ReturnType<typeof addChapters>;
-    try {
-      next = addChapters(WorkingManifestV3Schema.parse(JSON.parse(text!)), titles);
-    } catch (e) {
-      return back(packageId, e instanceof RangeError ? "That's more than 30 chapters at once. Add them in smaller groups." : "This course's settings can't be read.");
-    }
-    if (!next.added.length) back(packageId, "Write at least one chapter title.");
-    const files: Array<{ path: string; baseVersion: string | null; text: string }> = [
-      { path: "alembic.json", baseVersion: textVersion(text!), text: `${JSON.stringify(next.manifest, null, 2)}\n` },
-    ];
-    // Like a new course: without the tick, each chapter starts with its study guide (newcomer review).
-    for (const ch of next.added) for (const { part } of CHAPTER_PARTS) if (start || part === "study-guide") files.push({ path: chapterPartPath(part, ch.slug), baseVersion: null, text: chapterPartText(part, ch.title, newDocId()) });
-    await new SqlQueueStore(sql!).insert({
-      packageId, kind: "system", idem: `chapters:add:${randomUUID()}`, actorId: user.id, priority: 1,
-      payload: { files, summary: `Added ${next.added.length === 1 ? `chapter “${next.added[0]!.title}”` : `${next.added.length} chapters`}` },
-    });
-    const n = next.added.length;
-    back(packageId, `${n === 1 ? "The chapter is" : `${n} chapters are`} being added${start ? (n === 1 ? " with its parts" : " with their parts") : ""}; ${n === 1 ? "it appears" : "they appear"} here in a few seconds (up to a minute when the course is busy).`);
-  });
+  const { user, role } = await member(packageId);
+  if (!can(role, "edit.course-files")) back(packageId, "Only the owner or deputy adds chapters.");
+  const titles = String(form.get("titles") ?? "").split(/\r?\n/).map((t) => t.trim()).filter(Boolean);
+  const start = form.get("start") === "on";
+  if (!titles.length) back(packageId, "Write at least one chapter title.");
+  if (titles.length > MAX_NEW_CHAPTERS) back(packageId, `That's more than ${MAX_NEW_CHAPTERS} chapters at once. Add them in smaller groups.`);
+  // A course operation (contract v3 §13): the worker adds them to the course as it is then (each with at least its study guide).
+  if (!(await queueCourseOp(packageId, user.id, { op: "addChapters", titles, startParts: start }))) back(packageId, "Chapters can't be added right now.");
+  const n = titles.length;
+  back(packageId, `${n === 1 ? "The chapter is" : `${n} chapters are`} being added${start ? (n === 1 ? " with its parts" : " with their parts") : ""}; ${n === 1 ? "it appears" : "they appear"} here in a few seconds (up to a minute when the course is busy).`);
 }
 
 /** Start one missing part of a chapter, or all of them (RC.26): each from its starting text, as a new document. */

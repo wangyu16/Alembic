@@ -46,3 +46,4 @@ export * from "./source-store";
 export * from "./publish-job";
 export * from "./publish-sql-store";
 export * from "./chapter-parts";
+export * from "./course-ops";

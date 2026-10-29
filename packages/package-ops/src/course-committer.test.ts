@@ -41,6 +41,9 @@ class FakeRepo implements WorkingRepo {
   async readFile(ref: string, path: string) {
     return this.byId(ref).files.get(path) ?? null;
   }
+  async listPaths(ref: string) {
+    return [...this.byId(ref).files.keys()];
+  }
   async recentCommits(limit: number) {
     const out = [];
     let c: string | null = this.headSha;
@@ -354,5 +357,69 @@ describe("manifest by compare-and-swap (W-10)", () => {
     q.add(sync("m5", "owner", "alembic.json", M("draft"), M("package")));
     await drainCourse(P, "w", q, repo);
     expect(q.status("m5")).toBe("refused");
+  });
+});
+
+describe("course operations in the committer (contract v3 §13.3)", () => {
+  const M = (chapters: Array<{ slug: string; title: string }>) =>
+    `${JSON.stringify({ schemaVersion: 3, packageId: P, title: "Chem", license: "CC-BY-4.0", createdAt: "2026-10-29T00:00:00Z", chapters: chapters.map((c) => ({ ...c, mode: "package" })) }, null, 2)}\n`;
+  const op = (id: string, actor: string, o: unknown): Omit<QueueRow, "attempts"> => ({ id, packageId: P, kind: "courseop", actorId: actor, invokerId: null, payload: { files: [], op: o } });
+  function course() {
+    const repo = new FakeRepo({ "alembic.json": M([{ slug: "gases", title: "Gases" }, { slug: "atoms", title: "Atoms" }]), "study-guide/gases.md": base, "study-guide/atoms.md": base });
+    const q = new MemQueue();
+    q.roles.set("owner", "owner");
+    q.roles.set("dep", "deputy");
+    q.roles.set("co", "co-author");
+    return { repo, q };
+  }
+  const chapters = (repo: FakeRepo) => (JSON.parse(repo.file("alembic.json")!) as { chapters: Array<{ slug: string; title: string }> }).chapters;
+
+  it("[K1.15] two deputies' operations queued at the same moment both land, in order, each in its own commit", async () => {
+    const { repo, q } = course();
+    q.add(op("o1", "owner", { op: "renameChapter", slug: "gases", title: "The Gas Laws" }));
+    q.add(op("o2", "dep", { op: "renameChapter", slug: "atoms", title: "Atomic Structure" }));
+    expect(await drainCourse(P, "w", q, repo)).toBe(2);
+    expect([q.status("o1"), q.status("o2")]).toEqual(["done", "done"]);
+    expect(chapters(repo).map((c) => c.title)).toEqual(["The Gas Laws", "Atomic Structure"]);
+    expect(repo.refMoves).toBe(2);
+    expect((await repo.recentCommits(1))[0]!.message).toMatch(/^Renamed chapter “Atoms” to “Atomic Structure”/);
+  });
+  it("[K1.15] the actor's right is re-checked when the operation runs: a co-author's, or a removed member's, is refused and nothing changes", async () => {
+    const { repo, q } = course();
+    q.add(op("o1", "co", { op: "removeChapter", slug: "gases" }));
+    q.add(op("o2", "gone", { op: "removeChapter", slug: "gases" }));
+    await drainCourse(P, "w", q, repo);
+    expect([q.status("o1"), q.status("o2")]).toEqual(["refused", "refused"]);
+    expect(repo.refMoves).toBe(0);
+  });
+  it("[K1.15] a sync queued before an operation lands first (no queue jumping), and the operation applies on top of it", async () => {
+    const { repo, q } = course();
+    q.add(sync("s1", "co", "study-guide/gases.md", base, sg("ONE", "two", "three"), true));
+    q.add(op("o1", "owner", { op: "addChapters", titles: ["Kinetics"], startParts: false }));
+    await drainCourse(P, "w", q, repo);
+    expect([q.status("s1"), q.status("o1")]).toEqual(["done", "done"]);
+    expect(repo.file("study-guide/gases.md")).toBe(sg("ONE", "two", "three"));
+    expect(repo.file("study-guide/kinetics.md")).toMatch(/^\{\{nyml/);
+    expect(chapters(repo).map((c) => c.slug)).toEqual(["gases", "atoms", "kinetics"]);
+  });
+  it("[K1.16] removing a chapter removes its parts in the same commit; an operation on it afterwards is refused with a reason", async () => {
+    const { repo, q } = course();
+    q.add(op("o1", "owner", { op: "removeChapter", slug: "gases" }));
+    q.add(op("o2", "dep", { op: "renameChapter", slug: "gases", title: "Too late" }));
+    await drainCourse(P, "w", q, repo);
+    expect(q.status("o1")).toBe("done");
+    expect(repo.file("study-guide/gases.md")).toBeNull();
+    expect(q.status("o2")).toBe("refused");
+    expect(q.rows.find((r) => r.id === "o2")!.result).toMatchObject({ reason: "that chapter is no longer in the course" });
+  });
+  it("[K1.15] a head that moves under an operation (a push on GitHub) makes it decide again on the new head", async () => {
+    const { repo, q } = course();
+    let once = true;
+    repo.beforeMove = () => { if (once) { once = false; repo.push({ "study-guide/atoms.md": sg("pushed") }); } };
+    q.add(op("o1", "owner", { op: "setChapterMode", slug: "atoms", mode: "draft" }));
+    await drainCourse(P, "w", q, repo);
+    expect(q.status("o1")).toBe("done");
+    expect(repo.file("study-guide/atoms.md")).toBe(sg("pushed"));
+    expect((JSON.parse(repo.file("alembic.json")!) as { chapters: Array<{ mode: string }> }).chapters[1]!.mode).toBe("draft");
   });
 });
