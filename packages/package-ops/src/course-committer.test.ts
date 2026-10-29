@@ -5,6 +5,7 @@
  * the testing database.
  */
 import { applyCourseOp } from "./course-ops";
+import type { ChainEntry, RowFile } from "./course-committer";
 import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import type { Role } from "@alembic/package-contract";
@@ -46,6 +47,11 @@ class FakeRepo implements WorkingRepo {
   async listPaths(ref: string) {
     return [...this.byId(ref).files.keys()];
   }
+  async treeAt(ref: string) {
+    const out = new Map<string, { sha: string; mode: string }>();
+    for (const [p, t] of this.byId(ref).files) out.set(p, { sha: t.startsWith("blob:") ? t.slice(5) : createHash("sha1").update(t).digest("hex"), mode: "100644" });
+    return out;
+  }
   async recentCommits(limit: number) {
     const out = [];
     let c: string | null = this.headSha;
@@ -65,14 +71,18 @@ class FakeRepo implements WorkingRepo {
     this.commits.push({ sha, parent: this.headSha, files: next, message: "outside" });
     this.headSha = sha;
   }
-  async commitChain(input: { expectedHead: string; steps: Array<{ message: string; files: Array<{ path: string; content: string | null }> }>; beforeMove?: (shas: string[]) => Promise<void> }) {
+  async commitChain(input: { expectedHead: string; steps: Array<{ message: string; files: ChainEntry[] }>; beforeMove?: (shas: string[]) => Promise<void> }) {
     let parent = input.expectedHead;
     let files = new Map(this.byId(parent).files);
     const shas: string[] = [];
     const staged: typeof this.commits = [];
     for (const step of input.steps) {
       files = new Map(files);
-      for (const f of step.files) f.content === null ? files.delete(f.path) : files.set(f.path, f.content);
+      for (const f of step.files) {
+        if ("blobSha" in f) files.set(f.path, `blob:${f.blobSha}`);
+        else if (f.content === null) files.delete(f.path);
+        else files.set(f.path, f.content);
+      }
       const sha = `c${this.commits.length + staged.length}`;
       staged.push({ sha, parent, files, message: step.message, alembic: true });
       shas.push(sha);
@@ -453,6 +463,74 @@ describe("course operations in the committer (contract v3 §13.3)", () => {
     expect(repo.file("LICENSE")).toMatch(/ShareAlike|Share-?Alike|BY-SA/i);
     expect(repo.file("CITATION.cff")).toContain("license: CC-BY-SA-4.0");
     expect(repo.file("CITATION.cff")).not.toContain("CC-BY-4.0\n");
+  });
+});
+
+describe("files that aren't text, deletes and moves (contract v3 §11)", () => {
+  const SHA = (n: number) => String(n).repeat(40).slice(0, 40);
+  const M = `${JSON.stringify({ schemaVersion: 3, packageId: P, title: "Chem", license: "CC-BY-4.0", createdAt: "2026-10-29T00:00:00Z", chapters: [{ slug: "gases", title: "Gases", mode: "package" }] })}\n`;
+  function files() {
+    const repo = new FakeRepo({ "alembic.json": M, "study-guide/gases.md": base, "assets/gases/old.png": `blob:${SHA(1)}`, "private/instructor/key.md": "answers\n" });
+    const q = new MemQueue() as MemQueue & { ledger: Set<string>; blobKnown(p: string, sha: string, kind: string): Promise<boolean> };
+    q.ledger = new Set([`${SHA(2)}:png`, `${SHA(3)}:png`]);
+    q.blobKnown = async (_p, sha, kind) => q.ledger.has(`${sha}:${kind}`);
+    q.roles.set("owner", "owner");
+    q.roles.set("co", "co-author");
+    return { repo, q };
+  }
+  const row = (id: string, actor: string, f: RowFile): Omit<QueueRow, "attempts"> => ({ id, packageId: P, kind: "sync", actorId: actor, invokerId: null, payload: { files: [f], fromOpenEditor: false } });
+  const reason = (q: MemQueue, id: string) => (q.rows.find((r) => r.id === id)!.result as { reason?: string } | undefined)?.reason;
+
+  it("[K1.10] a picture lands only as a blob in this course's upload ledger with the path's kind; a sha queued directly, or a PNG blob at an SVG path, is refused", async () => {
+    const { repo, q } = files();
+    q.add(row("b1", "co", { path: "assets/gases/new.png", baseVersion: null, text: null, blob: { sha: SHA(2), size: 10 }, baseBlob: null }));
+    q.add(row("b2", "co", { path: "assets/gases/x.png", baseVersion: null, text: null, blob: { sha: SHA(9), size: 10 }, baseBlob: null }));
+    q.add(row("b3", "co", { path: "assets/gases/x.svg", baseVersion: null, text: null, blob: { sha: SHA(3), size: 10 }, baseBlob: null }));
+    await drainCourse(P, "w", q, repo);
+    expect([q.status("b1"), q.status("b2"), q.status("b3")]).toEqual(["done", "refused", "refused"]);
+    expect(repo.file("assets/gases/new.png")).toBe(`blob:${SHA(2)}`);
+    expect(reason(q, "b2")).toMatch(/wasn't uploaded to this course/);
+  });
+  it("[K1.12] a picture replaced since the uploader's base keeps both: the incoming one as a kept version, the current one on top", async () => {
+    const { repo, q } = files();
+    q.add(row("b1", "owner", { path: "assets/gases/old.png", baseVersion: null, text: null, blob: { sha: SHA(2), size: 10 }, baseBlob: SHA(1) }));
+    q.add(row("b2", "co", { path: "assets/gases/old.png", baseVersion: null, text: null, blob: { sha: SHA(3), size: 10 }, baseBlob: SHA(1) }));
+    await drainCourse(P, "w", q, repo);
+    expect([q.status("b1"), q.status("b2")]).toEqual(["done", "done"]);
+    expect(repo.file("assets/gases/old.png")).toBe(`blob:${SHA(2)}`);
+    const keptCommit = repo.commits.find((c) => c.files.get("assets/gases/old.png") === `blob:${SHA(3)}`);
+    expect(keptCommit?.message).toMatch(/^Kept version/);
+    expect((q.rows.find((r) => r.id === "b2")!.result as { files: Array<{ outcome: string }> }).files[0]!.outcome).toBe("both-changed");
+  });
+  it("[K1.13] a move takes the file from the head and removes the source in one commit; a stale base, a kind change or an occupied target is refused", async () => {
+    const { repo, q } = files();
+    q.add(row("m1", "co", { path: "assets/gases/moved.png", baseVersion: null, text: null, movedFrom: "assets/gases/old.png", baseBlob: SHA(1) }));
+    q.add(row("m2", "co", { path: "assets/gases/again.png", baseVersion: null, text: null, movedFrom: "assets/gases/moved.png", baseBlob: SHA(7) }));
+    q.add(row("m3", "co", { path: "study-guide/x.md", baseVersion: null, text: null, movedFrom: "assets/gases/moved.png", baseBlob: SHA(1) }));
+    await drainCourse(P, "w", q, repo);
+    expect([q.status("m1"), q.status("m2"), q.status("m3")]).toEqual(["done", "refused", "refused"]);
+    expect(repo.file("assets/gases/old.png")).toBeNull();
+    expect(repo.file("assets/gases/moved.png")).toBe(`blob:${SHA(1)}`);
+  });
+  it("[K1.13] a listed chapter's part can't be deleted or moved away; deleting in private/ needs the owner or deputy", async () => {
+    const { repo, q } = files();
+    q.add(row("d1", "owner", { path: "study-guide/gases.md", baseVersion: h(base), text: null }));
+    q.add(row("d2", "co", { path: "private/instructor/key.md", baseVersion: h("answers\n"), text: null }));
+    q.add(row("d3", "owner", { path: "private/instructor/key.md", baseVersion: h("answers\n"), text: null }));
+    q.remember(base);
+    q.remember("answers\n");
+    await drainCourse(P, "w", q, repo);
+    expect([q.status("d1"), q.status("d2"), q.status("d3")]).toEqual(["refused", "refused", "done"]);
+    expect(reason(q, "d1")).toMatch(/removed with the chapter/);
+    expect(repo.file("study-guide/gases.md")).toBe(base);
+  });
+  it("[K1.11] text with a script can't be saved to an SVG path, and text can't be saved to a picture's path", async () => {
+    const { repo, q } = files();
+    q.add(row("s1", "co", { path: "assets/gases/mol.ketcher.svg", baseVersion: null, text: '<svg onload="x()"></svg>' }));
+    q.add(row("s2", "co", { path: "assets/gases/fake.png", baseVersion: null, text: "not a picture" }));
+    q.add(row("s3", "co", { path: "assets/gases/ok.plot.svg", baseVersion: null, text: '<svg viewBox="0 0 1 1"><path d="M0 0"/></svg>' }));
+    await drainCourse(P, "w", q, repo);
+    expect([q.status("s1"), q.status("s2"), q.status("s3")]).toEqual(["refused", "refused", "done"]);
   });
 });
 

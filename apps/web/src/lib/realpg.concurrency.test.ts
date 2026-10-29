@@ -67,7 +67,7 @@ function fakeRepo(initial: Record<string, string>, hooks: { afterMove?: () => Pr
         let parent = head; let files = new Map(by(head).files); const shas: string[] = []; const staged: C[] = [];
         for (const s of steps) {
           files = new Map(files);
-          for (const f of s.files) f.content === null ? files.delete(f.path) : files.set(f.path, f.content);
+          for (const f of s.files) "blobSha" in f ? files.set(f.path, `blob:${f.blobSha}`) : f.content === null ? files.delete(f.path) : files.set(f.path, f.content);
           const sha = `c${commits.length + staged.length}-${randomUUID().slice(0, 6)}`;
           staged.push({ sha, parent, files, message: s.message }); shas.push(sha); parent = sha;
         }

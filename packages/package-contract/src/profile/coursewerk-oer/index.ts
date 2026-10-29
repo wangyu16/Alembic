@@ -158,6 +158,13 @@ export const coursewerkOerProfile: ContentProfile = {
   reservedUnitSlugs: ["course"],
   unitParts: PARTS,
   requiredParts: ["study-guide"],
+  // INTERIM (D-126): a document's figures go under assets/<document name>/; Coursewerk to confirm.
+  figureFolder(docPath: string): string {
+    const stem = (docPath.split("/").pop() ?? "document").replace(/\.(slides|paged)?\.?md$/i, "").replace(/\.md$/i, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "document";
+    return `assets/${stem}`;
+  },
+  // INTERIM (contract v3 §11.4): the figure kinds; Coursewerk to confirm.
+  media: { png: "png", jpg: "jpeg", jpeg: "jpeg", gif: "gif", webp: "webp", svg: "svg" },
   licences: {
     // INTERIM (D-126 item 4): Coursewerk's public-OER profile allows the open licences only.
     allowed: ["CC-BY-4.0", "CC-BY-SA-4.0", "CC-BY-NC-4.0", "CC-BY-NC-SA-4.0", "CC0-1.0", "ALL-RIGHTS-RESERVED"],

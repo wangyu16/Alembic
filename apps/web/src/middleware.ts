@@ -76,7 +76,7 @@ export async function middleware(request: NextRequest) {
 
   // Course files: the route checks the session or the signed address itself (the editor's preview sends no session).
   // The sync route also answers for itself: a request whose session ended gets "sign in again", not a page (RC.17).
-  const isAsset = /^\/workspace\/[^/]+\/(?:asset\/|sync$)/.test(request.nextUrl.pathname);
+  const isAsset = /^\/workspace\/[^/]+\/(?:asset\/|sync$|upload$)/.test(request.nextUrl.pathname);
   if (!user && request.nextUrl.pathname.startsWith("/workspace") && !isAsset) {
     // Come back to the same page after signing in (a session that ended mid-work); /signin re-validates it.
     const signin = new URL("/signin", request.url);

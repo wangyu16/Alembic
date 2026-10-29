@@ -6,19 +6,31 @@
 id = "K1.10"
 claim = "A non-text file reaches the course only through the upload route; the committer accepts a blob reference only from the course_blobs ledger with a matching kind; bytes never enter the database; over 4 MB is refused with a plain message."
 oracle = "conformance"
-bound_to = []
+bound_to = [
+  "packages/package-ops/src/course-committer.test.ts :: a picture lands only as a blob in this course's upload ledger with the path's kind; a sha queued directly, or a PNG blob at an SVG path, is refused",
+  "apps/web/src/lib/upload.test.ts :: a member who may write the path can add a picture of an allowed kind up to 4 MB; anything else gets a plain reason",
+]
 
 [[claim]]
 id = "K1.11"
 claim = "Every course file Alembic serves carries nosniff and a sandbox CSP; bytes that don't match their kind are refused; an SVG with scripts, foreignObject, on* handlers, javascript:/data: links or external references is refused on every write and at Publish."
 oracle = "conformance"
-bound_to = []
+bound_to = [
+  "packages/package-contract/src/files.test.ts :: a path's kind comes from the profile's figure list; editor-made SVGs are text; anything else is refused",
+  "packages/package-contract/src/files.test.ts :: bytes must be what they claim: a renamed file is refused",
+  "packages/package-contract/src/files.test.ts :: an SVG with a script, an event handler, embedded content, a script link or an outside reference is refused; a plain one passes",
+  "packages/package-ops/src/course-committer.test.ts :: text with a script can't be saved to an SVG path, and text can't be saved to a picture's path",
+  "apps/web/src/lib/upload.test.ts :: the bytes must be what the name says, and an SVG must be safe",
+]
+note = "Built: checks on upload and on every committed text write; the asset route already serves nosniff + a sandbox CSP. Not yet: the check at Publish, and Door C undoing unsafe pushed SVGs."
 
 [[claim]]
 id = "K1.12"
 claim = "A non-text file or SVG whose base isn't current is both-changed: a kept version, nothing lost, never combined."
 oracle = "conformance"
-bound_to = []
+bound_to = [
+  "packages/package-ops/src/course-committer.test.ts :: a picture replaced since the uploader's base keeps both: the incoming one as a kept version, the current one on top",
+]
 
 [[claim]]
 id = "K1.13"
@@ -26,8 +38,10 @@ claim = "Deletes and moves check every path by role and space in one commit and 
 oracle = "conformance"
 bound_to = [
   "packages/package-contract/src/profile/profile.test.ts :: deleting in private/ is the owner's and deputy's only",
+  "packages/package-ops/src/course-committer.test.ts :: a move takes the file from the head and removes the source in one commit; a stale base, a kind change or an occupied target is refused",
+  "packages/package-ops/src/course-committer.test.ts :: a listed chapter's part can't be deleted or moved away; deleting in private/ needs the owner or deputy",
 ]
-note = "Partly built: the delete.private action. Delete and move entries in the committer are next."
+note = "Built: delete.private, blob/move/delete rules in the committer."
 
 [[claim]]
 id = "K1.14"
@@ -89,4 +103,6 @@ note = "Built: setLicense. Not yet: Door C undoing a non-owner licence change pu
 id = "K1.19"
 claim = "Upload quota and rate limits are counted from the ledger (created blobs, committed or not)."
 oracle = "conformance"
-bound_to = []
+bound_to = [
+  "apps/web/src/lib/upload.test.ts :: uploads are limited per person and per course each hour, and by the course's total, counted from the ledger",
+]

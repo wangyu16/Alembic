@@ -213,7 +213,7 @@ export class HeadMovedError extends Error {
 /** A file in a commit-chain step: new text/bytes, an existing blob, or a deletion. */
 export type ChainFile =
   | { path: string; content: string; encoding?: "utf-8" | "base64" }
-  | { path: string; blobSha: string }
+  | { path: string; blobSha: string; mode?: "100644" | "100755" }
   | { path: string; content: null };
 
 export class GitHubClient {
@@ -313,6 +313,15 @@ export class GitHubClient {
    * blob first and then referenced by sha in the tree — otherwise a PNG/PDF
    * lands on GitHub as its base64 *text*, not its bytes.
    */
+  /**
+   * Upload a file's bytes as a blob and return its sha (contract v3 §11.2: the
+   * upload route creates the blob first, then queues a reference to it). The
+   * bytes are sent base64-encoded, as GitHub's blob API requires.
+   */
+  async uploadBlob(coords: RepoCoords, bytes: Uint8Array): Promise<string> {
+    return this.createBlob(coords, Buffer.from(bytes).toString("base64"), "base64");
+  }
+
   private async createBlob(
     coords: RepoCoords,
     content: string,
@@ -550,7 +559,7 @@ export class GitHubClient {
     const commitShas: string[] = [];
     for (const step of input.steps) {
       const entries = await mapWithConcurrency(step.files, BLOB_UPLOAD_CONCURRENCY, async (f) => {
-        if ("blobSha" in f) return { path: f.path, mode: "100644", type: "blob", sha: f.blobSha };
+        if ("blobSha" in f) return { path: f.path, mode: f.mode ?? "100644", type: "blob", sha: f.blobSha };
         if (f.content === null) return { path: f.path, mode: "100644", type: "blob", sha: null };
         if (f.encoding === "base64") {
           const sha = await this.createBlob(input.coords, f.content, "base64");

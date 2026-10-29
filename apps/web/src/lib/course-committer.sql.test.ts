@@ -32,7 +32,7 @@ function fakeRepo(initial: Record<string, string>): WorkingRepo & { file(p: stri
     async commitChain({ expectedHead, steps, beforeMove }) {
       if (expectedHead !== head) throw new Error("moved");
       let parent = head; let files = new Map(by(head).files); const shas: string[] = []; const staged: typeof commits = [];
-      for (const s of steps) { files = new Map(files); for (const f of s.files) f.content === null ? files.delete(f.path) : files.set(f.path, f.content); const sha = `c${commits.length + staged.length}`; staged.push({ sha, parent, files, message: s.message, alembic: false }); shas.push(sha); parent = sha; }
+      for (const s of steps) { files = new Map(files); for (const f of s.files) "blobSha" in f ? files.set(f.path, `blob:${f.blobSha}`) : f.content === null ? files.delete(f.path) : files.set(f.path, f.content); const sha = `c${commits.length + staged.length}`; staged.push({ sha, parent, files, message: s.message, alembic: false }); shas.push(sha); parent = sha; }
       await beforeMove?.(shas);
       commits.push(...staged);
       head = parent; this.moves++; return { commitShas: shas, head };

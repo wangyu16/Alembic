@@ -88,6 +88,12 @@ export class SqlQueueStore implements Omit<QueueStore, "baseText"> {
     return r === "owner" || r === "deputy" || r === "co-author" ? r : "none";
   }
 
+  /** Is this blob in the course's upload ledger for this kind of file? (contract v3 §11.2, K1.10) */
+  async blobKnown(packageId: string, sha: string, kind: string): Promise<boolean> {
+    const { rows } = await this.sql.query<{ n: number }>(`select count(*)::int as n from public.course_blobs where package_id = $1 and sha = $2 and kind = $3`, [packageId, sha, kind]);
+    return (rows[0]?.n ?? 0) > 0;
+  }
+
   /** Insert a row (service role): returns its id. */
   async insert(i: { packageId: string; kind: RowKind; idem: string; payload: QueueRow["payload"]; actorId?: string | null; invokerId?: string | null; pusher?: string | null; priority?: 0 | 1; dependsOn?: string | null }): Promise<string> {
     const { rows } = await this.sql.query<{ id: string }>(

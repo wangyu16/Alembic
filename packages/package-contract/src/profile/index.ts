@@ -5,7 +5,7 @@
  */
 import { coursewerkOerProfile } from "./coursewerk-oer";
 
-export type { ContentProfile, PathClass, UnitPart } from "./types";
+export type { ContentProfile, MediaKind, PathClass, UnitPart } from "./types";
 export { COURSEWERK_CONTENT_VERSION, firstStudyGuide } from "./coursewerk-oer";
 
 export const activeProfile = coursewerkOerProfile;

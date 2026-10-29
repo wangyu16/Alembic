@@ -23,3 +23,4 @@ export * from "./manifest-v3";
 export * from "./access";
 export * from "./fetch-policy";
 export * from "./profile";
+export * from "./files";

@@ -8,7 +8,7 @@
  * so it is tested with fakes and runs unchanged on the worker.
  */
 
-import { activeProfile, can, canWritePath, newDocId, normalizePath, sha256Hex, WorkingManifestV3Schema, type Role } from "@alembic/package-contract";
+import { activeProfile, can, canWritePath, fileKind, isSvgPath, newDocId, normalizePath, svgProblems, unitPartForPath, sha256Hex, WorkingManifestV3Schema, type Role } from "@alembic/package-contract";
 import { applyCourseOp, parseCourseOp, type ChapterSnapshot } from "./course-ops";
 import { decideFile, type FileDecision, type FileKind } from "./version-rule";
 
@@ -38,8 +38,14 @@ export interface QueueRow {
 export interface RowFile {
   path: string;
   baseVersion: string | null;
-  /** null = delete */
+  /** null = delete (unless `blob` or `movedFrom` is set: then null and unused) */
   text: string | null;
+  /** A non-text file (contract v3 §11.2): a blob the upload route created and recorded in the ledger. */
+  blob?: { sha: string; size: number };
+  /** For `blob` and `movedFrom` entries: the blob id the change was made from (null = a new file). */
+  baseBlob?: string | null;
+  /** A move: this file's content and mode come from `movedFrom` at the head, which is deleted in the same commit. */
+  movedFrom?: string;
 }
 
 export interface RowPayload {
@@ -64,6 +70,8 @@ export interface QueueStore {
   baseText(packageId: string, path: string, version: string): Promise<string | null | undefined>;
   /** Is this attempt still the live claim on the row? (Checked right before every ref move.) */
   claimCurrent?(rowId: string, holder: string, fence: string, attempts: number): Promise<boolean>;
+  /** Is this blob in the course's upload ledger, recorded for this kind of file? (contract v3 §11.2, K1.10) */
+  blobKnown?(packageId: string, sha: string, kind: string): Promise<boolean>;
   /** Record the commits built for this attempt, before the ref moves. */
   recordPlanned?(rowId: string, holder: string, fence: string, attempts: number, shas: string[]): Promise<void>;
 }
@@ -73,9 +81,11 @@ export interface WorkingRepo {
   readFile(ref: string, path: string): Promise<string | null>;
   /** Every file path at `ref` (needed by course operations). */
   listPaths?(ref: string): Promise<string[]>;
+  /** Every file at `ref` with its blob id and mode (non-text files, deletes and moves). */
+  treeAt?(ref: string): Promise<Map<string, { sha: string; mode: string }>>;
   commitChain(input: {
     expectedHead: string;
-    steps: Array<{ message: string; files: Array<{ path: string; content: string | null }> }>;
+    steps: Array<{ message: string; files: Array<ChainEntry> }>;
     /** Called with the built commit SHAs after they exist and before the ref moves; throwing aborts the move. */
     beforeMove?: (shas: string[]) => Promise<void>;
     /** Aborted at the attempt's deadline: the ref must not move (checked again right before the update). */
@@ -84,6 +94,9 @@ export interface WorkingRepo {
   /** Newest first. `byAlembic` must be true only for commits Alembic itself wrote (its App identity). */
   recentCommits(limit: number): Promise<Array<{ sha: string; message: string; byAlembic?: boolean }>>;
 }
+
+/** One file in a commit: text (null = delete) or an existing blob by id. */
+export type ChainEntry = { path: string; content: string | null } | { path: string; blobSha: string; mode?: "100644" | "100755" };
 
 /** Errors the repo seam may throw, classified by the committer (queue-and-jobs §2.4). */
 export class RepoUnavailableError extends Error {
@@ -248,7 +261,11 @@ export async function processRow(row: QueueRow, store: QueueStore, repo: Working
     for (let round = 0; round < MAX_REDECIDE; round++) {
       const head = await repo.head();
       const decisions: Array<{ file: RowFile; d: FileDecision }> = [];
+      // Non-text files, moves and deletes (contract v3 §11): decided on the tree, before the text files.
+      const special = await decideFilesOnTree(row, store, repo, head);
+      if ("refused" in special) return { status: "refused", reason: special.refused };
       for (const file of row.payload.files) {
+        if (file.blob || file.movedFrom) continue; // decided above
         const currentText = await repo.readFile(head, file.path);
         // A Door C undo restores exactly the last accepted state; no version rule (system rows only).
         if (row.kind === "system" && row.payload.force === true) {
@@ -295,8 +312,8 @@ export async function processRow(row: QueueRow, store: QueueStore, repo: Working
       }
 
       // 3. Build the chain: kept versions first (only those not already in history), then the top.
-      const kept: Array<{ path: string; content: string | null }> = [];
-      const top: Array<{ path: string; content: string | null }> = [];
+      const kept: ChainEntry[] = [...special.kept];
+      const top: ChainEntry[] = [...special.top];
       for (const { file, d } of decisions) {
         if (d.outcome === "landed") {
           if (!d.noop) top.push({ path: file.path, content: d.write });
@@ -314,11 +331,11 @@ export async function processRow(row: QueueRow, store: QueueStore, repo: Working
           }
         }
       }
-      const files: FileOutcome[] = decisions.map(({ file, d }) => ({
+      const files: FileOutcome[] = [...special.outcomes, ...decisions.map(({ file, d }) => ({
         path: file.path,
         outcome: d.outcome,
         ...(d.outcome === "both-changed" ? { reason: d.reason } : {}),
-      }));
+      }))];
       if (kept.length === 0 && top.length === 0) {
         const competing = round > 0 ? await alreadyLanded(row, repo) : null; // a competing attempt landed it (G2 r3)
         return competing ?? { status: "done", result: { head, commits: [], files } };
@@ -374,6 +391,99 @@ export async function processRow(row: QueueRow, store: QueueStore, repo: Working
     if (row.attempts >= MAX_ATTEMPTS) return { status: "failed", error: msg };
     return { status: "retry", error: msg, retryAfterSeconds: 60 };
   }
+}
+
+/**
+ * Decide the entries the text version rule can't (contract v3 §11.2–§11.6),
+ * on the tree at `head`:
+ * - a blob reference lands only if the ledger has it with the path's kind;
+ *   if the file changed since `baseBlob`, both are kept (the incoming one as a
+ *   kept version, the current one on top), never combined;
+ * - a move takes the source's blob and mode from the tree and deletes the
+ *   source in the same commit; it is refused if the source changed;
+ * - a delete or move of a listed chapter's part file is refused (only
+ *   removeChapter takes a chapter's parts), as is deleting in private/
+ *   without delete.private;
+ * - text written to an SVG path must pass the SVG check, and text can't be
+ *   written to a picture's path.
+ */
+async function decideFilesOnTree(row: QueueRow, store: QueueStore, repo: WorkingRepo, head: string): Promise<
+  { refused: string } | { kept: ChainEntry[]; top: ChainEntry[]; outcomes: FileOutcome[] }
+> {
+  const out = { kept: [] as ChainEntry[], top: [] as ChainEntry[], outcomes: [] as FileOutcome[] };
+  for (const f of row.payload.files) {
+    const kind = fileKind(f.path);
+    if (!f.blob && !f.movedFrom && f.text !== null) {
+      if (kind !== "text") return { refused: `${f.path}: a picture can't be saved as text` };
+      if (isSvgPath(f.path)) {
+        const problems = svgProblems(f.text);
+        if (problems.length) return { refused: `${f.path}: ${problems[0]}` };
+      }
+    }
+  }
+  // The delete rules are for people's changes; Door C's undo and outside rows restore or record what is already so.
+  const byPeople = row.kind !== "system" && row.kind !== "outside";
+  const touchesTree = row.payload.files.some((f) => f.blob || f.movedFrom || (byPeople && f.text === null));
+  if (!touchesTree) return out;
+  if (!repo.treeAt) return { refused: "this repository can't list its files" };
+  const tree = await repo.treeAt(head);
+  // A listed chapter's parts are removed only with the chapter (§11.6).
+  let listed: Set<string> | null = null;
+  const isListedPart = async (path: string) => {
+    const part = unitPartForPath(path);
+    if (!part) return false;
+    if (!listed) {
+      try {
+        listed = new Set(WorkingManifestV3Schema.parse(JSON.parse((await repo.readFile(head, "alembic.json")) ?? "null")).chapters.map((c) => c.slug));
+      } catch {
+        listed = new Set();
+      }
+    }
+    return listed.has(part.slug);
+  };
+  const role = row.actorId ? await store.roleOf(row.packageId, row.actorId) : null;
+  const mayDelete = async (path: string): Promise<string | null> => {
+    if (await isListedPart(path)) return `${path}: a chapter's parts are removed with the chapter`;
+    if (path.startsWith("private/") && !(role && can(role, "delete.private"))) return `${path}: only the owner or deputy deletes private files`;
+    return null;
+  };
+  for (const f of row.payload.files) {
+    if (f.blob) {
+      const kind = fileKind(f.path);
+      if (!kind || kind === "text") return { refused: `${f.path}: not a kind of file this course can hold` };
+      if (!store.blobKnown || !(await store.blobKnown(row.packageId, f.blob.sha, kind))) return { refused: `${f.path}: that file wasn't uploaded to this course` };
+      const current = tree.get(f.path);
+      const base = f.baseBlob ?? null;
+      const mode = (current?.mode === "100755" ? "100755" : "100644") as "100644" | "100755";
+      if ((current?.sha ?? null) === base || current?.sha === f.blob.sha) {
+        if (current?.sha !== f.blob.sha) out.top.push({ path: f.path, blobSha: f.blob.sha, mode });
+        out.outcomes.push({ path: f.path, outcome: "landed" });
+      } else {
+        // Both changed (§11.5): the incoming file as a kept version, the current one stays on top.
+        out.kept.push({ path: f.path, blobSha: f.blob.sha, mode });
+        out.top.push(current ? { path: f.path, blobSha: current.sha, mode } : { path: f.path, content: null });
+        out.outcomes.push({ path: f.path, outcome: "both-changed", reason: "both-changed-file" });
+      }
+    } else if (f.movedFrom) {
+      let from: string;
+      try { from = normalizePath(f.movedFrom); } catch { return { refused: `invalid path ${JSON.stringify(f.movedFrom)}` }; }
+      if (row.payload.files.some((g) => g.path === from)) return { refused: `${from}: moved and changed in one change` };
+      const src = tree.get(from);
+      if (!src) return { refused: `${from}: the file to move is no longer there` };
+      if ((f.baseBlob ?? null) !== src.sha) return { refused: `${from}: it changed meanwhile; try again` };
+      if (fileKind(from) !== fileKind(f.path)) return { refused: `${f.path}: a move can't change the kind of file` };
+      if (tree.has(f.path)) return { refused: `${f.path}: a file is already there` };
+      if (role && !canWritePath(role, from)) return { refused: `not allowed to change ${from}` };
+      const why = await mayDelete(from);
+      if (why) return { refused: why };
+      out.top.push({ path: from, content: null }, { path: f.path, blobSha: src.sha, mode: src.mode === "100755" ? "100755" : "100644" });
+      out.outcomes.push({ path: f.path, outcome: "landed" });
+    } else if (f.text === null && byPeople) {
+      const why = await mayDelete(f.path);
+      if (why) return { refused: why };
+    }
+  }
+  return out;
 }
 
 /** A chapter's manifest entry and part files at an earlier commit (restoreChapter reads the removal's parent). */

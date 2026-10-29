@@ -16,6 +16,8 @@ import { diffEdit, loadKit, type OrzEditor, type OrzKind } from "./kit";
 import { mergeRemote } from "./merge";
 import { makeHooks, resolveCoursePath } from "./hooks";
 import { assembleDownload, embedFigures, linkFigures } from "./download";
+import { activeProfile, MAX_UPLOAD_BYTES } from "@alembic/package-contract";
+import { relativePath } from "@/lib/course-move";
 
 /** Above this a Present post would be refused by the host before reaching Alembic. */
 const PRESENT_MAX_BYTES = 4_000_000;
@@ -108,6 +110,7 @@ export const EmbeddedEditor = forwardRef<EmbeddedEditorHandle, EmbeddedEditorPro
     const c = props.current;
     const store = c.store ?? new IndexedDbDraftStore();
     const key = draftKey(c.packageId, c.docPath);
+    const assets = new Map(c.assetUrls ?? []); // grows as figures are added in this session
     void requestPersistentStorage();
 
     const s = new SyncScheduler({
@@ -185,7 +188,25 @@ export const EmbeddedEditor = forwardRef<EmbeddedEditorHandle, EmbeddedEditorPro
               }
             },
             readCourseText: (path) => props.current.readCourseText(path),
-            assetUrls: c.assetUrls ?? new Map(),
+            assetUrls: assets,
+            // Add a figure (contract v3 §11.2): stored on GitHub through the upload route, shown here at once.
+            uploadAsset: async (file: File) => {
+              if (file.size > MAX_UPLOAD_BYTES) throw new Error("The file is larger than 4 MB. Make it smaller and try again.");
+              const folder = activeProfile.figureFolder(c.docPath);
+              const clean = file.name.toLowerCase().replace(/[^a-z0-9.]+/g, "-").replace(/^[-.]+|-+$/g, "") || "figure";
+              let name = clean;
+              for (let n = 2; assets.has(`${folder}/${name}`); n++) name = clean.replace(/(\.[a-z0-9]+)?$/, `-${n}$1`);
+              const path = `${folder}/${name}`;
+              const res = await fetch(`/workspace/${encodeURIComponent(c.packageId)}/upload`, {
+                method: "POST",
+                headers: { "x-alembic-path": encodeURIComponent(path), "content-type": file.type || "application/octet-stream" },
+                body: file,
+              });
+              const r = (await res.json().catch(() => null)) as { ok?: boolean; message?: string } | null;
+              if (!res.ok || !r?.ok) throw new Error(r?.message ?? "Couldn't add the file. Try again in a few minutes.");
+              assets.set(path, URL.createObjectURL(file));
+              return relativePath(c.docPath, path);
+            },
             mintUid: () => props.current.mintUid(),
           }) as never,
         });

@@ -11,6 +11,9 @@ import type { PackageSpace } from "../spaces";
  * What a path is to the project, in the core's generic terms. The core maps
  * each class to a permission (access.ts); the profile never names a role.
  */
+/** Kinds of non-text file the core knows how to check (contract v3 §11.4). */
+export type MediaKind = "png" | "jpeg" | "gif" | "webp" | "svg";
+
 export type PathClass =
   | "material"          // what readers see (study guides, slides, practice, figures)
   | "plan"              // the unit's plan (concept map, assessment guide): approved before publishing
@@ -51,6 +54,10 @@ export interface ContentProfile {
   readonly unitParts: readonly UnitPart[];
   /** Parts every listed unit must have (ids). */
   readonly requiredParts: readonly string[];
+  /** Where a figure added to a document is stored (a folder path, no trailing slash). */
+  figureFolder(docPath: string): string;
+  /** Non-text files a project may hold (figures and media): extension → kind. */
+  readonly media: Readonly<Record<string, MediaKind>>;
   /** Licences a project may carry, and which of them are open. */
   readonly licences: { readonly allowed: readonly string[]; readonly open: readonly string[] };
   /** Classify a normalised, classifiable path (the core has already applied hygiene and its own mechanics paths). */
