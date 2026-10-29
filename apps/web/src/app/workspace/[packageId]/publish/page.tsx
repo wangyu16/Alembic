@@ -4,7 +4,8 @@ import { redirect } from "next/navigation";
 import { can, WorkingManifestV3Schema, type Role } from "@alembic/package-contract";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { v3Enabled } from "@/lib/db";
-import { courseRepo, textAtCommit, versionsAt } from "@/lib/course-v3";
+import { blobsAt, courseRepo, textAtCommit, versionsAt } from "@/lib/course-v3";
+import { courseTime } from "@/lib/course-time";
 import { approvePlanNowAction, requestPublishAction, setChapterModeAction, startPlanAction } from "./actions";
 import { SubmitButton } from "../../submit-button";
 import { RefreshWhile } from "./refresh-while";
@@ -28,7 +29,7 @@ async function PublishPageInner({ params, searchParams }: { params: Promise<{ pa
   if (!roleRaw) redirect("/workspace");
   const role = roleRaw as Role;
 
-  const [{ data: course }, { data: requests }, { data: approvals }, { data: runs }, { data: pendingRows }] = await Promise.all([
+  const [{ data: course }, { data: requests }, { data: approvals }, { data: runs }, { data: pendingRows }, { data: publishedRows }] = await Promise.all([
     supabase.from("packages").select("title, public_repo").eq("id", packageId).maybeSingle(),
     supabase.from("publish_requests").select("id, status, outcome, created_at, finished_at").eq("package_id", packageId).order("created_at", { ascending: false }).limit(1),
     supabase.from("approvals").select("part_path, version").eq("package_id", packageId),
@@ -36,6 +37,7 @@ async function PublishPageInner({ params, searchParams }: { params: Promise<{ pa
     // Chapter status changes still on their way into the course (RC.15): shown as "saving", not as the old state.
     supabase.from("write_queue").select("idem_key, status, finished_at").eq("package_id", packageId).like("idem_key", "system:mode:%")
       .or(`status.in.(queued,processing,retry),finished_at.gt.${new Date(Date.now() - 15 * 60_000).toISOString()}`),
+    supabase.from("published_files").select("path, blob_sha, unit").eq("package_id", packageId),
   ]);
   // Status changes still on their way (shown as saving; no other change is offered meanwhile, so none is
   // refused for being made on an older version), and any refused in the last minutes (said, not lost).
@@ -64,6 +66,13 @@ async function PublishPageInner({ params, searchParams }: { params: Promise<{ pa
   // Plan versions from one tree listing, cached by blob id (RC.8): a warm render reads no plan file.
   const planPaths = manifest.chapters.flatMap((ch) => [`concepts/${ch.slug}.md`, `assessment-support/${ch.slug}.md`]);
   const versions = await versionsAt(c.client, { owner: c.owner, repo: c.name }, head, planPaths);
+  // What a Publish would change, chapter by chapter (RC.24): any of its files differing from what was published.
+  const blobs = await blobsAt(c.client, { owner: c.owner, repo: c.name }, head);
+  const published = new Map(((publishedRows ?? []) as Array<{ path: string; blob_sha: string; unit: string }>).map((r) => [r.path, r]));
+  const everPublished = new Set([...published.values()].filter((r) => r.unit.startsWith("chapter:")).map((r) => r.unit.slice(8)));
+  const chapterFiles = (slug: string) => [...blobs.keys()].filter((p) =>
+    [`concepts/${slug}.md`, `study-guide/${slug}.md`, `slides/${slug}.slides.md`, `assessment-support/${slug}.md`, `practice/${slug}.md`].includes(p) || p.split("/")[2] === slug && p.split("/")[1] === "chapters");
+  const editedSincePublish = (slug: string) => everPublished.has(slug) && chapterFiles(slug).some((p) => published.get(p)?.blob_sha !== blobs.get(p));
   const chapters = manifest.chapters.map((ch) => {
     const parts = ["concepts", "assessment-support"].map((space) => {
       const path = `${space}/${ch.slug}.md`;
@@ -95,7 +104,8 @@ async function PublishPageInner({ params, searchParams }: { params: Promise<{ pa
       <p className="mt-1 text-sm text-gray-600">
         Publishing copies the chapters that are ready to the course's public copy
         {pub ? <> (<a className="underline" href={`https://github.com/${pub.owner}/${pub.name}`}>on GitHub</a>)</> : " (made on the first Publish)"} and updates its website.
-        A chapter is ready when it isn't a draft, its course plan is approved, and the checks pass.
+        A chapter is ready when it isn&apos;t a draft, its course plan is approved, and the checks pass (nothing in it repeats an
+        answer key or copies a source). A draft chapter stays on the website as it was last published (or isn&apos;t there yet); its new edits wait.
       </p>
       {message ? <p className="mt-3 rounded border border-amber-400 bg-amber-100 p-2 text-sm text-amber-950" role="status">{message}</p> : null}
       {site.kind !== "none" ? (
@@ -111,7 +121,7 @@ async function PublishPageInner({ params, searchParams }: { params: Promise<{ pa
 
       {refusedMode.length ? (
         <p className="mt-3 rounded border border-amber-400 bg-amber-100 p-2 text-sm text-amber-950" role="status">
-          A change to {[...new Set(refusedMode)].map((s2) => titleOf.get(s2) ?? s2).join(", ")} couldn&apos;t be saved because the course&apos;s settings changed at the same time. Please make it again.
+          {`A change to ${[...new Set(refusedMode)].map((s2) => titleOf.get(s2) ?? s2).join(", ")} couldn't be saved because the course's settings changed at the same time. Please make it again.`}
         </p>
       ) : null}
       <section className="mt-5 rounded border p-3">
@@ -120,7 +130,7 @@ async function PublishPageInner({ params, searchParams }: { params: Promise<{ pa
           <p className="mt-1 text-sm">Publishing… this page updates by itself.</p>
         ) : last.outcome?.status === "committed" ? (
           <div className="mt-1 text-sm">
-            <p><strong>Published</strong> {last.finished_at ? new Date(last.finished_at).toLocaleString() : ""}{last.outcome.unchanged ? " (nothing had changed since the last Publish)" : ""}. Public chapters: {last.outcome.published.length ? last.outcome.published.map((s) => titleOf.get(s) ?? s).join(", ") : "none yet"}.</p>
+            <p><strong>Published</strong> {last.finished_at ? courseTime(last.finished_at) : ""}{last.outcome.unchanged ? " (nothing had changed since the last Publish)" : ""}. {last.outcome.published.length} of {manifest.chapters.length} chapters are public.</p>
             <ul className="mt-2 list-disc pl-5">
               {last.outcome.decisions.filter((d) => d.result === "kept").map((d) => (
                 <li key={d.unit}>{unitName(d.unit)} stayed as it was: {d.why.map((w) => (w === "Draft chapter" ? "it is a draft" : w === "Course plan not approved" ? "its course plan isn't approved" : w)).join("; ")}</li>
@@ -143,7 +153,7 @@ async function PublishPageInner({ params, searchParams }: { params: Promise<{ pa
               const findings = kept?.why.filter((w) => w !== "Draft chapter" && w !== "Course plan not approved") ?? [];
               return (
                 <tr key={ch.slug} className="align-top">
-                  <td className="py-2">{ch.title}</td>
+                  <td className="py-2">{ch.title}{editedSincePublish(ch.slug) ? <span className="ml-2 rounded bg-blue-100 px-1.5 py-0.5 text-xs text-blue-950">edited since the last Publish</span> : !everPublished.has(ch.slug) ? <span className="ml-2 text-xs text-gray-600">not published yet</span> : null}</td>
                   <td className="py-2">
                     {pendingMode.has(ch.slug) ? <span>{pendingMode.get(ch.slug) === "draft" ? "Draft" : "Ready"} <em className="text-gray-600">(saving…)</em></span>
                       : ch.mode === "draft" ? "Draft"
@@ -161,7 +171,7 @@ async function PublishPageInner({ params, searchParams }: { params: Promise<{ pa
                     ) : toApprove.length === 0 ? "Approved" : canApprove ? (
                       <span>
                         Changed since it was approved: read the {ch.parts.map((p) => <Link key={p.path} prefetch={false} className="underline" href={`/workspace/${packageId}/doc/${p.path.split("/").map(encodeURIComponent).join("/")}`}>{p.path.split("/")[0] === "concepts" ? "concept map" : "assessment guide"}</Link>).reduce<React.ReactNode[]>((a, x, i) => (i ? [...a, " and ", x] : [x]), [])}, then{" "}
-                        <button className="rounded border px-2 py-0.5" name="approveNow" value={toApprove.map((p) => `${p.path}@${p.version}`).join("|")} formAction={approvePlanNowAction.bind(null, packageId)}>Approve it as it is now</button>
+                        <button className="rounded border px-2 py-0.5" formAction={approvePlanNowAction.bind(null, packageId, toApprove.map((p) => `${p.path}@${p.version}`).join("|"))}>Approve it as it is now</button>
                       </span>
                     ) : "Waiting for the owner or deputy to approve the course plan"}
                   </td>
@@ -178,8 +188,8 @@ async function PublishPageInner({ params, searchParams }: { params: Promise<{ pa
           </tbody>
         </table>
         {canPublish ? (
-          <div className="mt-4">{busy
-            ? <button type="button" disabled className="rounded bg-gray-300 px-4 py-2">Publishing…</button>
+          <div className="mt-4">{busy || pendingMode.size
+            ? <button type="button" disabled className="rounded bg-gray-300 px-4 py-2 text-gray-900">{busy ? "Publishing…" : "Waiting for a status change to be saved…"}</button>
             : <SubmitButton pending="Starting…" className="rounded bg-blue-700 px-4 py-2 font-medium text-white hover:bg-blue-800">Publish</SubmitButton>}</div>
         ) : <p className="mt-4 text-sm">Only the owner or deputy publishes.</p>}
       </form>

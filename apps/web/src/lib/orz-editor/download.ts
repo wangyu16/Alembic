@@ -68,3 +68,31 @@ export function readReplacement(
   const clean = present.length ? kit.editHeader(text, Object.fromEntries(present.map((k) => [k, null]))) : text;
   return { ok: true, text: clean, baseVersion: base };
 }
+
+/**
+ * The document's own figures embedded in a copy of its text (RC.23): a downloaded file stands on its own,
+ * so `../assets/x.svg` becomes a data: address. `urlOf` gives the address the page may read a course
+ * path from (the editor's asset map); figures it doesn't know, or can't fetch, stay as they are.
+ */
+export async function embedFigures(text: string, resolve: (target: string) => string | null, urlOf: (path: string) => string | undefined, fetchImpl: typeof fetch = fetch): Promise<string> {
+  const refs = new Set<string>();
+  for (const m of text.matchAll(/!\[[^\]]*\]\(\s*<?([^)\s>]+)>?/g)) refs.add(m[1]!);
+  for (const m of text.matchAll(/\bsrc\s*=\s*["']([^"']+)["']/g)) refs.add(m[1]!);
+  const data = new Map<string, string>();
+  await Promise.all([...refs].map(async (target) => {
+    const path = resolve(target);
+    const url = path ? urlOf(path) : undefined;
+    if (!url) return;
+    const res = await fetchImpl(url).catch(() => null);
+    if (!res?.ok) return;
+    const type = res.headers.get("content-type") ?? "application/octet-stream";
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    let bin = "";
+    for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+    data.set(target, `data:${type};base64,${btoa(bin)}`);
+  }));
+  if (!data.size) return text;
+  return text
+    .replace(/(!\[[^\]]*\]\(\s*<?)([^)\s>]+)/g, (whole, head: string, target: string) => (data.has(target) ? head + data.get(target)! : whole))
+    .replace(/(\bsrc\s*=\s*["'])([^"']+)/g, (whole, head: string, target: string) => (data.has(target) ? head + data.get(target)! : whole));
+}

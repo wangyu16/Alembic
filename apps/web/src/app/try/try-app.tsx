@@ -84,7 +84,7 @@ export function TryApp() {
           </ol>
           <p>Everything is written as plain-text documents that open in the orz editors, are kept in the educator&apos;s own GitHub account, and publish as an open course website.</p>
           <p>Name any topic, and a fast, low-cost AI model will make a short sample chapter while you watch. It uses its own knowledge and Wikipedia; no textbooks or uploads.</p>
-          <button type="button" className="rounded bg-black px-4 py-2 text-white" onClick={() => setPhase("form")}>Try it</button>
+          <button type="button" className="rounded bg-blue-700 px-4 py-2 font-medium text-white hover:bg-blue-800" onClick={() => setPhase("form")}>Try it</button>
         </section>
       ) : null}
 
@@ -99,7 +99,7 @@ export function TryApp() {
           <label className="flex flex-col text-sm">Workshop code (if you have one)
             <input value={code} onChange={(e) => setCode(e.target.value)} maxLength={40} placeholder="WKS-…" autoComplete="off" className="mt-1 w-40 rounded border px-2 py-1.5 font-mono" disabled={phase === "making"} />
           </label>
-          <button type="submit" disabled={phase === "making"} className="rounded bg-black px-4 py-2 text-white disabled:opacity-50">{phase === "making" ? "Making…" : phase === "made" ? "Make another" : "Make a sample chapter"}</button>
+          <button type="submit" disabled={phase === "making"} className="rounded bg-blue-700 px-4 py-2 font-medium text-white hover:bg-blue-800 disabled:opacity-50">{phase === "making" ? "Making…" : phase === "made" ? "Make another" : "Make a sample chapter"}</button>
         </form>
       ) : null}
 

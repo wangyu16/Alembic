@@ -2,6 +2,7 @@
 
 import { randomUUID } from "node:crypto";
 import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
 import { can, newDocId, WorkingManifestV3Schema, type Role } from "@alembic/package-contract";
 import { enqueueSync, firstStudyGuide, SqlQueueStore, SyncRefused } from "@alembic/package-ops";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -9,8 +10,10 @@ import { directDb } from "@/lib/db";
 import { courseRepo, textVersion } from "@/lib/course-v3";
 import { githubBusy } from "@/lib/github-busy";
 
-const back = (packageId: string, msg?: string) =>
-  redirect(`/workspace/${packageId}/publish${msg ? `?m=${encodeURIComponent(msg)}` : ""}`);
+const back = (packageId: string, msg?: string) => {
+  revalidatePath(`/workspace/${packageId}/publish`); // the page shows the new state at once (RC.24)
+  return redirect(`/workspace/${packageId}/publish${msg ? `?m=${encodeURIComponent(msg)}` : ""}`);
+};
 
 /** A GitHub rate limit inside an action becomes a message on the page, not an error page (RC.12). */
 async function withGithub<T>(packageId: string, fn: () => Promise<T>): Promise<T> {
@@ -35,6 +38,10 @@ async function member(packageId: string) {
 /** Ask for a Publish with the publisher's choices (the worker runs it). */
 export async function requestPublishAction(packageId: string, form: FormData): Promise<void> {
   const { supabase } = await member(packageId);
+  // A chapter status change still on its way would be published as it was (RC.24): wait for it.
+  const { data: pending } = await supabase.from("write_queue").select("id").eq("package_id", packageId)
+    .in("status", ["queued", "processing", "retry"]).like("idem_key", "system:mode:%").limit(1);
+  if (pending?.length) back(packageId, "A chapter's status change is still being saved. Publish again in a few seconds.");
   // Each choice names the version that was shown (path@version, slug@digest): the job applies it only to that.
   const approveAndPublish = form.getAll("approve").flatMap((v) => (typeof v === "string" ? v.split("|") : []))
     .filter((v) => /^(concepts|assessment-support)\/[a-z0-9-]{1,60}\.md@[0-9a-f]{64}$/.test(v));
@@ -106,9 +113,11 @@ async function setChapterMode(packageId: string, slug: string, mode: "draft" | "
  * Approve a chapter's course plan now, as it was shown (path@version of each part; owner or deputy,
  * checked by approve_part). Takes effect at once, so the page shows it (RC.15).
  */
-export async function approvePlanNowAction(packageId: string, form: FormData): Promise<void> {
+export async function approvePlanNowAction(packageId: string, shown: string): Promise<void> {
   const { supabase } = await member(packageId);
-  const parts = String(form.get("approveNow") ?? "").split("|")
+  // The parts as shown come as a bound argument: Next replaces a submit button's name with its own
+  // action reference, so a button's name/value never reaches a formAction (RC.21).
+  const parts = String(shown ?? "").split("|")
     .map((v) => /^((?:concepts|assessment-support)\/[a-z0-9-]{1,60}\.md)@([0-9a-f]{64})$/.exec(v))
     .filter((m): m is RegExpExecArray => m !== null);
   if (!parts.length) back(packageId, "Nothing to approve.");

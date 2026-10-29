@@ -14,8 +14,8 @@ import { SyncScheduler, statusLabel, type SendResult, type SyncStatus } from "@/
 import { IndexedDbDraftStore, draftKey, requestPersistentStorage, resumeFrom, type DraftStore } from "@/lib/device-save/store";
 import { diffEdit, loadKit, type OrzEditor, type OrzKind } from "./kit";
 import { mergeRemote } from "./merge";
-import { makeHooks } from "./hooks";
-import { assembleDownload } from "./download";
+import { makeHooks, resolveCoursePath } from "./hooks";
+import { assembleDownload, embedFigures } from "./download";
 
 export interface EmbeddedEditorProps {
   kind: OrzKind;
@@ -46,6 +46,7 @@ export const EmbeddedEditor = forwardRef<EmbeddedEditorHandle, EmbeddedEditorPro
   const editor = useRef<OrzEditor | null>(null);
   const scheduler = useRef<SyncScheduler | null>(null);
   const [status, setStatus] = useState<SyncStatus>({ kind: "synced", at: null });
+  const [ready, setReady] = useState(false); // the editor is open (before that, say so, not "saved")
   const statusRef = useRef<SyncStatus["kind"]>("synced");
   const [failed, setFailed] = useState<string | null>(null);
   const base = useRef<string | null>(p.baseVersion);
@@ -136,13 +137,19 @@ export const EmbeddedEditor = forwardRef<EmbeddedEditorHandle, EmbeddedEditorPro
           hooks: makeHooks({
             packageId: c.packageId,
             docPath: c.docPath,
-            saveToDevice: async (text) => { await keep(text); await s.syncNow(); },
+            // The editor's Save sends to the course now; it reports Saved only if the course has the text (RC.22).
+            saveToDevice: async (text) => {
+              await keep(text);
+              await s.syncNow();
+              if (s.hasUnsynced) throw new Error("Not in the course yet: it is kept on this device and will be sent when the connection is back.");
+            },
             readCourseText: (path) => props.current.readCourseText(path),
             assetUrls: c.assetUrls ?? new Map(),
             mintUid: () => props.current.mintUid(),
           }) as never,
         });
         editor.current = e;
+        setReady(true);
         e.on("change", ({ text }) => {
           if (quiet.current) { e.markSaved(); return; } // a remote update with nothing of ours on top: already synced
           // Kept on the device at once; the editor's bar says Saved only when the course has it (onSynced).
@@ -171,12 +178,26 @@ export const EmbeddedEditor = forwardRef<EmbeddedEditorHandle, EmbeddedEditorPro
     };
   }, []);
 
+  /** Present (slides): the deck as its own page in a new tab, where it plays as a slideshow (RC.22). */
+  const present = async () => {
+    const e = editor.current;
+    if (!e) return;
+    const tab = window.open("", "_blank"); // opened at the click, so the browser allows it
+    const kit = await loadKit(p.kind);
+    const html = await kit.assemble(await embedFigures(e.getText(), (t) => resolveCoursePath(p.docPath, t), (path) => p.assetUrls?.get(path)), { delivery: "inline" });
+    const url = URL.createObjectURL(new Blob([html], { type: "text/html" }));
+    if (tab) tab.location.href = url; else window.location.href = url;
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  };
+
   /** Download (K4 step 4): the current text as a self-contained file that opens and edits itself in a browser. */
   const download = async () => {
     const e = editor.current;
     if (!e) return;
     const kit = await loadKit(p.kind);
-    const html = await assembleDownload(kit, e.getText(), { packageId: p.packageId, path: p.docPath, baseVersion: base.current ?? "" });
+    // The figures go inside the file (RC.23): a downloaded document has no course folder next to it.
+    const text = await embedFigures(e.getText(), (t) => resolveCoursePath(p.docPath, t), (path) => p.assetUrls?.get(path));
+    const html = await assembleDownload(kit, text, { packageId: p.packageId, path: p.docPath, baseVersion: base.current ?? "" });
     const name = (p.docPath.split("/").pop() ?? "document.md").replace(/\.md$/i, "") + ".html";
     const url = URL.createObjectURL(new Blob([html], { type: "text/html" }));
     const a = Object.assign(document.createElement("a"), { href: url, download: name.endsWith(".slides.html") || name.endsWith(".paged.html") ? name : name.replace(/\.html$/, ".md.html") });
@@ -190,8 +211,8 @@ export const EmbeddedEditor = forwardRef<EmbeddedEditorHandle, EmbeddedEditorPro
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center justify-end gap-3 border-b px-3 py-1 text-sm" aria-live="polite">
-        <span data-testid="sync-status">{label}</span>
-        <button type="button" className="underline" onClick={() => void scheduler.current?.syncNow()}>Save to the course now</button>
+        <span data-testid="sync-status">{ready ? label : "Opening…"}</span>
+        {p.kind === "slides" ? <button type="button" className="underline" data-testid="present" onClick={() => void present()}>Present</button> : null}
         <button type="button" className="underline" data-testid="download" onClick={() => void download()}>Download</button>
       </div>
       {failed ? <p className="p-4 text-red-700" role="alert">{failed}</p> : null}

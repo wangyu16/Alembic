@@ -10,6 +10,13 @@ import { courseOutline } from "@/lib/course-outline";
 
 export const dynamic = "force-dynamic";
 
+/** What the person is in this course, and what that lets them do (RC.24). */
+const ROLE_LINE: Record<string, string> = {
+  owner: "You own this course: you edit it, approve its course plan, publish it and choose who works on it.",
+  deputy: "You are this course's deputy: you edit it, approve its course plan and publish it.",
+  "co-author": "You are a co-author: you edit the course; the owner or deputy approves the course plan and publishes.",
+};
+
 /** A v3 course's home: its chapters and their documents, straight from the working repo (RC.14). */
 async function CourseHomeV3Inner({ params }: { params: Promise<{ packageId: string }> }) {
   const { packageId } = await params;
@@ -48,6 +55,7 @@ async function CourseHomeV3Inner({ params }: { params: Promise<{ packageId: stri
     <main className="mx-auto max-w-3xl p-6">
       <p className="text-sm"><Link href="/workspace">← Your courses</Link></p>
       <h1 className="mt-2 text-2xl font-semibold">{(course?.title as string | undefined) ?? "Course"}</h1>
+      <p className="mt-1 text-sm text-gray-600" data-testid="role">{ROLE_LINE[role as string] ?? ""}</p>
       <nav className="mt-2 flex gap-4 text-sm">
         <Link className="underline" href={`/workspace/${packageId}/needs-you`}>Needs you</Link>
         <Link className="underline" href={`/workspace/${packageId}/people`}>People</Link>

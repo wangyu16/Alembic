@@ -191,3 +191,35 @@ bound_to = [
   "apps/web/src/lib/write-queue-columns.sql.test.ts :: a co-author sees each row's status but not another member's queued text or its result",
 ]
 note = "Audit r2 #11; migration 0060 (column-level grant)."
+
+[[claim]]
+id = "RC.21"
+claim = "A button's meaning reaches its server action: no submit button carries both a formAction and its own name/value (Next replaces the name), so 'Approve it as it is now' approves exactly what was shown."
+oracle = "conformance"
+bound_to = [
+  "apps/web/src/app/workspace/form-action-buttons.scan.test.ts :: no button carries both a formAction and its own name (its value would be lost)",
+]
+note = "Blind r2 re-verifier (c) FAIL and critic #1: the approval button approved nothing ('Nothing to approve.'); reproduced live, then fixed by binding the value."
+
+[[claim]]
+id = "RC.22"
+claim = "One Save, and it tells the truth: the editor's Save sends to the course and shows Saved only if the course has the text; the status says Opening… before the editor is there; pages show Opening… at once; slides can be presented from the workspace."
+oracle = "human"
+bound_to = []
+note = "Critic #2, #3, #5, #6. Fresh re-verifier (round 3)."
+
+[[claim]]
+id = "RC.23"
+claim = "A downloaded document stands on its own: the course's figures are embedded in the file; web images and unknown figures stay as they are; the course text is untouched."
+oracle = "conformance"
+bound_to = [
+  "apps/web/src/lib/orz-editor/download-figures.test.ts :: the course's own figures are embedded in the file (size hints kept); web images and unknown figures stay as they are; the course text is untouched",
+]
+note = "Blind r2 A8: all 9 figures broken in a downloaded study guide."
+
+[[claim]]
+id = "RC.24"
+claim = "The Publish page can't publish a chapter's old status (Publish waits while a status change is saving, the server refuses meanwhile), says which chapters changed since the last Publish, gives times in the course's time zone, and the course page says what the person can do."
+oracle = "human"
+bound_to = []
+note = "Blind r2 B4 trap, critic #7, #8. Fresh re-verifier (round 3)."

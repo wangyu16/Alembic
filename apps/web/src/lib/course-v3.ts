@@ -71,3 +71,11 @@ export async function textAtCommit(repo: WorkingRepoAdapter, key: string, head: 
   return t;
 }
 const textByCommit = new Map<string, string | null>();
+
+/** Every file's blob id at `head` (the same cached listing as versionsAt): to tell what changed since a Publish. */
+export async function blobsAt(client: Pick<GitHubClient, "listTreeEntries">, coords: RepoCoords, head: string): Promise<Map<string, string>> {
+  const key = `${coords.owner}/${coords.repo}@${head}`;
+  let tree = treeByCommit.get(key);
+  if (!tree) { tree = await client.listTreeEntries(coords, head); treeByCommit.set(key, tree); }
+  return new Map(tree.entries.filter((e) => e.type === "blob").map((e) => [e.path, e.sha]));
+}
