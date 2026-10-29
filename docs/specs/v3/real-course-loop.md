@@ -126,7 +126,9 @@ Blind acceptance spec: [docs/blind-critique/v3-workspace-spec.md](../../blind-cr
 - **The deputy sees "Admin":** that's the test setup; this test user was made an operator for the workshop-code check.
 - **Two create-course forms on the workspace:** the old 0.x form is still on the testing build; v3 replaces it.
 
-**Open:**
-- a 404 in the console on website pages;
-- multiple-choice options running together in practice (content or kit, to look at);
+**Dismissed:** the 404 in the website's console is the browser's own `/favicon.ico` request at the host root (`<owner>.github.io`), which a project site can't serve.
+
+**Open (owner's call):** multiple-choice options run together in practice pages. The 0.x content writes options on consecutive lines, and 1.x Markdown joins consecutive lines into one paragraph. Options:
+- the move helper turns `A. …` option runs into separate lines (hard breaks or a list);
+- the content is fixed by hand.
 - the owner's calls carried forward: idle interval, public assessment guides, workshop contact.
