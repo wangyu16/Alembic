@@ -67,6 +67,14 @@ describe("files that aren't text (contract v3 §11.4)", () => {
       '<!DOCTYPE svg SYSTEM "x><!--[<!ENTITY e \'<script>alert(1)</script>\'>]"><svg>&e;<!-- --><svg/></svg>',
       '<!DOCTYPE svg PUBLIC "a>" "b"><svg/>',
       '<?xml version="1.0?><!--"?><svg><script>alert(1)</script><!-- --><svg/></svg>',
+      // Round 5 audit: an escaped url( in a presentation attribute; documents that aren't well formed.
+      '<svg><rect fill="u\\72l(https://evil.example/x)"/></svg>',
+      '<svg><rect mask="image-set(\'https://evil.example/x\' 1x)"/></svg>',
+      '<svg><g></svg>',
+      '<svg/><svg/>',
+      'text<svg/>',
+      '<svg a="1" a="2"/>',
+      '<svg><text>&#0;</text></svg>',
       // Round 3 audit: encoded url( in presentation attributes, long character references, nested styles.
       '<svg><rect fill="u&#114;l(https://evil.example/x.svg#g)"/></svg>',
       '<svg><rect filter="url&#40;https://evil.example/f)"/></svg>',

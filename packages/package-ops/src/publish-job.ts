@@ -17,7 +17,7 @@ import {
   WorkingManifestV3Schema,
   type Role,
   type WorkingManifestV3,
-  cleanSvg,
+  checkSvg,
   fileKind,
   isSvgPath,
   svgProblems,
@@ -311,6 +311,7 @@ export async function runPublish(i: PublishInput, w: WorkingSide, pub: PublicSid
 
   // 6. Read units at W; a text file that can't be read stops the run (fail closed, G3 M2).
   const working = new Map<string, TreeFile>();
+  const svgVerdicts = new Map<string, string[]>();
   const byUnit = new Map<string, Array<{ path: string; text: string | null }>>();
   // Reads run READ_CONCURRENCY at a time (a real course has hundreds of files); results keep tree order.
   // A file of a kind the website can't serve safely (not a course text or an allowed figure: .html, .js …) is
@@ -325,8 +326,14 @@ export async function runPublish(i: PublishInput, w: WorkingSide, pub: PublicSid
     if (content === null) return { status: "stopped", reason: `Couldn't read ${e.path} to check it` };
     let text = "text" in content ? content.text : null;
     // Every SVG goes out as the clean copy rebuilt from what the check read (contract v3 §11.4, foundations loop
-    // round 4): a browser then reads exactly what the check read. An unsafe one stops the Publish below.
-    if (text !== null && isSvgPath(e.path)) text = cleanSvg(text) ?? text;
+    // round 4): a browser then reads exactly what the check read. Read once (audit r5 L2); an unsafe one stops the
+    // Publish below.
+    if (isSvgPath(e.path)) {
+      await new Promise((r) => setTimeout(r, 0)); // let other courses' work run between figures (audit r4 LOW-A)
+      const r = checkSvg(text ?? ("decoded" in content ? content.decoded : "") ?? "");
+      svgVerdicts.set(e.path, r.problems);
+      if (r.svg !== null) text = r.svg;
+    }
     // Text files carry their git blob id too, so stale-asset comparisons are blob to blob (G3 r3 M-b).
     working.set(e.path, text === null ? { blobSha: e.blobSha } : { text, blobSha: await gitBlobSha(text) });
     const key = unitKey(u);
@@ -334,13 +341,9 @@ export async function runPublish(i: PublishInput, w: WorkingSide, pub: PublicSid
     byUnit.set(key, [...(byUnit.get(key) ?? []), { path: e.path, text: text ?? ("decoded" in content ? content.decoded : null) }]);
   }
   // An unsafe SVG is never published (contract v3 §11.4): GitHub Pages sends no CSP, so the check is the protection.
-  for (const [k, { e }] of toRead.entries()) {
-    if (!isSvgPath(e.path)) continue;
-    await new Promise((r) => setTimeout(r, 0)); // let other courses' work run between checks (audit r4 LOW-A)
-    const content = contents[k]!;
-    const text = "text" in content ? content.text : "decoded" in content ? content.decoded : null;
-    const problems = text === null ? ["it isn't an SVG picture"] : svgProblems(text);
-    if (problems.length) return { status: "stopped", reason: `${e.path} can't be published: ${problems[0]}. Fix or remove it, then publish again.` };
+  for (const { e } of toRead) {
+    const problems = svgVerdicts.get(e.path);
+    if (problems?.length) return { status: "stopped", reason: `${e.path} can't be published: ${problems[0]}. Fix or remove it, then publish again.` };
   }
   const units = [...byUnit.keys()];
   const findings: Finding[] = [];
@@ -379,7 +382,8 @@ export async function runPublish(i: PublishInput, w: WorkingSide, pub: PublicSid
   const publishedMap = new Map(previously.filter((f) => fileKind(f.path) !== null).map((f) => [f.path, { blobSha: f.blobSha, unit: f.unit }]));
   for (const f of previously) if (fileKind(f.path) === null && !leftOut.includes(f.path)) leftOut.push(f.path);
   if (P !== null) {
-    const keptSvgs = previously.filter((f) => isSvgPath(f.path) && !working.has(f.path) && publishedMap.has(f.path));
+    // Every kept SVG, also those whose path exists at W (a held-back unit keeps its published blob; audit r5 M1).
+    const keptSvgs = previously.filter((f) => isSvgPath(f.path) && publishedMap.has(f.path));
     const svgTexts = await mapLimit(keptSvgs, READ_CONCURRENCY, (f) => pub.readText(P!, f.path));
     for (const [k, f] of keptSvgs.entries()) {
       const t = svgTexts[k];

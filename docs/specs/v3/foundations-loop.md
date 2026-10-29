@@ -157,3 +157,22 @@ content profile).
   - all 128 render pixel-identical in Chrome (control: one figure's original differs from itself unless rendering is given 2 s to settle).
 - **Residual risk:** a figure published before this change and kept unchanged while its chapter is held back is the original file. It passed today's check; it is replaced by its clean copy the next time its chapter is published.
 
+
+## Round 5 audit (2026-10-29)
+
+**The SVG boundary held.** The auditor found no input whose clean copy `xmllint` reads as containing a script, an event handler, `foreignObject`, an outside reference, or a `javascript:`/`data:` link. All 128 figures clean, pass again, are idempotent and are well-formed.
+
+**One HIGH, and it is a trust decision, not a defect in step 1:**
+- **H1:** raw HTML in Markdown reaches the published site. orz-markdown renders with `html: true` by family design ("the author is trusted", FC-07).
+- In v3, co-authors and the future agent write course Markdown and the owner or deputy publishes it, so a co-author (or a prompt-injected agent) can put a script on `<owner>.github.io`.
+- GenChem's Markdown uses only `<br>` (161 times), so restricting raw HTML would cost the real course nothing.
+- **Asked of the owner:** are co-authors and the agent trusted to write raw HTML?
+  - The recommendation is no: Publish renders course Markdown through an HTML allowlist, using orz-markdown's own tokens so the check and the renderer can't disagree, with a family request to orz-markdown to offer the allowlist itself.
+
+**Fixed:**
+- **M1:** kept SVGs are re-checked even when their path still exists at W.
+- **M2:** CSS checks run on every attribute value, so `u\72l(` and `image-set()` in presentation attributes are refused.
+- **L1:** the clean copy is always well formed: one root, a balanced element stack, unique attributes, no text outside the root, no `&#0;`.
+- **L2:** each SVG is read once per Publish, with a yield between figures.
+
+**Stop rule:** the SVG boundary and the rest of step 1 had no HIGH this round. Step 1 closes, except for H1, which waits for the owner's ruling.

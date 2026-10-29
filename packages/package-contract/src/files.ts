@@ -112,6 +112,12 @@ export function cleanSvg(text: string): string | null {
   return r.problems.length ? null : r.svg;
 }
 
+/** Both at once (one read): the problems, and the clean copy when there are none. */
+export function checkSvg(text: string): { problems: string[]; svg: string | null } {
+  const r = readSvg(text);
+  return { problems: r.problems, svg: r.problems.length ? null : r.svg };
+}
+
 const NAME = /^[A-Za-z_][\w.:-]*$/;
 const escText = (t: string) => t.replace(/&(?!(?:#\d+|#x[0-9a-fA-F]+|lt|gt|amp|quot|apos);)/g, "&amp;").replace(/>/g, "&gt;");
 const escAttr = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -132,11 +138,19 @@ function readSvg(text: string): { problems: string[]; svg: string } {
   let styleDepth = 0;
   let i = 0;
   let sawRoot = false;
+  let rootClosed = false;
+  const stack: string[] = []; // open elements: the clean copy is always well formed (audit r5 L1)
   let inStyle = false;
   let styleText = "";
   const fail = (why: string) => { out.add(why); };
   const isSpace = (c: string) => c === " " || c === "\n" || c === "\r" || c === "\t";
-  const textRun = (t: string) => { if (inStyle) styleText += t; if (sawRoot) parts.push(escText(t)); };
+  const textRun = (t: string) => {
+    if (inStyle) styleText += t;
+    if (!t.trim()) { if (sawRoot && !rootClosed) parts.push(t); return; }
+    if (!sawRoot || rootClosed) { fail("it has text outside the picture"); return; }
+    if (decodeRefs(t).includes("BADREF") || /&#0*;|&#x0*;|&#0+(?!\d)/i.test(t)) { fail("it has a malformed character reference"); return; }
+    parts.push(escText(t));
+  };
   while (i < n) {
     const lt = text.indexOf("<", i);
     if (lt < 0) { textRun(text.slice(i)); break; }
@@ -152,6 +166,7 @@ function readSvg(text: string): { problems: string[]; svg: string } {
       const end = text.indexOf("]]>", i + 9);
       if (end < 0) { fail("it isn't well formed"); break; }
       const inner = text.slice(i + 9, end);
+      if (!sawRoot || rootClosed) fail("it has text outside the picture");
       if (inStyle) styleText += inner;
       parts.push(inner.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"));
       i = end + 3;
@@ -193,12 +208,14 @@ function readSvg(text: string): { problems: string[]; svg: string } {
     if (!SVG_ELEMENTS.has(local)) {
       fail(local === "script" ? "it contains a script" : local === "foreignobject" ? "it embeds other content" : /^(animate|animatemotion|animatetransform|set)$/.test(local) ? "it animates a link" : `it contains a <${local}> element`);
     }
+    if (!closing && rootClosed) fail("it has more than one picture in it");
     if (!closing && !sawRoot) {
       sawRoot = true;
       if (local !== "svg") fail("it isn't an SVG picture");
     }
     // Attributes, until ">" (quoted values may hold ">").
     const attrs: string[] = [];
+    const seen = new Set<string>();
     let ended = false;
     while (j < n) {
       const c = text[j]!;
@@ -229,13 +246,16 @@ function readSvg(text: string): { problems: string[]; svg: string } {
         }
       }
       if (!aRaw || !NAME.test(aRaw) || !hasValue) { fail("it isn't well formed"); continue; }
+      if (seen.has(aRaw)) { fail("it isn't well formed"); continue; }
+      seen.add(aRaw);
       const decoded = decodeRefs(value);
       if (decoded.includes("BADREF")) { fail("it has a malformed character reference"); continue; }
       if (aName === "xmlns" || aName.startsWith("xmlns:")) { attrs.push(` ${aRaw}="${escAttr(decoded)}"`); continue; }
       const attr = aName.slice(aName.lastIndexOf(":") + 1);
       if (attr.startsWith("on")) { fail("it has an event handler"); continue; }
       // Decoded first: u&#114;l( is url( to a browser (audit r3 MEDIUM-1).
-      if (attr === "style" || /url\s*\(/i.test(decoded)) for (const p of cssProblems(value)) fail(p);
+      // Every value, not only those that read "url(": a CSS escape spells url( in fill, mask, filter… (audit r5 M2).
+      for (const p of cssProblems(value)) fail(p);
       if (LINK_ATTRS.has(attr)) {
         const link = linkOf(value);
         if (/(?:^|;)(?:javascript|vbscript):/.test(link)) fail("it links to a script");
@@ -247,6 +267,11 @@ function readSvg(text: string): { problems: string[]; svg: string } {
     if (!ended) { fail("it isn't well formed"); i = Math.max(j, i + 1); continue; }
     const selfClosing = !closing && text[j - 2] === "/";
     if (closing && attrs.length) fail("it isn't well formed");
+    if (closing) {
+      if (stack.pop() !== name) fail("it isn't well formed");
+      if (stack.length === 0) rootClosed = true;
+    } else if (!selfClosing) stack.push(name);
+    else if (stack.length === 0) rootClosed = true;
     parts.push(closing ? `</${name}>` : `<${name}${attrs.join("")}${selfClosing ? "/>" : ">"}`);
     if (local === "style") {
       // No style inside a style (audit r3 MEDIUM-1: an inner close used to end the check early).
@@ -256,6 +281,7 @@ function readSvg(text: string): { problems: string[]; svg: string } {
     i = j;
   }
   if (!sawRoot) fail("it isn't an SVG picture");
+  if (stack.length) fail("it isn't well formed");
   return { problems: [...out], svg: `<?xml version="1.0" encoding="UTF-8"?>\n${parts.join("").trim()}\n` };
 }
 
