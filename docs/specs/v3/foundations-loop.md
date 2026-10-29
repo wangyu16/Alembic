@@ -148,3 +148,12 @@ content profile).
 - **LOW-A:** many large crafted SVGs could hold the worker. Publish now yields between SVG checks. Door C's worst case (50 crafted 4 MB SVGs pushed by a collaborator, about 2.5 min) is accepted and recorded.
 
 **Pattern across rounds 1–4:** every HIGH since round 1 was in one place: deciding whether an SVG is safe by *reading* it, where the check and a browser can disagree. That race doesn't end by adding cases. Per the owner's standing preference (trust boundaries over endless hardening), the next step changes the boundary: Publish writes every SVG out again from what the check understood (allowlisted elements and attributes only, values escaped), so a disagreement can't carry anything through.
+
+**The boundary changed (2026-10-29, after round 4):**
+- **The change:** Publish now writes every SVG as `cleanSvg`: the reader that checks the file also writes it out again from what it read. Only allowlisted elements and attributes go out, every value re-escaped, with comments, the DOCTYPE and other declarations dropped. A browser then reads exactly what the check read.
+- **Verified on all 128 GenChem figures:**
+  - every clean copy passes the check again;
+  - every clean copy is well-formed XML for `xmllint`;
+  - all 128 render pixel-identical in Chrome (control: one figure's original differs from itself unless rendering is given 2 s to settle).
+- **Residual risk:** a figure published before this change and kept unchanged while its chapter is held back is the original file. It passed today's check; it is replaced by its clean copy the next time its chapter is published.
+

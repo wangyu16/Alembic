@@ -1,5 +1,6 @@
 /** G3 round-2 adversary probes (Publish job). Each `it` fails today. */
 import { describe, expect, it } from "vitest";
+import { cleanSvg } from "@alembic/package-contract";
 import { copyChecks } from "./copy-check";
 import { FakePublic, FakeStore, manifestJson, working } from "./publish-fakes";
 import { runPublish, type UnitCheck } from "./publish-job";
@@ -57,11 +58,11 @@ describe("G3r2: deleted assets (H3)", () => {
     await runPublish(input(), working(W1), pub, st, noChecks);
     const W2 = { ...W, "study-guide/atoms.md": "# Atoms v2", "concepts/atoms.md": "plan v2" }; // atoms kept (plan not approved), fig deleted
     await runPublish(input({ runId: id(2) }), working(W2), pub, st, noChecks);
-    expect(pub.file("assets/fig.svg")).toBe("<svg/>");
+    expect(pub.file("assets/fig.svg")).toBe(cleanSvg("<svg/>"));
     const W3 = { ...W2, "study-guide/gases.md": "# Gases v3" };
     await runPublish(input({ runId: id(3) }), working(W3), pub, st, noChecks);
     expect(pub.file("study-guide/atoms.md")).toContain("assets/fig.svg");
-    expect(pub.file("assets/fig.svg")).toBe("<svg/>"); // FAILS: dropped, the kept chapter's image breaks
+    expect(pub.file("assets/fig.svg")).toBe(cleanSvg("<svg/>")); // FAILS: dropped, the kept chapter's image breaks
   });
   it("a deleted asset is not kept because of a PASSING chapter's old published text", async () => {
     const pub = new FakePublic(); const st = new FakeStore();

@@ -3,6 +3,7 @@
  * the G3 round-1 findings (kept as regression tests; probes ported here).
  */
 import { describe, expect, it } from "vitest";
+import { cleanSvg } from "@alembic/package-contract";
 import { copyChecks, fingerprint } from "./copy-check";
 import { FakePublic, FakeStore, h, manifestJson, working } from "./publish-fakes";
 import { anywayKey, approvalKey, findingsDigest, READ_CONCURRENCY, runPublish, type PublishedRecord, type UnitCheck, type WorkingSide } from "./publish-job";
@@ -23,6 +24,13 @@ const approveAll = (st: FakeStore, files: Record<string, string>) => {
 };
 
 describe("runPublish", () => {
+  it("[K1.11] every SVG is published as the clean copy the check read: comments and declarations gone, values re-escaped", async () => {
+    const st = new FakeStore(); approveAll(st, W); const pub = new FakePublic();
+    const src = '<?xml version="1.0"?>\n<!-- made by a tool --><svg xmlns="http://www.w3.org/2000/svg" viewBox=\'0 0 1 1\'><path d="M0 0"/></svg>';
+    await runPublish(input(), working({ ...W, "assets/atoms/x.svg": src }), pub, st, noChecks);
+    expect(pub.file("assets/atoms/x.svg")).toBe('<?xml version="1.0" encoding="UTF-8"?>\n<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"><path d="M0 0"/></svg>\n');
+  });
+
   it("[K1.11] a file published before the safety rule leaves even when its chapter is held back (audit r4 MEDIUM-A)", async () => {
     const pub = new FakePublic(); const st = new FakeStore(); approveAll(st, W);
     await runPublish(input(), working(W), pub, st, noChecks);
@@ -300,7 +308,7 @@ describe("G3 round 1 (regression)", () => {
   it("H3 an asset deleted at W and used by no kept chapter leaves the public repo", async () => {
     const pub = new FakePublic(); const st = new FakeStore(); approveAll(st, W);
     await runPublish(input(), working({ ...W, "assets/fig.svg": "<svg/>" }), pub, st, noChecks);
-    expect(pub.file("assets/fig.svg")).toBe("<svg/>");
+    expect(pub.file("assets/fig.svg")).toBe(cleanSvg("<svg/>"));
     await runPublish(input({ runId: id(2) }), working(W), pub, st, noChecks);
     expect(pub.file("assets/fig.svg")).toBeUndefined();
   });
@@ -311,7 +319,7 @@ describe("G3 round 1 (regression)", () => {
     await runPublish(input(), working(W1), pub, st, noChecks);
     const W2 = { ...W, "study-guide/atoms.md": "# Atoms v2", "concepts/atoms.md": "plan v2" }; // atoms kept, fig deleted
     await runPublish(input({ runId: id(2) }), working(W2), pub, st, noChecks);
-    expect(pub.file("assets/fig.svg")).toBe("<svg/>");
+    expect(pub.file("assets/fig.svg")).toBe(cleanSvg("<svg/>"));
   });
 
   it("M2 a text file that can't be read stops the run instead of skipping the checks", async () => {

@@ -95,17 +95,38 @@ function cssProblems(css: string): string[] {
 }
 
 /**
- * Problems that make an SVG unsafe to serve or publish (contract v3 §11.4); empty = safe.
- *
+ * Problems that make an SVG unsafe to serve or publish (contract v3 §11.4); empty = safe. See `readSvg`.
+ */
+export function svgProblems(text: string): string[] {
+  return readSvg(text).problems;
+}
+
+/**
+ * The SVG as Publish writes it (contract v3 §11.4, foundations loop round 4): rebuilt from what the check read —
+ * allowlisted elements and attributes only, every value re-escaped, comments and declarations dropped — so a
+ * browser reads exactly what the check read and no disagreement between them can carry anything through.
+ * Null when the SVG isn't safe.
+ */
+export function cleanSvg(text: string): string | null {
+  const r = readSvg(text);
+  return r.problems.length ? null : r.svg;
+}
+
+const NAME = /^[A-Za-z_][\w.:-]*$/;
+const escText = (t: string) => t.replace(/&(?!(?:#\d+|#x[0-9a-fA-F]+|lt|gt|amp|quot|apos);)/g, "&amp;").replace(/>/g, "&gt;");
+const escAttr = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+/**
  * One left-to-right pass over the text, the way an XML reader sees it (foundations audit r2: regexes missed tags
  * whose prefix starts with a non-ASCII letter, and backtracked for hours on crafted input). Linear time. Every
  * element and end tag is checked against an allowlist of local names (a prefix can't disguise `script`); comments
- * and CDATA are skipped as XML skips them; processing instructions other than the opening `<?xml …?>`, entity and
- * attribute-list declarations, and an internal DOCTYPE subset are refused; attribute values are decoded before
- * their links are checked, and any url() must point inside the figure.
+ * and CDATA are read as XML reads them; only the standard XML declaration and DOCTYPE forms are accepted, matched
+ * in full; attribute values are decoded before their links are checked, and any url() must point inside the
+ * figure. Alongside, it writes the clean copy `cleanSvg` returns.
  */
-export function svgProblems(text: string): string[] {
+function readSvg(text: string): { problems: string[]; svg: string } {
   const out = new Set<string>();
+  const parts: string[] = [];
   const n = text.length;
   const lead = text.search(/\S/); // where the document starts: the only place for <?xml …?> (computed once: audit r3 HIGH-2)
   let styleDepth = 0;
@@ -115,21 +136,24 @@ export function svgProblems(text: string): string[] {
   let styleText = "";
   const fail = (why: string) => { out.add(why); };
   const isSpace = (c: string) => c === " " || c === "\n" || c === "\r" || c === "\t";
+  const textRun = (t: string) => { if (inStyle) styleText += t; if (sawRoot) parts.push(escText(t)); };
   while (i < n) {
     const lt = text.indexOf("<", i);
-    if (lt < 0) { if (inStyle) styleText += text.slice(i); break; }
-    if (inStyle) styleText += text.slice(i, lt);
+    if (lt < 0) { textRun(text.slice(i)); break; }
+    textRun(text.slice(i, lt));
     i = lt;
     if (text.startsWith("<!--", i)) {
       const end = text.indexOf("-->", i + 4);
       if (end < 0) { fail("it isn't well formed"); break; }
-      i = end + 3;
+      i = end + 3; // comments are dropped from the clean copy
       continue;
     }
     if (text.startsWith("<![CDATA[", i)) {
       const end = text.indexOf("]]>", i + 9);
       if (end < 0) { fail("it isn't well formed"); break; }
-      if (inStyle) styleText += text.slice(i + 9, end);
+      const inner = text.slice(i + 9, end);
+      if (inStyle) styleText += inner;
+      parts.push(inner.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"));
       i = end + 3;
       continue;
     }
@@ -164,7 +188,7 @@ export function svgProblems(text: string): string[] {
     const nameStart = j;
     while (j < n && !isSpace(text[j]!) && text[j] !== "/" && text[j] !== ">" && text[j] !== "<") j++;
     const name = text.slice(nameStart, j);
-    if (!name) { fail("it isn't well formed"); i = j; continue; }
+    if (!name || !NAME.test(name)) { fail("it isn't well formed"); i = Math.max(j, i + 1); continue; }
     const local = name.slice(name.lastIndexOf(":") + 1).toLowerCase();
     if (!SVG_ELEMENTS.has(local)) {
       fail(local === "script" ? "it contains a script" : local === "foreignobject" ? "it embeds other content" : /^(animate|animatemotion|animatetransform|set)$/.test(local) ? "it animates a link" : `it contains a <${local}> element`);
@@ -174,6 +198,7 @@ export function svgProblems(text: string): string[] {
       if (local !== "svg") fail("it isn't an SVG picture");
     }
     // Attributes, until ">" (quoted values may hold ">").
+    const attrs: string[] = [];
     let ended = false;
     while (j < n) {
       const c = text[j]!;
@@ -182,10 +207,13 @@ export function svgProblems(text: string): string[] {
       if (c === "<") break; // a new tag before this one ended: malformed (checked below)
       const aStart = j;
       while (j < n && !isSpace(text[j]!) && text[j] !== "=" && text[j] !== ">" && text[j] !== "/" && text[j] !== "<") j++;
-      const aName = text.slice(aStart, j).toLowerCase();
+      const aRaw = text.slice(aStart, j);
+      const aName = aRaw.toLowerCase();
       while (j < n && isSpace(text[j]!)) j++;
       let value = "";
+      let hasValue = false;
       if (text[j] === "=") {
+        hasValue = true;
         j++;
         while (j < n && isSpace(text[j]!)) j++;
         const q = text[j];
@@ -200,21 +228,26 @@ export function svgProblems(text: string): string[] {
           value = text.slice(vStart, j);
         }
       }
-      if (!aName || aName === "xmlns" || aName.startsWith("xmlns:")) continue;
+      if (!aRaw || !NAME.test(aRaw) || !hasValue) { fail("it isn't well formed"); continue; }
+      const decoded = decodeRefs(value);
+      if (decoded.includes("BADREF")) { fail("it has a malformed character reference"); continue; }
+      if (aName === "xmlns" || aName.startsWith("xmlns:")) { attrs.push(` ${aRaw}="${escAttr(decoded)}"`); continue; }
       const attr = aName.slice(aName.lastIndexOf(":") + 1);
       if (attr.startsWith("on")) { fail("it has an event handler"); continue; }
       // Decoded first: u&#114;l( is url( to a browser (audit r3 MEDIUM-1).
-      const decoded = decodeRefs(value);
-      if (decoded.includes("BADREF")) { fail("it has a malformed character reference"); continue; }
-      if (attr === "style" || /url\s*\(/i.test(decoded)) { for (const p of cssProblems(value)) fail(p); if (attr === "style") continue; }
-      if (!LINK_ATTRS.has(attr)) continue;
-      const link = linkOf(value);
-      if (/(?:^|;)(?:javascript|vbscript):/.test(link)) fail("it links to a script");
-      else if (link.startsWith("data:") && !/^data:image\/(?:png|jpeg|gif|webp)[;,]/.test(link)) fail("it links to embedded data");
-      else if (/^(?:[a-z][a-z0-9+.-]*:)?\/\//.test(link) || /^(?:https?|ftp|file):/.test(link)) fail("it refers to something outside the course");
+      if (attr === "style" || /url\s*\(/i.test(decoded)) for (const p of cssProblems(value)) fail(p);
+      if (LINK_ATTRS.has(attr)) {
+        const link = linkOf(value);
+        if (/(?:^|;)(?:javascript|vbscript):/.test(link)) fail("it links to a script");
+        else if (link.startsWith("data:") && !/^data:image\/(?:png|jpeg|gif|webp)[;,]/.test(link)) fail("it links to embedded data");
+        else if (/^(?:[a-z][a-z0-9+.-]*:)?\/\//.test(link) || /^(?:https?|ftp|file):/.test(link)) fail("it refers to something outside the course");
+      }
+      attrs.push(` ${aRaw}="${escAttr(decoded)}"`);
     }
     if (!ended) { fail("it isn't well formed"); i = Math.max(j, i + 1); continue; }
-    const selfClosing = text[j - 2] === "/";
+    const selfClosing = !closing && text[j - 2] === "/";
+    if (closing && attrs.length) fail("it isn't well formed");
+    parts.push(closing ? `</${name}>` : `<${name}${attrs.join("")}${selfClosing ? "/>" : ">"}`);
     if (local === "style") {
       // No style inside a style (audit r3 MEDIUM-1: an inner close used to end the check early).
       if (closing) { styleDepth--; if (styleDepth <= 0) { styleDepth = 0; for (const p of cssProblems(styleText)) fail(p); inStyle = false; styleText = ""; } }
@@ -223,7 +256,7 @@ export function svgProblems(text: string): string[] {
     i = j;
   }
   if (!sawRoot) fail("it isn't an SVG picture");
-  return [...out];
+  return { problems: [...out], svg: `<?xml version="1.0" encoding="UTF-8"?>\n${parts.join("").trim()}\n` };
 }
 
 /** Problems with bytes declared as `kind` (§11.4); empty = they are what they claim. */

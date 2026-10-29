@@ -17,6 +17,7 @@ import {
   WorkingManifestV3Schema,
   type Role,
   type WorkingManifestV3,
+  cleanSvg,
   fileKind,
   isSvgPath,
   svgProblems,
@@ -322,7 +323,10 @@ export async function runPublish(i: PublishInput, w: WorkingSide, pub: PublicSid
   for (const [k, { e, u }] of toRead.entries()) {
     const content = contents[k]!;
     if (content === null) return { status: "stopped", reason: `Couldn't read ${e.path} to check it` };
-    const text = "text" in content ? content.text : null;
+    let text = "text" in content ? content.text : null;
+    // Every SVG goes out as the clean copy rebuilt from what the check read (contract v3 §11.4, foundations loop
+    // round 4): a browser then reads exactly what the check read. An unsafe one stops the Publish below.
+    if (text !== null && isSvgPath(e.path)) text = cleanSvg(text) ?? text;
     // Text files carry their git blob id too, so stale-asset comparisons are blob to blob (G3 r3 M-b).
     working.set(e.path, text === null ? { blobSha: e.blobSha } : { text, blobSha: await gitBlobSha(text) });
     const key = unitKey(u);
