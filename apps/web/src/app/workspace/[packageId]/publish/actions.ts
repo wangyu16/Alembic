@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { can, newDocId, WorkingManifestV3Schema, type Role } from "@alembic/package-contract";
-import { enqueueSync, firstStudyGuide, SqlQueueStore, SyncRefused } from "@alembic/package-ops";
+import { chapterPartPath, chapterPartText, enqueueSync, SqlQueueStore, SyncRefused } from "@alembic/package-ops";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { directDb } from "@/lib/db";
 import { courseRepo, textVersion } from "@/lib/course-v3";
@@ -74,9 +74,9 @@ async function startPlan(packageId: string, slug: string): Promise<void> {
   const ch = m.chapters.find((x) => x.slug === slug);
   if (!ch) back(packageId, "That chapter isn't in the course.");
   const files = [];
-  for (const [space, label] of [["concepts", "Concept map"], ["assessment-support", "Assessment guide"]] as const) {
-    const path = `${space}/${slug}.md`;
-    if ((await c!.repo.readFile(head, path)) === null) files.push({ path, baseVersion: null, text: firstStudyGuide(`${label}: ${ch!.title}`, newDocId()) });
+  for (const part of ["concepts", "assessment-support"] as const) {
+    const path = chapterPartPath(part, slug);
+    if ((await c!.repo.readFile(head, path)) === null) files.push({ path, baseVersion: null, text: chapterPartText(part, ch!.title, newDocId()) });
   }
   if (files.length === 0) back(packageId);
   try {

@@ -2,7 +2,8 @@
  * Create a v3 course's working repo (A1/A3; package-contract-v3 §1, R26):
  * one private repository, generated from the private template into the
  * owner's GitHub account through the owner's App installation, then one
- * commit with the v3 manifest and a first chapter. Every path is checked
+ * commit with the v3 manifest and its first chapters (all at once for
+ * someone who knows their table of contents). Every path is checked
  * against the working-repo rule before it is written.
  */
 import {
@@ -12,6 +13,9 @@ import {
   WorkingManifestV3Schema,
   type WorkingManifestV3,
 } from "@alembic/package-contract";
+import { addChapters, CHAPTER_PARTS, chapterPartPath, chapterPartText } from "./chapter-parts";
+
+export { chapterSlug, firstStudyGuide } from "./chapter-parts";
 
 export interface CourseRepoDeps {
   generateFromTemplate(i: { templateOwner: string; templateRepo: string; owner: string; name: string; private: boolean; description: string }): Promise<{ owner: string; repo: string }>;
@@ -26,7 +30,10 @@ export interface NewCourse {
   templateOwner: string;
   privateTemplate: string;
   license: WorkingManifestV3["license"];
-  firstChapter?: string;    // title of the first chapter
+  /** Chapter titles in order (blank ones skipped); none gives one "Introduction" chapter. */
+  chapters?: string[];
+  /** Start every chapter's five parts at once (otherwise only its study guide). */
+  startParts?: boolean;
 }
 
 export function repoNameFor(title: string, packageId: string): string {
@@ -34,34 +41,19 @@ export function repoNameFor(title: string, packageId: string): string {
   return `${slug}-${packageId.slice(-6)}-private`;
 }
 
-export function chapterSlug(title: string): string {
-  return title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60) || "chapter-1";
-}
-
-/** The first chapter's study guide, with its FC-18 header. */
-export function firstStudyGuide(chapterTitle: string, uid: string): string {
-  const title = chapterTitle.replace(/\}\}/g, "} }").replace(/[\r\n]+/g, " ");
-  return `{{nyml\nkind: document\nformat: 1\ntitle: ${title}\nuid: ${uid}\n}}\n\n# ${title}\n\nStart writing here.\n`;
-}
-
 export async function createCourseRepoV3(n: NewCourse, deps: CourseRepoDeps): Promise<{
   packageId: string; manifest: WorkingManifestV3; repo: { owner: string; name: string }; head: string; files: string[];
 }> {
   const packageId = newPackageId(n.title);
-  const chapterTitle = n.firstChapter?.trim() || "Introduction";
-  const slug = chapterSlug(chapterTitle);
-  const manifest = WorkingManifestV3Schema.parse({
-    schemaVersion: 3,
-    packageId,
-    title: n.title,
-    license: n.license,
-    createdAt: new Date().toISOString(),
-    chapters: [{ slug, title: chapterTitle, mode: "draft" }],
-  });
-  const files = [
-    { path: "alembic.json", content: `${JSON.stringify(manifest, null, 2)}\n` },
-    { path: `study-guide/${slug}.md`, content: firstStudyGuide(chapterTitle, newDocId()) },
-  ];
+  const empty = WorkingManifestV3Schema.parse({ schemaVersion: 3, packageId, title: n.title, license: n.license, createdAt: new Date().toISOString(), chapters: [] });
+  const titles = (n.chapters ?? []).filter((t) => t.trim());
+  const { manifest, added } = addChapters(empty, titles.length ? titles : ["Introduction"]);
+  const files = [{ path: "alembic.json", content: `${JSON.stringify(manifest, null, 2)}\n` }];
+  for (const ch of added) {
+    for (const { part } of CHAPTER_PARTS) {
+      if (n.startParts || part === "study-guide") files.push({ path: chapterPartPath(part, ch.slug), content: chapterPartText(part, ch.title, newDocId()) });
+    }
+  }
   for (const f of files) assertPathAllowedInWorkingRepo(f.path);
 
   const coords = await deps.generateFromTemplate({

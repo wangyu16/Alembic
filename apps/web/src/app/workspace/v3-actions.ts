@@ -26,7 +26,9 @@ export async function createCourseV3Action(formData: FormData): Promise<void> {
   if (!user) redirect("/signin");
   const title = String(formData.get("title") ?? "").trim().slice(0, 200);
   const license = LicenseSchema.safeParse(formData.get("license"));
-  const firstChapter = String(formData.get("chapter") ?? "").trim().slice(0, 200);
+  // One title per line: someone who knows their table of contents sets up the whole course at once (RC.26).
+  const chapters = String(formData.get("chapters") ?? "").split(/\r?\n/).map((t) => t.trim()).filter(Boolean).slice(0, 30);
+  const startParts = formData.get("start") === "on";
   if (!title || !license.success) redirect("/workspace?v3=missing");
 
   const cfg = githubConfig();
@@ -45,7 +47,7 @@ export async function createCourseV3Action(formData: FormData): Promise<void> {
   try {
     const client = await clientForInstallation(cfg, installationId);
     created = await createCourseRepoV3(
-      { title, owner, templateOwner: cfg.templateOwner, privateTemplate: cfg.privateTemplate, license: license.data, firstChapter },
+      { title, owner, templateOwner: cfg.templateOwner, privateTemplate: cfg.privateTemplate, license: license.data, chapters, startParts },
       {
         generateFromTemplate: (i) => client.generateFromTemplate(i),
         waitForHead: async (coords) => {

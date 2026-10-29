@@ -7,6 +7,11 @@ import { clientForCourse } from "@/lib/github";
 import { v3Enabled } from "@/lib/db";
 import { kindOfPath } from "@/lib/orz-editor/kit";
 import { courseOutline } from "@/lib/course-outline";
+import { can, type Role } from "@alembic/package-contract";
+import { CHAPTER_PARTS } from "@alembic/package-ops";
+import { SubmitButton } from "../../submit-button";
+import { RefreshWhile } from "../publish/refresh-while";
+import { addChaptersAction, startPartsAction } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -18,8 +23,9 @@ const ROLE_LINE: Record<string, string> = {
 };
 
 /** A v3 course's home: its chapters and their documents, straight from the working repo (RC.14). */
-async function CourseHomeV3Inner({ params }: { params: Promise<{ packageId: string }> }) {
+async function CourseHomeV3Inner({ params, searchParams }: { params: Promise<{ packageId: string }>; searchParams: Promise<{ m?: string }> }) {
   const { packageId } = await params;
+  const { m: message } = await searchParams;
   if (!v3Enabled()) redirect(`/workspace/${packageId}`);
   const supabase = await createSupabaseServerClient();
   const {
@@ -43,6 +49,10 @@ async function CourseHomeV3Inner({ params }: { params: Promise<{ packageId: stri
     if (githubBusy(e)) throw e; // the busy page, not a course with no chapters (RC.12)
     /* an unreadable manifest: everything shows under course files */
   }
+  // Changes on their way into the course (chapters being added, parts being started): the page refreshes until they land.
+  const { data: open } = await supabase.from("write_queue").select("id").eq("package_id", packageId).in("status", ["queued", "processing", "retry"]).limit(1);
+  const mayAddChapters = can(role as Role, "edit.course-files");
+  const partOf = new Map(CHAPTER_PARTS.map((x) => [x.label, x.part]));
   const o = courseOutline(Array.isArray(chapters) ? chapters : [], docs);
   const href = (p: string) => `/workspace/${packageId}/doc/${p.split("/").map(encodeURIComponent).join("/")}`;
   const list = (items: Array<{ label: string; path: string }>) => (
@@ -61,6 +71,8 @@ async function CourseHomeV3Inner({ params }: { params: Promise<{ packageId: stri
         <Link className="underline" href={`/workspace/${packageId}/people`}>People</Link>
         <Link prefetch={false} className="underline" href={`/workspace/${packageId}/publish`}>Publish</Link>
       </nav>
+      <RefreshWhile active={(open ?? []).length > 0} everyMs={3000} />
+      {message ? <p className="mt-3 rounded border border-sky-300 bg-sky-50 p-2 text-sm text-sky-950" role="status">{message}</p> : null}
       <ol className="mt-6 divide-y rounded border" data-testid="chapters">
         {o.chapters.map((ch, k) => (
           <li key={ch.slug} className="p-3">
@@ -69,11 +81,40 @@ async function CourseHomeV3Inner({ params }: { params: Promise<{ packageId: stri
               {ch.draft ? <span className="ml-2 rounded bg-gray-200 px-1.5 py-0.5 text-xs font-normal text-gray-800">Draft</span> : null}
             </h2>
             {list([...ch.parts, ...ch.more])}
-            {ch.missing.length ? <p className="mt-1 text-xs text-gray-600">Not written yet: {ch.missing.join(", ")}</p> : null}
+            {ch.missing.length ? (
+              <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-gray-700" data-testid="missing">
+                <span>Not started:</span>
+                {ch.missing.map((label) => (
+                  <form key={label} action={startPartsAction.bind(null, packageId, ch.slug, partOf.get(label)!)}>
+                    <SubmitButton className="underline" pending={`Starting ${label}…`}>{`Start ${label.toLowerCase()}`}</SubmitButton>
+                  </form>
+                ))}
+                {ch.missing.length > 1 ? (
+                  <form action={startPartsAction.bind(null, packageId, ch.slug, "all")}>
+                    <SubmitButton className="font-medium underline" pending="Starting…">Start all {ch.missing.length}</SubmitButton>
+                  </form>
+                ) : null}
+              </div>
+            ) : null}
           </li>
         ))}
       </ol>
       {o.chapters.length === 0 && docs.length === 0 ? <p className="mt-6">No documents yet.</p> : null}
+      {mayAddChapters ? (
+        <details className="mt-6 rounded border p-3" data-testid="add-chapters" open={o.chapters.length <= 1}>
+          <summary className="cursor-pointer font-medium">Add chapters</summary>
+          <form action={addChaptersAction.bind(null, packageId)} className="mt-3 space-y-3">
+            <label className="block text-sm">
+              Chapter titles, one per line (paste a whole table of contents if you like). They are added at the end, as drafts.
+              <textarea name="titles" rows={4} required className="input mt-1 w-full font-normal" placeholder={"Atoms and Molecules\nStoichiometry\nGases"} />
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" name="start" defaultChecked /> Also start each chapter&apos;s five parts (concept map, study guide, slides, assessment guide, practice)
+            </label>
+            <SubmitButton className="btn btn-primary" pending="Adding…">Add</SubmitButton>
+          </form>
+        </details>
+      ) : null}
       {o.course.length ? (
         <details className="mt-6 rounded border p-3">
           <summary className="cursor-pointer font-medium">Course-wide files ({o.course.length})</summary>

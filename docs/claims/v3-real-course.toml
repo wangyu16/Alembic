@@ -241,3 +241,15 @@ bound_to = [
   "apps/web/src/lib/orz-editor/download-figures.test.ts :: a deck shown away from the course points its figures at their absolute signed addresses (nothing embedded); figures in ~~~ code blocks are left alone",
 ]
 note = "Audit r3 HIGH-2 (stored XSS across members through Present). Audit r4 M-2: the deck is posted as multipart with CDN delivery and linked (not embedded) figures, so a figure-heavy deck stays under the size cap. Open: a course over 80 MB is read blob by blob (audit r3 MEDIUM-6; a streaming archive parse would fix it); signed image addresses outlive a member's removal by up to 48 h (L11, accepted)."
+
+[[claim]]
+id = "RC.26"
+claim = "A course is built in the browser without the agent: chapters are added (many at once, as drafts, slugs never colliding), and each missing part starts from a text its editor accepts; someone who knows their table of contents gets every chapter, and optionally every part, when the course is created."
+oracle = "conformance"
+bound_to = [
+  "packages/package-ops/src/chapter-parts.test.ts :: several chapters are added at once, in order, as drafts, with slugs that never collide (existing, repeated, reserved, non-Latin titles)",
+  "packages/package-ops/src/chapter-parts.test.ts :: a pasted list longer than the limit is refused, not cut silently",
+  "apps/web/src/lib/chapter-parts.lint.test.ts :: every part starts as a document its editor accepts (no lint errors), at the path the course page expects",
+  "packages/package-ops/src/course-create-v3.test.ts :: someone who knows their table of contents gets every chapter, and with startParts every part, in the first commit",
+]
+note = "Owner, 2026-10-29: before the guides; experienced users must not walk through the basic steps each time (one-step skeleton at creation, many chapters at once, start all parts)."

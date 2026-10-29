@@ -108,13 +108,21 @@ export default async function WorkspacePage({ searchParams }: { searchParams: Pr
               <span className="ml-2 text-sm text-muted">Finds the Alembic App on your own GitHub account, or takes you to install it.</span>
             </form>
           ) : null}
-          <form action={createCourseV3Action} className="mt-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
-            <input name="title" required placeholder="Course title" className="input flex-1" />
-            <input name="chapter" placeholder="First chapter (optional)" className="input flex-1" />
-            <select name="license" defaultValue="CC-BY-4.0" className="input">
-              {LICENSES.map((l) => <option key={l} value={l}>{LICENSE_OPTION_LABEL[l]}</option>)}
-            </select>
-            <SubmitButton className="btn btn-primary" pending="Creating… (about 15 seconds)">Create course</SubmitButton>
+          <form action={createCourseV3Action} className="mt-4 flex flex-col gap-3">
+            <div className="flex flex-col gap-3 sm:flex-row">
+              <input name="title" required placeholder="Course title" className="input flex-1" />
+              <select name="license" defaultValue="CC-BY-4.0" className="input">
+                {LICENSES.map((l) => <option key={l} value={l}>{LICENSE_OPTION_LABEL[l]}</option>)}
+              </select>
+            </div>
+            <label className="text-sm">
+              Chapters, one per line (optional; you can add more later)
+              <textarea name="chapters" rows={3} className="input mt-1 w-full" placeholder={"Introduction\nAtoms and Molecules"} />
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" name="start" /> Start every chapter&apos;s five parts now (concept map, study guide, slides, assessment guide, practice)
+            </label>
+            <div><SubmitButton className="btn btn-primary" pending="Creating… (about 15 seconds)">Create course</SubmitButton></div>
           </form>
         </section>
       ) : null}
