@@ -69,3 +69,31 @@ Blind acceptance spec: [docs/blind-critique/v3-workspace-spec.md](../../blind-cr
 - a workshop contact for try mode's "Join a workshop".
 
 **Not Alembic's (family):** A6, the slides card following the preview's scroll, is orz-slides behaviour.
+
+## Round 3 (2026-10-29)
+
+**Independent audit of rounds 1–2:** 2 HIGH, 7 MEDIUM, 3 LOW. All are fixed or recorded (Alembic `131082b`).
+
+- **RC.17 (HIGH):**
+  - **Was:** unsent text on a device was silently dropped when the document was reopened after the course moved on. The same root (the editor's base never moved forward after its own sync) caused false "someone else changed this" conflicts in long typing sessions.
+  - **Now:**
+    - the device record knows whether the course has its text;
+    - unsent text wins on reopening and is sent on its own base;
+    - our own echo moves the base forward;
+    - keepalive is measured in bytes;
+    - an ended session says "sign in again".
+- **RC.18 (HIGH):** the archive was unbounded against the worker's 512 MB. `treeReader` lists the tree once and uses one archive up to 80 MB, or blob-by-blob reads above that. Every archived file is checked against its blob id, and the read retries. Publish, the website build and Door C use it.
+- **RC.19 (budget):**
+  - images are addressed by blob id and cacheable for a day;
+  - landed syncs aren't read back;
+  - the Publish page caches by commit;
+  - live: a Publish plus its website used about 13 requests.
+- **RC.20:** members see the queue's status, not each other's texts (migration 0060).
+- **Door C:** an undo never turns a failed read into a delete.
+- **RC.12 gaps:** actions, reads and the course page now handle rate limits. Pages don't sleep through GitHub's wait, and times are given in the course's time zone.
+- **Publish page:** while a status change is pending, no other is offered; a refused one is reported.
+
+**Open, by choice:**
+- binary undo by Door C (it restores text only);
+- a request ledger per installation;
+- a real-browser test of the editor's sync paths. That is covered for now by the blind re-verifier and live checks.
