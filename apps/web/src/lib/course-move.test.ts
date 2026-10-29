@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { upgradeText } from "orz-slides";
-import { addHeader, findCollisions, isLegacyDeck, planFile } from "./course-move";
+import { addHeader, findCollisions, isLegacyDeck, permalinkIds, planFile, relativePath, rewritePermalinks } from "./course-move";
 
 describe("planFile", () => {
   it("maps the 0.x trees onto the v3 working tree", () => {
@@ -50,5 +50,17 @@ describe("0.x decks (real course: GenChem)", () => {
     expect(isLegacyDeck(up)).toBe(false);
     expect(up.match(/<!-- slide/g)?.length).toBe(2);
     expect(up).toMatch(/^\{\{nyml\n[\s\S]*title: Chapter 5: Gases\n[\s\S]*ratio: 16:9\n[\s\S]*\}\}/);
+  });
+});
+
+describe("0.x permalinks (real course: GenChem's 157 figures)", () => {
+  it("[RC.10] figures named by 0.x permalinks become relative course paths, keeping the size hint; unknown ids are listed, never dropped", () => {
+    const text = "![Barometer](https://alembic.orz.how/d/doc-aefg2idae3c9 =820x)\n![Gone](https://alembic.orz.how/d/doc-zzzzzzzzzzzz)\n![Again](https://alembic.orz.how/d/doc-aefg2idae3c9)";
+    expect(permalinkIds(text)).toEqual(["doc-aefg2idae3c9", "doc-zzzzzzzzzzzz"]);
+    const r = rewritePermalinks(text, "study-guide/gases.md", new Map([["doc-aefg2idae3c9", "assets/barometer.svg"]]));
+    expect(r.text).toBe("![Barometer](../assets/barometer.svg =820x)\n![Gone](https://alembic.orz.how/d/doc-zzzzzzzzzzzz)\n![Again](../assets/barometer.svg)");
+    expect(r.unresolved).toEqual(["doc-zzzzzzzzzzzz"]);
+    expect(relativePath("study-guide/chapters/gases/notes.md", "study-guide/chapters/gases/fig.png")).toBe("fig.png");
+    expect(relativePath("README.md", "assets/x.png")).toBe("assets/x.png");
   });
 });

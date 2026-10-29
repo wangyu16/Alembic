@@ -5,6 +5,8 @@ import { normalizePath } from "@alembic/package-contract";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { v3Enabled } from "@/lib/db";
 import { courseRepo, recordDocVersion } from "@/lib/course-v3";
+import { assetUrlMap } from "@/lib/course-assets";
+import { can, type Role } from "@alembic/package-contract";
 import { kindOfPath } from "@/lib/orz-editor/kit";
 import { DocEditor } from "./doc-editor";
 
@@ -31,15 +33,18 @@ export default async function DocPage({ params }: { params: Promise<{ packageId:
   const text = await c.repo.readFile(head, path);
   if (text === null) redirect(`/workspace/${packageId}/course`);
   const version = await recordDocVersion(packageId, path, text, head);
+  // The course's images, for the editor's preview (one tree listing; RC.9).
+  const tree = await c.client.listTreeEntries({ owner: c.owner, repo: c.name }, head).catch(() => ({ entries: [] as Array<{ path: string; type: string }> }));
+  const assets = assetUrlMap(packageId, tree.entries.filter((e) => e.type === "blob").map((e) => e.path), can(role as Role, "edit.private"));
 
   return (
     <main className="flex h-[calc(100vh-1rem)] flex-col">
       <div className="flex items-center gap-3 border-b px-3 py-2 text-sm">
-        <Link href={`/workspace/${packageId}/course`} className="underline">← Course</Link>
+        <Link prefetch={false} href={`/workspace/${packageId}/course`} className="underline">← Course</Link>
         <span className="font-medium">{path}</span>
       </div>
       <div className="min-h-0 flex-1">
-        <DocEditor kind={kind} packageId={packageId} path={path} text={text} version={version} isPrivate={path.startsWith("private/")} nonce={(await headers()).get("x-nonce") ?? undefined} />
+        <DocEditor kind={kind} packageId={packageId} path={path} text={text} version={version} isPrivate={path.startsWith("private/")} assets={[...assets]} nonce={(await headers()).get("x-nonce") ?? undefined} />
       </div>
     </main>
   );

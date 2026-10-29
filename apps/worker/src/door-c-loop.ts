@@ -15,7 +15,7 @@
 import { createHash } from "node:crypto";
 import { CompareIncompleteError, GitHubClient, GitHubError, installationTokenSource, type RepoCoords } from "@alembic/github-bridge";
 import { editActionForPath } from "@alembic/package-contract";
-import { classifyOutside, outsideCommits, SqlQueueStore, undoKey, type SqlClient } from "@alembic/package-ops";
+import { classifyOutside, mapLimit, outsideCommits, READ_CONCURRENCY, SqlQueueStore, undoKey, type SqlClient } from "@alembic/package-ops";
 
 export interface DoorCConfig { sql: SqlClient; appId: string; privateKey: string; log?: (m: string) => void }
 
@@ -69,7 +69,7 @@ async function handlePush(cfg: DoorCConfig, ev: Ev): Promise<void> {
   const coords: RepoCoords = { owner: owner!, repo: name! };
   const client = new GitHubClient(installationTokenSource({ appId: cfg.appId, privateKey: cfg.privateKey, installationId: Number(course.installation_id), repositories: [name!] }));
   if (ev.forced && (await restoreAfterForcePush(cfg, course.id, client, coords, ev))) return;
-  const changed = await client.compareCommits(coords, ev.before_sha, ev.after_sha);
+  const changed = await changedBetween(client, coords, ev.before_sha, ev.after_sha);
   if (changed.length === 0) return;
   const { entries } = await client.listTreeEntries(coords, ev.after_sha);
   const modeOf = new Map(entries.map((e) => [e.path, e.type === "commit" ? "160000" : e.mode]));
@@ -94,19 +94,19 @@ async function handlePush(cfg: DoorCConfig, ev: Ev): Promise<void> {
     }, null);
   }
 
-  for (const path of verdict.edits) {
-    const status = changed.find((c) => c.path === path)?.status;
-    if (status !== "removed" && TEXT.test(path)) {
-      const text = await client.getFileAtRef(coords, path, ev.after_sha);
-      if (text !== null) {
-        await sql.query(`insert into public.doc_versions (package_id, path, version, commit_sha) values ($1, $2, $3, $4) on conflict do nothing`,
-          [course.id, path, sha256(text), ev.after_sha]);
-      }
+  // The new versions are the merge bases for later syncs (read 8 at a time).
+  const statusOf = new Map(changed.map((c) => [c.path, c.status]));
+  const texts = verdict.edits.filter((p) => statusOf.get(p) !== "removed" && TEXT.test(p));
+  const read = await mapLimit(texts, READ_CONCURRENCY, (p) => client.getFileAtRef(coords, p, ev.after_sha!));
+  for (const [k, path] of texts.entries()) {
+    const text = read[k];
+    if (text != null) {
+      await sql.query(`insert into public.doc_versions (package_id, path, version, commit_sha) values ($1, $2, $3, $4) on conflict do nothing`,
+        [course.id, path, sha256(text), ev.after_sha]);
     }
-    await raise(sql, course.id, `edited:${path}:${ev.after_sha}`, {
-      title: `${path} was ${status === "removed" ? "deleted" : status === "added" ? "added" : "changed"} on GitHub by ${who}`,
-      pusher: who, commit: ev.after_sha, materials: editActionForPath(path) === "edit.materials",
-    }, path);
+  }
+  for (const item of editedItems(verdict.edits, statusOf, who, ev.after_sha!)) {
+    await raise(sql, course.id, item.dedupe, { ...item.payload, pusher: who, commit: ev.after_sha }, item.target);
   }
 
   if (verdict.inform.length) {
@@ -115,6 +115,55 @@ async function handlePush(cfg: DoorCConfig, ev: Ev): Promise<void> {
       pusher: who, materials: false,
     }, null);
   }
+}
+
+/**
+ * What a push changed. GitHub's compare lists at most 300 files: a bigger push
+ * (a course moved in by hand) is compared tree to tree instead, so its
+ * forbidden content is still undone and it is never retried forever (RC.7).
+ */
+export async function changedBetween(
+  client: Pick<GitHubClient, "compareCommits" | "listTreeEntries">, coords: RepoCoords, before: string, after: string,
+): Promise<Array<{ path: string; status: "added" | "modified" | "removed" }>> {
+  try {
+    return await client.compareCommits(coords, before, after);
+  } catch (e) {
+    if (!(e instanceof CompareIncompleteError)) throw e;
+    const blobs = async (sha: string) => {
+      const t = await client.listTreeEntries(coords, sha);
+      if (t.truncated) throw new Error("the tree is too large to compare");
+      return new Map(t.entries.filter((x) => x.type !== "tree").map((x) => [x.path, `${x.mode}:${x.sha}`]));
+    };
+    const [a, b] = await Promise.all([blobs(before), blobs(after)]);
+    const out: Array<{ path: string; status: "added" | "modified" | "removed" }> = [];
+    for (const [p, v] of b) if (!a.has(p)) out.push({ path: p, status: "added" }); else if (a.get(p) !== v) out.push({ path: p, status: "modified" });
+    for (const p of a.keys()) if (!b.has(p)) out.push({ path: p, status: "removed" });
+    return out;
+  }
+}
+
+/** Above this many edited files, one push raises one item, not one per file (RC.7). */
+export const EDITED_ITEMS_MAX = 20;
+
+/** The "Edited elsewhere" items for a push's ordinary edits. */
+export function editedItems(edits: readonly string[], statusOf: ReadonlyMap<string, string>, who: string, after: string):
+  Array<{ dedupe: string; target: string | null; payload: Record<string, unknown> }> {
+  const verb = (p: string) => (statusOf.get(p) === "removed" ? "deleted" : statusOf.get(p) === "added" ? "added" : "changed");
+  if (edits.length <= EDITED_ITEMS_MAX) {
+    return edits.map((path) => ({
+      dedupe: `edited:${path}:${after}`, target: path,
+      payload: { title: `${path} was ${verb(path)} on GitHub by ${who}`, materials: editActionForPath(path) === "edit.materials" },
+    }));
+  }
+  const shown = edits.slice(0, EDITED_ITEMS_MAX).map((p) => `${p} (${verb(p)})`).join("; ");
+  return [{
+    dedupe: `edited-many:${after}`, target: null,
+    payload: {
+      title: `${edits.length} files were changed on GitHub by ${who}`,
+      detail: `${shown}; and ${edits.length - EDITED_ITEMS_MAX} more.`.slice(0, 900),
+      materials: edits.every((p) => editActionForPath(p) === "edit.materials"),
+    },
+  }];
 }
 
 async function raise(sql: SqlClient, packageId: string, dedupe: string, payload: Record<string, unknown>, target: string | null, interrupt = false) {

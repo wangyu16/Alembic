@@ -75,12 +75,32 @@ export interface MatchRun {
  * consecutive shingle hits are joined into runs of n + k - 1 words.
  */
 export function matchRuns(publicText: string, fp: Fingerprint): MatchRun[] {
-  const ws = words(publicText);
-  const set = new Set(fp.hashes);
+  return runsIn(prepare(publicText), fp.sourceId, fp.n, new Set(fp.hashes));
+}
+
+/** A public file's words and, per run length, the hash of each run (computed once per file). */
+interface Prepared { ws: string[]; byN: Map<number, string[]> }
+function prepare(text: string): Prepared {
+  return { ws: words(text), byN: new Map() };
+}
+function hashesOf(p: Prepared, n: number): string[] {
+  let h = p.byN.get(n);
+  if (!h) {
+    h = [];
+    for (let i = 0; i + n <= p.ws.length; i++) h.push(fnv1a(p.ws.slice(i, i + n).join(" ")));
+    p.byN.set(n, h);
+  }
+  return h;
+}
+
+function runsIn(p: Prepared, sourceId: string, n: number, set: ReadonlySet<string>): MatchRun[] {
+  const ws = p.ws;
+  const hs = hashesOf(p, n);
+  const fp = { sourceId, n };
   const runs: MatchRun[] = [];
   let start = -1;
   for (let i = 0; i + fp.n <= ws.length + 1; i++) {
-    const hit = i + fp.n <= ws.length && set.has(fnv1a(ws.slice(i, i + fp.n).join(" ")));
+    const hit = i < hs.length && set.has(hs[i]!);
     if (hit && start < 0) start = i;
     if (!hit && start >= 0) {
       const length = i - 1 - start + fp.n;
@@ -104,11 +124,17 @@ export interface CopyFinding {
  * limit blocks; so does a per-source total above 300 words in the file.
  */
 export function checkCopying(path: string, text: string, fps: readonly Fingerprint[], opts: { quoteLimit?: number; perSourceTotal?: number } = {}): CopyFinding[] {
+  return copyingIn(path, prepare(text), fps.map((fp) => ({ sourceId: fp.sourceId, n: fp.n, set: new Set(fp.hashes) })), opts);
+}
+
+type Sets = ReadonlyArray<{ sourceId: string; n: number; set: ReadonlySet<string> }>;
+
+function copyingIn(path: string, p: Prepared, fps: Sets, opts: { quoteLimit?: number; perSourceTotal?: number } = {}): CopyFinding[] {
   const limit = opts.quoteLimit ?? QUOTE_LIMIT_WORDS;
   const total = opts.perSourceTotal ?? 300;
   const out: CopyFinding[] = [];
   for (const fp of fps) {
-    const runs = matchRuns(text, fp);
+    const runs = runsIn(p, fp.sourceId, fp.n, fp.set);
     const long = runs.filter((r) => r.length > limit);
     for (const r of long) {
       out.push({ path, check: "copying", severity: "always", sourceId: fp.sourceId, message: `A passage of ${r.length} words matches a source ("${r.excerpt}…"); quotations are limited to ${limit} words` });
@@ -127,12 +153,14 @@ export function checkCopying(path: string, text: string, fps: readonly Fingerpri
  * the pinned working tree and never leave the check.
  */
 export function checkAnswerKeys(path: string, text: string, privateTexts: ReadonlyArray<{ path: string; text: string }>, run = ANSWER_KEY_RUN_WORDS): CopyFinding[] {
+  return answerKeysIn(path, prepare(text), privateTexts.map((p) => ({ sourceId: p.path, n: run, set: shingles(words(p.text), run) })), run);
+}
+
+function answerKeysIn(path: string, prepared: Prepared, keys: Sets, run: number): CopyFinding[] {
   const out: CopyFinding[] = [];
-  const pub = words(text);
-  if (pub.length < run) return out;
-  for (const p of privateTexts) {
-    const fp = { sourceId: p.path, n: run, hashes: [...shingles(words(p.text), run)] };
-    const runs = matchRuns(text, fp);
+  if (prepared.ws.length < run) return out;
+  for (const k of keys) {
+    const runs = runsIn(prepared, k.sourceId, k.n, k.set);
     if (runs.length) {
       out.push({ path, check: "answer-key", severity: "always", message: `${runs.length} passage(s) of ${run}+ words also appear in a private instructor file` });
     }
@@ -154,23 +182,34 @@ export function checkAnswerKeys(path: string, text: string, privateTexts: Readon
  */
 export function copyChecks(privateTexts: ReadonlyArray<{ path: string; text: string }>, fingerprints: readonly Fingerprint[]): UnitCheck[] {
   // Every file that has text is checked; only files read as binary (text === null) are skipped (G3 H4).
-  const textual = (_p: string) => true;
+  // The private and source shingle sets are built once for the whole run, and each public file's
+  // words and run hashes once per file (review RC.6: a real course was quadratic and stalled the worker).
+  const keys: Sets = privateTexts.map((p) => ({ sourceId: p.path, n: ANSWER_KEY_RUN_WORDS, set: shingles(words(p.text), ANSWER_KEY_RUN_WORDS) }));
+  const sources: Sets = fingerprints.map((fp) => ({ sourceId: fp.sourceId, n: fp.n, set: new Set(fp.hashes) }));
+  const prepared = new Map<string, Prepared>();
+  const prep = (f: { path: string; text: string }) => {
+    let p = prepared.get(f.path);
+    if (!p) { p = prepare(f.text); prepared.set(f.path, p); }
+    return p;
+  };
   return [
     {
       id: "answer-key",
       async run(unit, files) {
+        if (!keys.length) return [];
         return files
-          .filter((f) => f.text !== null && textual(f.path))
-          .flatMap((f) => checkAnswerKeys(f.path, f.text!, privateTexts))
+          .filter((f): f is { path: string; text: string } => f.text !== null)
+          .flatMap((f) => answerKeysIn(f.path, prep(f), keys, ANSWER_KEY_RUN_WORDS))
           .map((x) => ({ unit, path: x.path, check: x.check, severity: x.severity, message: x.message }));
       },
     },
     {
       id: "copying",
       async run(unit, files) {
+        if (!sources.length) return [];
         return files
-          .filter((f) => f.text !== null && textual(f.path))
-          .flatMap((f) => checkCopying(f.path, f.text!, fingerprints))
+          .filter((f): f is { path: string; text: string } => f.text !== null)
+          .flatMap((f) => copyingIn(f.path, prep(f), sources))
           .map((x) => ({ unit, path: x.path, check: x.check, severity: x.severity, message: x.message }));
       },
     },

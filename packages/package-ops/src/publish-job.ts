@@ -52,7 +52,21 @@ export function classifyBytes(bytes: Uint8Array): FileContent {
   return { binary: true, decoded: bestEffortDecode(bytes) };
 }
 
+/** Known media and archive formats, by their first bytes. */
+const MAGIC: ReadonlyArray<readonly number[]> = [
+  [0x89, 0x50, 0x4e, 0x47], // PNG
+  [0xff, 0xd8, 0xff], // JPEG
+  [0x47, 0x49, 0x46, 0x38], // GIF
+  [0x52, 0x49, 0x46, 0x46], // RIFF (WebP, WAV, AVI)
+  [0x25, 0x50, 0x44, 0x46], // PDF
+  [0x50, 0x4b, 0x03, 0x04], // ZIP (docx, pptx, xlsx)
+];
+const isMedia = (b: Uint8Array) => MAGIC.some((m) => m.every((x, i) => b[i] === x));
+
 function bestEffortDecode(b: Uint8Array): string {
+  // A real image, PDF or archive: only its printable text runs (where hidden text would sit), not its
+  // bytes as words, which made the checks slow on real courses (RC.6) and found nothing.
+  if (isMedia(b)) return (new TextDecoder("windows-1252").decode(b).match(/[\x20-\x7e]{12,}/g) ?? []).join("\n");
   const le = b[0] === 0xff && b[1] === 0xfe;
   const be = b[0] === 0xfe && b[1] === 0xff;
   if (le || be) return new TextDecoder(le ? "utf-16le" : "utf-16be").decode(b.subarray(2));
@@ -142,7 +156,12 @@ export const READ_CONCURRENCY = 8;
 export async function mapLimit<T, R>(items: readonly T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
   const out = new Array<R>(items.length);
   let next = 0;
-  const lane = async () => { for (let k = next++; k < items.length; k = next++) out[k] = await fn(items[k]!); };
+  let failed = false; // after one failure, no lane starts another item (the run is over anyway)
+  const lane = async () => {
+    for (let k = next++; k < items.length && !failed; k = next++) {
+      try { out[k] = await fn(items[k]!); } catch (e) { failed = true; throw e; }
+    }
+  };
   await Promise.all(Array.from({ length: Math.min(limit, items.length) }, lane));
   return out;
 }

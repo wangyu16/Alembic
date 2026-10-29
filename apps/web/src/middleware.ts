@@ -75,8 +75,10 @@ export async function middleware(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   if (!user && request.nextUrl.pathname.startsWith("/workspace")) {
+    // Come back to the same page after signing in (a session that ended mid-work); /signin re-validates it.
     const signin = new URL("/signin", request.url);
-    return NextResponse.redirect(signin);
+    signin.searchParams.set("next", `${request.nextUrl.pathname}${request.nextUrl.search}`);
+    return withCsp(NextResponse.redirect(signin));
   }
 
   // Ban check (docs/specs/user-governance.md §2.4). A ban blocks new sign-ins

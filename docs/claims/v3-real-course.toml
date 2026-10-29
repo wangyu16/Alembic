@@ -42,7 +42,7 @@ id = "RC.4"
 claim = "No link to a course document is prefetched (each prefetch would render a document page on the server with its own GitHub reads; a 19-chapter course home has ~100 such links)."
 oracle = "conformance"
 bound_to = [
-  "apps/web/src/app/workspace/doc-links.scan.test.ts :: every <Link> to a course document turns prefetching off",
+  "apps/web/src/app/workspace/doc-links.scan.test.ts :: every <Link> to a course document, a Publish page or a course page turns prefetching off",
 ]
 note = "Found live: the GenChem course home took ~10 s to settle and 9 of 95 document opens timed out during a crawl, while server time per page was 2-3 s."
 
@@ -51,4 +51,50 @@ id = "RC.5"
 claim = "Every document of the real course (95: 19 chapters x 5 parts) opens in its editor with no page error and no CSP report."
 oracle = "human"
 bound_to = []
-note = "Live crawl /tmp/pgcheck/genchem-crawl.cjs on testing; r1 before fixes: 86/95 clean, 9 timeouts (not reproducible one by one). Re-run after RC.4."
+note = "Live crawl /tmp/pgcheck/genchem-crawl.cjs on testing. r1 before fixes: 86/95 clean, 9 timeouts. After RC.4: 90/95, 5 practice pages timing out at network-idle, each opening in ~3.5 s alone (3 tries): not reproduced (docs/specs/v3/real-course-loop.md)."
+
+[[claim]]
+id = "RC.6"
+claim = "The Publish copy checks at real-course size (95 documents of 4,000 words, 188 images of 300 KB, 19 answer keys) finish in bounded time and still catch a copied answer, including one hidden in an image's text."
+oracle = "scenario"
+bound_to = [
+  "packages/package-ops/src/copy-check.scale.test.ts :: 95 documents of 4,000 words and 188 images of 300 KB against 19 answer keys run in bounded time, and still catch a copied answer, also one hidden in an image",
+]
+note = "Audit r1 F1 (HIGH). Before: key shingles rebuilt per public file and images checked as windows-1252 noise; the scale run passed 15 min unfinished. After: 10.4 s locally (incl. generating 56 MB of test images)."
+
+[[claim]]
+id = "RC.7"
+claim = "Door C handles a push GitHub's compare can't list (more than 300 files) by comparing trees, so forbidden content in it is still undone, and a push of many edits raises one item, not one per file."
+oracle = "conformance"
+bound_to = [
+  "apps/worker/src/door-c-loop.test.ts :: a push of more than 300 files is compared tree to tree (GitHub's compare can't list it), so forbidden content in it is still found",
+  "apps/worker/src/door-c-loop.test.ts :: more than EDITED_ITEMS_MAX edited files raise one item naming the count, not one item per file",
+]
+note = "Audit r1 F2 (HIGH): before, such a push stayed unprocessed and was retried every 5 s forever; a manual course move of 300+ files triggers it."
+
+[[claim]]
+id = "RC.8"
+claim = "A Publish page render reads the course plan's versions from one tree listing; each plan file is read once ever (cached by its blob id), not on every render."
+oracle = "conformance"
+bound_to = [
+  "apps/web/src/lib/course-v3-versions.test.ts :: a 19-chapter page makes one tree listing per render; each file is read once ever (cached by its blob id)",
+]
+note = "Audit r1 F3: ~40 GitHub calls per render, re-rendered every 3 s while publishing."
+
+[[claim]]
+id = "RC.9"
+claim = "A course's own images show in the workspace editor: each is served to the course's members by a members-only address (instructor-only files only to those allowed; SVG sandboxed, no sniffing)."
+oracle = "conformance"
+bound_to = [
+  "apps/web/src/lib/course-assets.test.ts :: every course image gets a members-only address; instructor-only files only for those allowed; other files none",
+]
+note = "Audit r1 F4: the editor was never given asset addresses, so every relative image was broken. Live check on the GenChem copy after relinking its figures (RC.10)."
+
+[[claim]]
+id = "RC.10"
+claim = "Moving a 0.x course with --resolve-permalinks turns every figure named by a 0.x permalink into a relative path to the course's own file (matched by content); unmatched ones are listed, never dropped."
+oracle = "scenario"
+bound_to = [
+  "apps/web/src/lib/course-move.test.ts :: figures named by 0.x permalinks become relative course paths, keeping the size hint; unknown ids are listed, never dropped",
+]
+note = "Audit r1 F5. GenChem: 157 permalinks in 38 documents, 157 matched; the testing copy was relinked through the sync queue."

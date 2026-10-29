@@ -75,3 +75,35 @@ export function findCollisions(actions: MoveAction[]): Array<{ to: string; from:
   for (const a of actions) if (a.kind !== "skip") by.set(a.to, [...(by.get(a.to) ?? []), a.from]);
   return [...by].filter(([, f]) => f.length > 1).map(([to, from]) => ({ to, from }));
 }
+
+/** A 0.x permalink to a course file (the old site resolved it; the moved course must not depend on it). */
+const PERMALINK = /https:\/\/alembic\.orz\.how\/d\/(doc-[0-9a-z]{10,32})/g;
+
+/** The 0.x permalink ids a text uses. */
+export function permalinkIds(text: string): string[] {
+  return [...new Set([...text.matchAll(PERMALINK)].map((m) => m[1]!))];
+}
+
+/** `to` as a path relative to the folder of `fromDoc` (both course paths). */
+export function relativePath(fromDoc: string, to: string): string {
+  const from = fromDoc.split("/").slice(0, -1);
+  const target = to.split("/");
+  let i = 0;
+  while (i < from.length && i < target.length - 1 && from[i] === target[i]) i++;
+  return [...Array(from.length - i).fill(".."), ...target.slice(i)].join("/") || to;
+}
+
+/**
+ * Rewrite 0.x permalinks to relative course paths (`ids` maps a permalink id
+ * to the file it names in the moved tree); ids not in the map are left as
+ * they are and returned, for a person to look at.
+ */
+export function rewritePermalinks(text: string, docPath: string, ids: ReadonlyMap<string, string>): { text: string; unresolved: string[] } {
+  const unresolved = new Set<string>();
+  const out = text.replace(PERMALINK, (whole, id: string) => {
+    const to = ids.get(id);
+    if (!to) { unresolved.add(id); return whole; }
+    return relativePath(docPath, to);
+  });
+  return { text: out, unresolved: [...unresolved] };
+}

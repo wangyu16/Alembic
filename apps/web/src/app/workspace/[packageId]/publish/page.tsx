@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { can, WorkingManifestV3Schema, type Role } from "@alembic/package-contract";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { v3Enabled } from "@/lib/db";
-import { courseRepo, textVersion } from "@/lib/course-v3";
+import { courseRepo, versionsAt } from "@/lib/course-v3";
 import { requestPublishAction, setChapterModeAction, startPlanAction } from "./actions";
 import { SubmitButton } from "../../submit-button";
 import { RefreshWhile } from "./refresh-while";
@@ -38,18 +38,25 @@ export default async function PublishPage({ params, searchParams }: { params: Pr
   const c = await courseRepo(packageId);
   if (!c) return <main className="mx-auto max-w-2xl p-6"><p>This course's repository can't be reached right now.</p></main>;
   const head = await c.repo.head();
-  const manifest = WorkingManifestV3Schema.parse(JSON.parse((await c.repo.readFile(head, "alembic.json")) ?? "null"));
+  let manifest: ReturnType<typeof WorkingManifestV3Schema.parse>;
+  try {
+    manifest = WorkingManifestV3Schema.parse(JSON.parse((await c.repo.readFile(head, "alembic.json")) ?? "null"));
+  } catch {
+    return <main className="mx-auto max-w-2xl p-6"><p>The course&apos;s settings file (alembic.json) can&apos;t be read, so it can&apos;t be published until it is fixed.</p></main>;
+  }
   const approved = new Set((approvals ?? []).map((a) => `${a.part_path as string}@${a.version as string}`));
 
-  const chapters = await Promise.all(manifest.chapters.map(async (ch) => {
-    const parts = await Promise.all(["concepts", "assessment-support"].map(async (space) => {
+  // Plan versions from one tree listing, cached by blob id (RC.8): a warm render reads no plan file.
+  const planPaths = manifest.chapters.flatMap((ch) => [`concepts/${ch.slug}.md`, `assessment-support/${ch.slug}.md`]);
+  const versions = await versionsAt(c.client, { owner: c.owner, repo: c.name }, head, planPaths);
+  const chapters = manifest.chapters.map((ch) => {
+    const parts = ["concepts", "assessment-support"].map((space) => {
       const path = `${space}/${ch.slug}.md`;
-      const text = await c.repo.readFile(head, path);
-      const version = text === null ? null : textVersion(text);
-      return { path, version, present: text !== null, approved: version !== null && approved.has(`${path}@${version}`) };
-    }));
+      const version = versions.get(path) ?? null;
+      return { path, version, present: version !== null, approved: version !== null && approved.has(`${path}@${version}`) };
+    });
     return { ...ch, parts };
-  }));
+  });
 
   const last = requests?.[0] as { id: string; status: string; outcome: Outcome | null; finished_at: string | null } | undefined;
   const busy = last?.status === "queued" || last?.status === "running";
@@ -66,7 +73,7 @@ export default async function PublishPage({ params, searchParams }: { params: Pr
   return (
     <main className="mx-auto max-w-3xl p-6">
       <RefreshWhile active={busy || siteBuilding} everyMs={busy ? 3000 : 10_000} />
-      <p className="text-sm"><Link href={`/workspace/${packageId}/course`}>← {(course?.title as string | undefined) ?? "Course"}</Link></p>
+      <p className="text-sm"><Link prefetch={false} href={`/workspace/${packageId}/course`}>← {(course?.title as string | undefined) ?? "Course"}</Link></p>
       <h1 className="mt-2 text-2xl font-semibold">Publish</h1>
       <p className="mt-1 text-sm text-gray-600">
         Publishing copies the chapters that are ready to the course's public copy
@@ -129,7 +136,7 @@ export default async function PublishPage({ params, searchParams }: { params: Pr
                     ) : toApprove.length === 0 ? "Approved" : canApprove ? (
                       <label className="flex items-start gap-1">
                         <input type="checkbox" name="approve" value={toApprove.map((p) => `${p.path}@${p.version}`).join("|")} className="mt-1" />
-                        <span>Approve the course plan as it is now ({ch.parts.map((p) => <Link key={p.path} prefetch={false} className="underline" href={`/workspace/${packageId}/doc/${p.path}`}>{p.path.split("/")[0] === "concepts" ? "concept map" : "assessment guide"}</Link>).reduce<React.ReactNode[]>((a, x, i) => (i ? [...a, " and ", x] : [x]), [])})</span>
+                        <span>Approve the course plan as it is now ({ch.parts.map((p) => <Link key={p.path} prefetch={false} className="underline" href={`/workspace/${packageId}/doc/${p.path.split("/").map(encodeURIComponent).join("/")}`}>{p.path.split("/")[0] === "concepts" ? "concept map" : "assessment guide"}</Link>).reduce<React.ReactNode[]>((a, x, i) => (i ? [...a, " and ", x] : [x]), [])})</span>
                       </label>
                     ) : "Waiting for the owner or deputy"}
                   </td>

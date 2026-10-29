@@ -1,14 +1,15 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { EmbeddedEditor, type EmbeddedEditorHandle } from "@/lib/orz-editor/embedded-editor";
 import type { OrzKind } from "@/lib/orz-editor/kit";
 import { browserSupabase } from "@/lib/supabase/browser";
 import { mintUidAction, readCourseTextAction, readVersionAction, syncDocAction } from "./actions";
 
-export function DocEditor(p: { kind: OrzKind; packageId: string; path: string; text: string; version: string; isPrivate: boolean; nonce?: string }) {
+export function DocEditor(p: { kind: OrzKind; packageId: string; path: string; text: string; version: string; isPrivate: boolean; nonce?: string; assets?: Array<[string, string]> }) {
   const ed = useRef<EmbeddedEditorHandle>(null);
   const others = usePresence(p.packageId, p.path);
+  const assetMap = useMemo(() => new Map(p.assets ?? []), [p.assets]);
 
   // Live updates (A8): a new version of this document (a co-author's sync, an edit on GitHub) comes in while it is open.
   useEffect(() => {
@@ -51,6 +52,7 @@ export function DocEditor(p: { kind: OrzKind; packageId: string; path: string; t
       baseVersion={p.version}
       isPrivate={p.isPrivate}
       {...(p.nonce ? { nonce: p.nonce } : {})}
+      assetUrls={assetMap}
       readCourseText={(path) => readCourseTextAction(p.packageId, path)}
       mintUid={() => mintUidAction()}
       sync={(a) => syncDocAction(a)}

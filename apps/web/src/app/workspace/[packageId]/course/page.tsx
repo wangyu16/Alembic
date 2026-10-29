@@ -42,7 +42,7 @@ export default async function CourseHomeV3({ params }: { params: Promise<{ packa
       <nav className="mt-2 flex gap-4 text-sm">
         <Link className="underline" href={`/workspace/${packageId}/needs-you`}>Needs you</Link>
         <Link className="underline" href={`/workspace/${packageId}/people`}>People</Link>
-        <Link className="underline" href={`/workspace/${packageId}/publish`}>Publish</Link>
+        <Link prefetch={false} className="underline" href={`/workspace/${packageId}/publish`}>Publish</Link>
       </nav>
       {[...groups].map(([top, list]) => (
         <section key={top} className="mt-6">

@@ -113,7 +113,11 @@ async function buildOne(cfg: SiteBuildConfig, run: { id: string; package_id: str
   const total = blobs.reduce((n, e) => n + (e.size ?? 0), 0);
   const tooBig = blobs.find((e) => (e.size ?? 0) > SITE_IN.maxFileBytes);
   if (tree.truncated || blobs.length > SITE_IN.maxFiles || total > SITE_IN.maxTotalBytes || tooBig) {
-    await mark(cfg.sql, run.id, "site-failed", { error: tooBig ? `${tooBig.path} is too large for the website` : "The course is too large for one website build" });
+    const mb = (n: number) => `${Math.round(n / 1e5) / 10} MB`;
+    await mark(cfg.sql, run.id, "site-failed", {
+      error: tooBig ? `${tooBig.path} is too large for the website (${mb(tooBig.size ?? 0)}; the limit is ${mb(SITE_IN.maxFileBytes)} per file)`
+        : `The course is too large for one website build (${blobs.length} files, ${mb(total)}; the limits are ${SITE_IN.maxFiles} files and ${mb(SITE_IN.maxTotalBytes)})`,
+    });
     return "input too large";
   }
   const bytes = await mapLimit(blobs, READ_CONCURRENCY, (e) => client.getBlob(coords, e.sha));
