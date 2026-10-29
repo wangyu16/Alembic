@@ -230,9 +230,9 @@ note = "Blind r2 B4 trap, critic #7, #8. Fresh re-verifier (round 3)."
 
 [[claim]]
 id = "RC.25"
-claim = "Presenting slides from the workspace never runs course content as Alembic: the deck plays in a sandboxed frame without Alembic's origin, the tab has no opener."
+claim = "Presenting slides from the workspace never runs course content as Alembic: the deck is served to a member's same-site post as its own document under a sandbox policy (opaque origin, no opener), and it still plays."
 oracle = "conformance"
 bound_to = [
-  "apps/web/src/lib/orz-editor/download-figures.test.ts :: the deck runs in a sandboxed frame without Alembic's origin; the page around it holds no script of the deck",
+  "apps/web/src/app/workspace/[packageId]/present/route.test.ts :: the deck is served to a member's same-site post as its own sandboxed document (no Alembic origin); other sites and non-members get nothing",
 ]
 note = "Audit r3 HIGH-2 (stored XSS across members through Present). Open: a course over 80 MB is read blob by blob (audit r3 MEDIUM-6; a streaming archive parse would fix it); signed image addresses outlive a member's removal by up to 48 h (L11, accepted)."

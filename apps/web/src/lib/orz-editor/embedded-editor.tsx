@@ -15,7 +15,7 @@ import { IndexedDbDraftStore, draftKey, requestPersistentStorage, resumeFrom, ty
 import { diffEdit, loadKit, type OrzEditor, type OrzKind } from "./kit";
 import { mergeRemote } from "./merge";
 import { makeHooks, resolveCoursePath } from "./hooks";
-import { assembleDownload, embedFigures, sandboxedPage } from "./download";
+import { assembleDownload, embedFigures } from "./download";
 
 export interface EmbeddedEditorProps {
   kind: OrzKind;
@@ -193,14 +193,17 @@ export const EmbeddedEditor = forwardRef<EmbeddedEditorHandle, EmbeddedEditorPro
   const present = async () => {
     const e = editor.current;
     if (!e) return;
-    const tab = window.open("", "_blank"); // opened at the click, so the browser allows it
-    if (tab) tab.opener = null;
     const kit = await loadKit(p.kind);
     const html = await kit.assemble(await embedFigures(e.getText(), (t) => resolveCoursePath(p.docPath, t), (path) => p.assetUrls?.get(path)), { delivery: "inline" });
-    // The deck runs sandboxed (audit r3 HIGH-2): course content never runs as Alembic.
-    const url = URL.createObjectURL(new Blob([sandboxedPage(html, p.docPath.split("/").pop() ?? "Slides")], { type: "text/html" }));
-    if (tab) tab.location.href = url; else window.open(url, "_blank", "noopener");
-    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    // The deck goes to the Present route, which serves it sandboxed (RC.25): it plays, but course content
+    // never runs as Alembic. A form post opens it in a new tab with no link back to this page.
+    const form = Object.assign(document.createElement("form"), { method: "POST", action: `/workspace/${encodeURIComponent(p.packageId)}/present`, target: "_blank", rel: "noopener" });
+    const field = Object.assign(document.createElement("textarea"), { name: "html", value: html });
+    form.append(field);
+    form.style.display = "none";
+    document.body.append(form);
+    form.submit();
+    form.remove();
   };
 
   /** Download (K4 step 4): the current text as a self-contained file that opens and edits itself in a browser. */
