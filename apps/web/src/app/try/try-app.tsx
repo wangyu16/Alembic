@@ -131,8 +131,8 @@ export function TryApp() {
           <h2 className="text-xl font-semibold">Use it for real</h2>
           <p>Real courses are made with you approving each step, with your own sources, kept in your GitHub account and published as an open course website.</p>
           <ul className="list-disc pl-6">
-            <li>Join a workshop: the best way to start (ask the Alembic team for the next date).</li>
-            <li><Link className="underline" href="/guide">Read the guide</Link> to explore on your own.</li>
+            <li><Link className="underline" href="/guide/start">Quick start</Link>: your first hour, step by step. The <Link className="underline" href="/guide">full guide</Link> covers everything else.</li>
+            <li>Questions, or interested in a workshop (planned, not yet scheduled)? <Link className="underline" href="/contact?from=/try">Write to us</Link>.</li>
             <li><Link className="underline" href="/signin">Sign in with GitHub</Link> to make your first course.</li>
           </ul>
         </section>
