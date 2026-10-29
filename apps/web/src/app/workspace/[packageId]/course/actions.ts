@@ -66,7 +66,7 @@ export async function addChaptersAction(packageId: string, form: FormData): Prom
       payload: { files, summary: `Added ${next.added.length === 1 ? `chapter “${next.added[0]!.title}”` : `${next.added.length} chapters`}` },
     });
     const n = next.added.length;
-    back(packageId, `${n === 1 ? "The chapter is" : `${n} chapters are`} being added${start ? " with their parts" : ""}; ${n === 1 ? "it appears" : "they appear"} here in a few seconds.`);
+    back(packageId, `${n === 1 ? "The chapter is" : `${n} chapters are`} being added${start ? (n === 1 ? " with its parts" : " with their parts") : ""}; ${n === 1 ? "it appears" : "they appear"} here in a few seconds.`);
   });
 }
 
