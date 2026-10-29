@@ -23,6 +23,7 @@ bound_to = [
   "packages/package-ops/src/course-committer.test.ts :: text with a script can't be saved to an SVG path, and text can't be saved to a picture's path",
   "apps/web/src/lib/upload.test.ts :: the bytes must be what the name says, and an SVG must be safe",
   "packages/package-ops/src/door-c-content.test.ts :: an unsafe SVG or a file whose bytes don't match its kind, pushed on GitHub, is undone",
+  "packages/package-ops/src/course-committer.test.ts :: Door C's undo puts back what the course had even if today's check would refuse it (the rest of the undo isn't lost)",
 ]
 note = "Built: checks on upload and on every committed text write; the asset route already serves nosniff + a sandbox CSP. Door C undoes unsafe pushed SVGs and mismatched bytes. Not yet: the check at Publish."
 
@@ -53,6 +54,7 @@ claim = "private/instructor/<name>.md can be created and edited by edit.private 
 oracle = "conformance"
 bound_to = [
   "packages/package-contract/src/profile/profile.test.ts :: instructor documents are writable by edit.private roles; the template's private/README.md and the licence files by nobody",
+  "apps/web/src/lib/upload.test.ts :: a figure added from an instructor-only document is stored privately, never in the published figures folder",
 ]
 
 [[claim]]

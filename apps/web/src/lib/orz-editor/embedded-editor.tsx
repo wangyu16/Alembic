@@ -194,12 +194,13 @@ export const EmbeddedEditor = forwardRef<EmbeddedEditorHandle, EmbeddedEditorPro
               if (file.size > MAX_UPLOAD_BYTES) throw new Error("The file is larger than 4 MB. Make it smaller and try again.");
               const folder = activeProfile.figureFolder(c.docPath);
               const clean = file.name.toLowerCase().replace(/[^a-z0-9.]+/g, "-").replace(/^[-.]+|-+$/g, "") || "figure";
-              let name = clean;
-              for (let n = 2; assets.has(`${folder}/${name}`); n++) name = clean.replace(/(\.[a-z0-9]+)?$/, `-${n}$1`);
+              // A short random suffix: two people adding "diagram.png" to one chapter never collide (round 1 audit M3).
+              const tag = Math.random().toString(36).slice(2, 7);
+              const name = clean.replace(/(\.[a-z0-9]+)?$/, `-${tag}$1`);
               const path = `${folder}/${name}`;
               const res = await fetch(`/workspace/${encodeURIComponent(c.packageId)}/upload`, {
                 method: "POST",
-                headers: { "x-alembic-path": encodeURIComponent(path), "content-type": file.type || "application/octet-stream" },
+                headers: { "x-alembic-path": encodeURIComponent(path), "x-alembic-doc": encodeURIComponent(c.docPath), "content-type": file.type || "application/octet-stream" },
                 body: file,
               });
               const r = (await res.json().catch(() => null)) as { ok?: boolean; message?: string } | null;

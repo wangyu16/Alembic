@@ -53,11 +53,12 @@ create table public.write_queue (
   sets `actor_id = auth.uid()`, checks
   `can(role, editActionForPath(path))` for every path, refuses server-only
   and harness paths, and refuses if the course is read-only.
-- `courseop` (amended 2026-10-29, package-contract-v3 §13.3): through the
-  definer `enqueue_courseop(p, op, args, op_uuid)`. It requires a UUID, stores
-  the key as `courseop:<uuid>` and sets `actor_id = auth.uid()`. It checks
-  `can(role, 'edit.course-files')`, or `license.change` for `setLicense`, and
-  validates `op` against the closed list and `args` by shape. Priority 0.
+- `courseop` (amended 2026-10-29, package-contract-v3 §13.3; corrected after
+  the foundations audit r1): like every row, inserted by the web server with
+  the service role after `can(role, 'edit.course-files')` (or `license.change`
+  for `setLicense`) in TypeScript, with `actor_id` from the verified session
+  and the key `courseop:<tag>:<uuid>`. Migration 0063 requires an actor for
+  the kind. The operation is shape-checked (`parseCourseOp`). Priority 0.
   The committer re-checks the actor's right at execution and applies the
   operation to the head manifest.
 - Blob-reference entries (package-contract-v3 §11.2) are accepted in `sync`

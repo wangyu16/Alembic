@@ -386,7 +386,10 @@ export async function processRow(row: QueueRow, store: QueueStore, repo: Working
         ? { status: "retry", error: e.message, retryAfterSeconds: 300, access: true }
         : { status: "retry", error: e.message, retryAfterSeconds: Math.min(900, 60 * 2 ** Math.max(0, row.attempts - 1)) };
     }
-    if (e instanceof DeterministicRefusal) return { status: "refused", reason: e.message };
+    if (e instanceof DeterministicRefusal) {
+      // A blob that is no longer on GitHub (contract v3 §11.2): the person still has the file.
+      return { status: "refused", reason: row.payload.files.some((f) => f.blob) ? "a file in this change is no longer on GitHub; please add it again" : e.message };
+    }
     const msg = e instanceof Error ? e.message : String(e);
     if (row.attempts >= MAX_ATTEMPTS) return { status: "failed", error: msg };
     return { status: "retry", error: msg, retryAfterSeconds: 60 };
@@ -411,7 +414,9 @@ async function decideFilesOnTree(row: QueueRow, store: QueueStore, repo: Working
   { refused: string } | { kept: ChainEntry[]; top: ChainEntry[]; outcomes: FileOutcome[] }
 > {
   const out = { kept: [] as ChainEntry[], top: [] as ChainEntry[], outcomes: [] as FileOutcome[] };
+  const restoring = row.kind === "system" && row.payload.force === true; // Door C's undo: what it puts back was accepted before
   for (const f of row.payload.files) {
+    if (restoring) break;
     const kind = fileKind(f.path);
     if (!f.blob && !f.movedFrom && f.text !== null) {
       if (kind !== "text") return { refused: `${f.path}: a picture can't be saved as text` };

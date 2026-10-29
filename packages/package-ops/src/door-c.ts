@@ -166,7 +166,7 @@ export function classifyPushedContent(i: {
   const listed = new Set((parse(i.manifestAfter) ?? before)?.chapters.map((c) => c.slug) ?? []);
   for (const f of i.files) {
     if (f.path === "LICENSE" || f.path === "CITATION.cff") { undo(f.path, "the licence files are written by Alembic"); continue; }
-    if (f.path === "private/README.md") { undo(f.path, "Alembic's own note"); continue; }
+    if (activeProfile.serverOnlyFiles.includes(f.path)) { undo(f.path, "Alembic's own note"); continue; }
     if (f.status === "removed") {
       const part = unitPartForPath(f.path);
       if (part && listed.has(part.slug)) undo(f.path, "a chapter's parts are removed with the chapter");

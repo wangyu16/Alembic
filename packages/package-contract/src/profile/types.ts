@@ -46,6 +46,8 @@ export interface ContentProfile {
   readonly rootFiles: readonly string[];
   /** Top-level folders and the space each one is. */
   readonly folders: Readonly<Record<string, PackageSpace>>;
+  /** Files from the project's template that are notes, not documents: never listed, never written by a person. */
+  readonly serverOnlyFiles: readonly string[];
   /** Private subfolders allowed (fail closed on any other). */
   readonly privateSubfolders: readonly string[];
   /** Unit slugs that may not be used (they collide with a project file). */

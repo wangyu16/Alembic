@@ -8,6 +8,7 @@ import { directDb } from "@/lib/db";
 import { courseRepo } from "@/lib/course-v3";
 import { githubBusy } from "@/lib/github-busy";
 import { checkBytes, checkUpload, COURSE_WARN_BYTES } from "@/lib/upload";
+import { checkPackageRateLimit, checkUserRateLimit } from "@/lib/rate-limit-server";
 
 export const dynamic = "force-dynamic";
 
@@ -35,29 +36,38 @@ export async function POST(req: Request, { params }: { params: Promise<{ package
   const sql = directDb();
   if (!sql) return json(503, { ok: false, message: "Files can't be added right now." });
   const path = decodeURIComponent(req.headers.get("x-alembic-path") ?? "");
+  // The document the figure is added from: a private document's figures must stay private (round 1 audit H2).
+  const fromDoc = decodeURIComponent(req.headers.get("x-alembic-doc") ?? "");
   const baseBlob = req.headers.get("x-alembic-base-blob");
   if (baseBlob !== null && !/^[0-9a-f]{40}$/.test(baseBlob)) return json(400, { ok: false, message: "Bad request." });
-  const { rows } = await sql.query<{ person: number; course: number; bytes: string }>(
-    `select (select count(*)::int from public.course_blobs where uploaded_by = $2 and created_at > now() - interval '1 hour') as person,
-            (select count(*)::int from public.course_blobs where package_id = $1 and created_at > now() - interval '1 hour') as course,
-            (select coalesce(sum(size), 0)::text from public.course_blobs where package_id = $1) as bytes`, [packageId, user.id]);
-  const counts = { byPersonLastHour: rows[0]?.person ?? 0, byCourseLastHour: rows[0]?.course ?? 0, courseBytes: Number(rows[0]?.bytes ?? 0) };
-  const check = checkUpload({ path, size: length, role: role as Role, counts });
+  // Every attempt counts (round 1 audit M1: re-sending the same file used to add no ledger row).
+  const [mine, course] = await Promise.all([checkUserRateLimit("upload", user.id), checkPackageRateLimit("uploadCourse", packageId)]);
+  const { rows } = await sql.query<{ bytes: string }>(`select coalesce(sum(size), 0)::text as bytes from public.course_blobs where package_id = $1`, [packageId]);
+  const counts = { byPersonLastHour: mine.ok ? 0 : Infinity, byCourseLastHour: course.ok ? 0 : Infinity, courseBytes: Number(rows[0]?.bytes ?? 0) };
+  const check = checkUpload({ path, size: length, role: role as Role, counts, fromDoc });
   if (!check.ok) return json(check.status, { ok: false, message: check.message });
   const bytes = new Uint8Array(await req.arrayBuffer());
   if (bytes.length !== length) return json(400, { ok: false, message: "The file didn't arrive whole. Try again." });
   const bad = checkBytes(check.kind, bytes);
   if (bad) return json(415, { ok: false, message: bad });
-  const c = await courseRepo(packageId);
-  if (!c) return json(503, { ok: false, message: "This course can't be reached right now. Try again in a few minutes." });
-  let sha: string;
-  try {
-    sha = await c.client.uploadBlob({ owner: c.owner, repo: c.name }, bytes);
-  } catch (e) {
-    const busy = githubBusy(e);
-    return json(503, { ok: false, message: busy ? "GitHub is busy right now. Try again in a few minutes." : "Couldn't upload now. Try again in a few minutes." });
+  const sha = gitBlobSha(bytes);
+  // A different file already has this name (round 1 audit M3): never replace someone's figure by accident.
+  const { rows: taken } = await sql.query<{ sha: string }>(`select sha from public.course_blobs where package_id = $1 and path = $2 and sha <> $3 limit 1`, [packageId, check.path, sha]);
+  if (taken.length && !baseBlob) return json(409, { ok: false, message: "A different file already has that name. Rename yours and add it again." });
+  // The same bytes already uploaded to this course: no second GitHub call (round 1 audit M1).
+  const { rows: known } = await sql.query<{ n: number }>(`select count(*)::int as n from public.course_blobs where package_id = $1 and sha = $2`, [packageId, sha]);
+  if (!known[0]?.n) {
+    const c = await courseRepo(packageId);
+    if (!c) return json(503, { ok: false, message: "This course can't be reached right now. Try again in a few minutes." });
+    let made: string;
+    try {
+      made = await c.client.uploadBlob({ owner: c.owner, repo: c.name }, bytes);
+    } catch (e) {
+      const busy = githubBusy(e);
+      return json(503, { ok: false, message: busy ? "GitHub is busy right now. Try again in a few minutes." : "Couldn't upload now. Try again in a few minutes." });
+    }
+    if (made !== sha) return json(502, { ok: false, message: "The file didn't arrive whole. Try again." });
   }
-  if (sha !== gitBlobSha(bytes)) return json(502, { ok: false, message: "The file didn't arrive whole. Try again." });
   await sql.query(
     `insert into public.course_blobs (package_id, sha, size, kind, path, uploaded_by) values ($1, $2, $3, $4, $5, $6) on conflict do nothing`,
     [packageId, sha, bytes.length, check.kind, check.path, user.id]);

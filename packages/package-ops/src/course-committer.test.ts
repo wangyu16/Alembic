@@ -532,5 +532,13 @@ describe("files that aren't text, deletes and moves (contract v3 §11)", () => {
     await drainCourse(P, "w", q, repo);
     expect([q.status("s1"), q.status("s2"), q.status("s3")]).toEqual(["refused", "refused", "done"]);
   });
+  it("[K1.11] Door C's undo puts back what the course had even if today's check would refuse it (the rest of the undo isn't lost)", async () => {
+    const { repo, q } = files();
+    const old = '<!DOCTYPE svg [<!ENTITY a "x">]><svg>&a;</svg>';
+    q.add({ id: "u1", packageId: P, kind: "system", actorId: null, invokerId: null, payload: { force: true, files: [{ path: "assets/legacy.svg", baseVersion: null, text: old }, { path: "assets/gases/old.png", baseVersion: null, text: null, blob: { sha: SHA(1), size: 0 } }] } });
+    await drainCourse(P, "w", q, repo);
+    expect(q.status("u1")).toBe("done");
+    expect(repo.file("assets/legacy.svg")).toBe(old);
+  });
 });
 

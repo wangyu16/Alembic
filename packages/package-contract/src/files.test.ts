@@ -13,6 +13,7 @@ describe("files that aren't text (contract v3 §11.4)", () => {
     expect(fileKind("study-guide/gases.md")).toBe("text");
     expect(fileKind("assets/run.exe")).toBeNull();
     expect(fileKind("assets/page.pdf")).toBeNull();
+    expect(fileKind("metadata/refs.bib")).toBe("text"); // unknown text kinds are text (round 1 audit L4)
   });
   it("[K1.11] bytes must be what they claim: a renamed file is refused", () => {
     expect(mediaProblems("png", PNG)).toEqual([]);
@@ -36,6 +37,18 @@ describe("files that aren't text (contract v3 §11.4)", () => {
       '<svg><rect style="fill:url(//evil.example/x)"/></svg>',
       '<!DOCTYPE svg [<!ENTITY x SYSTEM "file:///etc/passwd">]><svg>&x;</svg>',
       "<html><body>not a picture</body></html>",
+      // Round 1 audit H1: namespace prefixes, a comment hiding a tag, encoded and animated links, outside styles.
+      '<svg><x:script xmlns:x="http://www.w3.org/2000/svg">alert(1)</x:script></svg>',
+      '<svg><h:script xmlns:h="http://www.w3.org/1999/xhtml">alert(1)</h:script></svg>',
+      "<svg><![CDATA[<!--]]><script>alert(1)</script><!-- -->]]></svg>",
+      '<svg><a href="&#106;avascript:alert(1)"><text>x</text></a></svg>',
+      '<svg><a href="java&#9;script:alert(1)"><text>x</text></a></svg>',
+      '<svg><a><animate attributeName="href" values="javascript:alert(1)"/><text>x</text></a></svg>',
+      '<svg><a><set attributeName="href" to="javascript:alert(1)"/></a></svg>',
+      '<svg><style>@import "https://evil.example/x.css";</style></svg>',
+      '<svg><image href="https:\\\\evil.example/x.png"/></svg>',
+      '<svg><a xlink:href = " javascript:alert(1)"><text>x</text></a></svg>',
+      '<svg><rect style="background:url(&#104;ttps://evil.example/x)"/></svg>',
     ]) expect(svgProblems(bad), bad).not.toEqual([]);
   });
 });

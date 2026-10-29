@@ -79,6 +79,9 @@ export const RATE_LIMITS = {
     { limit: 5, windowMs: 60 * 60_000 },
     { limit: 20, windowMs: 24 * 60 * 60_000 },
   ],
+  // Figure uploads (contract v3 §11.3): every attempt counts, per person and per course (each is a GitHub call).
+  upload: [{ limit: 60, windowMs: 60 * 60_000 }],
+  uploadCourse: [{ limit: 200, windowMs: 60 * 60_000 }],
   contactEmail: [
     { limit: 3, windowMs: 60 * 60_000 },
     { limit: 10, windowMs: 24 * 60 * 60_000 },

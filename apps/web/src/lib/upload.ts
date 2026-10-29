@@ -15,13 +15,15 @@ export interface UploadCounts { byPersonLastHour: number; byCourseLastHour: numb
 
 export type UploadCheck = { ok: true; path: string; kind: MediaKind } | { ok: false; status: number; message: string };
 
-export function checkUpload(i: { path: string; size: number; role: Role; counts: UploadCounts }): UploadCheck {
+export function checkUpload(i: { path: string; size: number; role: Role; counts: UploadCounts; fromDoc?: string }): UploadCheck {
   let path: string;
   try {
     path = normalizePath(i.path);
   } catch {
     return { ok: false, status: 400, message: "That file name can't be used." };
   }
+  // A private document's figures stay private (round 1 audit H2).
+  if (i.fromDoc?.startsWith("private/") && !path.startsWith("private/")) return { ok: false, status: 403, message: "A figure for an instructor-only document stays instructor-only." };
   const kind = fileKind(path);
   if (!kind || kind === "text") return { ok: false, status: 415, message: "This kind of file can't be added to a course (pictures: PNG, JPEG, GIF, WebP, SVG)." };
   if (!canWritePath(i.role, path)) return { ok: false, status: 403, message: "You can't add files there." };

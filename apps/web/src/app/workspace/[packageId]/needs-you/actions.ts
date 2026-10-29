@@ -46,7 +46,9 @@ export async function restoreChapterFromItemAction(packageId: string, id: string
   const action = (item?.payload as { action?: unknown } | null)?.action;
   const op = item?.kind === "both-changed" ? parseCourseOp(action) : null;
   if (!op || op.op !== "restoreChapter") return;
+  // Answer first: only the one click that closes the item queues the restore (round 1 audit M2: two clicks, two copies).
+  const { error } = await supabase.rpc("needs_you_answer", { p_id: id, p_answer: { decision: "restored" } });
+  if (error) return;
   await queueCourseOp(packageId, user.id, op);
-  await supabase.rpc("needs_you_answer", { p_id: id, p_answer: { decision: "restored" } });
   revalidatePath(`/workspace/${packageId}/needs-you`);
 }

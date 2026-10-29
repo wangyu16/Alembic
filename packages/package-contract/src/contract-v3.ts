@@ -108,7 +108,7 @@ export function isServerOnlyPath(path: string): boolean {
     p.startsWith(".github/") ||
     p.startsWith(".alembic/") ||
     p === ".gitignore" ||
-    p === "private/README.md" || // the template's note: not a document (contract v3 §12.1)
+    activeProfile.serverOnlyFiles.includes(p) || // the template's notes: not documents (contract v3 §12.1)
     p.startsWith("private/sources/")
   );
 }

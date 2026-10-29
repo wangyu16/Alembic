@@ -152,6 +152,7 @@ export const coursewerkOerProfile: ContentProfile = {
   // INTERIM (D-126 item 7): `orz-site.json` is a v3 addition.
   rootFiles: ["alembic.json", "README.md", "LICENSE", "CITATION.cff", ".gitignore", "orz-site.json"],
   folders: FOLDERS,
+  serverOnlyFiles: ["private/README.md"],
   // INTERIM (D-126 item 3): Coursewerk's `private/` is free-form.
   privateSubfolders: ["instructor", "sources", "coursewerk", "legacy"],
   // `concepts/course.md` is the course-wide concept map.
@@ -160,8 +161,10 @@ export const coursewerkOerProfile: ContentProfile = {
   requiredParts: ["study-guide"],
   // INTERIM (D-126): a document's figures go under assets/<document name>/; Coursewerk to confirm.
   figureFolder(docPath: string): string {
+    // A private document's figures stay private (round 1 audit H2): never in the published assets folder.
+    const priv = docPath.startsWith("private/");
     const stem = (docPath.split("/").pop() ?? "document").replace(/\.(slides|paged)?\.?md$/i, "").replace(/\.md$/i, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "document";
-    return `assets/${stem}`;
+    return priv ? `private/instructor/figures/${stem}` : `assets/${stem}`;
   },
   // INTERIM (contract v3 §11.4): the figure kinds; Coursewerk to confirm.
   media: { png: "png", jpg: "jpeg", jpeg: "jpeg", gif: "gif", webp: "webp", svg: "svg" },
