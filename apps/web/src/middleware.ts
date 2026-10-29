@@ -74,7 +74,9 @@ export async function middleware(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (!user && request.nextUrl.pathname.startsWith("/workspace")) {
+  // Course files: the route checks the session or the signed address itself (the editor's preview sends no session).
+  const isAsset = /^\/workspace\/[^/]+\/asset\//.test(request.nextUrl.pathname);
+  if (!user && request.nextUrl.pathname.startsWith("/workspace") && !isAsset) {
     // Come back to the same page after signing in (a session that ended mid-work); /signin re-validates it.
     const signin = new URL("/signin", request.url);
     signin.searchParams.set("next", `${request.nextUrl.pathname}${request.nextUrl.search}`);

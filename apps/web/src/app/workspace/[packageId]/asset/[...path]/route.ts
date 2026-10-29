@@ -1,24 +1,33 @@
 import { can, normalizePath, type Role } from "@alembic/package-contract";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { courseRepo } from "@/lib/course-v3";
-import { assetContentType } from "@/lib/course-assets";
+import { assetContentType, assetSecret, verifyAsset } from "@/lib/course-assets";
 
 export const dynamic = "force-dynamic";
 const MAX_BYTES = 15 * 1024 * 1024;
 
-/** A course file (image or PDF) for the course's own members, from the working repo's head (RC.9). */
-export async function GET(_req: Request, { params }: { params: Promise<{ packageId: string; path: string[] }> }) {
+/**
+ * A course file (image or PDF) from the working repo's head (RC.9), for a
+ * course member (session) or for an address the document page signed for a
+ * member (the editor's sandboxed preview sends no session).
+ */
+export async function GET(req: Request, { params }: { params: Promise<{ packageId: string; path: string[] }> }) {
   const { packageId, path: parts } = await params;
-  const supabase = await createSupabaseServerClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return new Response(null, { status: 401 });
-  const { data: roleRaw } = await supabase.rpc("course_role", { p: packageId });
-  if (!roleRaw) return new Response(null, { status: 404 });
   let path: string;
   try { path = normalizePath(parts.map(decodeURIComponent).join("/")); } catch { return new Response(null, { status: 404 }); }
   const type = assetContentType(path);
   if (!type) return new Response(null, { status: 404 });
-  if (path.startsWith("private/") && !can(roleRaw as Role, "edit.private")) return new Response(null, { status: 404 });
+  const url = new URL(req.url);
+  const secret = assetSecret();
+  const signed = secret !== null && verifyAsset(secret, packageId, path, url.searchParams.get("e"), url.searchParams.get("s"));
+  if (!signed) {
+    const supabase = await createSupabaseServerClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return new Response(null, { status: 401 });
+    const { data: roleRaw } = await supabase.rpc("course_role", { p: packageId });
+    if (!roleRaw) return new Response(null, { status: 404 });
+    if (path.startsWith("private/") && !can(roleRaw as Role, "edit.private")) return new Response(null, { status: 404 });
+  }
   const c = await courseRepo(packageId);
   if (!c) return new Response(null, { status: 503 });
   const coords = { owner: c.owner, repo: c.name };

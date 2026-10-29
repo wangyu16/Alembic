@@ -83,10 +83,11 @@ note = "Audit r1 F3: ~40 GitHub calls per render, re-rendered every 3 s while pu
 
 [[claim]]
 id = "RC.9"
-claim = "A course's own images show in the workspace editor: each is served to the course's members by a members-only address (instructor-only files only to those allowed; SVG sandboxed, no sniffing)."
+claim = "A course's own images show in the workspace editor: each is served from an address only a course member is given (signed for exactly that file, expiring; or the member's session), instructor-only files only to those allowed; SVG sandboxed, no sniffing."
 oracle = "conformance"
 bound_to = [
   "apps/web/src/lib/course-assets.test.ts :: every course image gets a members-only address; instructor-only files only for those allowed; other files none",
+  "apps/web/src/lib/course-assets.test.ts :: a signature opens exactly its course file until it expires; another file, another course, a forged or expired one doesn't",
 ]
 note = "Audit r1 F4: the editor was never given asset addresses, so every relative image was broken. Live check on the GenChem copy after relinking its figures (RC.10)."
 

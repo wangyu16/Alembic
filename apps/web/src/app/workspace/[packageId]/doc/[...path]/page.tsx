@@ -5,7 +5,7 @@ import { normalizePath } from "@alembic/package-contract";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { v3Enabled } from "@/lib/db";
 import { courseRepo, recordDocVersion } from "@/lib/course-v3";
-import { assetUrlMap } from "@/lib/course-assets";
+import { assetSecret, assetUrlMap } from "@/lib/course-assets";
 import { can, type Role } from "@alembic/package-contract";
 import { kindOfPath } from "@/lib/orz-editor/kit";
 import { DocEditor } from "./doc-editor";
@@ -35,7 +35,8 @@ export default async function DocPage({ params }: { params: Promise<{ packageId:
   const version = await recordDocVersion(packageId, path, text, head);
   // The course's images, for the editor's preview (one tree listing; RC.9).
   const tree = await c.client.listTreeEntries({ owner: c.owner, repo: c.name }, head).catch(() => ({ entries: [] as Array<{ path: string; type: string }> }));
-  const assets = assetUrlMap(packageId, tree.entries.filter((e) => e.type === "blob").map((e) => e.path), can(role as Role, "edit.private"));
+  const secret = assetSecret();
+  const assets = secret ? assetUrlMap(packageId, tree.entries.filter((e) => e.type === "blob").map((e) => e.path), can(role as Role, "edit.private"), secret) : new Map<string, string>();
 
   return (
     <main className="flex h-[calc(100vh-1rem)] flex-col">
