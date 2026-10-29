@@ -23,8 +23,8 @@ create table public.write_queue (
   id uuid primary key default gen_random_uuid(),
   package_id text not null references public.packages(id) on delete cascade,
   seq bigint generated always as identity,
-  kind text not null check (kind in ('sync','changeset','outside','restore','system')),
-  actor_id uuid,                -- null only for kind 'outside'/'system'
+  kind text not null check (kind in ('sync','changeset','outside','restore','system','courseop')),
+  actor_id uuid,                -- null only for kind 'outside'/'system'; required for 'courseop'
   invoker_id uuid,              -- agent changesets: the person who started the job
   pusher_login text,            -- 'outside': who pushed on GitHub (from the push event)
   payload jsonb not null,
@@ -53,6 +53,17 @@ create table public.write_queue (
   sets `actor_id = auth.uid()`, checks
   `can(role, editActionForPath(path))` for every path, refuses server-only
   and harness paths, and refuses if the course is read-only.
+- `courseop` (amended 2026-10-29, package-contract-v3 §13.3): through the
+  definer `enqueue_courseop(p, op, args, op_uuid)`. It requires a UUID, stores
+  the key as `courseop:<uuid>` and sets `actor_id = auth.uid()`. It checks
+  `can(role, 'edit.course-files')`, or `license.change` for `setLicense`, and
+  validates `op` against the closed list and `args` by shape. Priority 0.
+  The committer re-checks the actor's right at execution and applies the
+  operation to the head manifest.
+- Blob-reference entries (package-contract-v3 §11.2) are accepted in `sync`
+  rows only when the service-role upload route inserted them, after writing
+  the `course_blobs` ledger. `enqueue_write` refuses a payload with blob
+  entries, and the committer also checks the ledger.
 - `changeset`: only from the agent hand-over endpoint (service role), which
   verifies the session token and sets `invoker_id` from it.
 - `outside`: only from the GitHub webhook receiver / sweep (service role),
@@ -130,11 +141,20 @@ When the consumer (or the sweep) sees, at the working repo head `H`, any of:
 - a change under `.alembic/`, `.gitignore`, `private/sources/`,
   `private/coursewerk/`,
 - an unclassifiable path,
+- (amended 2026-10-29, package-contract-v3 §13.6) a pushed `alembic.json`
+  that fails validity (schema, licence list, tree-aware rule), a change to
+  its mechanics fields, or a licence change by a pusher who isn't the owner;
+  edits to `LICENSE`, `CITATION.cff` or `private/README.md`; removals of a
+  listed chapter's part files; an unsafe SVG or a blob whose bytes don't
+  match its kind (§11.4),
 
 it enqueues **one** `system` row with key `undo:<H>` and `priority = 1`
 (processed before any other non-terminal row), which writes a forward commit
 restoring those paths to their last Alembic-written state (deleting
-additions). An Edited elsewhere item names the pusher.
+additions). For `alembic.json` that is the last state that passed validity,
+and the undo touches only the offending fields when the rest is valid. An
+owner's valid licence change is kept, and `LICENSE`/`CITATION.cff` are
+regenerated. An Edited elsewhere item names the pusher.
 
 - **Never re-enqueued for the same head:** if the `undo:<H>` row ends other
   than `done`, Alembic raises an urgent owner/operator item instead of

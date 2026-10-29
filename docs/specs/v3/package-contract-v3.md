@@ -1,6 +1,6 @@
 # Package contract v3 (FC-15 v3) — mini-spec
 
-**Status:** draft 4, 2026-10-29: the FD-09 ownership split (§0) and new mechanics sections (§11–§14). G0 round 2 passed with fixes, all applied (§15). Draft 2 (2026-10-27) passed round 1 (resolutions in §10). Module K1 of the build plan
+**Status:** draft 5, 2026-10-29: the FD-09 ownership split (§0) and new mechanics sections (§11–§14). G0 rounds 2 and 3 passed with fixes, all applied (§15, §16). Draft 2 (2026-10-27) passed round 1 (resolutions in §10). Module K1 of the build plan
 (orz-family `docs/ALEMBIC-BUILD-PLAN.md`). Design source: orz-family
 `docs/ALEMBIC-WORKSPACE-DESIGN.md` §4, §13, §18.2 (owner rulings R18, R20,
 R24, R27, R31). Replaces v1 (`layers.ts`) and v2 (`spaces.ts`) as the only
@@ -247,7 +247,8 @@ for private sources only.
 ```
 
 **The committer accepts a blob reference only if `(package_id, sha)` is in the
-ledger** (G0r2 H1). A member calling `enqueue_write` directly with any other
+ledger and the ledger's kind matches `fileKind(path)`** (G0r2 H1, G0r3): a PNG
+blob can't be placed at an `.svg` path. A member calling `enqueue_write` directly with any other
 sha is refused, so every upload check is unavoidable. A move takes its content
 from the current tree, never from a supplied sha.
 
@@ -285,6 +286,14 @@ Alembic checks mechanically:
   can't send a CSP, and an SVG opened directly there runs on the owner's
   shared `<owner>.github.io` origin, so this check is the protection.
 - **SVGs are never merged:** they follow §11.5, as non-text files do.
+- **SVG's kind:** an uploaded `.svg` is a blob. Editor-made `.ketcher.svg`
+  and `.plot.svg` are synced as text (FC-17). All three get the SVG check,
+  and none are merged.
+- **What happens to a failed check:**
+  - on a write through Alembic: refused, with the path named;
+  - pushed on GitHub: Door C undoes it (queue §4) and tells the pusher and
+  the owner;
+  - at Publish: the Publish is refused, naming the file.
 - **Alembic's own serving:** every course file carries
   `X-Content-Type-Options: nosniff` and `Content-Security-Policy: sandbox`.
 - **Text means:** a text kind in the registry **and** valid UTF-8 with no
@@ -356,8 +365,9 @@ slides file name), existing courses move only through a course-upgrade job
 content version it follows (`coursewerk`, §6).
 
 **13.2 Validity (Coursewerk's, interim).** The resulting manifest must pass
-the content rules held in the mirror: today `WorkingManifestV3Schema` and the
-licence list (D-126). An operation whose result fails is refused, and nothing
+the content rules held in the mirror: today `WorkingManifestV3Schema`, the
+licence list (D-126) and a **tree-aware** rule (every listed chapter has its
+study guide; G0r3 N3). The same check runs in `applyCourseOp` and in Door C. An operation whose result fails is refused, and nothing
 is written.
 
 **13.3 Mechanics (Alembic's).**
@@ -368,9 +378,8 @@ is written.
 - **Applied at the head:** the committer works one row at a time per course.
   It reads the manifest at the head, applies the operation with the pure
   `applyCourseOp(manifest, tree, op)`, and refuses only if the operation no
-  longer applies or the result is invalid. Examples: renaming a chapter
-  someone just removed, or a co-author's typing still open in a removed
-  chapter's part file.
+  longer applies or the result is invalid. Example: renaming a chapter
+  someone just removed.
   - **Two renames at once:** both land, in order.
   - **No browser re-apply** is needed, so no change is lost to a closed tab.
 - **Order:** `priority 0`, first in first out with syncs. A course operation
@@ -388,22 +397,42 @@ is written.
 - The part files are deleted at their current versions; nothing waits on a
   base.
 - A sync that arrives later for a removed chapter's file is kept as a kept
-  version. Its author gets a Needs-you item: "Chapter “Gases” was removed by
-  Ana. Your text is kept. **Restore the chapter**". The button runs
-  `restoreChapter` with the removal commit and then lands the kept text on
-  top.
+  version.
+- **Its author** gets a Needs-you item: "Chapter “Gases” was removed by Ana.
+  Your text is kept, and the owner and deputy have been asked whether to
+  restore it."
+- **The owner and deputy** get an item with **Restore the chapter**. It runs
+  `restoreChapter` from the removal commit's **parent**, then lands the kept
+  text on top.
+- **If the slug has been reused** by a newer chapter, the chapter is restored
+  under the next free slug with "(restored)" in its title, and its files at
+  the matching paths.
 - The open editor shows the same notice when the removal arrives.
 - Nothing is orphaned unseen.
 
-**13.5 One manifest (G0r2 M8).** The repo's `alembic.json` is authoritative.
-The `packages.manifest` column becomes a mirror, updated when a row touching
-it lands. `update_manifest` is retired for v3 courses at the cut-over.
+**13.5 One manifest, two kinds of fields (G0r2 M8, G0r3 N1).**
+- **Content fields** (Coursewerk's: title, licence, description, audience,
+  level, chapters): the repo's `alembic.json` is authoritative, and the
+  `packages.manifest` column mirrors them.
+- **Mechanics fields** (Alembic's: `packageId`, `repos`, `createdAt`,
+  `coursewerk`, `upstream`): the database is authoritative. The file carries
+  a copy, but Alembic never reads them from the file. Publish and every job
+  take them from the database.
+- `update_manifest` is retired for v3 courses at the cut-over.
 
-**13.6 Edits on GitHub (G0r2 M7).** Door C undoes, with a front-of-line
-system commit:
+**13.6 Edits on GitHub (G0r2 M7, G0r3 H2).** Door C undoes, with a
+front-of-line system commit:
 - a pushed `alembic.json` that fails §13.2 (restoring the last valid one);
+- a pushed change to its mechanics fields;
+- a licence change pushed by anyone but the owner (the pusher is matched to a
+  member; an unmatched pusher is not the owner);
+- edits to `LICENSE` and `CITATION.cff`;
 - any push to `private/README.md`;
-- removals of a listed chapter's part files.
+- removals of a listed chapter's part files;
+- unsafe SVGs and blobs whose bytes don't match their kind (§11.4).
+
+An owner's valid licence change pushed on GitHub is accepted, and
+`LICENSE`/`CITATION.cff` are regenerated in the next system commit.
 
 Valid manifest edits on GitHub are accepted as outside changes, as today.
 
@@ -432,10 +461,14 @@ Valid manifest edits on GitHub are accepted as outside changes, as today.
   ones.
 - **K1.16** `removeChapter` and `restoreChapter` are inverses. A sync arriving
   for a removed chapter's file is kept and offers Restore.
-- **K1.17** Every content-validity rule lives in one versioned mirror module
-  (`content-mirror.ts`, `COURSEWERK_CONTENT_VERSION`). A scan test forbids
-  space names, slot paths and licence literals elsewhere in `package-contract`,
-  `package-ops` and `apps`, except through the mirror.
+- **K1.17** Every content rule lives in one versioned mirror
+  (`package-contract/src/content-mirror/`, `COURSEWERK_CONTENT_VERSION`):
+  the tree, the slots, the licence list, the manifest content fields and the
+  starter structures (moved from `chapter-parts.ts`). `access.ts` and
+  `contract-v3.ts` import space names from it. A scan test forbids
+  **path-shaped** literals (`study-guide/`, `.slides.md`, `assets/`) and
+  licence identifiers (`CC-BY-…`) elsewhere in `package-contract`,
+  `package-ops` and `apps`. Ordinary words in UI text are fine.
 - **K1.18** Only the owner changes the licence, and `LICENSE`/`CITATION.cff`
   follow in the same commit.
 - **K1.19** Upload quota and rate limits are counted from the ledger (created
@@ -463,3 +496,19 @@ Valid manifest edits on GitHub are accepted as outside changes, as today.
 | L5 base64 body over the host limit | raw/multipart body, size checked in the browser (§11.2) |
 | L6 scan can't define content rules | one mirror module + scan (K1.17) |
 | Goldfish Q2, Q4, Q5, Q7, Q8 ambiguities | §11.5 what each sees; §13.4; §13.3 two renames; §13.1 path changes; §11.4 public site |
+
+## 16. Review resolutions (G0 round 3, 2026-10-29)
+
+| Finding | Resolution |
+|---|---|
+| H1 addition: blob kind vs path | the ledger kind must match `fileKind(path)` (§11.2) |
+| H2 hole: licence and `LICENSE` via GitHub | Door C undoes a non-owner licence change and `LICENSE`/`CITATION.cff` edits; an owner's is accepted and regenerated (§13.6) |
+| H3 not carried to the queue spec | queue-and-jobs §2.1/§2.2 amended: kind `courseop`, `enqueue_courseop`, actor from the session |
+| M1 hole: Restore for co-authors; parent commit; slug reuse | Restore goes to owner/deputy, uses the parent commit, and a reused slug restores under a free one (§13.4) |
+| M5 hole: Door C / Publish actions; SVG kind | §11.4 last two bullets; queue §4 amended |
+| M7 hole: queue §4 unchanged | queue §4 amended to list §13.6 |
+| M8 hole: write-path rule 8 | write-path rule 8 amended |
+| N1 mechanics fields via a push | content fields from the file, mechanics fields from the database; Door C undoes pushed mechanics changes (§13.5, §13.6) |
+| N2 §13.3 vs §13.4 | the contradictory example removed |
+| N3 chapter with no study guide | tree-aware validity in `applyCourseOp` and Door C (§13.2) |
+| N4 scan scope | path-shaped literals only; `access.ts` imports from the mirror (K1.17) |

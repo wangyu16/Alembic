@@ -121,8 +121,9 @@ working-repo writes are ordinary queue rows (`queue-and-jobs-v3.md` §5).
 6. **Binary files** → base ≠ current → both-changed.
 7. **Records** under `private/coursewerk/` → only from `changeset` rows of
    the harness; refused elsewhere.
-8. **`alembic.json`** → not writable through `sync`; only the manifest ops
-   (existing `updateManifest`, compare-and-swap) (W-10).
+8. **`alembic.json`** → not writable through `sync`; only the course
+   operations (package-contract-v3 §13: `courseop` rows applied at the head;
+   amended 2026-10-29, replacing `updateManifest`) (W-10).
 
 ## 5. Both changed
 
