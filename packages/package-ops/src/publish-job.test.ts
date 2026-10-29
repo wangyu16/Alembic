@@ -23,6 +23,15 @@ const approveAll = (st: FakeStore, files: Record<string, string>) => {
 };
 
 describe("runPublish", () => {
+  it("[K1.11] an unsafe SVG in a chapter stops the Publish, naming the file; a safe one is published", async () => {
+    const st = new FakeStore();
+    st.approveText("concepts/atoms.md", "atoms plan"); st.approveText("assessment-support/atoms.md", "atoms assess");
+    const bad = await runPublish(input(), working({ ...W, "assets/atoms/x.svg": '<svg onload="alert(1)"/>' }), new FakePublic(), st, noChecks);
+    expect(bad).toMatchObject({ status: "stopped", reason: expect.stringMatching(/^assets\/atoms\/x\.svg can't be published: it has an event handler/) });
+    const ok = await runPublish(input(), working({ ...W, "assets/atoms/x.svg": '<svg viewBox="0 0 1 1"/>' }), new FakePublic(), new FakeStore(), noChecks);
+    expect(ok.status).not.toBe("stopped");
+  });
+
   it("first Publish (owner) creates the public repo; approved chapters publish, unapproved are kept; private never leaves", async () => {
     const pub = new FakePublic(); const st = new FakeStore();
     st.approveText("concepts/atoms.md", "atoms plan"); st.approveText("assessment-support/atoms.md", "atoms assess");

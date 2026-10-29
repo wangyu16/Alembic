@@ -17,6 +17,8 @@ import {
   WorkingManifestV3Schema,
   type Role,
   type WorkingManifestV3,
+  isSvgPath,
+  svgProblems,
 } from "@alembic/package-contract";
 import { publishWithLinkCheck, unitKey, unitOf, type Decision, type Finding, type TreeFile } from "./publisher";
 
@@ -322,6 +324,14 @@ export async function runPublish(i: PublishInput, w: WorkingSide, pub: PublicSid
     const key = unitKey(u);
     // The checks always see words: a binary file is checked through its best-effort decoding (G3 r3 M-a).
     byUnit.set(key, [...(byUnit.get(key) ?? []), { path: e.path, text: text ?? ("decoded" in content ? content.decoded : null) }]);
+  }
+  // An unsafe SVG is never published (contract v3 §11.4): GitHub Pages sends no CSP, so the check is the protection.
+  for (const [k, { e }] of toRead.entries()) {
+    if (!isSvgPath(e.path)) continue;
+    const content = contents[k]!;
+    const text = "text" in content ? content.text : "decoded" in content ? content.decoded : null;
+    const problems = text === null ? ["it isn't an SVG picture"] : svgProblems(text);
+    if (problems.length) return { status: "stopped", reason: `${e.path} can't be published: ${problems[0]}. Fix or remove it, then publish again.` };
   }
   const units = [...byUnit.keys()];
   const findings: Finding[] = [];

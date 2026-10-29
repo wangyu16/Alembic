@@ -44,12 +44,15 @@ export function isTextBytes(bytes: Uint8Array): boolean {
 export function svgProblems(text: string): string[] {
   const out: string[] = [];
   const body = text.replace(/<!--[\s\S]*?-->/g, "");
-  if (!/^\s*(?:<\?xml[^>]*\?>\s*)?<svg[\s>]/i.test(body)) out.push("it isn't an SVG picture");
-  if (/<!DOCTYPE|<!ENTITY/i.test(body)) out.push("it declares a document type");
+  // Drawing tools write the standard SVG document type (`<!DOCTYPE svg PUBLIC …>`); only one that defines entities
+  // (an internal subset) is refused — checked against 128 real course figures.
+  if (!/^\s*(?:<\?xml[^>]*\?>\s*)?(?:<!DOCTYPE\s+svg\b[^>[]*>\s*)?<svg[\s>/]/i.test(body)) out.push("it isn't an SVG picture");
+  if (/<!ENTITY|<!DOCTYPE[^>]*\[/i.test(body)) out.push("it declares its own entities");
   if (/<script[\s>/]/i.test(body)) out.push("it contains a script");
   if (/<foreignObject[\s>/]/i.test(body)) out.push("it embeds other content");
   if (/\son[a-z]+\s*=/i.test(body)) out.push("it has an event handler");
-  if (/(?:href|src)\s*=\s*["']?\s*(?:javascript|data|vbscript):/i.test(body)) out.push("it links to a script or embedded data");
+  // An embedded raster picture (data:image/png… — charting tools do this) is fine; embedded documents and scripts are not.
+  if (/(?:href|src)\s*=\s*["']?\s*(?:javascript|vbscript):/i.test(body) || /(?:href|src)\s*=\s*["']?\s*data:(?!image\/(?:png|jpeg|gif|webp)[;,])/i.test(body)) out.push("it links to a script or embedded data");
   if (/(?:href|src)\s*=\s*["']?\s*(?:https?:)?\/\//i.test(body) || /url\(\s*["']?\s*(?:https?:)?\/\//i.test(body)) out.push("it refers to something outside the course");
   return out;
 }

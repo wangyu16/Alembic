@@ -24,6 +24,8 @@ describe("files that aren't text (contract v3 §11.4)", () => {
   it("[K1.11] an SVG with a script, an event handler, embedded content, a script link or an outside reference is refused; a plain one passes", () => {
     expect(svgProblems('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><circle r="4"/></svg>')).toEqual([]);
     expect(svgProblems('<?xml version="1.0"?><!-- a figure --><svg><path d="M0 0"/></svg>')).toEqual([]);
+    // What drawing tools write: the standard document type, an embedded raster picture.
+    expect(svgProblems('<?xml version="1.0"?>\n<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">\n<svg xmlns:xlink="http://www.w3.org/1999/xlink"><image xlink:href="data:image/png;base64,iVBORw0KGgo="/></svg>')).toEqual([]);
     for (const bad of [
       "<svg><script>alert(1)</script></svg>",
       '<svg onload="alert(1)"></svg>',
