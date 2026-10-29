@@ -56,6 +56,11 @@ const SVG_ELEMENTS = new Set([
   "license", "permits", "requires", "prohibits", "publisher", "contributor", "language", "subject", "source",
   "relation", "coverage", "identifier", "namedview", "guide", "grid", "perspective", "path-effect", "page",
 ]);
+/** The XML declaration: version, encoding and standalone only, plain values. */
+const STD_XMLDECL = /<\?xml(?:[ \t\r\n]+(?:version|encoding|standalone)[ \t\r\n]*=[ \t\r\n]*(?:"[\w.:-]*"|'[\w.:-]*'))*[ \t\r\n]*\?>/y;
+/** The DOCTYPE forms drawing tools write: `<!DOCTYPE svg>` or `PUBLIC "id" "dtd"`, ids with no markup characters. */
+const STD_DOCTYPE = /<!DOCTYPE[ \t\r\n]+svg(?:[ \t\r\n]+PUBLIC[ \t\r\n]+"[^"<>\[\]]*"[ \t\r\n]+"[^"<>\[\]]*")?[ \t\r\n]*>/iy;
+
 /** Attributes whose value is a link the browser may follow or fetch. */
 const LINK_ATTRS = new Set(["href", "src", "action", "formaction", "values", "from", "to", "by"]);
 
@@ -131,16 +136,23 @@ export function svgProblems(text: string): string[] {
     if (text.startsWith("<?", i)) {
       const end = text.indexOf("?>", i + 2);
       if (end < 0) { fail("it isn't well formed"); break; }
-      // Only the XML declaration, and only before anything else.
-      if (!(/^<\?xml[\s?]/.test(text.slice(i, i + 6)) && i === lead)) fail("it has a processing instruction");
-      i = end + 2;
+      // Only the XML declaration, before anything else, and only in its standard form, matched in full (a quote
+      // can't move where it ends; audit r4).
+      STD_XMLDECL.lastIndex = i;
+      const decl = i === lead ? STD_XMLDECL.exec(text) : null;
+      if (!decl) { fail("it has a processing instruction"); i = end + 2; continue; }
+      i += decl[0].length;
       continue;
     }
     if (text.startsWith("<!", i)) {
       const end = text.indexOf(">", i + 2);
       if (end < 0) { fail("it isn't well formed"); break; }
+      // Only the standard forms, matched in full (audit r4 HIGH-A: a ">" inside a quoted id ended the declaration
+      // early, so the check and a browser disagreed about where a comment began, hiding a script).
+      STD_DOCTYPE.lastIndex = i;
+      const std = STD_DOCTYPE.exec(text);
+      if (std && !sawRoot) { i += std[0].length; continue; }
       const decl = text.slice(i, end + 1);
-      if (/^<!DOCTYPE\s+svg\b/i.test(decl) && !decl.includes("[") && !sawRoot) { i = end + 1; continue; }
       fail(/^<!(ENTITY|ATTLIST|ELEMENT)/i.test(decl) || decl.includes("[") ? "it declares its own entities" : "it has a declaration a picture doesn't need");
       i = end + 1;
       continue;

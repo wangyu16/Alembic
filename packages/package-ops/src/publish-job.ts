@@ -332,6 +332,7 @@ export async function runPublish(i: PublishInput, w: WorkingSide, pub: PublicSid
   // An unsafe SVG is never published (contract v3 §11.4): GitHub Pages sends no CSP, so the check is the protection.
   for (const [k, { e }] of toRead.entries()) {
     if (!isSvgPath(e.path)) continue;
+    await new Promise((r) => setTimeout(r, 0)); // let other courses' work run between checks (audit r4 LOW-A)
     const content = contents[k]!;
     const text = "text" in content ? content.text : "decoded" in content ? content.decoded : null;
     const problems = text === null ? ["it isn't an SVG picture"] : svgProblems(text);
@@ -369,7 +370,18 @@ export async function runPublish(i: PublishInput, w: WorkingSide, pub: PublicSid
 
   // 7–9. Decide, assemble, link check.
   const draft = new Set(manifest.chapters.filter((c) => c.mode === "draft").map((c) => c.slug));
-  const publishedMap = new Map(previously.map((f) => [f.path, { blobSha: f.blobSha, unit: f.unit }]));
+  // What a held-back unit keeps from earlier Publishes, minus anything the site can't serve safely (audit r4
+  // MEDIUM-A): a file of an unsafe kind, or an SVG that fails today's check, leaves even if its unit is kept.
+  const publishedMap = new Map(previously.filter((f) => fileKind(f.path) !== null).map((f) => [f.path, { blobSha: f.blobSha, unit: f.unit }]));
+  for (const f of previously) if (fileKind(f.path) === null && !leftOut.includes(f.path)) leftOut.push(f.path);
+  if (P !== null) {
+    const keptSvgs = previously.filter((f) => isSvgPath(f.path) && !working.has(f.path) && publishedMap.has(f.path));
+    const svgTexts = await mapLimit(keptSvgs, READ_CONCURRENCY, (f) => pub.readText(P!, f.path));
+    for (const [k, f] of keptSvgs.entries()) {
+      const t = svgTexts[k];
+      if (t == null || svgProblems(t).length) { publishedMap.delete(f.path); leftOut.push(f.path); }
+    }
+  }
   const generated = new Map<string, TreeFile>();
   for (const [path, text] of Object.entries(i.generated ?? {})) {
     if (path === "alembic.json" || ownersFolder(path) || !isPublishGenerated(path)) throw new Error(`"${path}" is not a file Publish generates`);

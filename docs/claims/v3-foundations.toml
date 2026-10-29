@@ -26,6 +26,7 @@ bound_to = [
   "packages/package-ops/src/course-committer.test.ts :: Door C's undo puts back what the course had even if today's check would refuse it (the rest of the undo isn't lost)",
   "packages/package-ops/src/publish-job.test.ts :: a file the website can't serve safely (.html, .js) is left out and said so; never reaches the public copy (audit r3 HIGH-1)",
   "packages/package-contract/src/files.test.ts :: the SVG check runs in linear time: crafted input can't stall the worker (round 2 audit)",
+  "packages/package-ops/src/publish-job.test.ts :: a file published before the safety rule leaves even when its chapter is held back (audit r4 MEDIUM-A)",
 ]
 note = "Built: checks on upload and on every committed text write; the asset route already serves nosniff + a sandbox CSP. Door C undoes unsafe pushed SVGs and mismatched bytes. Not yet: the check at Publish."
 

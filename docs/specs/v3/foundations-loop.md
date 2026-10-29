@@ -136,3 +136,15 @@ content profile).
 - **LOW-2:** a move keeps the extension, so a text file can't become an SVG unchecked.
 
 **Unconfirmed, recorded:** `xml:base` on an ancestor, `<use>` of a text file as an SVG resource, and an XHTML default namespace on allowlisted names. No executable path was found; to revisit if browsers change.
+
+## Round 4 audit (2026-10-29)
+
+**1 HIGH, 1 MEDIUM, 1 LOW.** All of round 3's fixes held, apart from part of HIGH-1 (below).
+
+- **HIGH-A:**
+  - **Was:** a `>` inside a quoted DOCTYPE id ended the declaration early in the check but not in a browser, so a "comment" hid a real `<script>` (confirmed with libxml2).
+  - **Now:** only the standard DOCTYPE forms, and only the standard XML declaration, are accepted, each matched in full. Anything else is refused.
+- **MEDIUM-A:** files published before the safety rule stayed public while their unit was held back. Earlier-published files of an unsafe kind, and kept SVGs that fail today's check, now leave.
+- **LOW-A:** many large crafted SVGs could hold the worker. Publish now yields between SVG checks. Door C's worst case (50 crafted 4 MB SVGs pushed by a collaborator, about 2.5 min) is accepted and recorded.
+
+**Pattern across rounds 1–4:** every HIGH since round 1 was in one place: deciding whether an SVG is safe by *reading* it, where the check and a browser can disagree. That race doesn't end by adding cases. Per the owner's standing preference (trust boundaries over endless hardening), the next step changes the boundary: Publish writes every SVG out again from what the check understood (allowlisted elements and attributes only, values escaped), so a disagreement can't carry anything through.

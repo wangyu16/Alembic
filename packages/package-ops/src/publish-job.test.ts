@@ -23,6 +23,25 @@ const approveAll = (st: FakeStore, files: Record<string, string>) => {
 };
 
 describe("runPublish", () => {
+  it("[K1.11] a file published before the safety rule leaves even when its chapter is held back (audit r4 MEDIUM-A)", async () => {
+    const pub = new FakePublic(); const st = new FakeStore(); approveAll(st, W);
+    await runPublish(input(), working(W), pub, st, noChecks);
+    // As if an earlier, unchecked Publish had put these in the atoms chapter.
+    const head = (pub as unknown as { commits: Array<{ files: Map<string, string> }> }).commits.at(-1)!;
+    head.files.set("slides/atoms.html", "<script>x()</script>");
+    head.files.set("study-guide/atoms-fig.svg", '<svg onload="x()"/>');
+    (st as unknown as { files: Array<{ path: string; unit: string; blobSha: string; version: string | null }> }).files.push(
+      { path: "slides/atoms.html", unit: "chapter:atoms", blobSha: await h("<script>x()</script>"), version: null },
+      { path: "study-guide/atoms-fig.svg", unit: "chapter:atoms", blobSha: await h('<svg onload="x()"/>'), version: null });
+    // atoms is now a draft: its published version is kept as it was.
+    const W2 = { ...W, "study-guide/atoms.md": "# Atoms v2", "alembic.json": manifestJson([{ slug: "atoms", mode: "draft" }, { slug: "gases" }]) };
+    const out = await runPublish(input({ runId: id(2) }), working(W2), pub, st, noChecks);
+    expect(out.status).toBe("committed");
+    expect(pub.file("slides/atoms.html")).toBeUndefined();
+    expect(pub.file("study-guide/atoms-fig.svg")).toBeUndefined();
+    expect(pub.file("study-guide/atoms.md")).toBe("# Atoms"); // the kept chapter itself stays
+  });
+
   it("[K1.11] a file the website can't serve safely (.html, .js) is left out and said so; never reaches the public copy (audit r3 HIGH-1)", async () => {
     const pub = new FakePublic(); const st = new FakeStore(); approveAll(st, W);
     const out = await runPublish(input(), working({ ...W, "metadata/evidence/page.html": "<script>x()</script>", "assets/run.js": "x()" }), pub, st, noChecks);

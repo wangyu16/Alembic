@@ -62,6 +62,11 @@ describe("files that aren't text (contract v3 §11.4)", () => {
       '<svg><rect fill="url(https://evil.example/p.svg#g)"/></svg>',
       '<svg><style><![CDATA[@\\000069mport "https://evil.example/x"]]></style></svg>',
       '<svg><g',
+      // Round 4 audit HIGH-A: a ">" inside a DOCTYPE id moved where the check thought a comment began.
+      '<!DOCTYPE svg SYSTEM "x><!--"><svg xmlns="http://www.w3.org/2000/svg"><script>alert(document.domain)</script><!-- --><svg/></svg>',
+      '<!DOCTYPE svg SYSTEM "x><!--[<!ENTITY e \'<script>alert(1)</script>\'>]"><svg>&e;<!-- --><svg/></svg>',
+      '<!DOCTYPE svg PUBLIC "a>" "b"><svg/>',
+      '<?xml version="1.0?><!--"?><svg><script>alert(1)</script><!-- --><svg/></svg>',
       // Round 3 audit: encoded url( in presentation attributes, long character references, nested styles.
       '<svg><rect fill="u&#114;l(https://evil.example/x.svg#g)"/></svg>',
       '<svg><rect filter="url&#40;https://evil.example/f)"/></svg>',
