@@ -60,13 +60,14 @@ export async function readVersionAction(packageId: string, path: string, commitS
 }
 
 /**
- * Did this person's sync with this id reach the course (queued, under way or landed)? Resume asks this about the
+ * Where this person's sync with this id is: on its way into the course (pending), landed (done), or not there (none). Resume asks this about the
  * text it kept, so it never resends what arrived (RC.17) and never mistakes a revert for an arrival (audit r5 MEDIUM-1).
  */
-export async function syncArrivedAction(packageId: string, syncId: string): Promise<boolean> {
+export async function syncStatusAction(packageId: string, syncId: string): Promise<"pending" | "done" | "none"> {
   const { supabase, user } = await signedIn();
-  if (!user || !/^[0-9a-f-]{36}$/i.test(syncId)) return false;
+  if (!user || !/^[0-9a-f-]{36}$/i.test(syncId)) return "none";
   const { data, error } = await supabase.from("write_queue").select("status").eq("package_id", packageId).eq("idem_key", syncId).eq("actor_id", user.id).limit(1);
   if (error) throw new Error("couldn't check");
-  return (data ?? []).some((r) => ["queued", "processing", "retry", "done"].includes(r.status as string));
+  const st = (data ?? [])[0]?.status as string | undefined;
+  return st === "done" ? "done" : st === "queued" || st === "processing" || st === "retry" ? "pending" : "none";
 }

@@ -11,7 +11,7 @@
  */
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { SyncScheduler, statusLabel, type SendResult, type SyncStatus } from "@/lib/device-save/scheduler";
-import { IndexedDbDraftStore, arrivalToCheck, draftKey, requestPersistentStorage, resumeFrom, type DraftStore } from "@/lib/device-save/store";
+import { IndexedDbDraftStore, arrivalToCheck, draftKey, landingToCheck, requestPersistentStorage, resumeFrom, type DraftStore } from "@/lib/device-save/store";
 import { diffEdit, loadKit, type OrzEditor, type OrzKind } from "./kit";
 import { mergeRemote } from "./merge";
 import { makeHooks, resolveCoursePath } from "./hooks";
@@ -32,8 +32,8 @@ export interface EmbeddedEditorProps {
   nonce?: string;
   assetUrls?: ReadonlyMap<string, string>;
   readCourseText(path: string): Promise<string | null>;
-  /** Did the sync with this id reach the course (queued or landed)? Resume never resends what already arrived. */
-  syncArrived?(syncId: string): Promise<boolean>;
+  /** Where the sync with this id is: on its way into the course, landed, or not there. Resume never resends what arrived. */
+  syncStatus?(syncId: string): Promise<"pending" | "done" | "none">;
   mintUid(): Promise<string>;
   /** Send the text to the course (the sync entry); idempotent per syncId. */
   sync(a: { packageId: string; path: string; text: string; baseVersion: string | null; syncId: string }): Promise<SendResult>;
@@ -147,14 +147,25 @@ export const EmbeddedEditor = forwardRef<EmbeddedEditorHandle, EmbeddedEditorPro
         // Text from an earlier visit that never reached the course wins, and is sent again (RC.17).
         const kept = await store.get(key);
         let has = false;
+        let landing = false; // the course accepted the kept text and is still writing it
         const ask = arrivalToCheck(kept, c.text);
-        if (ask && c.syncArrived) {
+        if (ask && c.syncStatus) {
           // Sent while the tab was closing, its reply never came back: ask whether THAT sync arrived (audit r4 H-1, r5 MEDIUM-1).
-          has = await c.syncArrived(ask).catch(() => false);
+          const st = await c.syncStatus(ask).catch(() => "none" as const);
+          has = st !== "none";
+          landing = st === "pending";
           if (has) await store.update(key, (cur) => (cur && cur.text === kept!.text ? { ...cur, synced: true } : undefined));
         }
+        const asked = landingToCheck(kept, c.text);
+        if (asked && c.syncStatus) landing = (await c.syncStatus(asked).catch(() => "none" as const)) === "pending";
         const resume = resumeFrom(kept, { text: c.text, version: c.baseVersion }, has);
-        const startText = resume.text;
+        // Accepted but not yet written: show it, edit from its own base, and take its echo as ours (re-verifier r4 A3/j).
+        if (landing && kept) {
+          base.current = kept.baseVersion;
+          baseText.current = kept.text;
+          lastSent.current = kept.text;
+        }
+        const startText = landing && kept ? kept.text : resume.text;
         const e = kit.mountEditor(host.current, {
           text: startText,
           mode: "split",

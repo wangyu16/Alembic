@@ -162,9 +162,10 @@ bound_to = [
   "apps/web/src/lib/device-save/scheduler.test.ts :: after the course echoes our own text, typing still unsent is sent on the new version, not the old one (no false 'both changed')",
   "apps/web/src/lib/device-save/scheduler.test.ts :: syncNow during a sync waits for it, then sends what was typed meanwhile; nothing is dropped",
   "apps/web/src/lib/device-save/store.test.ts :: resume asks only about the sync that carried exactly the kept text; a revert never sent is resent, never taken for an arrival",
+  "apps/web/src/lib/device-save/store.test.ts :: a text the course accepted but hasn't written yet is asked about on reopening, so the editor shows it rather than the older course text",
   "apps/web/src/lib/device-save/store.test.ts :: update reads and writes one record together: an older text never overwrites a newer one",
 ]
-note = "Audit r2 #1 (HIGH), #3, #5a, #9; audit r3 HIGH-1 (a resumed text now edits from its own base and is sent at once; records from before the synced flag are resumed only if the course hasn't moved) and MEDIUM-4; audit r4 H-1 (a device text the course already holds at any version is never resumed: the editor checks the course for its hash first) and M-1 (no edit is queued while a resume is being decided); audit r5 MEDIUM-1 (resume asks whether the recorded sync of exactly the kept text arrived, not whether the course ever held that text, so a revert is never dropped), MEDIUM-2 (others' versions that land before the editor opens, or before it listens, are caught up) and LOW-2 (device records change in one transaction)."
+note = "Audit r2 #1 (HIGH), #3, #5a, #9; audit r3 HIGH-1 (a resumed text now edits from its own base and is sent at once; records from before the synced flag are resumed only if the course hasn't moved) and MEDIUM-4; audit r4 H-1 (a device text the course already holds at any version is never resumed: the editor checks the course for its hash first) and M-1 (no edit is queued while a resume is being decided); audit r5 MEDIUM-1 (resume asks whether the recorded sync of exactly the kept text arrived, not whether the course ever held that text, so a revert is never dropped), MEDIUM-2 (others' versions that land before the editor opens, or before it listens, are caught up) and LOW-2 (device records change in one transaction); re-verifier r4 A3/j (a reopen within seconds of Saved showed the older course text: an accepted, unwritten sync is now shown and its echo taken as ours)."
 
 [[claim]]
 id = "RC.18"
@@ -219,7 +220,7 @@ oracle = "conformance"
 bound_to = [
   "apps/web/src/lib/orz-editor/download-figures.test.ts :: the course's own figures are embedded in the file (size hints kept); web images and unknown figures stay as they are; the course text is untouched",
 ]
-note = "Blind r2 A8: all 9 figures broken in a downloaded study guide. Re-verifier r3: embedded SVG figures showed as base64 text, because the renderer refuses data: addresses in Markdown image syntax; embedded figures are now written as <img> tags (checked against the real renderer)."
+note = "Blind r2 A8: all 9 figures broken in a downloaded study guide. Re-verifier r3: embedded SVG figures showed as base64 text, because the renderer refuses data: addresses in Markdown image syntax; embedded figures are now written as <img> tags (checked against the real renderer). Re-verifier r4: an <img> starting a line opened an HTML block and printed the caption as raw Markdown; a zero-width space now comes first."
 
 [[claim]]
 id = "RC.24"

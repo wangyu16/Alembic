@@ -109,12 +109,15 @@ async function replaceFigures(text: string, resolve: (target: string) => string 
   return text.split(/(^[ \t]*(?:```|~~~)[\s\S]*?^[ \t]*(?:```|~~~)[ \t]*$|``[^\n]*?``|`[^`\n]+`)/m).map((part, k) => (k % 2 === 1 ? part : part
     // Markdown images: an embedded (data:) figure becomes an <img>, because Markdown refuses data: SVG
     // addresses in image syntax (RC.23 r3: they printed as text); a linked one keeps the Markdown form.
-    .replace(/!\[([^\]]*)\]\(\s*<?([^)\s>]+)>?((?:\s+=\d*x\d*)?)((?:\s+"[^"]*")?)\s*\)/g, (whole, alt: string, target: string, size: string, title: string) => {
+    .replace(/!\[([^\]]*)\]\(\s*<?([^)\s>]+)>?((?:\s+=\d*x\d*)?)((?:\s+"[^"]*")?)\s*\)/g, (whole, alt: string, target: string, size: string, title: string, at: number, all: string) => {
       const v = data.get(target);
       if (!v) return whole;
       if (!o.asHtml) return `![${alt}](${v}${size}${title})`;
       const w = /=(\d+)x/.exec(size)?.[1];
-      return `<img src="${v}" alt="${esc(alt)}"${w ? ` width="${w}"` : ""} style="max-width:100%">`;
+      // A tag that starts a line opens an HTML block, which would print the caption under it as raw
+      // Markdown (re-verifier r4 A8): an invisible zero-width space first keeps it in its paragraph.
+      const lineStart = /(^|\n)[ \t]*$/.test(all.slice(Math.max(0, at - 200), at));
+      return `${lineStart ? "&#8203;" : ""}<img src="${v}" alt="${esc(alt)}"${w ? ` width="${w}"` : ""} style="max-width:100%">`;
     })
     .replace(/(\bsrc\s*=\s*["'])([^"']+)/g, (whole, head: string, target: string) => (data.has(target) ? head + data.get(target)! : whole)))).join("");
 }

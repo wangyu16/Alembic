@@ -202,3 +202,13 @@ Fixed in Alembic `0fa5129`; deployed to testing and checked live.
 - **Catch-up limit:** the catch-up misses a revert to a version recorded earlier (`doc_versions` keeps one row per text).
 - **Asset route:** it has no server cache. Signed addresses are handed only to members.
 - **Stuck `system:mode` rows:** a row stuck in `retry` would block Publish. Retries are bounded by the worker's attempt cap.
+
+**Re-verifier 4 (same round):**
+- Passed: A2, (c), (f), (h).
+- PARTIAL A8/(d): every figure showed (26 of 26 across 4 downloads), but captions printed as raw Markdown. An `<img>` that starts a line opens an HTML block, which swallows the caption line under it (confirmed with the real renderer). Fix: a zero-width space comes first.
+- PARTIAL A3 / FAIL (j): a reopen within about 5–10 s of "Saved to the course" showed the older course text. The course had accepted the sync but not yet written it, and the device copy was already marked as sent. No text was lost (it appeared seconds later). Fix: on reopen, a device text whose sync is still pending is shown, edited from its own base, and its echo is taken as ours.
+- **Friction recorded, not changed:**
+  - downloads still load styles, math and diagram scripts from public CDNs, so they are unstyled fully offline (images are fine);
+  - the editor's own pill says "Unsaved changes" while the banner says "Kept on this device" (carrier wording);
+  - try mode's Save toast says "Saved." for a download (carrier wording);
+  - earlier reviewers' test sentences remain in the testing copy.

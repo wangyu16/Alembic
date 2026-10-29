@@ -45,6 +45,14 @@ export function arrivalToCheck(kept: DeviceDraft | null | undefined, courseText:
   return kept && kept.text !== courseText && kept.synced === false && kept.sentId ? kept.sentId : null;
 }
 
+/**
+ * A text the course accepted but hasn't written yet (re-verifier r4 A3/j: a reopen within seconds of "Saved"
+ * showed the older text): the sync to ask about, so the editor can show this text while it lands.
+ */
+export function landingToCheck(kept: DeviceDraft | null | undefined, courseText: string): string | null {
+  return kept && kept.text !== courseText && kept.synced === true && kept.sentId ? kept.sentId : null;
+}
+
 export interface DraftStore {
   put(d: DeviceDraft): Promise<void>;
   get(key: string): Promise<DeviceDraft | null>;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MemoryDraftStore, arrivalToCheck, draftKey } from "./store";
+import { MemoryDraftStore, arrivalToCheck, draftKey, landingToCheck } from "./store";
 
 describe("MemoryDraftStore", () => {
   it("keeps drafts per course and path, lists by course, deletes", async () => {
@@ -39,6 +39,12 @@ describe("asking whether a kept text arrived (audit r5 MEDIUM-1, LOW-2)", () => 
     expect(arrivalToCheck(rec({ synced: false, sentId: "s-1" }), "AX")).toBe("s-1");
     expect(arrivalToCheck(rec({ synced: true, sentId: "s-1" }), "AX")).toBeNull();
     expect(arrivalToCheck(rec({ synced: false, sentId: "s-1" }), "A")).toBeNull();
+  });
+  it("[RC.17] a text the course accepted but hasn't written yet is asked about on reopening, so the editor shows it rather than the older course text", () => {
+    expect(landingToCheck(rec({ synced: true, sentId: "s-2" }), "older")).toBe("s-2");
+    expect(landingToCheck(rec({ synced: true, sentId: "s-2" }), "A")).toBeNull();
+    expect(landingToCheck(rec({ synced: false, sentId: "s-2" }), "older")).toBeNull();
+    expect(landingToCheck(rec({ synced: true }), "older")).toBeNull();
   });
   it("[RC.17] update reads and writes one record together: an older text never overwrites a newer one", async () => {
     const s = new MemoryDraftStore();

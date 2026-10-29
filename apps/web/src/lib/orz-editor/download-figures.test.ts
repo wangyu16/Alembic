@@ -14,8 +14,10 @@ describe("a downloaded document stands on its own", () => {
     const out = await embedFigures(text, (t) => resolveCoursePath("study-guide/gases.md", t), (p) => urls.get(p), fakeFetch);
     const svg = `data:image/svg+xml;base64,${btoa("<svg/>")}`;
     // Embedded figures are <img> (Markdown refuses data: SVG addresses in image syntax; found in the r3 re-verification).
-    expect(out).toBe(`<img src="${svg}" alt="Barometer" width="820" style="max-width:100%">\n![Web](https://example.org/x.png)\n<img src="../assets/missing.png">\n<img src="${svg}" alt="Again" style="max-width:100%">`);
+    // A figure that starts a line gets a zero-width space first, so its caption stays Markdown (re-verifier r4).
+    expect(out).toBe(`&#8203;<img src="${svg}" alt="Barometer" width="820" style="max-width:100%">\n![Web](https://example.org/x.png)\n<img src="../assets/missing.png">\n&#8203;<img src="${svg}" alt="Again" style="max-width:100%">`);
     expect(fetched).toEqual(["/workspace/p/asset/assets/barometer.svg?b=x&e=1&s=y"]);
+    expect(await embedFigures("See ![B](../assets/barometer.svg) here", (t) => resolveCoursePath("study-guide/gases.md", t), (p) => urls.get(p), fakeFetch)).toBe(`See <img src="${svg}" alt="B" style="max-width:100%"> here`);
     expect(text).toContain("../assets/barometer.svg");
     // A code block is shown as written.
     const fenced = "```html\n<img src=\"../assets/barometer.svg\">\n```\n";
