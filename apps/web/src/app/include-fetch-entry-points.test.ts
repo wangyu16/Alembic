@@ -119,7 +119,12 @@ function exportsOf(src: string): Array<{ name: string; gated: boolean }> {
  * Keep this short; every entry must say why the fetched URL is not chosen by
  * the caller.
  */
-const JUSTIFIED: Record<string, string> = {};
+const JUSTIFIED: Record<string, string> = {
+  // Try mode (C7, owner ruling R28) is for visitors without an account. Its server fetches go to
+  // fixed hosts only: Wikipedia's API (the topic is a search term; redirects refused) and the
+  // operator's own AI gateway. No URL comes from the caller; caps and same-origin checks apply.
+  "app/api/try/route.ts": "anonymous by design; fetches fixed hosts only (Wikipedia API, the AI gateway)",
+};
 
 describe("entry points that make the server fetch (security loop r1, M5)", () => {
   it("[P5.S.6.b] every entry point reaching an include resolver or server fetch requires a session", () => {
@@ -137,6 +142,7 @@ describe("entry points that make the server fetch (security loop r1, M5)", () =>
   it("[P5.S.6.b] the inventory of such entry points is pinned (a new one needs review)", () => {
     expect(REACHING).toEqual([
       "app/api/preview/route.ts",
+      "app/api/try/route.ts",
       "app/workspace/[packageId]/collection-actions.ts",
       "app/workspace/[packageId]/export/lms/route.ts",
       "app/workspace/[packageId]/export/study-guide/route.ts",

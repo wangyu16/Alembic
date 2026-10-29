@@ -29,6 +29,22 @@ export function siteConfig(own: unknown, title: string | null, defaults: Record<
   return { ...base, delivery: "cdn", inline: [], includes: { ...includes, network: false } };
 }
 
+/**
+ * What of the public tree becomes website input: everything but the course's
+ * own files that aren't pages (the public manifest, the site settings), which
+ * are read here for the title and the course's own settings.
+ */
+export function siteInputFiles(files: Map<string, Uint8Array>): { files: Map<string, Uint8Array>; ownConfig: unknown; title: string | null } {
+  const decode = (b: Uint8Array | undefined) => (b ? (JSON.parse(new TextDecoder().decode(b)) as unknown) : null);
+  const ownConfig = decode(files.get("orz-site.json")); // throws on invalid JSON: the caller reports it
+  const manifest = decode(files.get("alembic.json")) as { title?: unknown } | null;
+  const title = typeof manifest?.title === "string" && manifest.title.trim() ? manifest.title.trim() : null;
+  const out = new Map(files);
+  out.delete("orz-site.json");
+  out.delete("alembic.json");
+  return { files: out, ownConfig, title };
+}
+
 /** The builder as run inside the child: orz-site in this process. */
 export async function inProcessBuilder(): Promise<SiteBuilder> {
   const site = await import("orz-site/node");

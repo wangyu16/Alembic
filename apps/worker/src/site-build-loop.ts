@@ -10,6 +10,7 @@
  */
 import { gitBlobSha, GitHubClient, installationTokenSource, type RepoCoords } from "@alembic/github-bridge";
 import type { SqlClient } from "@alembic/package-ops";
+import { siteInputFiles } from "./orz-site-builder";
 
 export const PAGES_BRANCH = "gh-pages";
 /** A claimed build that hasn't finished in this long is taken again. */
@@ -119,21 +120,15 @@ async function buildOne(cfg: SiteBuildConfig, run: { id: string; package_id: str
   for (const e of blobs) files.set(e.path, await client.getBlob(coords, e.sha));
 
   // The course's own site settings when it has them (orz-site.json is a course file); the builder forces the safe parts.
-  const own = files.get("orz-site.json");
-  let ownConfig: unknown = null;
-  let title: string | null = null;
+  let input: ReturnType<typeof siteInputFiles>;
   try {
-    if (own) ownConfig = JSON.parse(new TextDecoder().decode(own));
-    const manifest = files.get("alembic.json");
-    const t = manifest ? (JSON.parse(new TextDecoder().decode(manifest)) as { title?: unknown }).title : undefined;
-    title = typeof t === "string" && t.trim() ? t.trim() : null;
+    input = siteInputFiles(files);
   } catch {
     await mark(cfg.sql, run.id, "site-failed", { error: "orz-site.json (or the course manifest) isn't valid JSON" });
     return "bad JSON";
   }
-  files.delete("orz-site.json");
   const url = pagesUrl(coords);
-  const built = await cfg.site.build(files, { ownConfig, title, baseUrl: url });
+  const built = await cfg.site.build(input.files, { ownConfig: input.ownConfig, title: input.title, baseUrl: url });
   if (!built.ok) {
     await mark(cfg.sql, run.id, "site-failed", { error: "The website build found problems; the previous one stays up.", problems: built.errors.slice(0, 20) });
     return `build failed (${built.errors.length} problems)`;
