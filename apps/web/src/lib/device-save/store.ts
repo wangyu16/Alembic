@@ -22,8 +22,11 @@ export interface DeviceDraft {
  * Never silently dropped because the course moved on.
  */
 export function resumeFrom(kept: DeviceDraft | null | undefined, course: { text: string; version: string | null }): { text: string; pending: { text: string; baseVersion: string | null } | null } {
-  if (kept && kept.synced !== true && kept.text !== course.text) return { text: kept.text, pending: { text: kept.text, baseVersion: kept.baseVersion } };
-  return { text: course.text, pending: null };
+  if (!kept || kept.text === course.text) return { text: course.text, pending: null };
+  // Known unsent (RC.17); or a record from before the flag, only when the course hasn't moved since it
+  // was edited (the old rule: such a record may hold text the course already has, audit r3 HIGH-1).
+  const unsent = kept.synced === false || (kept.synced === undefined && kept.baseVersion === course.version);
+  return unsent ? { text: kept.text, pending: { text: kept.text, baseVersion: kept.baseVersion } } : { text: course.text, pending: null };
 }
 
 export interface DraftStore {

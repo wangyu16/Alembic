@@ -49,6 +49,7 @@ export async function requestPublishAction(packageId: string, form: FormData): P
   const { error } = await supabase.rpc("request_publish", { p: packageId, p_choices: { approveAndPublish, publishAnyway } });
   if (error) {
     back(packageId, error.code === "42501" ? "Only the owner or deputy publishes."
+      : error.code === "55006" && /status change/.test(error.message) ? "A chapter's status change is still being saved. Publish again in a few seconds."
       : error.code === "55006" ? "Publish is already running; try again when it has finished."
       : "Publish couldn't be started. Try again.");
   }

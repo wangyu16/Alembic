@@ -61,7 +61,8 @@ export class SyncScheduler {
 
   /** The course now holds our own earlier text as `baseVersion`: unsent typing is based on it from now on (RC.17). */
   rebase(baseVersion: string): void {
-    if (this.draft) this.draft = { ...this.draft, baseVersion };
+    // In place: a draft that is being sent stays the same draft (audit r3 MEDIUM-3).
+    if (this.draft) this.draft.baseVersion = baseVersion;
   }
 
   /** The person typed: `text` is already on the device. */
@@ -75,9 +76,14 @@ export class SyncScheduler {
     this.plan();
   }
 
-  /** Leaving the document, "Sync now", or before Publish. */
+  /**
+   * Leaving the document, "Sync now", or before Publish. If a sync is under way, wait for it, then send
+   * what was typed meanwhile (audit r3 MEDIUM-4: a second request used to be dropped silently).
+   */
   async syncNow(): Promise<void> {
+    if (this.running) await this.running;
     await this.run();
+    if (this.running) await this.running; // a sync started by the timer meanwhile
   }
 
   dispose(): void {
@@ -99,7 +105,15 @@ export class SyncScheduler {
     this.timer = this.d.setTimer(() => { this.timer = null; void this.run(); }, Math.max(0, due - this.d.now()));
   }
 
-  private async run(): Promise<void> {
+  private running: Promise<void> | null = null;
+
+  private run(): Promise<void> {
+    if (this.inFlight || this.draft === null) return this.running ?? Promise.resolve();
+    this.running = this.runOnce().finally(() => { this.running = null; });
+    return this.running;
+  }
+
+  private async runOnce(): Promise<void> {
     if (this.inFlight || this.draft === null) return;
     const draft = this.draft;
     this.syncId ??= this.d.newSyncId();

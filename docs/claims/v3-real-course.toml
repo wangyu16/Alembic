@@ -160,8 +160,9 @@ oracle = "conformance"
 bound_to = [
   "apps/web/src/lib/device-save/store.test.ts :: text on this device that never reached the course wins on reopening and is sent again with its own base, even after the course moved on; text the course already has never comes back",
   "apps/web/src/lib/device-save/scheduler.test.ts :: after the course echoes our own text, typing still unsent is sent on the new version, not the old one (no false 'both changed')",
+  "apps/web/src/lib/device-save/scheduler.test.ts :: syncNow during a sync waits for it, then sends what was typed meanwhile; nothing is dropped",
 ]
-note = "Audit r2 #1 (HIGH), #3, #5a, #9."
+note = "Audit r2 #1 (HIGH), #3, #5a, #9; audit r3 HIGH-1 (a resumed text now edits from its own base and is sent at once; records from before the synced flag are resumed only if the course hasn't moved) and MEDIUM-4."
 
 [[claim]]
 id = "RC.18"
@@ -170,6 +171,7 @@ oracle = "conformance"
 bound_to = [
   "packages/github-bridge/src/tree-reader.test.ts :: a course-size tree costs one listing and one archive for all its files; each file is checked against its blob id",
   "packages/github-bridge/src/tree-reader.test.ts :: a tree bigger than the archive limit is read blob by blob (bounded memory), never as one archive",
+  "packages/github-bridge/src/tree-reader.test.ts :: a failed archive (too big unpacked, LFS, outage) falls back to blob reads, without asking for the archive again",
 ]
 note = "Audit r2 #2 (HIGH): the archive was unbounded against the worker's 512 MB; #10 (no blob check, no retry)."
 
@@ -221,5 +223,16 @@ note = "Blind r2 A8: all 9 figures broken in a downloaded study guide."
 id = "RC.24"
 claim = "The Publish page can't publish a chapter's old status (Publish waits while a status change is saving, the server refuses meanwhile), says which chapters changed since the last Publish, gives times in the course's time zone, and the course page says what the person can do."
 oracle = "human"
-bound_to = []
+bound_to = [
+  "apps/web/src/lib/publish-store.sql.test.ts :: a Publish can't be asked for while a chapter status change is on its way; a non-member can't approve a plan part",
+]
 note = "Blind r2 B4 trap, critic #7, #8. Fresh re-verifier (round 3)."
+
+[[claim]]
+id = "RC.25"
+claim = "Presenting slides from the workspace never runs course content as Alembic: the deck plays in a sandboxed frame without Alembic's origin, the tab has no opener."
+oracle = "conformance"
+bound_to = [
+  "apps/web/src/lib/orz-editor/download-figures.test.ts :: the deck runs in a sandboxed frame without Alembic's origin; the page around it holds no script of the deck",
+]
+note = "Audit r3 HIGH-2 (stored XSS across members through Present). Open: a course over 80 MB is read blob by blob (audit r3 MEDIUM-6; a streaming archive parse would fix it); signed image addresses outlive a member's removal by up to 48 h (L11, accepted)."

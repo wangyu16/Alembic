@@ -132,3 +132,24 @@ describe("our own sync coming back (RC.17)", () => {
     expect(bases).toEqual(["v0", "v1"]);
   });
 });
+
+describe("Save while a sync is under way (audit r3 MEDIUM-4)", () => {
+  it("[RC.17] syncNow during a sync waits for it, then sends what was typed meanwhile; nothing is dropped", async () => {
+    const sent: string[] = [];
+    let release!: () => void;
+    const first = new Promise<void>((r) => { release = r; });
+    const s = new SyncScheduler({
+      now: () => 0, setTimer: () => 0, clearTimer: () => {}, newSyncId: () => crypto.randomUUID(),
+      send: async (d) => { sent.push(d.text); if (sent.length === 1) await first; return { ok: true }; },
+    });
+    s.edit({ text: "one", baseVersion: "v0" });
+    const a = s.syncNow();
+    await Promise.resolve();
+    s.edit({ text: "one two", baseVersion: "v0" }); // typed while "one" is being sent
+    const b = s.syncNow(); // Save pressed now
+    release();
+    await Promise.all([a, b]);
+    expect(sent).toEqual(["one", "one two"]);
+    expect(s.hasUnsynced).toBe(false);
+  });
+});

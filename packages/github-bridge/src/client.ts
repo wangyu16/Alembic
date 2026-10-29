@@ -964,7 +964,7 @@ export function treeReader(
   opts: { archiveMaxBytes?: number } = {},
 ) {
   const max = opts.archiveMaxBytes ?? 80 * 1024 * 1024;
-  const trees = new Map<string, Promise<{ entries: Map<string, { sha: string; size: number }>; archive: Promise<Map<string, Uint8Array>> | null }>>();
+  const trees = new Map<string, Promise<{ entries: Map<string, { sha: string; size: number }>; archive: Promise<Map<string, Uint8Array> | null> | null }>>();
   const load = (sha: string) => {
     let t = trees.get(sha);
     if (!t) {
@@ -972,8 +972,12 @@ export function treeReader(
         const listing = await client.listTreeEntries(coords, sha);
         const entries = new Map(listing.entries.filter((e) => e.type === "blob").map((e) => [e.path, { sha: e.sha, size: e.size ?? 0 }]));
         const total = [...entries.values()].reduce((n, e) => n + e.size, 0);
-        const archive = !listing.truncated && total <= max ? client.getTreeArchive(coords, sha, Math.ceil(total * 1.2) + 1024 * 1024) : null;
-        archive?.catch(() => trees.delete(sha));
+        // Unpacked, a tar adds a 512-byte header per entry (and folder) plus padding: allow for it (audit r3 MEDIUM-5).
+        const limit = total + (listing.entries.length + 1) * 1536 + 1024 * 1024;
+        // An archive that can't be had (too big unpacked, LFS, an outage) falls back to blob reads, once.
+        const archive = !listing.truncated && total <= max
+          ? client.getTreeArchive(coords, sha, limit).catch(() => null)
+          : null;
         return { entries, archive };
       })();
       t.catch(() => trees.delete(sha));
@@ -985,8 +989,9 @@ export function treeReader(
     const t = await load(sha);
     const e = t.entries.get(path);
     if (!e) return null;
-    if (t.archive) {
-      const b = (await t.archive).get(path);
+    const a = t.archive ? await t.archive : null;
+    if (a) {
+      const b = a.get(path);
       if (b && gitBlobSha(b) === e.sha) return b;
     }
     return client.getBlob(coords, e.sha);

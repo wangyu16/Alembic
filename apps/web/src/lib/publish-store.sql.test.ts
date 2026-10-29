@@ -148,6 +148,17 @@ describe("publish requests (0057)", () => {
     expect(rows[0]!.n).toBe(0);
   });
 
+  it("[RC.24] a Publish can't be asked for while a chapter status change is on its way; a non-member can't approve a plan part", async () => {
+    const pkg = await course();
+    const sql2 = { query: <T,>(t: string, p?: unknown[]) => asRole(db, "service_role", () => db.query<T>(t, p)) };
+    await sql2.query(`select public.queue_insert($1, 'system', 'mode:ch1:package:x', '{"files":[]}'::jsonb, $2)`, [pkg, owner]);
+    await expect(ask(pkg, owner)).rejects.toThrow(/status change is still being saved/);
+    await db.query(`update public.write_queue set status = 'done' where package_id = $1`, [pkg]);
+    expect((await ask(pkg, owner)).rows[0]!.id).toBeTruthy();
+    const outsider = await seedUser(db, "outsider-approver");
+    await expect(asRole(db, "authenticated", () => db.query(`select public.approve_part($1, 'concepts/ch1.md', $2)`, [pkg, "a".repeat(64)]), outsider)).rejects.toThrow(/Only the owner or deputy/);
+  });
+
   it("malformed choices are refused", async () => {
     const pkg = await course();
     await expect(ask(pkg, owner, { publishAnyway: "ch1" })).rejects.toThrow(/Malformed/);

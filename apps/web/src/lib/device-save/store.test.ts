@@ -18,7 +18,10 @@ import { resumeFrom } from "./store";
 describe("reopening a document (RC.17)", () => {
   const draft = (o: Partial<{ text: string; baseVersion: string | null; synced: boolean }>) => ({ key: "k", text: "mine", baseVersion: "v0", savedAt: 1, private: false, ...o });
   it("[RC.17] text on this device that never reached the course wins on reopening and is sent again with its own base, even after the course moved on; text the course already has never comes back", () => {
-    expect(resumeFrom(draft({ baseVersion: "v0" }), { text: "course v1", version: "v1" })).toEqual({ text: "mine", pending: { text: "mine", baseVersion: "v0" } });
+    expect(resumeFrom(draft({ baseVersion: "v0", synced: false }), { text: "course v1", version: "v1" })).toEqual({ text: "mine", pending: { text: "mine", baseVersion: "v0" } });
+    // A record from before the flag: resumed only if the course hasn't moved (it may hold text the course already has).
+    expect(resumeFrom(draft({ baseVersion: "v0" }), { text: "course v1", version: "v1" })).toEqual({ text: "course v1", pending: null });
+    expect(resumeFrom(draft({ baseVersion: "v1" }), { text: "course v1", version: "v1" })).toEqual({ text: "mine", pending: { text: "mine", baseVersion: "v1" } });
     expect(resumeFrom(draft({ baseVersion: "v0", synced: false }), { text: "course v0", version: "v0" })).toEqual({ text: "mine", pending: { text: "mine", baseVersion: "v0" } });
     expect(resumeFrom(draft({ synced: true }), { text: "course v2", version: "v2" })).toEqual({ text: "course v2", pending: null });
     expect(resumeFrom(draft({ text: "same" }), { text: "same", version: "v1" })).toEqual({ text: "same", pending: null });

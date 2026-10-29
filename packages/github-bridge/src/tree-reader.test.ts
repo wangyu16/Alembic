@@ -43,3 +43,14 @@ describe("reading many files of one tree", () => {
     expect(f.calls).toEqual({ list: 1, archive: 0, blob: 2 });
   });
 });
+
+describe("when the archive can't be had (audit r3 MEDIUM-5)", () => {
+  it("[RC.18] a failed archive (too big unpacked, LFS, outage) falls back to blob reads, without asking for the archive again", async () => {
+    const f = fake({ "study-guide/a.md": "a", "study-guide/b.md": "b" });
+    f.client.getTreeArchive = async () => { f.calls.archive++; throw new RangeError("Cannot create a Buffer larger than maxOutputLength"); };
+    const read = treeReader(f.client as never, { owner: "o", repo: "r" });
+    expect(new TextDecoder().decode((await read("W", "study-guide/a.md"))!)).toBe("a");
+    expect(new TextDecoder().decode((await read("W", "study-guide/b.md"))!)).toBe("b");
+    expect(f.calls).toEqual({ list: 1, archive: 1, blob: 2 });
+  });
+});

@@ -15,7 +15,7 @@ import { IndexedDbDraftStore, draftKey, requestPersistentStorage, resumeFrom, ty
 import { diffEdit, loadKit, type OrzEditor, type OrzKind } from "./kit";
 import { mergeRemote } from "./merge";
 import { makeHooks, resolveCoursePath } from "./hooks";
-import { assembleDownload, embedFigures } from "./download";
+import { assembleDownload, embedFigures, sandboxedPage } from "./download";
 
 export interface EmbeddedEditorProps {
   kind: OrzKind;
@@ -141,7 +141,10 @@ export const EmbeddedEditor = forwardRef<EmbeddedEditorHandle, EmbeddedEditorPro
             saveToDevice: async (text) => {
               await keep(text);
               await s.syncNow();
-              if (s.hasUnsynced) throw new Error("Not in the course yet: it is kept on this device and will be sent when the connection is back.");
+              if (s.hasUnsynced) {
+                const st = s.current;
+                throw new Error(st.kind === "refused" ? `Not saved to the course: ${st.reason}` : st.kind === "retrying" ? "Not in the course yet: it is kept on this device and will be sent when the connection is back." : "Not in the course yet: still sending. It is kept on this device.");
+              }
             },
             readCourseText: (path) => props.current.readCourseText(path),
             assetUrls: c.assetUrls ?? new Map(),
@@ -155,7 +158,15 @@ export const EmbeddedEditor = forwardRef<EmbeddedEditorHandle, EmbeddedEditorPro
           // Kept on the device at once; the editor's bar says Saved only when the course has it (onSynced).
           void keep(text);
         });
-        if (resume.pending) s.edit(resume.pending);
+        if (resume.pending) {
+          // The resumed text is edited from ITS base, not the course's current version (audit r3 HIGH-1): the
+          // editor's base follows it, and it goes to the course at once, where the version rule merges it with
+          // what changed meanwhile; the merged echo then diffs cleanly against this text.
+          base.current = resume.pending.baseVersion;
+          baseText.current = resume.text;
+          s.edit(resume.pending);
+          void s.syncNow();
+        }
       } catch (err) {
         if (!disposed) setFailed((err as Error).message || "The editor could not load.");
       }
@@ -183,10 +194,12 @@ export const EmbeddedEditor = forwardRef<EmbeddedEditorHandle, EmbeddedEditorPro
     const e = editor.current;
     if (!e) return;
     const tab = window.open("", "_blank"); // opened at the click, so the browser allows it
+    if (tab) tab.opener = null;
     const kit = await loadKit(p.kind);
     const html = await kit.assemble(await embedFigures(e.getText(), (t) => resolveCoursePath(p.docPath, t), (path) => p.assetUrls?.get(path)), { delivery: "inline" });
-    const url = URL.createObjectURL(new Blob([html], { type: "text/html" }));
-    if (tab) tab.location.href = url; else window.location.href = url;
+    // The deck runs sandboxed (audit r3 HIGH-2): course content never runs as Alembic.
+    const url = URL.createObjectURL(new Blob([sandboxedPage(html, p.docPath.split("/").pop() ?? "Slides")], { type: "text/html" }));
+    if (tab) tab.location.href = url; else window.open(url, "_blank", "noopener");
     setTimeout(() => URL.revokeObjectURL(url), 60_000);
   };
 

@@ -92,7 +92,20 @@ export async function embedFigures(text: string, resolve: (target: string) => st
     data.set(target, `data:${type};base64,${btoa(bin)}`);
   }));
   if (!data.size) return text;
-  return text
+  // Code blocks are shown as written: figures are embedded only outside them (audit r3 L7).
+  return text.split(/(^```[\s\S]*?^```[ \t]*$)/m).map((part, k) => (k % 2 === 1 ? part : part
     .replace(/(!\[[^\]]*\]\(\s*<?)([^)\s>]+)/g, (whole, head: string, target: string) => (data.has(target) ? head + data.get(target)! : whole))
-    .replace(/(\bsrc\s*=\s*["'])([^"']+)/g, (whole, head: string, target: string) => (data.has(target) ? head + data.get(target)! : whole));
+    .replace(/(\bsrc\s*=\s*["'])([^"']+)/g, (whole, head: string, target: string) => (data.has(target) ? head + data.get(target)! : whole)))).join("");
+}
+
+/**
+ * A page that shows `html` (an assembled deck) inside a sandboxed frame (audit r3 HIGH-2): course content
+ * may hold scripts (Markdown allows HTML), and a page opened from the workspace would run them as the
+ * signed-in person. In the frame they run in an opaque origin, with no access to Alembic.
+ */
+export function sandboxedPage(html: string, title: string): string {
+  const attr = (t: string) => t.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  return `<!doctype html><meta charset="utf-8"><title>${attr(title)}</title>`
+    + `<style>html,body{margin:0;height:100%;background:#000}iframe{border:0;width:100%;height:100%;display:block}</style>`
+    + `<iframe sandbox="allow-scripts allow-popups" allow="fullscreen" allowfullscreen srcdoc="${attr(html)}"></iframe>`;
 }

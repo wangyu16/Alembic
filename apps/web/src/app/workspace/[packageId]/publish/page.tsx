@@ -2,6 +2,7 @@ import { GithubBusy, githubBusy } from "@/lib/github-busy";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { can, WorkingManifestV3Schema, type Role } from "@alembic/package-contract";
+import { unitOf } from "@alembic/package-ops";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { v3Enabled } from "@/lib/db";
 import { blobsAt, courseRepo, textAtCommit, versionsAt } from "@/lib/course-v3";
@@ -70,9 +71,15 @@ async function PublishPageInner({ params, searchParams }: { params: Promise<{ pa
   const blobs = await blobsAt(c.client, { owner: c.owner, repo: c.name }, head);
   const published = new Map(((publishedRows ?? []) as Array<{ path: string; blob_sha: string; unit: string }>).map((r) => [r.path, r]));
   const everPublished = new Set([...published.values()].filter((r) => r.unit.startsWith("chapter:")).map((r) => r.unit.slice(8)));
-  const chapterFiles = (slug: string) => [...blobs.keys()].filter((p) =>
-    [`concepts/${slug}.md`, `study-guide/${slug}.md`, `slides/${slug}.slides.md`, `assessment-support/${slug}.md`, `practice/${slug}.md`].includes(p) || p.split("/")[2] === slug && p.split("/")[1] === "chapters");
-  const editedSincePublish = (slug: string) => everPublished.has(slug) && chapterFiles(slug).some((p) => published.get(p)?.blob_sha !== blobs.get(p));
+  // Which files belong to which chapter: the publisher's own rule (any name under the chapter's slots and folders).
+  const slugs = new Set(manifest.chapters.map((ch) => ch.slug));
+  const changed = new Set<string>();
+  for (const [p, sha] of blobs) {
+    const u = unitOf(p, slugs, everPublished);
+    if (u.kind === "chapter" && published.get(p)?.blob_sha !== sha) changed.add(u.slug);
+  }
+  for (const [p, r] of published) if (r.unit.startsWith("chapter:") && !blobs.has(p)) changed.add(r.unit.slice(8)); // deleted since
+  const editedSincePublish = (slug: string) => everPublished.has(slug) && changed.has(slug);
   const chapters = manifest.chapters.map((ch) => {
     const parts = ["concepts", "assessment-support"].map((space) => {
       const path = `${space}/${ch.slug}.md`;
