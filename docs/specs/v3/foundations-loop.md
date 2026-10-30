@@ -252,3 +252,22 @@ content profile).
 - **Answer to the question asked:** an instructor file unchanged since the chosen version isn't checked. It sat in the same course next to that text then, so restoring adds nothing new, and Publish's full check still runs.
 
 **Live (`6d44a68`):** a public study guide was restored on the testing copy, with the new check in the path. It landed at the top in under 15 s.
+
+## Step 2, round 3 audit: no HIGH, so step 2 is closed
+
+**0 HIGH, 2 MEDIUM, 6 LOW.** L-a and L-c were verified as fixed. H2-1 and M2-1 were only partly fixed, and the gaps came back as M3-1 and M3-2.
+
+- **M3-1:** the instructor-file check still cost (number of private files) × (old text) on the web server. That was 22–45 s within Alembic's own limits, and 53 s for a 20 MB text pushed on GitHub. **Now (`8f7b06c`):**
+  - an old text over 1 MB is refused ("ask the owner");
+  - the instructor texts are checked as one joined entry, in a single pass;
+  - the worst case at the caps measured 1.5 s.
+- **M3-2:** short keys were matched only when the whole file was under 12 words, with a normaliser of their own. **Now:** each line of a changed instructor file under 12 words is matched whole, using Publish's own `words()` rule (NFKC, markup, soft hyphens). The auditor's "# Key … The answer is <b>mitochondria</b>" is caught.
+- **L3-2, L3-3:** a symlink under `private/` could get round the byte cap, and a submodule caused an error. **Now:** only plain blobs are read, by content id. A link, a submodule, or a path missing from the tree refuses.
+- **L3-6 (existed before):** an item id from another course could be answered. **Now:** the item must be this course's Both-changed item for this path.
+- **Open, with reasons:**
+  - **L3-1:** the item answer and the queue insert aren't one transaction. If the insert fails, the item is answered with no restore queued, but the version stays in History and can be restored from there.
+  - **L3-4:** instructor files unchanged since the chosen version aren't checked. The answers-stripped-later workflow is still blocked by Publish's 12-word check on `private/instructor/`. Checking every private file on every restore would refuse real courses over the budget.
+  - **L3-5:** a private file added between the check and the commit isn't re-checked. The window is seconds, and Publish is the backstop.
+  - The owner's "closed-loop stop rule" applies: trust boundaries plus per-construct limits, not endless hardening.
+
+**Stop rule met:** round 3 found no HIGH. **Live (`8f7b06c`):** the restore landed, and older entries read "Saved".
