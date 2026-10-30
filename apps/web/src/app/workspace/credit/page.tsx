@@ -54,16 +54,16 @@ export default async function CreditPage({ searchParams }: { searchParams: Promi
   return (
     <main className="mx-auto max-w-2xl p-6">
       <p className="text-sm"><Link href="/workspace">← Your courses</Link></p>
-      <h1 className="mt-2 text-2xl font-semibold">AI credit</h1>
-      {buy === "done" ? <p className="mt-3 rounded border border-green-700 p-2 text-sm" role="status">Thank you. Your credit appears here as soon as the payment is confirmed (usually within a minute).</p> : null}
-      {buy === "failed" ? <p className="mt-3 text-sm text-red-700" role="alert">The payment page couldn&apos;t be opened. Please try again.</p> : null}
+      <h1 className="page-title mt-2">AI credit</h1>
+      {buy === "done" ? <p className="notice notice-ok mt-3" role="status">Thank you. Your credit appears here as soon as the payment is confirmed (usually within a minute).</p> : null}
+      {buy === "failed" ? <p className="mt-3 text-sm text-danger" role="alert">The payment page couldn&apos;t be opened. Please try again.</p> : null}
       <p className="mt-4 text-4xl font-semibold" data-testid="balance">{fmt(balance)}</p>
-      <p className="text-sm text-gray-600">
+      <p className="text-sm text-muted">
         credits available{granted > 0 ? ` · ${fmt(granted)} given to you` : ""}{paid > 0 ? ` · ${fmt(paid)} bought` : ""}
         {soonest ? ` · given credit expires from ${new Date(soonest).toLocaleDateString()}` : ""}
       </p>
       {debt > 0 ? (
-        <p className="mt-3 rounded border border-amber-600 p-2 text-sm">
+        <p className="notice notice-warn mt-3">
           You owe {fmt(debt)} credits (a refunded payment, or a task that cost more than set aside). New AI tasks wait until it is cleared; buying credit clears it first.
         </p>
       ) : null}
@@ -79,21 +79,21 @@ export default async function CreditPage({ searchParams }: { searchParams: Promi
             ))}
           </form>
         ) : (
-          <p className="mt-2 text-sm text-gray-600">Buying credit isn&apos;t available yet. Credit given by the Alembic team appears here.</p>
+          <p className="mt-2 text-sm text-muted">Buying credit isn&apos;t available yet. Credit given by the Alembic team appears here.</p>
         )}
-        <p className="mt-2 text-xs text-gray-600">Payments go through Stripe. The price is fixed when the payment page opens. Bought credit doesn&apos;t expire.</p>
+        <p className="mt-2 text-xs text-muted">Payments go through Stripe. The price is fixed when the payment page opens. Bought credit doesn&apos;t expire.</p>
       </section>
 
       <section className="mt-8">
         <h2 className="text-lg font-medium">Recent activity</h2>
         {(entries ?? []).length === 0 ? (
-          <p className="mt-2 text-sm text-gray-600">Nothing yet.</p>
+          <p className="mt-2 text-sm text-muted">Nothing yet.</p>
         ) : (
           <ul className="mt-2 divide-y rounded border text-sm">
             {(entries ?? []).map((e, i) => (
               <li key={i} className="flex justify-between p-2">
                 <span>{ENTRY[e.kind] ?? e.kind}</span>
-                <span className="text-gray-600">{fmt(Number(e.amount))} · {new Date(e.created_at).toLocaleDateString()}</span>
+                <span className="text-muted">{fmt(Number(e.amount))} · {new Date(e.created_at).toLocaleDateString()}</span>
               </li>
             ))}
           </ul>

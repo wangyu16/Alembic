@@ -106,17 +106,17 @@ async function PublishPageInner({ params, searchParams }: { params: Promise<{ pa
   const canMode = can(role, "edit.course-files");
 
   return (
-    <main className="mx-auto max-w-3xl p-6">
+    <main className="mx-auto max-w-5xl px-4 py-6 sm:px-6">
       <RefreshWhile active={busy || siteBuilding || pendingMode.size > 0} everyMs={busy || pendingMode.size ? 5000 : 15_000} />
       <p className="text-sm"><Link prefetch={false} href={`/workspace/${packageId}/course`}>← {(course?.title as string | undefined) ?? "Course"}</Link></p>
-      <h1 className="mt-2 text-2xl font-semibold">Publish</h1>
-      <p className="mt-1 text-sm text-gray-600">
+      <h1 className="page-title mt-2">Publish</h1>
+      <p className="mt-2 max-w-3xl text-sm text-muted">
         Publishing copies the chapters that are ready to the course&apos;s public copy{" "}
         {pub ? <>(<a className="underline" href={`https://github.com/${pub.owner}/${pub.name}`}>on GitHub</a>)</> : "(made on the first Publish)"}{" "}and updates its website.
         A chapter is ready when it isn&apos;t a draft, its course plan is approved, and the checks pass (nothing in it repeats an
         answer key or copies a source). A draft chapter stays on the website as it was last published (or isn&apos;t there yet); its new edits wait.
       </p>
-      {message ? <p className="mt-3 rounded border border-amber-400 bg-amber-100 p-2 text-sm text-amber-950" role="status">{message}</p> : null}
+      {message ? <p className="notice mt-3" role="status">{message}</p> : null}
       {site.kind !== "none" ? (
         <div className="mt-3 text-sm">
           Website: {site.kind === "live" ? <><a className="underline" href={site.url}>{site.url}</a>{site.note ? <> ({site.note})</> : null}</>
@@ -129,11 +129,11 @@ async function PublishPageInner({ params, searchParams }: { params: Promise<{ pa
       ) : null}
 
       {refusedMode.length ? (
-        <p className="mt-3 rounded border border-amber-400 bg-amber-100 p-2 text-sm text-amber-950" role="status">
+        <p className="notice notice-warn mt-3" role="status">
           {`A change to ${[...new Set(refusedMode)].map((s2) => titleOf.get(s2) ?? s2).join(", ")} couldn't be saved. Please make it again.`}
         </p>
       ) : null}
-      <section className="mt-5 rounded border p-3">
+      <section className="panel mt-5 p-4">
         <h2 className="font-medium">The most recent Publish</h2>
         {!last ? <p className="mt-1 text-sm">Not published yet.</p> : busy ? (
           <p className="mt-1 text-sm">Publishing… this page updates by itself.</p>
@@ -152,9 +152,9 @@ async function PublishPageInner({ params, searchParams }: { params: Promise<{ pa
       </section>
 
       <form action={requestPublishAction.bind(null, packageId)} className="mt-5">
-        <table className="w-full text-sm">
+        <table className="data-table">
           <thead><tr className="text-left"><th className="py-1">Chapter</th><th>Status</th><th>Course plan</th><th /></tr></thead>
-          <tbody className="divide-y">
+          <tbody>
             {chapters.map((ch) => {
               const missing = ch.parts.some((p) => !p.present);
               const toApprove = ch.parts.filter((p) => p.present && !p.approved);
@@ -162,9 +162,9 @@ async function PublishPageInner({ params, searchParams }: { params: Promise<{ pa
               const findings = kept?.why.filter((w) => w !== "Draft chapter" && w !== "Course plan not approved") ?? [];
               return (
                 <tr key={ch.slug} className="align-top">
-                  <td className="py-2">{ch.title}{editedSincePublish(ch.slug) ? <span className="ml-2 rounded bg-blue-100 px-1.5 py-0.5 text-xs text-blue-950">edited since the last Publish</span> : !everPublished.has(ch.slug) ? <span className="ml-2 text-xs text-gray-600">not published yet</span> : null}</td>
+                  <td className="py-2">{ch.title}{editedSincePublish(ch.slug) ? <span className="badge badge-accent ml-2">edited since the last Publish</span> : !everPublished.has(ch.slug) ? <span className="ml-2 text-xs text-muted">not published yet</span> : null}</td>
                   <td className="py-2">
-                    {pendingMode.has(ch.slug) ? <span>{pendingMode.get(ch.slug) === "draft" ? "Draft" : "Ready"} <em className="text-gray-600">(saving…)</em></span>
+                    {pendingMode.has(ch.slug) ? <span>{pendingMode.get(ch.slug) === "draft" ? "Draft" : "Ready"} <em className="text-muted">(saving…)</em></span>
                       : ch.mode === "draft" ? "Draft"
                       : missing || toApprove.length ? "Ready once the course plan is approved"
                       : "Ready"}
@@ -180,7 +180,7 @@ async function PublishPageInner({ params, searchParams }: { params: Promise<{ pa
                     ) : toApprove.length === 0 ? "Approved" : canApprove ? (
                       <span>
                         {toApprove.some((p) => everApproved.has(p.path)) ? "Changed since it was approved" : "Not approved yet"}: read the {ch.parts.map((p) => <Link key={p.path} prefetch={false} className="underline" href={`/workspace/${packageId}/doc/${p.path.split("/").map(encodeURIComponent).join("/")}`}>{p.path.split("/")[0] === "concepts" ? "concept map" : "assessment guide"}</Link>).reduce<React.ReactNode[]>((a, x, i) => (i ? [...a, " and ", x] : [x]), [])}, then{" "}
-                        <button className="rounded border px-2 py-0.5" formAction={approvePlanNowAction.bind(null, packageId, toApprove.map((p) => `${p.path}@${p.version}`).join("|"))}>Approve it as it is now</button>
+                        <button className="btn btn-ghost btn-sm mt-1" formAction={approvePlanNowAction.bind(null, packageId, toApprove.map((p) => `${p.path}@${p.version}`).join("|"))}>Approve it as it is now</button>
                       </span>
                     ) : "Waiting for the owner or deputy to approve the course plan"}
                   </td>
@@ -198,8 +198,8 @@ async function PublishPageInner({ params, searchParams }: { params: Promise<{ pa
         </table>
         {canPublish ? (
           <div className="mt-4">{busy || pendingMode.size
-            ? <button type="button" disabled className="rounded bg-gray-300 px-4 py-2 text-gray-900">{busy ? "Publishing…" : "Waiting for a status change to be saved…"}</button>
-            : <SubmitButton pending="Starting…" className="rounded bg-blue-700 px-4 py-2 font-medium text-white hover:bg-blue-800">Publish</SubmitButton>}</div>
+            ? <button type="button" disabled className="btn btn-ghost">{busy ? "Publishing…" : "Waiting for a status change to be saved…"}</button>
+            : <SubmitButton pending="Starting…" className="btn btn-primary px-6 py-2.5 text-base">Publish</SubmitButton>}</div>
         ) : <p className="mt-4 text-sm">Only the owner or deputy publishes.</p>}
       </form>
     </main>

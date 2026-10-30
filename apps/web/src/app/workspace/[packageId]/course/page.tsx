@@ -61,55 +61,63 @@ async function CourseHomeV3Inner({ params, searchParams }: { params: Promise<{ p
   const o = courseOutline(Array.isArray(chapters) ? chapters : [], docs);
   const href = (p: string) => `/workspace/${packageId}/doc/${p.split("/").map(encodeURIComponent).join("/")}`;
   const list = (items: Array<{ label: string; path: string }>) => (
-    <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm">
-      {items.map((x) => <li key={x.path}><Link prefetch={false} className="underline" href={href(x.path)}>{x.label}</Link></li>)}
+    <ul className="mt-3 flex flex-wrap gap-1.5 text-sm">
+      {items.map((x) => <li key={x.path}><Link prefetch={false} className="part" href={href(x.path)}>{x.label}</Link></li>)}
     </ul>
   );
 
   return (
-    <main className="mx-auto max-w-3xl p-6">
-      <p className="text-sm"><Link href="/workspace">← Your courses</Link></p>
-      <h1 className="mt-2 text-2xl font-semibold">{(course?.title as string | undefined) ?? "Course"}</h1>
-      <p className="mt-1 text-sm text-gray-600" data-testid="role">{ROLE_LINE[role as string] ?? ""}</p>
-      <nav className="mt-2 flex gap-4 text-sm">
-        <Link className="underline" href={`/workspace/${packageId}/needs-you`}>Needs you</Link>
-        <Link className="underline" href={`/workspace/${packageId}/people`}>People</Link>
-        <Link prefetch={false} className="underline" href={`/workspace/${packageId}/publish`}>Publish</Link>
-      </nav>
+    <main className="mx-auto max-w-5xl px-4 py-6 sm:px-6">
+      <p className="text-sm text-muted"><Link href="/workspace">← Your courses</Link></p>
+      <div className="mt-2 flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
+        <div className="min-w-0">
+          <h1 className="page-title">{(course?.title as string | undefined) ?? "Course"}</h1>
+          <p className="mt-1 text-sm text-muted" data-testid="role">{ROLE_LINE[role as string] ?? ""}</p>
+        </div>
+        <nav className="flex flex-wrap gap-2 text-sm" aria-label="This course">
+          <Link className="btn btn-ghost btn-sm" href={`/workspace/${packageId}/needs-you`}>Needs you</Link>
+          <Link className="btn btn-ghost btn-sm" href={`/workspace/${packageId}/people`}>People</Link>
+          <Link prefetch={false} className="btn btn-primary btn-sm" href={`/workspace/${packageId}/publish`}>Publish</Link>
+        </nav>
+      </div>
       <RefreshWhile active={(open ?? []).length > 0} everyMs={3000} />
-      {message ? <p className="mt-3 rounded border border-sky-300 bg-sky-50 p-2 text-sm text-sky-950" role="status">{message}</p> : null}
-      <ol className="mt-6 divide-y rounded border" data-testid="chapters">
+      {message ? <p className="notice mt-4" role="status">{message}</p> : null}
+      <ol className="panel mt-6 divide-y divide-edge-soft" data-testid="chapters">
         {o.chapters.map((ch, k) => (
-          <li key={ch.slug} className="p-3">
-            <h2 className="font-medium">
-              {k + 1}. {ch.title}
-              {ch.draft ? <span className="ml-2 rounded bg-gray-200 px-1.5 py-0.5 text-xs font-normal text-gray-800">Draft</span> : null}
+          <li key={ch.slug} className="grid gap-2 px-4 py-3 lg:grid-cols-[minmax(14rem,1fr)_auto] lg:items-center">
+            <h2 className="flex min-w-0 items-baseline gap-2 font-medium text-ink">
+              <span className="w-6 shrink-0 text-right text-sm tabular-nums text-muted">{k + 1}</span>
+              <span className="min-w-0">{ch.title}</span>
+              {ch.draft ? <span className="badge badge-warn">Draft</span> : null}
             </h2>
-            {list([...ch.parts, ...ch.more])}
+            <div className="flex flex-wrap items-center gap-1.5 pl-8 lg:justify-end lg:pl-0">
+            {[...ch.parts, ...ch.more].map((x) => <Link key={x.path} prefetch={false} className="part" href={href(x.path)}>{x.label}</Link>)}
             {ch.missing.length ? (
-              <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-gray-700" data-testid="missing">
-                <span>Not started:</span>
+              <div className="contents" data-testid="missing">
+                <span className="sr-only">Not started:</span>
                 {ch.missing.map((label) => (
                   <form key={label} action={startPartsAction.bind(null, packageId, ch.slug, partOf.get(label)!)}>
-                    <SubmitButton className="underline" pending={`Starting ${label}…`}>{`Start ${label.toLowerCase()}`}</SubmitButton>
+                    <SubmitButton className="part part-missing" pending={`Starting ${label}…`}>{`Start ${label.toLowerCase()}`}</SubmitButton>
                   </form>
                 ))}
                 {ch.missing.length > 1 ? (
                   <form action={startPartsAction.bind(null, packageId, ch.slug, "all")}>
-                    <SubmitButton className="font-medium underline" pending="Starting…">Start all {ch.missing.length}</SubmitButton>
+                    <SubmitButton className="part part-missing font-medium text-accent" pending="Starting…">Start all {ch.missing.length}</SubmitButton>
                   </form>
                 ) : null}
               </div>
             ) : null}
+            </div>
           </li>
         ))}
       </ol>
-      {o.chapters.length === 0 && docs.length === 0 ? <p className="mt-6">No documents yet.</p> : null}
+      {o.chapters.length === 0 && docs.length === 0 ? <p className="mt-6 text-muted">No documents yet.</p> : null}
+      <div className="mt-6 grid gap-4 lg:grid-cols-2">
       {mayAddChapters ? (
-        <details className="mt-6 rounded border p-3" data-testid="add-chapters" open={o.chapters.length <= 1}>
+        <details className="panel p-4" data-testid="add-chapters" open={o.chapters.length <= 1}>
           <summary className="cursor-pointer font-medium">Add chapters</summary>
           <form action={addChaptersAction.bind(null, packageId)} className="mt-3 space-y-3">
-            <label className="block text-sm">
+            <label className="block text-sm text-muted">
               Chapter titles, one per line (paste a whole table of contents if you like). They are added at the end, as drafts.
               <textarea name="titles" rows={4} required className="input mt-1 w-full font-normal" placeholder={"Atoms and Molecules\nStoichiometry\nGases"} />
             </label>
@@ -120,33 +128,34 @@ async function CourseHomeV3Inner({ params, searchParams }: { params: Promise<{ p
           </form>
         </details>
       ) : null}
-      <details className="mt-6 rounded border p-3" data-testid="snapshots">
+      <details className="panel p-4" data-testid="snapshots">
         <summary className="cursor-pointer font-medium">Snapshots ({snaps.length})</summary>
-        <p className="mt-2 text-sm text-gray-700">Name the course as it is now (for example &ldquo;Fall 2026&rdquo;), and later see what changed since.</p>
+        <p className="mt-2 text-sm text-muted">Name the course as it is now (for example &ldquo;Fall 2026&rdquo;), and later see what changed since.</p>
         <form action={createSnapshotAction.bind(null, packageId)} className="mt-2 flex gap-2">
           <input name="name" required maxLength={120} placeholder="Fall 2026" className="input flex-1" />
-          <SubmitButton className="btn" pending="Saving…">Save a snapshot</SubmitButton>
+          <SubmitButton className="btn btn-ghost" pending="Saving…">Save a snapshot</SubmitButton>
         </form>
         {snaps.length ? (
           <ul className="mt-3 space-y-1 text-sm">
             {snaps.map((sn) => (
-              <li key={sn.slug}><Link prefetch={false} className="underline" href={`/workspace/${packageId}/snapshots/${sn.slug}`}>{sn.name}</Link> <span className="text-gray-600">· <LocalTime at={sn.created_at} /></span></li>
+              <li key={sn.slug}><Link prefetch={false} className="underline" href={`/workspace/${packageId}/snapshots/${sn.slug}`}>{sn.name}</Link> <span className="text-muted">· <LocalTime at={sn.created_at} /></span></li>
             ))}
           </ul>
         ) : null}
       </details>
       {o.course.length ? (
-        <details className="mt-6 rounded border p-3">
+        <details className="panel p-4">
           <summary className="cursor-pointer font-medium">Course-wide files ({o.course.length})</summary>
           {list(o.course)}
         </details>
       ) : null}
       {o.instructor.length ? (
-        <details className="mt-3 rounded border p-3">
+        <details className="panel p-4">
           <summary className="cursor-pointer font-medium">Instructor only ({o.instructor.length})</summary>
           {list(o.instructor)}
         </details>
       ) : null}
+      </div>
     </main>
   );
 }

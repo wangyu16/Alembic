@@ -29,7 +29,7 @@ export default async function PeoplePage({ params }: { params: Promise<{ package
   return (
     <main className="mx-auto max-w-2xl p-6">
       <p className="text-sm"><Link href={`/workspace/${packageId}`}>← {(course?.title as string | undefined) ?? "Course"}</Link></p>
-      <h1 className="mt-2 text-2xl font-semibold">People</h1>
+      <h1 className="page-title mt-2">People</h1>
       <p className="mt-1 text-sm"><Link className="underline" href={`/workspace/${packageId}/needs-you`}>Needs you</Link></p>
       <ul className="mt-4 divide-y rounded border">
         {list.map((m) => {
@@ -38,7 +38,7 @@ export default async function PeoplePage({ params }: { params: Promise<{ package
             <li key={m.user_id} className="flex items-center justify-between p-3">
               <span>
                 <span className="font-medium">{m.display_name || m.github_username || "Someone"}</span>
-                {m.github_username ? <span className="ml-2 text-sm text-gray-600">@{m.github_username}</span> : null}
+                {m.github_username ? <span className="ml-2 text-sm text-muted">@{m.github_username}</span> : null}
                 <span className="ml-2 text-sm">
                   {ROLE[m.role] ?? m.role}
                   {deputy ? ` · deputy until ${new Date(m.deputy_until!).toLocaleDateString()}` : ""}
@@ -64,7 +64,7 @@ export default async function PeoplePage({ params }: { params: Promise<{ package
                   <form action={removeMemberAction}>
                     <input type="hidden" name="packageId" value={packageId} />
                     <input type="hidden" name="userId" value={m.user_id} />
-                    <button type="submit" className="text-sm text-red-700 underline">Remove</button>
+                    <button type="submit" className="text-sm text-danger underline">Remove</button>
                   </form>
                 </span>
               ) : !isOwner && m.user_id === user.id ? (
@@ -81,7 +81,7 @@ export default async function PeoplePage({ params }: { params: Promise<{ package
       {isOwner ? (
         <section className="mt-8">
           <h2 className="text-lg font-medium">Invite a co-author</h2>
-          <p className="mt-1 text-sm text-gray-600">Co-authors edit the course with you. You keep approving and publishing; while you&apos;re away, a deputy can do both until the date you choose.</p>
+          <p className="mt-1 text-sm text-muted">Co-authors edit the course with you. You keep approving and publishing; while you&apos;re away, a deputy can do both until the date you choose.</p>
           <div className="mt-3"><InviteForm packageId={packageId} /></div>
           {open.length > 0 ? (
             <>
@@ -93,7 +93,7 @@ export default async function PeoplePage({ params }: { params: Promise<{ package
                     <form action={revokeInvitationAction}>
                       <input type="hidden" name="packageId" value={packageId} />
                       <input type="hidden" name="id" value={i.id} />
-                      <button type="submit" className="text-red-700 underline">Cancel</button>
+                      <button type="submit" className="text-danger underline">Cancel</button>
                     </form>
                   </li>
                 ))}

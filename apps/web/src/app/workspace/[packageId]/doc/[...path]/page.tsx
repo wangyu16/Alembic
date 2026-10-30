@@ -50,7 +50,7 @@ async function DocPageInner({ params }: { params: Promise<{ packageId: string; p
         <Link prefetch={false} href={`/workspace/${packageId}/course`} className="underline">← Course</Link>
         <Link prefetch={false} href={`/workspace/${packageId}/history/${path.split("/").map(encodeURIComponent).join("/")}`} className="underline" data-testid="history-link">History</Link>
         <span className="font-medium">{docTitle(text) ?? path}</span>
-        {docTitle(text) ? <span className="text-xs text-gray-500">{path}</span> : null}
+        {docTitle(text) ? <span className="text-xs text-muted">{path}</span> : null}
       </div>
       <div className="min-h-0 flex-1">
         <DocEditor kind={kind} packageId={packageId} path={path} text={text} version={version} renderedAt={renderedAt} isPrivate={path.startsWith("private/")} assets={[...assets]} nonce={(await headers()).get("x-nonce") ?? undefined} />

@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 
 const VIEW_LABEL = { open: "Open", handled: "Handled", spam: "Spam" } as const;
 const URGENCY: Record<string, { label: string; cls: string }> = {
-  high: { label: "Urgent", cls: "border-red-600 text-red-700" },
+  high: { label: "Urgent", cls: "border-danger text-danger" },
   normal: { label: "Normal", cls: "border-edge text-muted" },
   low: { label: "Low", cls: "border-edge text-faint" },
 };

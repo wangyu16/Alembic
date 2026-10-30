@@ -67,7 +67,7 @@ export function TryApp() {
 
   return (
     <main className="mx-auto w-full max-w-5xl p-6">
-      <p className="rounded border border-amber-500 bg-amber-100 p-2 text-sm text-amber-950" role="note">
+      <p className="notice notice-warn" role="note">
         <b>This is a demo.</b> Nothing you make here is saved. Demo output is not checked as a real course would be.
       </p>
 
@@ -84,7 +84,7 @@ export function TryApp() {
           </ol>
           <p>Everything is written as plain-text documents that open in the orz editors, are kept in the educator&apos;s own GitHub account, and publish as an open course website.</p>
           <p>Name any topic, and a fast, low-cost AI model will make a short sample chapter while you watch. It uses its own knowledge and Wikipedia; no textbooks or uploads.</p>
-          <button type="button" className="rounded bg-blue-700 px-4 py-2 font-medium text-white hover:bg-blue-800" onClick={() => setPhase("form")}>Try it</button>
+          <button type="button" className="btn btn-primary" onClick={() => setPhase("form")}>Try it</button>
         </section>
       ) : null}
 
@@ -99,17 +99,17 @@ export function TryApp() {
           <label className="flex flex-col text-sm">Workshop code (if you have one)
             <input value={code} onChange={(e) => setCode(e.target.value)} maxLength={40} placeholder="WKS-…" autoComplete="off" className="mt-1 w-40 rounded border px-2 py-1.5 font-mono" disabled={phase === "making"} />
           </label>
-          <button type="submit" disabled={phase === "making"} className="rounded bg-blue-700 px-4 py-2 font-medium text-white hover:bg-blue-800 disabled:opacity-50">{phase === "making" ? "Making…" : phase === "made" ? "Make another" : "Make a sample chapter"}</button>
+          <button type="submit" disabled={phase === "making"} className="btn btn-primary">{phase === "making" ? "Making…" : phase === "made" ? "Make another" : "Make a sample chapter"}</button>
         </form>
       ) : null}
 
-      {error ? <p className="mt-3 text-red-700" role="alert">{error}</p> : null}
+      {error ? <p className="mt-3 text-danger" role="alert">{error}</p> : null}
       {notice ? <p className="mt-3 rounded border p-2 text-sm" role="status">{notice}</p> : null}
 
       {ordered.length ? (
         <ol className="mt-6 space-y-2" aria-live="polite">
           {ordered.map((s) => (
-            <li key={s.part} className="rounded border p-3">
+            <li key={s.part} className="panel p-4">
               <div className="flex items-center justify-between gap-2">
                 <b>{s.title}</b>
                 <span className="text-sm">{s.status === "working" ? "Writing…" : s.status === "done" ? "Done" : "Ready-made example"}</span>
@@ -173,7 +173,7 @@ function TryEditor({ file }: { file: File }) {
   return (
     <div className="mt-2">
       <p className="text-xs text-muted">You can edit this. Nothing is kept here when you leave; Save downloads your own copy to your computer.</p>
-      {failed ? <p className="text-red-700">{failed}</p> : null}
+      {failed ? <p className="text-danger">{failed}</p> : null}
       <div ref={host} className="h-[70vh] rounded border" />
     </div>
   );

@@ -48,17 +48,17 @@ async function HistoryInner({ params, searchParams }: { params: Promise<{ packag
   return (
     <main className="mx-auto max-w-4xl p-6">
       <p className="text-sm"><Link prefetch={false} className="underline" href={docHref}>← Back to the document</Link></p>
-      <h1 className="mt-2 text-2xl font-semibold">History</h1>
-      <p className="mt-1 text-sm text-gray-600">{path} — the last {h.entries.length} versions, newest first. Restoring brings a version back as the newest one; nothing is lost.</p>
-      {m ? <p className="mt-3 rounded border border-sky-300 bg-sky-50 p-2 text-sm text-sky-950" role="status">{m}</p> : null}
+      <h1 className="page-title mt-2">History</h1>
+      <p className="mt-1 text-sm text-muted">{path} — the last {h.entries.length} versions, newest first. Restoring brings a version back as the newest one; nothing is lost.</p>
+      {m ? <p className="mt-3 notice" role="status">{m}</p> : null}
       {diff ? (
-        <section className="mt-4 rounded border p-3" data-testid="diff">
+        <section className="panel mt-4 p-4" data-testid="diff">
           <h2 className="font-medium">Compared{diff.ok ? `: ${diff.added} lines added, ${diff.removed} removed` : ""}</h2>
           {!diff.ok ? <p className="mt-1 text-sm">These versions are too different or too large to compare here.</p> : (
             <pre className="mt-2 max-h-[60vh] overflow-auto whitespace-pre-wrap text-xs leading-5">
               {diff.lines.map((l, k) => l.op === "fold"
-                ? <div key={k} className="text-gray-500">… {l.count} unchanged lines …</div>
-                : <div key={k} className={l.op === "add" ? "bg-green-100 text-green-950" : l.op === "remove" ? "bg-red-100 text-red-950 line-through" : ""}>{l.op === "add" ? "+ " : l.op === "remove" ? "− " : "  "}{l.text}</div>)}
+                ? <div key={k} className="text-muted">… {l.count} unchanged lines …</div>
+                : <div key={k} className={l.op === "add" ? "bg-[color-mix(in_oklab,var(--ok)_14%,transparent)] text-ink" : l.op === "remove" ? "bg-[color-mix(in_oklab,var(--danger)_14%,transparent)] text-ink line-through" : ""}>{l.op === "add" ? "+ " : l.op === "remove" ? "− " : "  "}{l.text}</div>)}
             </pre>
           )}
         </section>
@@ -73,9 +73,9 @@ async function HistoryInner({ params, searchParams }: { params: Promise<{ packag
               <tr key={e.sha} className="align-top">
                 <td className="py-2 pr-2"><LocalTime at={e.date} /></td>
                 <td className="py-2 pr-2">{who(e.who)}</td>
-                <td className="py-2 pr-2">{e.summary}{e.kept ? <span className="ml-2 rounded bg-amber-100 px-1 text-xs text-amber-950">kept version</span> : null}{e.published ? <span className="ml-2 rounded bg-green-100 px-1 text-xs text-green-950">on the website</span> : null}</td>
+                <td className="py-2 pr-2">{e.summary}{e.kept ? <span className="ml-2 badge badge-warn ml-2">kept version</span> : null}{e.published ? <span className="ml-2 badge badge-ok ml-2">on the website</span> : null}</td>
                 {isText ? <td className="py-2 pr-2 whitespace-nowrap"><label><input type="radio" name="a" value={e.sha} defaultChecked={e.sha === ca} /> from</label> <label><input type="radio" name="b" value={e.sha} defaultChecked={e.sha === cb} /> to</label></td> : null}
-                <td className="py-2">{k > 0 && mayRestore ? <button className="underline" formMethod="post" formAction={restoreVersionAction.bind(null, packageId, path, e.sha, seen, null)}>Restore</button> : k === 0 ? <span className="text-xs text-gray-600">current</span> : null}</td>
+                <td className="py-2">{k > 0 && mayRestore ? <button className="underline" formMethod="post" formAction={restoreVersionAction.bind(null, packageId, path, e.sha, seen, null)}>Restore</button> : k === 0 ? <span className="text-xs text-muted">current</span> : null}</td>
               </tr>
             ))}
           </tbody>
@@ -87,7 +87,7 @@ async function HistoryInner({ params, searchParams }: { params: Promise<{ packag
           </p>
         ) : null}
       </form>
-      <p className="mt-4 text-xs text-gray-600">Older versions remain in the course&apos;s history on GitHub.</p>
+      <p className="mt-4 text-xs text-muted">Older versions remain in the course&apos;s history on GitHub.</p>
     </main>
   );
 }

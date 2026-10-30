@@ -301,9 +301,9 @@ export const EmbeddedEditor = forwardRef<EmbeddedEditorHandle, EmbeddedEditorPro
         {p.kind === "slides" ? <button type="button" className="underline" data-testid="present" onClick={() => void present()}>Present</button> : null}
         <button type="button" className="underline" data-testid="download" onClick={() => void download()}>Download</button>
       </div>
-      {failed ? <p className="p-4 text-red-700" role="alert">{failed}</p> : null}
+      {failed ? <p className="p-4 text-danger" role="alert">{failed}</p> : null}
       {conflict ? (
-        <p className="border-b bg-amber-100 px-3 py-1 text-sm text-amber-950" role="status">
+        <p className="notice notice-warn rounded-none border-x-0 border-t-0 px-3 py-1" role="status">
           {conflict} <button type="button" className="underline" onClick={() => setConflict(null)}>OK</button>
         </p>
       ) : null}

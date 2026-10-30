@@ -19,7 +19,7 @@ export function ContactForm({ page }: { page: string | null }) {
   const v = state.values;
   const err = state.errors ?? {};
   const hint = (id: string, text?: string) =>
-    text ? <p id={id} className="mt-1 text-sm text-red-700">{text}</p> : null;
+    text ? <p id={id} className="mt-1 text-sm text-danger">{text}</p> : null;
 
   return (
     <form action={action} className="mt-8 flex flex-col gap-5">
@@ -72,7 +72,7 @@ export function ContactForm({ page }: { page: string | null }) {
         helps us stop floods of messages.
       </p>
 
-      {state.error ? <p className="text-sm text-red-700" role="alert">{state.error}</p> : null}
+      {state.error ? <p className="text-sm text-danger" role="alert">{state.error}</p> : null}
 
       <div>
         <button type="submit" disabled={pending} className="btn btn-primary">

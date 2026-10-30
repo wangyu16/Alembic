@@ -104,6 +104,12 @@ html[data-theme="light"] { color-scheme: light; }
   ::-webkit-scrollbar-thumb:hover { background: #353a52; }
 
   .font-serif { font-family: var(--font-serif), Georgia, serif; }
+
+  /* Tailwind 4 borders default to currentColor: bright lines on the dark theme (UI polish 2026-10-29).
+     Every border starts as the soft edge; components choose stronger ones. */
+  *, ::before, ::after, ::backdrop, ::file-selector-button { border-color: var(--edge-soft); }
+  a { text-underline-offset: 0.18em; text-decoration-color: color-mix(in oklab, currentColor 45%, transparent); }
+  a:hover { text-decoration-color: currentColor; }
 }
 
 @layer components {
@@ -163,6 +169,70 @@ html[data-theme="light"] { color-scheme: light; }
     padding: 0.1rem 0.55rem;
     font-size: 0.75rem;
   }
+
+  /* `.input` is what the workspace forms use: the same field. */
+  .input {
+    background: var(--elevated);
+    border: 1px solid var(--edge);
+    border-radius: 0.5rem;
+    color: var(--ink);
+    padding: 0.5rem 0.7rem;
+  }
+  .input::placeholder { color: var(--faint); }
+  .input:focus { border-color: var(--accent); outline: none; }
+
+  /* Notices: a tint of the meaning's own color, its text in that color mixed into ink (readable in both themes). */
+  .notice {
+    border: 1px solid color-mix(in oklab, var(--tone, var(--accent)) 38%, transparent);
+    background: color-mix(in oklab, var(--tone, var(--accent)) 10%, var(--surface));
+    color: color-mix(in oklab, var(--tone, var(--accent)) 30%, var(--ink));
+    border-radius: 0.6rem;
+    padding: 0.6rem 0.8rem;
+    font-size: 0.875rem;
+  }
+  .notice-warn { --tone: var(--warn); }
+  .notice-ok { --tone: var(--ok); }
+  .notice-danger { --tone: var(--danger); }
+
+  /* Badges: small state labels on a row (draft, kept, on the website, edited). */
+  .badge {
+    display: inline-flex; align-items: center; gap: 0.25rem;
+    border-radius: 999px;
+    padding: 0.05rem 0.5rem;
+    font-size: 0.72rem; font-weight: 500; line-height: 1.4;
+    background: color-mix(in oklab, var(--tone, var(--muted)) 16%, transparent);
+    color: color-mix(in oklab, var(--tone, var(--muted)) 70%, var(--ink));
+    border: 1px solid color-mix(in oklab, var(--tone, var(--muted)) 30%, transparent);
+    white-space: nowrap;
+  }
+  .badge-warn { --tone: var(--warn); }
+  .badge-ok { --tone: var(--ok); }
+  .badge-accent { --tone: var(--accent); }
+
+  /* Data tables: quiet header, soft row rules, comfortable rows. */
+  .data-table { width: 100%; font-size: 0.875rem; border-collapse: collapse; }
+  .data-table th { text-align: left; font-weight: 500; color: var(--muted); font-size: 0.75rem; padding: 0.4rem 0.6rem; border-bottom: 1px solid var(--edge); }
+  .data-table td { padding: 0.6rem; border-bottom: 1px solid var(--edge-soft); vertical-align: top; }
+  .data-table tr:last-child td { border-bottom: 0; }
+
+  /* Page titles carry the serif (DESIGN.md: serif display over a working sans). */
+  .page-title { font-family: var(--font-serif), Georgia, serif; font-size: 1.75rem; line-height: 1.2; letter-spacing: -0.01em; color: var(--ink); }
+
+  /* A part of a chapter, as a pill link; a part not started yet is dashed and offers to start it. */
+  .part {
+    display: inline-flex; align-items: center;
+    border-radius: 0.45rem;
+    padding: 0.2rem 0.55rem;
+    font-size: 0.8rem;
+    background: var(--elevated);
+    border: 1px solid var(--edge);
+    color: var(--ink);
+    text-decoration: none;
+    transition: border-color 140ms, background-color 140ms, color 140ms;
+  }
+  .part:hover { border-color: var(--accent); color: var(--accent); }
+  .part-missing { background: transparent; border-style: dashed; color: var(--muted); cursor: pointer; }
+  .part-missing:hover { color: var(--accent); }
 
   .link { color: var(--accent); }
   .link:hover { color: var(--accent-hover); text-decoration: underline; }

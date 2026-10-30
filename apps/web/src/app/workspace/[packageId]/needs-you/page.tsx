@@ -39,7 +39,7 @@ export default async function NeedsYouPage({ params }: { params: Promise<{ packa
   return (
     <main className="mx-auto max-w-2xl p-6">
       <p className="text-sm"><Link href="/workspace">← Your courses</Link></p>
-      <h1 className="mt-2 text-2xl font-semibold">Needs you</h1>
+      <h1 className="page-title mt-2">Needs you</h1>
       <p className="mt-1 text-sm"><Link className="underline" href={`/workspace/${packageId}/people`}>People</Link></p>
       {items.length === 0 ? <p className="mt-4">Nothing needs you right now.</p> : null}
       {[...groups].map(([chapter, list]) => (
@@ -52,9 +52,9 @@ export default async function NeedsYouPage({ params }: { params: Promise<{ packa
               return (
                 <li key={i.id} className="p-3 text-sm">
                   <p><span className="font-medium">{NEEDS_YOU_LABEL[i.kind]}</span>{title ? `: ${title}` : ""}</p>
-                  {i.payload?.detail ? <p className="mt-1 text-gray-600">{i.payload.detail}</p> : null}
+                  {i.payload?.detail ? <p className="mt-1 text-muted">{i.payload.detail}</p> : null}
                   {!canAct ? (
-                    <p className="mt-1 text-gray-600">Waiting for the course owner.</p>
+                    <p className="mt-1 text-muted">Waiting for the course owner.</p>
                   ) : HERE.has(i.kind) ? (
                     <form action={answerItemAction} className="mt-2 flex flex-wrap items-center gap-2">
                       <input type="hidden" name="packageId" value={packageId} />
@@ -63,19 +63,19 @@ export default async function NeedsYouPage({ params }: { params: Promise<{ packa
                         <>
                           <label className="sr-only" htmlFor={`a-${i.id}`}>Your answer</label>
                           <input id={`a-${i.id}`} name="text" required className="min-w-0 flex-1 rounded border px-2 py-1" placeholder="Your answer" />
-                          <button className="rounded bg-black px-3 py-1 text-white">Answer</button>
+                          <button className="btn btn-primary btn-sm">Answer</button>
                         </>
                       ) : i.kind === "to-confirm" ? (
-                        <button className="rounded bg-black px-3 py-1 text-white">Confirm</button>
+                        <button className="btn btn-primary btn-sm">Confirm</button>
                       ) : i.kind === "both-changed" && i.payload?.action?.op === "restoreChapter" ? (
                         <>
-                          {decides ? <button className="rounded bg-black px-3 py-1 text-white" formAction={restoreChapterFromItemAction.bind(null, packageId, i.id)}>Restore the chapter</button> : null}
+                          {decides ? <button className="btn btn-primary btn-sm" formAction={restoreChapterFromItemAction.bind(null, packageId, i.id)}>Restore the chapter</button> : null}
                           <button className="underline">Leave it removed</button>
                         </>
                       ) : i.kind === "both-changed" ? (
                         <>
                           {i.payload?.keptCommit && i.payload.path ? (
-                            <button className="rounded bg-black px-3 py-1 text-white" title="Bring the other version back as the newest one" formAction={restoreVersionAction.bind(null, packageId, i.payload.path, i.payload.keptCommit, i.payload.topVersion ?? null, i.id)}>Use the other version</button>
+                            <button className="btn btn-primary btn-sm" title="Bring the other version back as the newest one" formAction={restoreVersionAction.bind(null, packageId, i.payload.path, i.payload.keptCommit, i.payload.topVersion ?? null, i.id)}>Use the other version</button>
                           ) : null}
                           <button className="underline" title="Both versions are kept.">Keep it as it is</button>
                         </>

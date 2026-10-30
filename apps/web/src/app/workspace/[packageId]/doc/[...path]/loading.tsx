@@ -2,7 +2,7 @@
 export default function Loading() {
   return (
     <main className="mx-auto max-w-3xl p-6" aria-busy="true">
-      <p className="text-sm text-gray-600">Opening…</p>
+      <p className="text-sm text-muted">Opening…</p>
     </main>
   );
 }

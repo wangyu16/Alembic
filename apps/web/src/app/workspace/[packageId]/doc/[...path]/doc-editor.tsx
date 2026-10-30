@@ -51,7 +51,7 @@ export function DocEditor(p: { kind: OrzKind; packageId: string; path: string; t
   return (
     <div className="flex h-full flex-col">
       {others.length ? (
-        <div data-testid="presence" className="border-b border-sky-300 bg-sky-100 px-3 py-1.5 text-sm font-medium text-sky-950" role="status">
+        <div data-testid="presence" className="notice rounded-none border-x-0 border-t-0 px-3 py-1.5 font-medium" role="status">
           Also here: {others.join(", ")}
         </div>
       ) : null}

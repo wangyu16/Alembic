@@ -18,9 +18,9 @@ export function InviteForm({ packageId }: { packageId: string }) {
           {pending ? "Inviting…" : "Invite as co-author"}
         </button>
       </form>
-      {state.error ? <p className="mt-2 text-red-700" role="alert">{state.error}</p> : null}
+      {state.error ? <p className="mt-2 text-danger" role="alert">{state.error}</p> : null}
       {state.ok ? (
-        <div className="mt-3 rounded border bg-gray-50 p-3 text-sm" role="status">
+        <div className="notice mt-3" role="status">
           <p>
             Invitation for <b>{state.ok.login}</b> made.{" "}
             {state.ok.emailed ? "We emailed it to them too." : "Send them this link (it is shown only once):"}
@@ -35,7 +35,7 @@ export function InviteForm({ packageId }: { packageId: string }) {
               {copied ? "Copied" : "Copy"}
             </button>
           </div>
-          <p className="mt-2 text-gray-600">They sign in with that GitHub account to accept. The link works for 14 days.</p>
+          <p className="mt-2 text-muted">They sign in with that GitHub account to accept. The link works for 14 days.</p>
         </div>
       ) : null}
     </div>

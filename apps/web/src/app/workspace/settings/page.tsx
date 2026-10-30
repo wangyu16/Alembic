@@ -24,17 +24,17 @@ export default async function SettingsPage() {
   return (
     <main className="mx-auto max-w-2xl p-6">
       <p className="text-sm"><Link href="/workspace">← Your courses</Link></p>
-      <h1 className="mt-2 text-2xl font-semibold">Settings</h1>
+      <h1 className="page-title mt-2">Settings</h1>
       <section className="mt-6">
         <h2 className="text-lg font-medium">Needs-you email</h2>
-        <p className="mt-1 text-sm text-gray-600">A summary of what is waiting for you in your courses.</p>
+        <p className="mt-1 text-sm text-muted">A summary of what is waiting for you in your courses.</p>
         <form action={setEmailEveryAction} className="mt-3 space-y-2">
           {OPTIONS.map((o) => (
             <label key={o.value} className="flex items-start gap-2">
               <input type="radio" name="every" value={o.value} defaultChecked={current === o.value} className="mt-1" />
               <span>
                 <span className="font-medium">{o.label}</span>
-                <span className="block text-sm text-gray-600">{o.hint}</span>
+                <span className="block text-sm text-muted">{o.hint}</span>
               </span>
             </label>
           ))}

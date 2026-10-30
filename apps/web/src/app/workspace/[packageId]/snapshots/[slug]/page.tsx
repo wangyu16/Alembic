@@ -33,20 +33,20 @@ async function SnapshotInner({ params }: { params: Promise<{ packageId: string; 
   return (
     <main className="mx-auto max-w-3xl p-6">
       <p className="text-sm"><Link prefetch={false} className="underline" href={`/workspace/${packageId}/course`}>← Course</Link></p>
-      <h1 className="mt-2 text-2xl font-semibold">{snap.name as string}</h1>
-      <p className="mt-1 text-sm text-gray-600">Saved <LocalTime at={snap.created_at as string} />. What has changed in the course since then:</p>
+      <h1 className="page-title mt-2">{snap.name as string}</h1>
+      <p className="mt-1 text-sm text-muted">Saved <LocalTime at={snap.created_at as string} />. What has changed in the course since then:</p>
       {changed === null ? <p className="mt-4 text-sm">{rewritten ? "The course's history was rewritten on GitHub since this snapshot, so it can't be compared here." : "Too much has changed to list here."}</p>
         : changed.length === 0 ? <p className="mt-4 text-sm">Nothing has changed since this snapshot.</p> : (
         <ul className="mt-4 divide-y rounded border text-sm" data-testid="snapshot-changes">
           {changed.map((f) => (
             <li key={f.path} className="p-2">
               <Link prefetch={false} className="underline" href={`/workspace/${packageId}/history/${f.path.split("/").map(encodeURIComponent).join("/")}`}>{f.path}</Link>
-              <span className="ml-2 text-gray-600">{word[f.status] ?? f.status}</span>
+              <span className="ml-2 text-muted">{word[f.status] ?? f.status}</span>
             </li>
           ))}
         </ul>
       )}
-      <p className="mt-4 text-xs text-gray-600">To bring a document back as it was, open its History and restore that version.</p>
+      <p className="mt-4 text-xs text-muted">To bring a document back as it was, open its History and restore that version.</p>
     </main>
   );
 }
