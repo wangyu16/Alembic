@@ -1,7 +1,7 @@
 import { GithubBusy, githubBusy } from "@/lib/github-busy";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { activeProfile, can, isPage, statusOf, WorkingManifestV3Schema, type FileStatus, type Role } from "@alembic/package-contract";
+import { activeProfile, can, fileKind, isPage, statusOf, WorkingManifestV3Schema, type FileStatus, type Role } from "@alembic/package-contract";
 import { unitOf } from "@alembic/package-ops";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { v3Enabled } from "@/lib/db";
@@ -82,6 +82,7 @@ async function PublishPageInner({ params, searchParams }: { params: Promise<{ pa
   for (const [path, sha] of blobs) {
     const u = unitOf(path, slugs, everPublished);
     if (u.kind === "none" || u.kind === "orphan" || (u.kind === "chapter" && !slugs.has(u.slug))) continue;
+    if (fileKind(path) === null) continue; // a kind the website can't serve safely never goes out (it is listed as left out)
     const status = statusOf(manifest.status, path);
     const pub = published.get(path);
     // Compared with the source it was published from (the public copy of an SVG or a cleaned page differs from it).
