@@ -290,3 +290,27 @@ its own.
   become approve items, queued only as the approver.
 - **R.22** A changeset can't delete a listed chapter's part or anything in
   `private/`, and moves follow the contract.
+
+## 12. Round 3 resolutions (G7 round 3, 2026-10-29): these take precedence over §11
+
+| Finding | Resolution |
+|---|---|
+| **H1** move sources unchecked; the manifest movable | **Fixed in code** (Alembic `ee72c95`): `alembic.json`, `LICENSE`, `CITATION.cff`, server-only and harness files are never deleted or moved through file entries, by any row kind. A changeset's move source is checked with `canWritePath('agent', from, {invoker})`. Test K1.13. The `rights_cap` of §10.4 joins this check when C4 is built. |
+| **H2** base64 in the JSON body can't carry 4 MB | Binaries go by a separate token-authenticated **`POST /api/agent/blobs`**: a raw body, one file per call, ≤ 4 MB, running the upload checks and writing the ledger row (`uploaded_by` = invoker, with a new `changeset_id`). Changeset entries then carry `{path, blob: {sha, size}, baseBlob}`; the endpoint confirms the ledger row belongs to this job, path and kind. §11.1's base64 entry is withdrawn. |
+| **H3** approve items contradict §4.4/R.10 | A distinct item kind, **"course change proposed by the assistant"**. Its text is rendered by the server from the parsed operation (plain text), and it is decided only through the course-operation UI (owner/deputy; `setLicense` owner). §4.4 and R.10 name it as the one platform-raised kind the agent can cause. |
+| **M1** upload checks bound to a human role | The checks run with the agent column ∩ `min(invoker, rights_cap)`. The blob reference goes only into the `changeset` row (never a `sync` row with the invoker as actor). The name-in-use (409) and private-document figure rules apply. |
+| **M2** private pictures to public | A public-path blob whose sha matches any blob under `private/` is refused (as for restores). The Publish summary lists the assistant's figures as thumbnails. |
+| **M3** files vs course operations | Course operations sit outside the all-or-nothing rule: the files land on their own, and each operation's decision (approved / declined / refused) returns through catch-up. Files for a chapter the agent proposed wait for that operation, using the slug it returns. |
+| **M4** all-or-nothing vs refusals | Every check for every entry runs before any blob or row is created. Any refusal refuses the whole changeset with `[{path, reason}]`; operations come back as `proposed`. FC-16's outcome list gains `refused` and `proposed`. |
+| **M5** FC-16 shape lags | A.3's shape is updated: `blob`/`baseBlob`, and `courseOps`. `baseBlob` is required for picture deletes and moves, and a move carrying content is refused. |
+| **M6** quota and limits | Per-job caps: 50 files and 40 MB of blobs per job; the course's hourly upload bucket is shared. Automatic jobs count against the course, not the triggerer. |
+| **M7** restoreChapter from any commit | An ancestor-of-head check is added to the `restoreChapter` course operation (history-v3 H.8). Today only the server raises it; it becomes binding before agents can propose it. |
+| **L1** ledger doesn't show the assistant | A `changeset_id` column (nullable) on `course_blobs`. |
+| **L2** approved op shows only the approver | An `Alembic-Proposed-By: assistant (for <invoker>)` trailer on Alembic's own commit; History shows it. |
+| **L3** proposal floods, stale proposals | At most 10 operations per changeset; a removed invoker's open proposals are withdrawn; the queue key is derived by the server. |
+| **L4** changeset items unaddressed | Both-changed items from changesets are addressed to the invoker. |
+| **L5** restore by rewriting old content | Noted. The agent's text goes through Publish's answer-key check, which is widened to all of `private/` (not only `private/instructor/`). |
+| **L6** harness records as blobs/moves/deletes | Records are text writes only; anything else is refused. |
+| **L7** code drift | `permitted()` gains `rights_cap`, and the `canAgent` comment is corrected, when C4 is built. Both are tracked as C4 entry conditions. |
+
+**Status:** with these, round 3 is "pass with fixes" in substance. A fresh G7 round runs before C4 code, as the gate requires.
