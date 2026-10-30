@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { gitBlobSha } from "@alembic/github-bridge";
 import { can, canWritePath, fileKind, MAX_UPLOAD_BYTES, normalizePath, unitPartForPath, WorkingManifestV3Schema, type Role } from "@alembic/package-contract";
-import { checkAnswerKeys, SqlQueueStore } from "@alembic/package-ops";
+import { checkAnswerKeys, SqlQueueStore, words } from "@alembic/package-ops";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { directDb } from "@/lib/db";
 import { courseRepo, textVersion } from "@/lib/course-v3";
@@ -63,6 +63,9 @@ export async function restoreVersionAction(packageId: string, rawPath: string, s
   // "Use the other version": the item is answered only once the restore passed every check, so a refusal leaves it
   // open (audit r2 L-a); a stale or second click is refused (audit r1 M-1).
   if (itemId) {
+    // The item must be this course's Both-changed item for this document (audit r3 L3-6).
+    const { data: item } = await supabase.from("needs_you").select("id").eq("id", itemId).eq("package_id", packageId).eq("kind", "both-changed").eq("target_path", path).maybeSingle();
+    if (!item) back(to, "That choice was already made.");
     const { error } = await supabase.rpc("needs_you_answer", { p_id: itemId, p_answer: { decision: "used-version", commit: sha } });
     if (error) back(to, "That choice was already made.");
   }
@@ -90,7 +93,6 @@ async function mayRestoreRemoved(c: NonNullable<Awaited<ReturnType<typeof course
 
 /** The most instructor-only text a restore reads to check against (audit r2 H2-1: unbounded reads stalled the server). */
 const MAX_PRIVATE_CHECK_BYTES = 1_000_000;
-const plainWords = (t: string) => t.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
 
 /**
  * Never back into a public place a text that repeats instructor-only material (audit r1 H-1, r2 H2-1/M2-1):
@@ -102,17 +104,22 @@ const plainWords = (t: string) => t.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " 
 async function mayRepeatPrivate(c: NonNullable<Awaited<ReturnType<typeof courseRepo>>>, head: string, path: string, old: string, changed: Array<{ path: string; status: string }> | null, to: string): Promise<void> {
   const now = await c.client.listTreeEntries({ owner: c.owner, repo: c.name }, head);
   const tooMuch = "Too much instructor-only material changed since that version to check it here; ask the owner.";
-  if (now.truncated) back(to, tooMuch);
+  if (now.truncated || old.length > MAX_PRIVATE_CHECK_BYTES) back(to, tooMuch); // audit r3 M3-1: the old text bounds the check too
   const blob = gitBlobSha(new TextEncoder().encode(old));
   if (now.entries.some((e) => e.path.startsWith("private/") && e.sha === blob)) back(to, "This content is now instructor-only, so it can't come back to a public place.");
   if (changed === null) back(to, tooMuch);
-  const sizes = new Map(now.entries.map((e) => [e.path, e.size ?? 0]));
-  const priv = changed!.filter((f) => f.path.startsWith("private/") && f.status !== "removed" && fileKind(f.path) === "text" && sizes.has(f.path));
-  if (priv.reduce((n, f) => n + sizes.get(f.path)!, 0) > MAX_PRIVATE_CHECK_BYTES) back(to, tooMuch);
-  const texts = (await Promise.all(priv.map(async (f) => ({ path: f.path, text: (await c.repo.readFile(head, f.path)) ?? "" })))).filter((t) => t.text.trim());
-  const flat = ` ${plainWords(old)} `;
-  const short = texts.some((t) => { const w = plainWords(t.text); return w.split(" ").length < 12 && w.length >= 8 && flat.includes(` ${w} `); });
-  if (short || checkAnswerKeys(path, old, texts).length) back(to, "That version repeats instructor-only material, so it can't come back to a public place.");
+  const entries = new Map(now.entries.map((e) => [e.path, e]));
+  const priv = changed!.filter((f) => f.path.startsWith("private/") && f.status !== "removed" && fileKind(f.path) === "text");
+  // Only plain files are read, by content id: a link or submodule, or a path missing from the tree, refuses (audit r3 L3-2, L3-3).
+  if (priv.some((f) => { const e = entries.get(f.path); return !e || e.type !== "blob" || e.mode === "120000" || e.size === undefined; })) back(to, tooMuch);
+  if (priv.reduce((n, f) => n + entries.get(f.path)!.size!, 0) > MAX_PRIVATE_CHECK_BYTES) back(to, tooMuch);
+  const texts = (await Promise.all(priv.map((f) => c.client.getBlob({ owner: c.owner, repo: c.name }, entries.get(f.path)!.sha)))).map((b) => new TextDecoder().decode(b));
+  // Short keys: each paragraph or line of a changed instructor file under 12 words, found whole (Publish's own word rule; audit r3 M3-2).
+  const flat = ` ${words(old).join(" ")} `;
+  const short = texts.some((t) => t.split(/\n/).some((line) => { const w = words(line); return w.length >= 2 && w.length < 12 && w.join(" ").length >= 8 && flat.includes(` ${w.join(" ")} `); }));
+  // One joined entry: one pass over the old text, and a run can't be missed (audit r3 M3-1).
+  const joined = texts.join("\n\n");
+  if (short || (joined.trim() && checkAnswerKeys(path, old, [{ path: "private", text: joined }]).length)) back(to, "That version repeats instructor-only material, so it can't come back to a public place.");
 }
 
 /** Name the course as it is now (history-v3 §5): a tag on the working repo plus a row. */
