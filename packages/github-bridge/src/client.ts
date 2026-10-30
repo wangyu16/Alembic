@@ -598,7 +598,7 @@ export class GitHubClient {
   async listCommits(
     coords: RepoCoords,
     opts: { perPage?: number; path?: string; sha?: string } = {},
-  ): Promise<Array<{ sha: string; message: string; date: string }>> {
+  ): Promise<Array<{ sha: string; message: string; date: string; login: string | null }>> {
     // `path` scopes history to commits that touched one file (per-chapter
     // history): GitHub returns only commits changing that path, newest first.
     // `sha` starts the walk at a branch or commit: only commits reachable from it.
@@ -606,7 +606,7 @@ export class GitHubClient {
       (opts.path ? `&path=${encodeURIComponent(opts.path)}` : "") +
       (opts.sha ? `&sha=${encodeURIComponent(opts.sha)}` : "");
     const data = await this.request<
-      Array<{ sha: string; commit: { message: string; author: { date: string } } }>
+      Array<{ sha: string; commit: { message: string; author: { date: string } }; author?: { login?: string } | null }>
     >(
       "GET",
       `/repos/${coords.owner}/${coords.repo}/commits?per_page=${opts.perPage ?? 20}${pathParam}`,
@@ -615,6 +615,7 @@ export class GitHubClient {
       sha: c.sha,
       message: c.commit.message,
       date: c.commit.author.date,
+      login: c.author?.login ?? null,
     }));
   }
 

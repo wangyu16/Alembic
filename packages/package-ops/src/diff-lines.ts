@@ -8,7 +8,7 @@
 export type DiffLine = { op: "same" | "add" | "remove"; text: string } | { op: "fold"; count: number };
 
 export const MAX_DIFF_LINES = 20_000;
-export const MAX_DIFF_EDITS = 4_000;
+export const MAX_DIFF_EDITS = 2_000;
 
 export type DiffResult = { ok: true; lines: DiffLine[]; added: number; removed: number } | { ok: false; reason: "too-large" };
 
@@ -37,13 +37,16 @@ export function diffLines(a: string, b: string, context = 3): DiffResult {
 function myers(x: string[], y: string[]): Array<{ op: "same" | "add" | "remove"; text: string }> | null {
   const n = x.length, m = y.length, max = n + m;
   if (max === 0) return [];
-  const offset = max + 1;
-  let v = new Int32Array(2 * max + 3);
+  // Only k in [-D, D] is ever used (D = the edit cap), and only that band is kept per step: memory stays about
+  // D² ints (≈16 MB at the cap) however long the texts are.
+  const band = Math.min(max, MAX_DIFF_EDITS) + 1;
+  const offset = band;
+  let v: Int32Array = new Int32Array(2 * band + 3);
   const trace: Int32Array[] = [];
   let found = -1;
   for (let d = 0; d <= max; d++) {
     if (d > MAX_DIFF_EDITS) return null;
-    trace.push(v.slice());
+    trace.push(v.slice(offset - d - 1, offset + d + 2));
     for (let k = -d; k <= d; k += 2) {
       let i = k === -d || (k !== d && v[offset + k - 1]! < v[offset + k + 1]!) ? v[offset + k + 1]! : v[offset + k - 1]! + 1;
       let j = i - k;
@@ -58,9 +61,10 @@ function myers(x: string[], y: string[]): Array<{ op: "same" | "add" | "remove";
   let i = n, j = m;
   for (let d = found; d > 0; d--) {
     v = trace[d]!;
+    const at = (kk: number) => v[kk + d + 1]!; // the saved band starts at k = -d - 1
     const k = i - j;
-    const prevK = k === -d || (k !== d && v[offset + k - 1]! < v[offset + k + 1]!) ? k + 1 : k - 1;
-    const prevI = v[offset + prevK]!;
+    const prevK = k === -d || (k !== d && at(k - 1) < at(k + 1)) ? k + 1 : k - 1;
+    const prevI = at(prevK);
     const prevJ = prevI - prevK;
     while (i > prevI && j > prevJ) out.push({ op: "same", text: x[--i]! }), j--;
     if (i === prevI) out.push({ op: "add", text: y[--j]! });

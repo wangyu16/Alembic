@@ -1,6 +1,6 @@
 # History and restore v3 (foundations step 2) — mini-spec
 
-**Status:** draft 1, 2026-10-29, for gate G0. Module A9 of the build plan.
+**Status:** draft 2, 2026-10-29. G0 round 1 failed draft 1 with 5 HIGH findings; they are resolved here (§9). The scope is narrowed: whole-course restore is deferred to the owner (§8). Module A9 of the build plan.
 Design: orz-family `docs/ALEMBIC-WORKSPACE-DESIGN.md` §6.4. Owner rulings
 (Alembic DecisionLog, 2026-10-29 evening):
 - anyone who may edit a document may restore an earlier version of it;
@@ -15,17 +15,24 @@ course has already had, through the one write path.
 ## 1. A document's history
 
 - **Source:** the working repo's commits that touched the path, newest first:
-  one GitHub call (`listCommits(path, per_page = 50)`), cached by head commit.
+  one GitHub call (`listCommits(path, per_page = 50)`), cached by the head
+  the database already knows (the last landed row's head).
+- **Depth:** 50 entries (the owner's ruling). A sync is one commit, and a
+  both-changed outcome takes two. Moves aren't followed: a moved file's earlier
+  history is under its old name, and the page links there.
 - **Each entry:**
   - **when:** the commit date;
-  - **who:** the `Alembic-Actor` trailer mapped to a member's name; else
-    "edited on GitHub" with the committer's login; the agent shows as "the
-    assistant, for <name>";
+  - **who:** trusted only on commits Alembic recorded making
+    (`write_queue.result.commits`, a database join) (G0r1 B2):
+    - the `Alembic-Actor` trailer maps to a member's name;
+    - a changeset maps to "the assistant, for <name>" (`Alembic-On-Behalf-Of`);
+    - system commits read "Alembic";
+    - any other commit reads "edited on GitHub" (the pusher from Door C's
+      `outside` row when known), and its trailers are ignored;
   - **what:** the commit's first line;
   - **kept:** marked when the commit is a kept version (`Alembic-Kept: true`)
     from Both changed;
-  - **published:** marked when this version of the file is what the website
-    shows (`published_files` holds the path with this version).
+  - **published:** marked from a database join (`doc_versions` × `published_files`), with no GitHub call (G0r1 B10).
 - **Who sees it:** members (`history.see`). Instructor-only documents follow
   the same read rule as the document.
 - **Deeper history:** older versions are reachable on GitHub; the page says
@@ -42,77 +49,86 @@ course has already had, through the one write path.
 
 ## 3. Restoring a document version
 
-- **What:** brings an old version back **as the newest version**. Nothing is
-  rewritten in history.
-- **Who:** `history.restore-doc` for the path. Owner, deputy and co-author for
-  paths they may edit (the owner's ruling); the agent proposes through its
-  hand-in.
-- **How:**
-  1. The server reads the old text (or blob) at the chosen commit.
-  2. It queues **one `restore` row** with the actor:
-     `{path, baseVersion: <the current version the person saw>, text: <old text>}`,
-     or `{path, baseBlob, blob: {sha}}` for a figure.
-- **The blob ledger:**
-  - A `restore` row may reference a blob only if that blob is already in this
-    course's history at that path. The committer checks that the blob is the
-    path's blob at the named commit, by reading the tree at that commit.
-  - This is the second accepted source of blobs besides the upload ledger
-    (contract v3 §11.2), and it can't import foreign bytes.
-- **The version rule:**
+- **What:** brings an old version back **as the newest version**. Nothing in
+  history is rewritten.
+- **Who:** `history.restore-doc` for the path. That is the owner, deputy and
+  co-author for paths they may edit (the owner's ruling); the agent proposes
+  through its hand-in.
+- **Which commits:** only commits Alembic recorded making (§1), or the parent
+  of one. Either way it is **an ancestor of the head**, checked with one
+  `compareCommits` call (G0r1 B4); a made-up or foreign commit is refused.
+- **How:** the server reads the old content at that commit and queues one
+  `restore` row with the actor:
+  - text: `{path, baseVersion: <current version the person saw>, text, restoreOf: commit}`;
+  - figure: `{path, baseBlob: <current blob seen>, blob: {sha}, restoreOf: commit}`.
+- **Every write check applies** (G0r1 B1): kind, bytes, the SVG check and the
+  regular-file mode, exactly as for an upload. A restored figure's blob must be
+  the path's blob at `restoreOf` (the tree read at that commit), which is the
+  second accepted source of blobs besides the upload ledger.
+- **The version rule for restores** (G0r1 B6):
   - the version seen is still current → **landed**;
-  - someone changed the document since → **both changed** (the restore is kept,
-    the current version stays on top, and a Both-changed item says so).
-- **Restoring a removed file:**
-  - allowed when the path is classifiable and writable by the person;
-  - a removed chapter's part file goes through `restoreChapter` instead (the
-    page offers it).
-- **History** shows the restore as its own entry ("Restored the version of
-  Oct 3").
+  - otherwise → **both changed**, the restore kept and the current version on
+    top;
+  - restores are **never combined**. A restore that lands is the newest
+    version; a later sync from an editor that still holds the old base is
+    "both changed" against it as usual (the typist's text on top, the restore
+    kept and offered again).
+- **Restoring a removed file** (G0r1 B7):
+  - allowed for a path the person may write;
+  - **refused** when the file's last removal was a move into `private/` (an
+    answer key must not come back into a public space);
+  - a removed chapter's part file is restored with `restoreChapter` (owner,
+    deputy); a co-author sees "ask the owner or deputy".
 
 ## 4. "Use this version" on a Both-changed item
 
-A Both-changed item carries the kept commit (`keptCommit`). "Use this version"
-is §3 with that commit: either person may do it if they may edit the path. It
+A Both-changed item carries the commit of the version that isn't on top: the
+kept commit, or, when the typist's text went on top in one commit, that
+commit's parent, i.e. the head it replaced (G0r1 B9). "Use this version" is
+§3 with that commit: either person may do it if they may edit the path. It
 answers the item.
 
-## 5. Snapshots (a course at a moment)
+## 5. Snapshots (a course at a moment) — create and list
 
 - **Create** (`snapshot.create`: owner, deputy, co-author):
-  - a name ("Fall 2026") becomes a tag `snapshot/<slug>` on the working repo
-    head, where the slug is lowercase and hyphen-joined;
-  - a name already used gets `-2`;
-  - one GitHub call, made by the server.
-- **List:** the course's `snapshot/*` tags, with name, date and creator (from a
-  `course_snapshots` row written when the tag is made; the tag is the
-  authority for the commit).
-- **Restore a whole course** (`snapshot.restore-course`, owner/deputy):
-  - a course operation `restoreSnapshot(tag)`, applied at the head by the
-    committer;
-  - it reads the tree at the tag and, in **one commit**, writes every path that
-    differs:
-    - text and blobs by blob id (blobs already in the repo's history);
-    - removes paths the snapshot doesn't have;
-  - it never touches server-only paths, harness records (`private/coursewerk/`)
-    or `private/sources/` (their state is the database's), or `.github/`;
-  - the restored manifest must pass the profile's validity (contract v3 §13.2),
-    else the restore is refused;
-  - it is shown first as a summary ("brings back 3 chapters, changes 41 files,
-    removes 2") that the person confirms.
-- **Course-plan approvals:** approvals are by version (`approve_part`). A
-  restored plan version that was approved before is approved again by itself;
-  one that wasn't goes to the Publish page as usual.
-- **Published versions:** a snapshot made on a published commit is marked; the
-  citable public name is later work (§6.4 "matching public version").
+  - the name becomes the slug `^[a-z0-9]+(?:-[a-z0-9]+)*$`, at most 60
+    characters; a non-Latin or empty name gets `snapshot-<yyyy-mm-dd>`;
+  - a taken slug gets `-2`, `-3` … (on GitHub's 422 for an existing tag, the
+    next number is tried);
+  - one `createTag` call on the head, and a `course_snapshots` row written in
+    the same request.
+- **The authority** (G0r1 B4): the row's `commit_sha`. A `snapshot/*` tag
+  pushed or moved on GitHub is ignored: only tags whose row matches are
+  listed.
+- **List:** name, date, creator, and whether that commit was published.
+- **Compare with now:** the list of documents that differ (one tree call
+  each), each openable as a §2 diff.
+
+## 8. Deferred to the owner: restoring a whole course
+
+Draft 1's whole-course restore needs rulings the design and the review don't
+settle (G0r1 B3, B5, B8):
+1. **During the restore:** pause the agent and lock editing (design §6.4), or
+   let later edits land on top?
+2. **Course plans that come back:** approved again by themselves (approvals
+   are by content), or one Approve batch (design)?
+3. **Documents added since the snapshot:** removed (with their authors told),
+   or kept?
+4. **Licence and Coursewerk version:** kept from now (recommended), or taken
+   from the snapshot?
+
+Until then, a whole course can be brought back document by document (§3),
+and snapshots give the names and the comparison.
 
 ## 6. Interfaces
 
 | Seam | Addition |
 |---|---|
 | github-bridge | `listCommits` (exists, with path); `createTag` (exists); `listTags(prefix)`; `getBlob`, `listTreeEntries` (exist) |
-| package-ops | `historyOf(commits, members, published)` (pure); `diffLines(a, b)` (pure); restore rows in the committer: the blob-at-commit check; course op `restoreSnapshot(tag, commit)` in `applyCourseOp` with the tree read by the committer |
-| package-contract | `snapshot.restore-course`: deputy Y (owner ruling); `snapshotSlug(name)` |
+| package-ops | `historyOf(commits, ours, names)` (pure); `diffLines(a, b)` (pure); restore rows in the committer: never combined, the blob-at-commit check, the write checks |
+| package-contract | `snapshot.restore-course`: deputy Y (owner ruling, for §8 later); `snapshotSlug(name)` |
 | migration | `course_snapshots(package_id, tag, name, commit_sha, created_by, created_at)`, members read, server writes |
-| web | History page per document (list, compare, restore); "Use this version" on Both-changed items; Snapshots on the course page (create, list, restore with summary) |
+| web | History page per document (list, compare, restore); "Use this version" on Both-changed items; Snapshots on the course page (create, list, compare) |
 
 ## 7. Claims (H.n)
 
@@ -131,7 +147,27 @@ answers the item.
   and answers the item.
 - **H.6** A snapshot is a tag on the working repo plus a row; names never
   collide.
-- **H.7** Restoring a snapshot is one commit at the head, by owner/deputy
-  (re-checked). It never touches server-only paths, harness records, source
-  pointers or `.github/`; it is refused if the result isn't a valid course;
-  and it is confirmed after a summary.
+- **H.7** (deferred with §8.)
+- **H.8** A restore references only commits that are ancestors of the head.
+  Restored content passes every write check, a restore is never combined, and
+  a file moved into `private/` can't be restored into a public space.
+
+## 9. Review resolutions (G0 round 1)
+
+| Finding | Resolution |
+|---|---|
+| B1 restores skip write checks | every §11.4/§2.6 check applies to restored content (§3) |
+| B2 forged "who" | trailers only on Alembic's recorded commits (§1) |
+| B3 snapshot licence and mechanics | deferred with the whole-course restore (§8 q4) |
+| B4 unproven commit; moved tags | ancestor-of-head check; the row is the authority (§3, §5) |
+| B5 approvals and pause vs design | deferred to the owner (§8 q1–2) |
+| B6 restores merged | never combined (§3) |
+| B7 private → public by restore | refused after a move into `private/` (§3) |
+| B8 snapshot deletes later work | deferred (§8 q3) |
+| B9 no commit when the typist won | the parent head (§4) |
+| B10 budget | database joins; snapshot comparison is one tree call each (§1, §5) |
+| B11 snapshot names | slug rule, date fallback, 422 retry (§5) |
+| B12 right at execution | restores re-check `history.restore-doc` at execution |
+| B13 depth and renames | stated (§1) |
+| B14 approvals by former deputies | with §8 |
+
