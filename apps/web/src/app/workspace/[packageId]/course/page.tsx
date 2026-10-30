@@ -7,7 +7,7 @@ import { clientForCourse } from "@/lib/github";
 import { v3Enabled } from "@/lib/db";
 import { kindOfPath } from "@/lib/orz-editor/kit";
 import { courseOutline } from "@/lib/course-outline";
-import { can, isServerOnlyPath, type Role } from "@alembic/package-contract";
+import { activeProfile, can, isPage, isServerOnlyPath, statusOf, type Role, type StatusMap } from "@alembic/package-contract";
 import { CHAPTER_PARTS } from "@alembic/package-ops";
 import { SubmitButton } from "../../submit-button";
 import { RefreshWhile } from "../publish/refresh-while";
@@ -19,9 +19,9 @@ export const dynamic = "force-dynamic";
 
 /** What the person is in this course, and what that lets them do (RC.24). */
 const ROLE_LINE: Record<string, string> = {
-  owner: "You own this course: you edit it, approve its course plan, publish it and choose who works on it.",
-  deputy: "You are this course's deputy: you edit it, approve its course plan and publish it.",
-  "co-author": "You are a co-author: you edit the course; the owner or deputy approves the course plan and publishes.",
+  owner: "You own this course: you edit it, mark pages completed, publish it and choose who works on it.",
+  deputy: "You are this course's deputy: you edit it, mark pages completed and publish it.",
+  "co-author": "You are a co-author: you edit the course and mark pages completed; the owner or deputy publishes.",
 };
 
 /** A v3 course's home: its chapters and their documents, straight from the working repo (RC.14). */
@@ -48,8 +48,11 @@ async function CourseHomeV3Inner({ params, searchParams }: { params: Promise<{ p
   const { paths } = await c.client.listTree(coords, head);
   const docs = paths.filter((p) => kindOfPath(p) && !p.startsWith(".") && !isServerOnlyPath(p)); // e.g. the template's private/README.md (contract v3 §12.1)
   let chapters: Array<{ slug: string; title: string; mode?: string }> = [];
+  let status: StatusMap | undefined;
   try {
-    chapters = (JSON.parse((await c.client.getFileAtRef(coords, "alembic.json", head)) ?? "{}") as { chapters?: typeof chapters }).chapters ?? [];
+    const m = JSON.parse((await c.client.getFileAtRef(coords, "alembic.json", head)) ?? "{}") as { chapters?: typeof chapters; status?: StatusMap };
+    chapters = m.chapters ?? [];
+    status = m.status;
   } catch (e) {
     if (githubBusy(e)) throw e; // the busy page, not a course with no chapters (RC.12)
     /* an unreadable manifest: everything shows under course files */
@@ -88,10 +91,17 @@ async function CourseHomeV3Inner({ params, searchParams }: { params: Promise<{ p
             <h2 className="flex min-w-0 items-baseline gap-2 font-medium text-ink">
               <span className="w-6 shrink-0 text-right text-sm tabular-nums text-muted">{k + 1}</span>
               <span className="min-w-0">{ch.title}</span>
-              {ch.draft ? <span className="badge badge-warn">Draft</span> : null}
+              {(() => {
+                const pages = [...ch.parts, ...ch.more].filter((x) => isPage(x.path));
+                const done = pages.filter((x) => statusOf(status, x.path) === "completed").length;
+                return pages.length ? <span className={`text-xs ${done === pages.length ? "text-ok" : "text-muted"}`} data-testid="completed-count">{done === pages.length ? "all completed" : `${done} of ${pages.length} completed`}</span> : null;
+              })()}
             </h2>
             <div className="flex flex-wrap items-center gap-1.5 pl-8 lg:justify-end lg:pl-0">
-            {[...ch.parts, ...ch.more].map((x) => <Link key={x.path} prefetch={false} className="part" href={href(x.path)}>{x.label}</Link>)}
+            {[...ch.parts, ...ch.more].map((x) => {
+              const st = statusOf(status, x.path);
+              return <Link key={x.path} prefetch={false} className="part" href={href(x.path)} title={st === "completed" ? "Completed" : st === "withdrawn" ? "Off the website" : "Draft"}>{st === "completed" ? "✓ " : ""}{x.label}</Link>;
+            })}
             {ch.missing.length ? (
               <div className="contents" data-testid="missing">
                 <span className="sr-only">Not started:</span>
@@ -118,11 +128,11 @@ async function CourseHomeV3Inner({ params, searchParams }: { params: Promise<{ p
           <summary className="cursor-pointer font-medium">Add chapters</summary>
           <form action={addChaptersAction.bind(null, packageId)} className="mt-3 space-y-3">
             <label className="block text-sm text-muted">
-              Chapter titles, one per line (paste a whole table of contents if you like). They are added at the end, as drafts.
+              Chapter titles, one per line (paste a whole table of contents if you like). They are added at the end; their pages start as drafts.
               <textarea name="titles" rows={4} required className="input mt-1 w-full font-normal" placeholder={"Atoms and Molecules\nStoichiometry\nGases"} />
             </label>
             <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" name="start" defaultChecked /> Start all five parts of each chapter (concept map, study guide, slides, assessment guide, practice); without this, each starts with its study guide
+              <input type="checkbox" name="start" defaultChecked /> Start all {CHAPTER_PARTS.length} parts of each chapter ({CHAPTER_PARTS.map((x) => x.label.toLowerCase()).join(", ")}); without this, each starts with {activeProfile.unitParts.filter((p) => activeProfile.requiredParts.includes(p.id)).map((p) => p.label.toLowerCase()).join(", ")}
             </label>
             <SubmitButton className="btn btn-primary" pending="Adding…">Add</SubmitButton>
           </form>

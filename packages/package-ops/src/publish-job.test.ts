@@ -64,6 +64,15 @@ describe("runPublish", () => {
     expect(pub.file("assets/atoms/x.svg")).toBe('<?xml version="1.0" encoding="UTF-8"?>\n<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"><path d="M0 0"/></svg>\n');
   });
 
+  it("[K1.23] each published file records the working-copy blob it came from, also when the public copy is a clean copy", async () => {
+    const st = new FakeStore(); const pub = new FakePublic();
+    await runPublish(input(), working({ ...W, "assets/atoms/x.svg": '<!-- tool --><svg viewBox="0 0 1 1"/>' }), pub, st);
+    const svg = st.files.find((f) => f.path === "assets/atoms/x.svg")!;
+    expect(svg.sourceBlob).toBe("wb-assets/atoms/x.svg"); // the source in the working copy
+    expect(svg.blobSha).not.toBe(svg.sourceBlob); // the public copy is the clean copy
+    expect(st.files.find((f) => f.path === "study-guide/atoms.md")!.sourceBlob).toBe("wb-study-guide/atoms.md");
+  });
+
   it("[K1.11] a file published before the safety rule leaves even when a draft page kept at its published version still links to it (audit r4 MEDIUM-A)", async () => {
     const pub = new FakePublic(); const st = new FakeStore();
     const W1 = { ...W, "study-guide/atoms.md": "# Atoms ![f](atoms-fig.svg) [s](atoms.html)" };

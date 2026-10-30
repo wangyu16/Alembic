@@ -72,11 +72,11 @@ export class SqlPublishStore implements PublishStore {
           where package_id = (select package_id from run)
             and path not in (select f.path from jsonb_to_recordset($3::text::jsonb) as f(path text))
        )
-       insert into public.published_files (package_id, path, unit, blob_sha, version, run_id)
-       select (select package_id from run), f.path, f.unit, f."blobSha", f.version, $1
-         from jsonb_to_recordset($3::text::jsonb) as f(path text, unit text, "blobSha" text, version text)
+       insert into public.published_files (package_id, path, unit, blob_sha, version, run_id, source_blob)
+       select (select package_id from run), f.path, f.unit, f."blobSha", f.version, $1, f."sourceBlob"
+         from jsonb_to_recordset($3::text::jsonb) as f(path text, unit text, "blobSha" text, version text, "sourceBlob" text)
         where exists (select 1 from run)
-       on conflict (package_id, path) do update set unit = excluded.unit, blob_sha = excluded.blob_sha, version = excluded.version, run_id = excluded.run_id`,
+       on conflict (package_id, path) do update set unit = excluded.unit, blob_sha = excluded.blob_sha, version = excluded.version, run_id = excluded.run_id, source_blob = excluded.source_blob`,
       [runId, publicSha, json(files), json(results ?? {})]);
   }
 
@@ -87,9 +87,9 @@ export class SqlPublishStore implements PublishStore {
   }
 
   async publishedFiles(packageId: string): Promise<PublishedRecord[]> {
-    const { rows } = await this.sql.query<{ path: string; unit: string; blob_sha: string; version: string | null }>(
-      `select path, unit, blob_sha, version from public.published_files where package_id = $1 order by path`, [packageId]);
-    return rows.map((r) => ({ path: r.path, unit: r.unit, blobSha: r.blob_sha, version: r.version }));
+    const { rows } = await this.sql.query<{ path: string; unit: string; blob_sha: string; version: string | null; source_blob: string | null }>(
+      `select path, unit, blob_sha, version, source_blob from public.published_files where package_id = $1 order by path`, [packageId]);
+    return rows.map((r) => ({ path: r.path, unit: r.unit, blobSha: r.blob_sha, version: r.version, sourceBlob: r.source_blob }));
   }
 
   async approvedAt(packageId: string, parts: Array<{ path: string; version: string }>): Promise<Set<string>> {

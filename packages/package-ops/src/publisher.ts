@@ -82,6 +82,8 @@ export interface TreeFile {
   /** Existing blob id (reused), or text to write. */
   blobSha?: string;
   text?: string;
+  /** The working-copy blob this file comes from (recorded, so "changed since Publish" compares sources). */
+  sourceBlob?: string;
 }
 
 /* -------------------------------------------------------------------------- *
@@ -122,10 +124,10 @@ export function assembleByFile(i: FileAssembleInput): FileAssembly {
   for (const [path, f] of i.working) {
     const s = statusOf(i.status, path);
     if (s === "withdrawn") continue;
-    if (s === "completed" || s === "public") { files.set(path, { blobSha: f.blobSha, text: f.text, origin: "unit", unit: f.unit }); continue; }
+    if (s === "completed" || s === "public") { files.set(path, { blobSha: f.blobSha, text: f.text, sourceBlob: f.sourceBlob, origin: "unit", unit: f.unit }); continue; }
     // A draft page: its last published version stays, if it has one.
     const before = i.published.get(path);
-    if (before) { files.set(path, { blobSha: before.blobSha, text: before.text, origin: "unit", unit: before.unit }); kept.push(path); }
+    if (before) { files.set(path, { blobSha: before.blobSha, text: before.text, sourceBlob: before.sourceBlob, origin: "unit", unit: before.unit }); kept.push(path); }
   }
   // Deleted figures (and other non-page files) a kept draft's published version still shows.
   const keptLinks = new Set<string>();
@@ -136,7 +138,7 @@ export function assembleByFile(i: FileAssembleInput): FileAssembly {
   for (const [path, f] of i.published) {
     if (files.has(path) || i.working.has(path) || isPage(path)) continue;
     if (statusOf(i.status, path) === "withdrawn" || !keptLinks.has(path)) continue;
-    files.set(path, { blobSha: f.blobSha, text: f.text, origin: "unit", unit: f.unit });
+    files.set(path, { blobSha: f.blobSha, text: f.text, sourceBlob: f.sourceBlob, origin: "unit", unit: f.unit });
   }
   const publishedChapters = new Set<string>();
   for (const [path, f] of files) if (f.unit.startsWith("chapter:") && isPage(path)) publishedChapters.add(f.unit.slice(8));

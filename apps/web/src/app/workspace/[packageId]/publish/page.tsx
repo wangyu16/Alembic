@@ -53,7 +53,7 @@ async function PublishPageInner({ params, searchParams }: { params: Promise<{ pa
     supabase.from("publish_runs").select("status, results").eq("package_id", packageId).in("status", ["committed", "site-built", "site-failed"]).order("committed_at", { ascending: false }).limit(1),
     // Status changes and other course operations still on their way: shown as saving; Publish waits for them.
     supabase.from("write_queue").select("id").eq("package_id", packageId).eq("kind", "courseop").in("status", ["queued", "processing", "retry"]),
-    supabase.from("published_files").select("path, blob_sha, unit").eq("package_id", packageId),
+    supabase.from("published_files").select("path, blob_sha, source_blob, unit").eq("package_id", packageId),
   ]);
   const saving = (pendingRows ?? []).length;
   const lastRun = runs?.[0] as { status: string; results: { site?: { url?: string; error?: string; superseded?: boolean } } } | undefined;
@@ -71,7 +71,7 @@ async function PublishPageInner({ params, searchParams }: { params: Promise<{ pa
 
   // Every file at the head and what was published (one tree listing; RC.24).
   const blobs = await blobsAt(c.client, { owner: c.owner, repo: c.name }, head);
-  const published = new Map(((publishedRows ?? []) as Array<{ path: string; blob_sha: string; unit: string }>).map((r) => [r.path, r]));
+  const published = new Map(((publishedRows ?? []) as Array<{ path: string; blob_sha: string; source_blob: string | null; unit: string }>).map((r) => [r.path, r]));
   const everPublished = new Set([...published.values()].filter((r) => r.unit.startsWith("chapter:")).map((r) => r.unit.slice(8)));
   const slugs = new Set(manifest.chapters.map((ch) => ch.slug));
   const partLabel = (path: string) => activeProfile.unitParts.find((p) => manifest.chapters.some((ch) => p.path(ch.slug) === path))?.label ?? path.split("/").pop()!;
@@ -84,7 +84,8 @@ async function PublishPageInner({ params, searchParams }: { params: Promise<{ pa
     if (u.kind === "none" || u.kind === "orphan" || (u.kind === "chapter" && !slugs.has(u.slug))) continue;
     const status = statusOf(manifest.status, path);
     const pub = published.get(path);
-    const fate = fateOf(status, pub !== undefined, pub !== undefined && pub.blob_sha !== sha);
+    // Compared with the source it was published from (the public copy of an SVG or a cleaned page differs from it).
+    const fate = fateOf(status, pub !== undefined, pub !== undefined && (pub.source_blob ?? pub.blob_sha) !== sha);
     if (!isPage(path)) { if (fate === "goes-up" || fate === "comes-off") otherChanges++; continue; }
     const row = { path, label: partLabel(path), status, fate };
     if (u.kind === "chapter") byChapter.set(u.slug, [...(byChapter.get(u.slug) ?? []), row]);
@@ -164,7 +165,10 @@ async function PublishPageInner({ params, searchParams }: { params: Promise<{ pa
             <p><strong>Published</strong> {last.finished_at ? <LocalTime at={last.finished_at} /> : ""}{last.outcome.unchanged ? " (nothing had changed)" : ""}. {last.outcome.published.length} of {manifest.chapters.length} chapters have pages on the website.</p>
             {last.outcome.broughtIn?.length ? <p className="mt-1">Changes made on GitHub were brought in first: {last.outcome.broughtIn.length} file{last.outcome.broughtIn.length === 1 ? "" : "s"}.</p> : null}
             {last.outcome.leftOut?.length ? (
-              <p className="mt-1">Left out because the website can&apos;t show them safely: {last.outcome.leftOut.map((p) => p.split("/").pop()).join(", ")}.</p>
+              <details className="mt-1">
+                <summary className="cursor-pointer">{last.outcome.leftOut.length} file{last.outcome.leftOut.length === 1 ? " was" : "s were"} left out because the website can&apos;t show {last.outcome.leftOut.length === 1 ? "it" : "them"} safely</summary>
+                <ul className="mt-1 list-disc pl-5 text-muted">{last.outcome.leftOut.map((p) => <li key={p}>{p}</li>)}</ul>
+              </details>
             ) : null}
           </div>
         ) : last.outcome ? (

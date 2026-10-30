@@ -86,7 +86,7 @@ export class FakeStore implements PublishStore {
   async markCommitted(id: string, sha: string, files: PublishedRecord[]) {
     for (const f of files) if (!f.blobSha) throw new Error(`published_files.blob_sha is NOT NULL (${f.path})`);
     this.runs.set(id, { status: "committed", intended: files, publicSha: sha });
-    this.files = files.map((f) => ({ path: f.path, unit: f.unit, blobSha: f.blobSha, version: f.version }));
+    this.files = files.map((f) => ({ path: f.path, unit: f.unit, blobSha: f.blobSha, version: f.version, sourceBlob: f.sourceBlob ?? null }));
   }
   async publishedFiles() { return this.files; }
   async approvedAt(_p: string, parts: Array<{ path: string; version: string }>) { return new Set(parts.filter((x) => this.approvals.has(`${x.path}@${x.version}`)).map((x) => x.path)); }

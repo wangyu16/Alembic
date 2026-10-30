@@ -120,7 +120,11 @@ export interface PublishStore {
 }
 
 /** One public file: always identified by its git blob id in the public repo (G3 H2). */
-export interface PublishedRecord { path: string; unit: string; blobSha: string; version: string | null }
+export interface PublishedRecord {
+  path: string; unit: string; blobSha: string; version: string | null;
+  /** The working-copy blob it was published from (the public copy may be a clean copy: SVGs, raw HTML). */
+  sourceBlob?: string | null;
+}
 
 export interface UnitCheck {
   id: string;
@@ -334,7 +338,7 @@ export async function runPublish(i: PublishInput, w: WorkingSide, pub: PublicSid
   // withdrawn file's current text never reaches the website (its last published version, or nothing, does).
   const goesOut = (path: string) => { const st = statusOf(manifest.status, path); return isPage(path) ? st === "completed" : st !== "withdrawn"; };
   const working = new Map<string, TreeFile & { unit: string }>();
-  for (const { e, u } of toRead) if (!goesOut(e.path)) working.set(e.path, { blobSha: e.blobSha, unit: unitKey(u) });
+  for (const { e, u } of toRead) if (!goesOut(e.path)) working.set(e.path, { blobSha: e.blobSha, unit: unitKey(u), sourceBlob: e.blobSha });
   const reading = toRead.filter(({ e }) => goesOut(e.path));
   const contents = await mapLimit(reading, READ_CONCURRENCY, ({ e }) => w.readFile(W, e.path));
   // A completed page that can't be made safe keeps its last published version (as a draft does), rather than vanishing.
@@ -346,7 +350,7 @@ export async function runPublish(i: PublishInput, w: WorkingSide, pub: PublicSid
     // Raw HTML in a Markdown text: the clean copy, read with the renderer's own parser (round 5 H1).
     if (text !== null && i.cleanMarkdown && /\.md$/i.test(e.path)) {
       const r = i.cleanMarkdown(e.path, text);
-      if (!r.ok) { leftOut.push(e.path); if (isPage(e.path)) { fallback.add(e.path); working.set(e.path, { blobSha: e.blobSha, unit: unitKey(u) }); } continue; }
+      if (!r.ok) { leftOut.push(e.path); if (isPage(e.path)) { fallback.add(e.path); working.set(e.path, { blobSha: e.blobSha, unit: unitKey(u), sourceBlob: e.blobSha }); } continue; }
       if (r.escaped) htmlAsText.push(e.path);
       text = r.text;
     }
@@ -357,11 +361,11 @@ export async function runPublish(i: PublishInput, w: WorkingSide, pub: PublicSid
       if (r.problems.length || r.svg === null) { leftOut.push(e.path); continue; }
       text = r.svg;
     }
-    working.set(e.path, text === null ? { blobSha: e.blobSha, unit: unitKey(u) } : { text, blobSha: await gitBlobSha(text), unit: unitKey(u) });
+    working.set(e.path, text === null ? { blobSha: e.blobSha, unit: unitKey(u), sourceBlob: e.blobSha } : { text, blobSha: await gitBlobSha(text), unit: unitKey(u), sourceBlob: e.blobSha });
   }
 
   // 7. What was published before (minus anything the site can't serve safely: audit r4 MEDIUM-A).
-  const publishedMap = new Map(previously.filter((f) => fileKind(f.path) !== null).map((f) => [f.path, { blobSha: f.blobSha, unit: f.unit } as TreeFile & { unit: string }]));
+  const publishedMap = new Map(previously.filter((f) => fileKind(f.path) !== null).map((f) => [f.path, { blobSha: f.blobSha, unit: f.unit, ...(f.sourceBlob ? { sourceBlob: f.sourceBlob } : {}) } as TreeFile & { unit: string }]));
   for (const f of previously) if (fileKind(f.path) === null && !leftOut.includes(f.path)) leftOut.push(f.path);
   // Pages kept at their published version for safety count as drafts for this Publish.
   const status = fallback.size ? Object.fromEntries(Object.entries(manifest.status ?? {}).filter(([p]) => !fallback.has(p))) : manifest.status;
@@ -403,10 +407,10 @@ export async function runPublish(i: PublishInput, w: WorkingSide, pub: PublicSid
     }
     if (f.text !== undefined) {
       files.push({ path, text: f.text });
-      records.push({ path, unit: f.unit, blobSha: await gitBlobSha(f.text), version: await sha256Hex(f.text) });
+      records.push({ path, unit: f.unit, blobSha: await gitBlobSha(f.text), version: await sha256Hex(f.text), sourceBlob: f.sourceBlob ?? null });
     } else if (f.blobSha) {
       files.push({ path, blobSha: f.blobSha });
-      records.push({ path, unit: f.unit, blobSha: f.blobSha, version: null });
+      records.push({ path, unit: f.unit, blobSha: f.blobSha, version: null, sourceBlob: f.sourceBlob ?? null });
     } else {
       throw new Error(`Publish has no content for ${path}`);
     }
