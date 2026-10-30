@@ -73,7 +73,9 @@ Guiding principle (owner): **easy authoring over strict rules.**
     an Alembic site only through the hand-in; the definition schema is
     published in Alembic's repository. Asked whether npm publishing of the
     definition is necessary (proposed instead: a vendored copy from a tagged
-    Coursewerk release).
+    Coursewerk release). Answered: the vendored copy. And (family FD-11):
+    Alembic, Coursewerk and the orz-markdown series are sibling projects,
+    designed together, each with a clear boundary and usable on its own.
 
 ## 2026-10-29 (evening) — Owner rulings for the overnight foundations run
 
