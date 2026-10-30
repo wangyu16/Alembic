@@ -40,6 +40,13 @@ Guiding principle (owner): **easy authoring over strict rules.**
    'publish', the platform publishes it. It is the user's responsibility for
    published contents." Alembic asks the type package (Coursewerk) nothing at
    Publish. Interface draft: family `docs/SITE-TYPE-CONTRACT.md`.
+5. **No checkpoints of Alembic's own** (owner, same day): "asking users to
+   approve the course plan and alike are Coursewerk's job. It does so. But if
+   a user creates contents completely without agent, without Coursewerk, and
+   decides to publish at any stage, the user has freedom to do so. Alembic
+   does not add additional warnings or checkpoints." Today's course-plan gate
+   and draft hold-back in Publish are to be removed with the site type
+   contract (inventory: family `docs/ALEMBIC-CONTENT-LOGIC.md`).
 
 ## 2026-10-29 (evening) — Owner rulings for the overnight foundations run
 
