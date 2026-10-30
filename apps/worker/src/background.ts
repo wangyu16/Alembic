@@ -9,6 +9,8 @@ import postgres from "postgres";
 import { ResendMailer } from "@alembic/notify";
 import { SCHEDULES, postgrestRpc, startSchedules, type Schedule } from "./schedules";
 import { runDigests } from "./digest-job";
+import { providerFromEnv } from "@alembic/ai-assist";
+import { TRIAGE_EVERY_MS, dailyCapFromEnv, runContactTriage } from "./contact-triage-job";
 import { committerPass } from "./committer-loop";
 import { doorCPass } from "./door-c-loop";
 import { publishPass } from "./publish-loop";
@@ -28,6 +30,13 @@ if (dbUrl && dbKey) {
   if (resendKey && from && appUrl) {
     const mailer = new ResendMailer(resendKey, from);
     schedules.push({ name: "needs-you-email", everyMs: 60 * 60_000, run: (rpc) => runDigests(rpc, { mailer, appUrl, actionSecret: process.env["ACTION_LINK_SECRET"]?.trim() || undefined }) });
+  }
+  // Sorting contact-form messages: only with an AI provider configured; without one they stay unsorted (still
+  // shown). (It was registered only in index.ts, which this deployment doesn't run.)
+  const ai = providerFromEnv(process.env);
+  if (ai) {
+    const dailyCap = dailyCapFromEnv(process.env["CONTACT_TRIAGE_DAILY_CAP"]);
+    schedules.push({ name: "contact-triage", everyMs: TRIAGE_EVERY_MS, run: (rpc) => runContactTriage(rpc, { ...ai, dailyCap }) });
   }
   startSchedules(postgrestRpc(dbUrl, dbKey), { schedules });
   log(`schedules on: ${schedules.map((s) => s.name).join(", ")}`);

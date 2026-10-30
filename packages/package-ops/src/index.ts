@@ -49,3 +49,4 @@ export * from "./chapter-parts";
 export * from "./course-ops";
 export * from "./both-changed-items";
 export * from "./raw-html";
+export * from "./diff-lines";
