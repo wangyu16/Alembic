@@ -1,15 +1,19 @@
 /**
- * Publisher v3, pure core (docs/specs/v3/publisher-v3.md §2–§3,
- * queue-and-jobs-v3.md §5): which unit each file belongs to, what each unit
- * decides, the assembled public tree, and the link check to a fixpoint.
+ * Publisher v3, pure core (docs/specs/v3/publisher-v3.md §2–§3, family
+ * SITE-TYPE-CONTRACT §7): which unit each file belongs to, and the assembled
+ * public tree by file status. (The per-chapter decisions, course-plan gate and
+ * link hold were retired on 2026-10-30: the person decides what is published.)
  * IO (reading the pinned tree, the public commit, the site build) lives in
  * the Publish job; everything that decides what reaches students is here.
  */
 
 import {
   assertPublishWritable,
+  isPage,
   isProjectable,
+  statusOf,
   toPublicManifest,
+  type StatusMap,
   type WorkingManifestV3,
 } from "@alembic/package-contract";
 
@@ -70,35 +74,6 @@ export interface Finding {
   message: string;
 }
 
-export interface DecideInput {
-  units: string[]; // unit keys present at W (excluding none/orphan)
-  findings: Finding[];
-  /** Chapter slugs in Draft mode. */
-  draft: ReadonlySet<string>;
-  /** Chapter slugs whose course-plan parts are approved at W (after approve-and-publish). */
-  approved: ReadonlySet<string>;
-  /** Chapter slugs the publisher chose "publish anyway" for. */
-  publishAnyway: ReadonlySet<string>;
-}
-
-export type Decision = { unit: string; result: "pass" | "kept"; why: string[] };
-
-export function decideUnits(i: DecideInput): Map<string, Decision> {
-  const out = new Map<string, Decision>();
-  for (const unit of i.units) {
-    const why: string[] = [];
-    const fs = i.findings.filter((f) => f.unit === unit);
-    const slug = unit.startsWith("chapter:") ? unit.slice("chapter:".length) : null;
-    if (fs.some((f) => f.severity === "always")) why.push(...fs.filter((f) => f.severity === "always").map((f) => f.message));
-    if (slug && i.draft.has(slug)) why.push("Draft chapter");
-    if (slug && !i.approved.has(slug)) why.push("Course plan not approved");
-    const defaults = fs.filter((f) => f.severity === "default");
-    if (defaults.length && !(slug && i.publishAnyway.has(slug))) why.push(...defaults.map((f) => f.message));
-    out.set(unit, { unit, result: why.length ? "kept" : "pass", why });
-  }
-  return out;
-}
-
 /* -------------------------------------------------------------------------- *
  * Assembly
  * -------------------------------------------------------------------------- */
@@ -109,79 +84,68 @@ export interface TreeFile {
   text?: string;
 }
 
-export interface AssembleInput {
-  /** Every file at the pinned working version W (path → file). */
-  working: ReadonlyMap<string, TreeFile>;
+/* -------------------------------------------------------------------------- *
+ * Assembly by file (family SITE-TYPE-CONTRACT §7: the person decides)
+ * -------------------------------------------------------------------------- */
+
+export interface FileAssembleInput {
+  /** Placed, readable, safe files at the pinned working version W (path → file), with their unit key. */
+  working: ReadonlyMap<string, TreeFile & { unit: string }>;
   /** The last published version of each public file (path → file + unit). */
   published: ReadonlyMap<string, TreeFile & { unit: string }>;
-  decisions: ReadonlyMap<string, Decision>;
+  /** Published texts of pages (to keep the deleted figures a kept draft still shows). */
+  publishedTexts?: ReadonlyMap<string, string>;
+  status: StatusMap | undefined;
   manifest: WorkingManifestV3;
-  everPublishedChapters: ReadonlySet<string>;
-  /** Files Publish generates (`.alembic/…`, `provenance/coursewerk/…`), already computed. */
+  /** Files Publish generates (`.alembic/…`), already computed. */
   generated?: ReadonlyMap<string, TreeFile>;
-  /** Published texts of chapter and course files, with their unit (to keep only the deleted assets KEPT units still link to). */
-  keptTexts?: ReadonlyMap<string, { unit: string; text: string }>;
 }
 
-export interface AssembledTree {
+export interface FileAssembly {
   files: Map<string, TreeFile & { origin: "unit" | "generated"; unit: string }>;
+  /** Chapters with at least one page on the website. */
   publishedChapters: Set<string>;
+  /** Pages that are drafts now and stay at their last published version. */
+  kept: string[];
 }
 
-export function assemblePublicTree(i: AssembleInput): AssembledTree {
-  const chapters = new Set(i.manifest.chapters.map((c) => c.slug));
-  const files: AssembledTree["files"] = new Map();
-  const pass = (unit: string) => i.decisions.get(unit)?.result === "pass";
-  const courseMap = i.working.get("concepts/course.md")?.text;
-  const courseMapLinks = new Set(courseMap ? relativeLinks("concepts/course.md", courseMap) : []);
-
-  // Passing units at W.
+/**
+ * What the website holds after a Publish (it mirrors this; anything else goes):
+ * completed pages as they are now; pages set back to draft at their last
+ * published version; other public files as they are now, unless withdrawn;
+ * a figure deleted since stays only while a kept draft still shows it.
+ * Nothing about content is decided here.
+ */
+export function assembleByFile(i: FileAssembleInput): FileAssembly {
+  const files: FileAssembly["files"] = new Map();
+  const kept: string[] = [];
   for (const [path, f] of i.working) {
-    const u = unitOf(path, chapters, i.everPublishedChapters);
-    if (u.kind === "none" || u.kind === "orphan") continue;
-    const key = unitKey(u);
-    if (u.kind === "chapter" && !chapters.has(u.slug)) continue; // removed chapter: handled below
-    if (pass(key)) files.set(path, { ...f, origin: "unit", unit: key });
+    const s = statusOf(i.status, path);
+    if (s === "withdrawn") continue;
+    if (s === "completed" || s === "public") { files.set(path, { blobSha: f.blobSha, text: f.text, origin: "unit", unit: f.unit }); continue; }
+    // A draft page: its last published version stays, if it has one.
+    const before = i.published.get(path);
+    if (before) { files.set(path, { blobSha: before.blobSha, text: before.text, origin: "unit", unit: before.unit }); kept.push(path); }
   }
-  // Kept units: their last published files.
+  // Deleted figures (and other non-page files) a kept draft's published version still shows.
+  const keptLinks = new Set<string>();
+  for (const path of kept) {
+    const text = i.publishedTexts?.get(path);
+    if (text) for (const target of relativeLinks(path, text)) keptLinks.add(target);
+  }
   for (const [path, f] of i.published) {
-    if (files.has(path)) continue;
-    const key = f.unit;
-    if (key.startsWith("chapter:")) {
-      const slug = key.slice("chapter:".length);
-      if (!chapters.has(slug)) {
-        // Removed from the manifest: its public files go, unless the course map at W still links to them (spec §2; G3 r2 H1).
-        if (!courseMapLinks.has(path)) continue;
-      } else if (pass(key)) continue; // passing: W is authoritative (a file deleted at W stays deleted)
-    } else if (key.startsWith("asset:")) {
-      if (pass(key) && i.working.has(path)) continue;
-      if (!i.working.has(path)) {
-        // Deleted at W: kept only while a KEPT unit's published text still links to it (G3 H3, r2 M2).
-        const usedByKept = [...(i.keptTexts ?? new Map<string, { unit: string; text: string }>())].some(
-          ([from, k]) =>
-            !pass(k.unit) &&
-            // a kept chapter in the course, or a removed one the course map keeps public (G3 r3 L-a)
-            (!k.unit.startsWith("chapter:") || chapters.has(k.unit.slice(8)) || courseMapLinks.has(from)) &&
-            relativeLinks(from, k.text).includes(path),
-        );
-        if (!usedByKept) continue;
-      }
-    } else if (pass(key)) {
-      continue;
-    }
-    files.set(path, { blobSha: f.blobSha, text: f.text, origin: "unit", unit: key });
+    if (files.has(path) || i.working.has(path) || isPage(path)) continue;
+    if (statusOf(i.status, path) === "withdrawn" || !keptLinks.has(path)) continue;
+    files.set(path, { blobSha: f.blobSha, text: f.text, origin: "unit", unit: f.unit });
   }
   const publishedChapters = new Set<string>();
-  for (const f of files.values()) if (f.unit.startsWith("chapter:")) publishedChapters.add(f.unit.slice(8));
+  for (const [path, f] of files) if (f.unit.startsWith("chapter:") && isPage(path)) publishedChapters.add(f.unit.slice(8));
 
-  // Generated: the public manifest and Publish's own files.
   const pub = toPublicManifest(i.manifest, publishedChapters);
   files.set("alembic.json", { text: JSON.stringify(pub, null, 2) + "\n", origin: "generated", unit: "course" });
   for (const [path, f] of i.generated ?? []) files.set(path, { ...f, origin: "generated", unit: "course" });
-
-  // The public boundary, file by file (fail closed).
   for (const [path, f] of files) assertPublishWritable(path, f.origin);
-  return { files, publishedChapters };
+  return { files, publishedChapters, kept };
 }
 
 /* -------------------------------------------------------------------------- *
@@ -211,54 +175,4 @@ export function relativeLinks(fromPath: string, text: string): string[] {
     out.add(dir.join("/"));
   }
   return [...out];
-}
-
-/**
- * Re-decide until stable: a passing chapter linking to a path absent from
- * the assembled tree gets a `default` finding (kept unless published
- * anyway). Decisions only move pass → kept, so this ends.
- */
-export function publishWithLinkCheck(
-  assembleIn: Omit<AssembleInput, "decisions">,
-  decideIn: DecideInput,
-): { tree: AssembledTree; decisions: Map<string, Decision>; rounds: number } {
-  let findings = [...decideIn.findings];
-  for (let round = 1; ; round++) {
-    const decisions = decideUnits({ ...decideIn, findings });
-    const tree = assemblePublicTree({ ...assembleIn, decisions });
-    const added: Finding[] = [];
-    for (const [path, f] of tree.files) {
-      // Passing chapters are link-checked (spec step 9). The course map is not: it may name
-      // chapters still being written; removed chapters it links to stay (assembly, G3 r2 H1).
-      if (f.origin !== "unit" || f.text === undefined || !f.unit.startsWith("chapter:")) continue;
-      if (decisions.get(f.unit)?.result !== "pass") continue;
-      for (const target of relativeLinks(path, f.text)) {
-        const missing = !tree.files.has(target);
-        // A link to an asset kept at an older version than this chapter expects (G3 M4).
-        const targetUnit = `asset:${target}`;
-        const atW = assembleIn.working.get(target);
-        const pub = tree.files.get(target);
-        const stale = !missing && target.startsWith("assets/") && decisions.get(targetUnit)?.result === "kept" && atW !== undefined &&
-          (atW.blobSha !== undefined && pub?.blobSha !== undefined
-            ? pub.blobSha !== atW.blobSha // blob to blob (G3 r2 L4, r3 M-b)
-            : pub?.text !== undefined && atW.text !== undefined
-              ? pub.text !== atW.text
-              : false); // can't compare: no finding (the job always supplies blob ids)
-        if ((missing || stale) && !findings.some((x) => x.unit === f.unit && x.check === "link" && x.path === target)) {
-          added.push({ unit: f.unit, path: target, check: "link", severity: "default", message: missing ? `Links to ${target}, which is not published` : `Links to ${target}, which is published only in an older version` });
-        }
-      }
-    }
-    if (added.length === 0) {
-      // A removed chapter still public because the course map links it is reported as kept (G3 r3 L-b).
-      for (const f of tree.files.values()) {
-        if (f.unit.startsWith("chapter:") && !decisions.has(f.unit) && !assembleIn.manifest.chapters.some((c) => `chapter:${c.slug}` === f.unit)) {
-          decisions.set(f.unit, { unit: f.unit, result: "kept", why: ["Removed from the course, but still public because concepts/course.md links to it"] });
-        }
-      }
-      return { tree, decisions, rounds: round };
-    }
-    findings = [...findings, ...added];
-    if (round > decideIn.units.length + 1) return { tree, decisions, rounds: round }; // cannot happen: monotone
-  }
 }

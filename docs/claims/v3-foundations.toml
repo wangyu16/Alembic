@@ -26,7 +26,7 @@ bound_to = [
   "packages/package-ops/src/course-committer.test.ts :: Door C's undo puts back what the course had even if today's check would refuse it (the rest of the undo isn't lost)",
   "packages/package-ops/src/publish-job.test.ts :: a file the website can't serve safely (.html, .js) is left out and said so; never reaches the public copy (audit r3 HIGH-1)",
   "packages/package-contract/src/files.test.ts :: the SVG check runs in linear time: crafted input can't stall the worker (round 2 audit)",
-  "packages/package-ops/src/publish-job.test.ts :: a file published before the safety rule leaves even when its chapter is held back (audit r4 MEDIUM-A)",
+  "packages/package-ops/src/publish-job.test.ts :: a file published before the safety rule leaves even when a draft page kept at its published version still links to it (audit r4 MEDIUM-A)",
   "packages/package-ops/src/publish-job.test.ts :: every SVG is published as the clean copy the check read: comments and declarations gone, values re-escaped",
 ]
 note = "Built: checks on upload and on every committed text write; the asset route already serves nosniff + a sandbox CSP. Door C undoes unsafe pushed SVGs and mismatched bytes. Not yet: the check at Publish."
@@ -129,7 +129,7 @@ bound_to = [
   "apps/worker/src/raw-html.test.ts :: raw HTML outside the safe list becomes text a reader sees; it never reaches the page as HTML",
   "apps/worker/src/raw-html.test.ts :: the safe tags and slide markers are kept exactly; text without raw HTML is untouched",
   "apps/worker/src/raw-html.test.ts :: every Markdown text of the real General Chemistry course passes unchanged (it uses only <br>)",
-  "packages/package-ops/src/publish-job.test.ts :: Publish writes each Markdown text as its clean copy, lists the files whose HTML became text, and stops on one it can't clean",
+  "packages/package-ops/src/publish-job.test.ts :: Publish writes each Markdown text as its clean copy, lists the files whose HTML became text, and leaves out one it can't clean",
 ]
 note = "Owner, 2026-10-29: the Alembic-side clean copy instead of new family releases; an orz-markdown allowlist option for authors' own text rides along with orz-markdown's next planned release (family request)."
 
@@ -202,7 +202,27 @@ bound_to = [
   "packages/package-contract/src/site-type/status.test.ts :: a status follows its file: a move carries it (not into private/), a delete drops it, a restored file gets its old one back",
   "packages/package-contract/src/site-type/status.test.ts :: statuses never reach the public copy",
   "packages/package-ops/src/course-ops.test.ts :: marks many pages completed at once, and takes any public file off the website",
-  "packages/package-ops/src/course-ops.test.ts :: refuses with a plain reason: a file that's gone, an instructor-only file, completing a non-page",
+  "packages/package-ops/src/course-ops.test.ts :: refuses with a plain reason: a file that's gone, an instructor-only file, completing a non-page; in a bulk change a gone page is skipped",
   "packages/package-ops/src/course-committer.test.ts :: a status follows its file in the same commit: a move carries it, a delete drops it",
   "packages/package-ops/src/course-committer.test.ts :: marking pages draft or completed is for anyone who may edit them; taking files off the website is the owner's or deputy's, and a withdrawn page stays theirs",
 ]
+
+[[claim]]
+id = "K1.23"
+claim = "Publish decides by file status only (family SITE-TYPE-CONTRACT §7): completed pages go out as they are now; a page set back to draft keeps its last published version (with the deleted figures it shows); other public files go out unless withdrawn; withdrawn files come off; the type package's public records go out as they are. Nothing about content is checked and nothing asks: an unsafe or uncleanable file is left out and named (a completed page keeps its last published version), changes made on GitHub are brought in and published in the same run, and files under an unlisted chapter stay unplaced."
+oracle = "conformance"
+bound_to = [
+  "packages/package-ops/src/publisher.test.ts :: completed pages go out as they are now; a draft never published stays off",
+  "packages/package-ops/src/publisher.test.ts :: a page set back to draft keeps its last published version, with the deleted figures that version shows",
+  "packages/package-ops/src/publisher.test.ts :: other public files go out as they are now unless withdrawn; withdrawing takes any file off",
+  "packages/package-ops/src/publisher.test.ts :: the type package's public records are published as they are, with no status",
+  "packages/package-ops/src/publisher.test.ts :: the public manifest lists the chapters with a page on the website, and never statuses",
+  "packages/package-ops/src/publish-job.test.ts :: an unsafe SVG and a text whose raw HTML can't be cleaned are left out; the rest publishes",
+  "packages/package-ops/src/publish-job.test.ts :: a completed page that can't be made safe keeps its last published version and is named as left out",
+  "packages/package-ops/src/publish-job.test.ts :: a withdrawn page published before is deleted from the public repo (and a withdrawn figure too)",
+  "packages/package-ops/src/publish-job.test.ts :: a draft page published before keeps its old bytes and is listed in kept; a draft never published stays off",
+  "packages/package-ops/src/publish-job.test.ts :: provenance/coursewerk/ files are published as they are, with no status",
+  "packages/package-ops/src/publish-job.test.ts :: drift is brought in and published in the same run (the outcome has broughtIn); files under an unknown chapter are brought in but stay unplaced and unpublished",
+  "packages/package-ops/src/publish-job.test.ts :: a second drift while the brought-in changes are being published stops the run",
+]
+

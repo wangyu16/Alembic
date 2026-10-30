@@ -1,13 +1,10 @@
 "use server";
 
-import { randomUUID } from "node:crypto";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { can, newDocId, WorkingManifestV3Schema, type Role } from "@alembic/package-contract";
-import { chapterPartPath, chapterPartText, enqueueSync, SqlQueueStore, SyncRefused } from "@alembic/package-ops";
+import { can, normalizePath, type Role, type StatusChange } from "@alembic/package-contract";
+import { MAX_STATUS_PATHS } from "@alembic/package-ops";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { directDb } from "@/lib/db";
-import { courseRepo, textVersion } from "@/lib/course-v3";
 import { githubBusy } from "@/lib/github-busy";
 import { queueCourseOp } from "@/lib/course-op";
 
@@ -36,87 +33,34 @@ async function member(packageId: string) {
   return { supabase, user, role: (role ?? "none") as Role };
 }
 
-/** Ask for a Publish with the publisher's choices (the worker runs it). */
-export async function requestPublishAction(packageId: string, form: FormData): Promise<void> {
+/** Ask for a Publish (the worker runs it). There are no choices: the files' statuses decide (family SITE-TYPE-CONTRACT §7). */
+export async function requestPublishAction(packageId: string): Promise<void> {
   const { supabase } = await member(packageId);
-  // A chapter status change still on its way would be published as it was (RC.24): wait for it.
-  const { data: pending } = await supabase.from("write_queue").select("id").eq("package_id", packageId)
-    .in("status", ["queued", "processing", "retry"]).or("kind.eq.courseop,idem_key.like.system:mode:%").limit(1);
-  if (pending?.length) back(packageId, "A chapter's status change is still being saved. Publish again in a few seconds.");
-  // Each choice names the version that was shown (path@version, slug@digest): the job applies it only to that.
-  const approveAndPublish = form.getAll("approve").flatMap((v) => (typeof v === "string" ? v.split("|") : []))
-    .filter((v) => /^(concepts|assessment-support)\/[a-z0-9-]{1,60}\.md@[0-9a-f]{64}$/.test(v));
-  const publishAnyway = form.getAll("anyway").filter((v): v is string => typeof v === "string" && /^[a-z0-9-]{1,60}@[0-9a-f]{64}$/.test(v));
-  const { error } = await supabase.rpc("request_publish", { p: packageId, p_choices: { approveAndPublish, publishAnyway } });
+  const { error } = await supabase.rpc("request_publish", { p: packageId, p_choices: {} });
   if (error) {
     back(packageId, error.code === "42501" ? "Only the owner or deputy publishes."
-      : error.code === "55006" && /status change/.test(error.message) ? "A chapter's status change is still being saved. Publish again in a few seconds."
-      : error.code === "55006" ? "Publish is already running; try again when it has finished."
+      : error.code === "55006" && /status change/.test(error.message) ? "Status changes are still being saved. Publish again in a few seconds."
+      : error.code === "55006" ? "Publish is already running; it will include everything marked completed by then."
       : "Publish couldn't be started. Try again.");
   }
   back(packageId);
 }
 
 /**
- * Start a chapter's course plan: its concept map and assessment guide, as new
- * documents (each passes the permission matrix like any edit).
+ * Mark pages completed or draft, take files off the website or bring them back — one page or a whole
+ * chapter at once (a course operation the worker applies; it re-checks each right).
+ * `paths` is a `|`-joined list bound by the page, since a submit button's own value never reaches a formAction.
  */
-export async function startPlanAction(packageId: string, slug: string): Promise<void> {
-  return withGithub(packageId, () => startPlan(packageId, slug));
-}
-
-async function startPlan(packageId: string, slug: string): Promise<void> {
-  const { user } = await member(packageId);
-  const sql = directDb();
-  const c = await courseRepo(packageId);
-  if (!sql || !c || !/^[a-z0-9-]{1,60}$/.test(slug)) back(packageId, "That chapter can't be changed here.");
-  const head = await c!.repo.head();
-  const m = WorkingManifestV3Schema.parse(JSON.parse((await c!.repo.readFile(head, "alembic.json")) ?? "null"));
-  const ch = m.chapters.find((x) => x.slug === slug);
-  if (!ch) back(packageId, "That chapter isn't in the course.");
-  const files = [];
-  for (const part of ["concept-map", "assessment-guide"] as const) { // the site type's ids (family SITE-TYPE-CONTRACT §5)
-    const path = chapterPartPath(part, slug);
-    if ((await c!.repo.readFile(head, path)) === null) files.push({ path, baseVersion: null, text: chapterPartText(part, ch!.title, newDocId()) });
-  }
-  if (files.length === 0) back(packageId);
-  try {
-    await enqueueSync(sql!, { actorId: user!.id, packageId, syncId: randomUUID(), files, fromOpenEditor: false });
-  } catch (e) {
-    back(packageId, e instanceof SyncRefused ? `Not allowed: ${e.reason}` : "Couldn't reach Alembic.");
-  }
-  back(packageId, "The course plan documents are being added; they appear in a few seconds.");
-}
-
-/** Mark a chapter ready for publishing, or back to draft (the manifest is changed by a system row, owner or deputy only). */
-export async function setChapterModeAction(packageId: string, slug: string, mode: "draft" | "package"): Promise<void> {
-  return withGithub(packageId, () => setChapterMode(packageId, slug, mode));
-}
-
-async function setChapterMode(packageId: string, slug: string, mode: "draft" | "package"): Promise<void> {
-  const { user, role } = await member(packageId);
-  if (!can(role, "edit.course-files")) back(packageId, "Only the owner or deputy changes this.");
-  if (!/^[a-z0-9-]{1,60}$/.test(slug)) back(packageId, "That chapter isn't in the course.");
-  // A course operation (contract v3 §13): the worker applies it to the course as it is then.
-  if (!(await queueCourseOp(packageId, user!.id, { op: "setChapterMode", slug, mode }, `mode:${slug}:${mode}`))) back(packageId, "That chapter can't be changed here.");
-  back(packageId, "Saved; it takes a few seconds to show.");
-}
-
-/**
- * Approve a chapter's course plan now, as it was shown (path@version of each part; owner or deputy,
- * checked by approve_part). Takes effect at once, so the page shows it (RC.15).
- */
-export async function approvePlanNowAction(packageId: string, shown: string): Promise<void> {
-  const { supabase } = await member(packageId);
-  // The parts as shown come as a bound argument: Next replaces a submit button's name with its own
-  // action reference, so a button's name/value never reaches a formAction (RC.21).
-  const parts = String(shown ?? "").split("|")
-    .map((v) => /^((?:concepts|assessment-support)\/[a-z0-9-]{1,60}\.md)@([0-9a-f]{64})$/.exec(v))
-    .filter((m): m is RegExpExecArray => m !== null);
-  if (!parts.length) back(packageId, "Nothing to approve.");
-  for (const m of parts) {
-    const { error } = await supabase.rpc("approve_part", { p: packageId, p_path: m[1], p_version: m[2] });
-    if (error) back(packageId, error.code === "42501" ? "Only the owner or deputy approves the course plan." : "The approval couldn't be saved. Try again.");
-  }
-  back(packageId, "Course plan approved.");
+export async function setStatusAction(packageId: string, joined: string, status: StatusChange, back_?: string): Promise<void> {
+  return withGithub(packageId, async () => {
+    const { user, role } = await member(packageId);
+    const to = back_ && back_.startsWith(`/workspace/${packageId}/`) ? back_ : `/workspace/${packageId}/publish`;
+    const done = (msg?: string) => { revalidatePath(to.split("?")[0]!); return redirect(`${to}${msg ? `${to.includes("?") ? "&" : "?"}m=${encodeURIComponent(msg)}` : ""}`); };
+    if ((status === "withdrawn" || status === "public") && !can(role, "edit.course-files")) done("Only the owner or deputy takes files off the website or brings them back.");
+    const paths: string[] = [];
+    for (const p of String(joined ?? "").split("|")) { if (!p) continue; try { paths.push(normalizePath(p)); } catch { /* skipped */ } }
+    if (!paths.length || paths.length > MAX_STATUS_PATHS) done("Nothing to change.");
+    if (!(await queueCourseOp(packageId, user!.id, { op: "setStatus", paths, status }, `status:${status}`))) done("That can't be changed here right now.");
+    done();
+  });
 }

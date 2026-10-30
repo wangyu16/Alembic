@@ -119,8 +119,9 @@ export function isHarnessPath(path: string): boolean {
 }
 
 /**
- * Files only Publish itself (or the publish profile) writes in the public
- * repo — never copied from the working repo (rule 5). The public
+ * Files only Publish itself writes in the public repo — never copied from the
+ * working repo (rule 5). (The type package's public records, `provenance/coursewerk/`,
+ * are written by its tools in the working copy and published as they are: SITE-TYPE-CONTRACT §5.) The public
  * `alembic.json` is generated from the working one (`toPublicManifest`), so
  * the working manifest can never be copied out by mistake.
  */
@@ -128,7 +129,6 @@ export function isPublishGenerated(path: string): boolean {
   const p = normalizePath(path);
   return (
     p === "alembic.json" ||
-    p.startsWith("provenance/coursewerk/") ||
     p.startsWith(".github/") ||
     p.startsWith(".alembic/") ||
     p === ".gitignore"

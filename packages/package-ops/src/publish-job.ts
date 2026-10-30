@@ -19,11 +19,13 @@ import {
   type WorkingManifestV3,
   checkSvg,
   fileKind,
+  isPage,
   isSvgPath,
+  statusOf,
   svgProblems,
 } from "@alembic/package-contract";
 import type { CleanText } from "./raw-html";
-import { publishWithLinkCheck, unitKey, unitOf, type Decision, type Finding, type TreeFile } from "./publisher";
+import { assembleByFile, unitKey, unitOf, type Finding, type TreeFile, type Unit } from "./publisher";
 
 /* -------------------------------------------------------------------------- *
  * Seams
@@ -137,7 +139,9 @@ export interface PublishInput {
    * holds `anywayKey(slug, digest)` of the problems as shown. A part that
    * changed since, or a chapter whose problems changed, is not covered.
    */
-  choices: { publishAnyway: string[]; approveAndPublish: string[] };
+  choices?: unknown; // retired (family SITE-TYPE-CONTRACT §7: no approvals or "publish anyway"); recorded as given
+  /** Set on the second pass after public changes were brought in (internal). */
+  broughtIn?: string[];
   /**
    * The clean copy of a Markdown text (raw HTML outside the safe list turned into text; foundations round 5 H1).
    * The worker passes `cleanRawHtml` with the orz-markdown version the site renders with.
@@ -154,7 +158,7 @@ export interface PublishInput {
 }
 
 export type PublishOutcome =
-  | { status: "committed"; runId: string; publicSha: string; decisions: Decision[]; published: string[]; anywayKeys: Record<string, string>; unchanged?: true; leftOut?: string[]; htmlAsText?: string[] }
+  | { status: "committed"; runId: string; publicSha: string; published: string[]; kept: string[]; unchanged?: true; leftOut?: string[]; htmlAsText?: string[]; broughtIn?: string[] }
   | { status: "stopped"; reason: string; drift?: string[] };
 
 const TRAILER = "Alembic-Publish-Run";
@@ -224,6 +228,7 @@ async function holds(pub: PublicSide, sha: string, intended: PublishedRecord[]):
   return intended.every((f) => at.get(f.path) === f.blobSha);
 }
 
+// Not brought in from the public copy: Publish's own files, and the type package's records (only its tools write them).
 const generatedOrSecret = (p: string) =>
   p === "alembic.json" || p === ".gitignore" || p.startsWith(".alembic/") || p.startsWith(".github/") || p.startsWith("provenance/coursewerk/");
 
@@ -231,14 +236,12 @@ const generatedOrSecret = (p: string) =>
  * The job
  * -------------------------------------------------------------------------- */
 
-export async function runPublish(i: PublishInput, w: WorkingSide, pub: PublicSide, store: PublishStore, checks: UnitCheck[]): Promise<PublishOutcome> {
+export async function runPublish(i: PublishInput, w: WorkingSide, pub: PublicSide, store: PublishStore, _checks: UnitCheck[] = []): Promise<PublishOutcome> {
   // 1. Authorise (P.8, Q.9). "First" = no Publish has ever been committed, even if the repo exists (G3 r2 M3).
   const firstPublish = (await pub.head()) === null || !(await store.anyCommittedRun(i.packageId));
   if (!can(i.role, firstPublish ? "publish.first" : "publish.later")) {
     return { status: "stopped", reason: firstPublish ? "Only the owner makes the first Publish" : "Only the owner or deputy publishes" };
   }
-  if (i.choices.publishAnyway.length && !can(i.role, "publish.anyway")) return { status: "stopped", reason: "Not allowed to publish anyway" };
-  if (i.choices.approveAndPublish.length && !can(i.role, "approve.plan")) return { status: "stopped", reason: "Not allowed to approve the course plan" };
 
   // 3. Pin; refuse unsafe trees; read the manifest AT W (G3 H1).
   const W = await w.head();
@@ -303,107 +306,81 @@ export async function runPublish(i: PublishInput, w: WorkingSide, pub: PublicSid
           const u = unitOf(p, chapters, everPublished);
           return u.kind !== "none" && u.kind !== "orphan";
         });
-        // Files added under a chapter name the course doesn't have can't be placed: stop and name them,
-        // without acknowledging, so nothing is deleted silently (G3 r2 L5).
-        const orphans = changed.filter((p) => !generatedOrSecret(p) && isProjectable(p) && unitOf(p, chapters, everPublished).kind === "orphan");
-        if (orphans.length) return { status: "stopped", reason: `Files were added on GitHub under a chapter this course doesn't have: ${orphans.join(", ")}. Move or remove them on GitHub, then publish again.`, drift: orphans };
-        const landed = bringable.length ? await store.bringInDrift(i.packageId, P, bringable) : "done";
-        if (landed !== "done") return { status: "stopped", reason: "The public copy was changed on GitHub and those changes couldn't be brought in yet", drift: bringable };
+        // Files added on GitHub under a chapter the course doesn't have are brought in too: they are unplaced
+        // (kept in the course, not published) rather than a reason to stop (SITE-TYPE-CONTRACT §5, §8).
+        const unplaced = changed.filter((p) => !generatedOrSecret(p) && isProjectable(p) && unitOf(p, chapters, everPublished).kind === "orphan");
+        const toBring = [...bringable, ...unplaced];
+        const landed = toBring.length ? await store.bringInDrift(i.packageId, P, toBring) : "done";
+        if (landed !== "done") return { status: "stopped", reason: "The public copy was changed on GitHub and those changes couldn't be brought in yet; try again in a moment", drift: toBring };
         await store.acknowledge(i.packageId, P);
-        return { status: "stopped", reason: "The public copy was changed on GitHub — those changes were brought in; run Publish again", drift: bringable };
+        // Then publish in the same run, from the working copy that now holds them (once).
+        if (i.broughtIn) return { status: "stopped", reason: "The public copy keeps changing on GitHub; try again in a moment", drift: toBring };
+        return runPublish({ ...i, broughtIn: toBring }, w, pub, store);
       }
     }
   }
 
-  // 6. Read units at W; a text file that can't be read stops the run (fail closed, G3 M2).
-  const working = new Map<string, TreeFile>();
-  const svgVerdicts = new Map<string, string[]>();
-  const htmlRefused = new Map<string, string>();
-  const htmlAsText: string[] = [];
-  const byUnit = new Map<string, Array<{ path: string; text: string | null }>>();
-  // Reads run READ_CONCURRENCY at a time (a real course has hundreds of files); results keep tree order.
-  // A file of a kind the website can't serve safely (not a course text or an allowed figure: .html, .js …) is
-  // left out, and a copy published earlier is removed (foundations audit r3 HIGH-1: scripts on <owner>.github.io).
+  // 6. Read the placed files at W; a text file that can't be read stops the run (fail closed, G3 M2).
+  // A file of a kind the website can't serve safely (.html, .js …), an SVG that fails the check, or a text with raw
+  // HTML that can't be cleaned is left out (named in the result as a plain fact); the rest is published.
   const leftOut = tree.entries.filter((e) => e.type !== "tree" && e.mode !== "040000" && isProjectable(e.path) && fileKind(e.path) === null).map((e) => e.path);
+  const htmlAsText: string[] = [];
+  // Placed files only: a chapter file whose chapter isn't listed is unplaced (kept in the course, not published).
+  const placed = (u: Unit) => u.kind !== "none" && u.kind !== "orphan" && !(u.kind === "chapter" && !chapters.has(u.slug));
   const toRead = tree.entries.filter((e) => e.type !== "tree" && e.mode !== "040000" && fileKind(e.path) !== null)
     .map((e) => ({ e, u: unitOf(e.path, chapters, everPublished) }))
-    .filter(({ u }) => u.kind !== "none" && u.kind !== "orphan");
-  const contents = await mapLimit(toRead, READ_CONCURRENCY, ({ e }) => w.readFile(W, e.path));
-  for (const [k, { e, u }] of toRead.entries()) {
+    .filter(({ u }) => placed(u));
+  // Only what goes out as it is now is read and checked: completed pages and other public files. A draft or
+  // withdrawn file's current text never reaches the website (its last published version, or nothing, does).
+  const goesOut = (path: string) => { const st = statusOf(manifest.status, path); return isPage(path) ? st === "completed" : st !== "withdrawn"; };
+  const working = new Map<string, TreeFile & { unit: string }>();
+  for (const { e, u } of toRead) if (!goesOut(e.path)) working.set(e.path, { blobSha: e.blobSha, unit: unitKey(u) });
+  const reading = toRead.filter(({ e }) => goesOut(e.path));
+  const contents = await mapLimit(reading, READ_CONCURRENCY, ({ e }) => w.readFile(W, e.path));
+  // A completed page that can't be made safe keeps its last published version (as a draft does), rather than vanishing.
+  const fallback = new Set<string>();
+  for (const [k, { e, u }] of reading.entries()) {
     const content = contents[k]!;
-    if (content === null) return { status: "stopped", reason: `Couldn't read ${e.path} to check it` };
+    if (content === null) return { status: "stopped", reason: `Couldn't read ${e.path}` };
     let text = "text" in content ? content.text : null;
-    // Every SVG goes out as the clean copy rebuilt from what the check read (contract v3 §11.4, foundations loop
-    // round 4): a browser then reads exactly what the check read. Read once (audit r5 L2); an unsafe one stops the
-    // Publish below.
     // Raw HTML in a Markdown text: the clean copy, read with the renderer's own parser (round 5 H1).
     if (text !== null && i.cleanMarkdown && /\.md$/i.test(e.path)) {
       const r = i.cleanMarkdown(e.path, text);
-      if (!r.ok) htmlRefused.set(e.path, r.reason);
-      else { if (r.escaped) htmlAsText.push(e.path); text = r.text; }
+      if (!r.ok) { leftOut.push(e.path); if (isPage(e.path)) { fallback.add(e.path); working.set(e.path, { blobSha: e.blobSha, unit: unitKey(u) }); } continue; }
+      if (r.escaped) htmlAsText.push(e.path);
+      text = r.text;
     }
+    // Every SVG goes out as the clean copy rebuilt from what the check read (contract v3 §11.4).
     if (isSvgPath(e.path)) {
       await new Promise((r) => setTimeout(r, 0)); // let other courses' work run between figures (audit r4 LOW-A)
       const r = checkSvg(text ?? ("decoded" in content ? content.decoded : "") ?? "");
-      svgVerdicts.set(e.path, r.problems);
-      if (r.svg !== null) text = r.svg;
+      if (r.problems.length || r.svg === null) { leftOut.push(e.path); continue; }
+      text = r.svg;
     }
-    // Text files carry their git blob id too, so stale-asset comparisons are blob to blob (G3 r3 M-b).
-    working.set(e.path, text === null ? { blobSha: e.blobSha } : { text, blobSha: await gitBlobSha(text) });
-    const key = unitKey(u);
-    // The checks always see words: a binary file is checked through its best-effort decoding (G3 r3 M-a).
-    byUnit.set(key, [...(byUnit.get(key) ?? []), { path: e.path, text: text ?? ("decoded" in content ? content.decoded : null) }]);
-  }
-  // An unsafe SVG is never published (contract v3 §11.4): GitHub Pages sends no CSP, so the check is the protection.
-  for (const { e } of toRead) {
-    const html = htmlRefused.get(e.path);
-    if (html) return { status: "stopped", reason: `${e.path} can't be published: ${html}. Fix it, then publish again.` };
-    const problems = svgVerdicts.get(e.path);
-    if (problems?.length) return { status: "stopped", reason: `${e.path} can't be published: ${problems[0]}. Fix or remove it, then publish again.` };
-  }
-  const units = [...byUnit.keys()];
-  const findings: Finding[] = [];
-  for (const unit of units) for (const c of checks) findings.push(...(await c.run(unit, byUnit.get(unit)!)));
-
-  // Approvals at W (both plan parts must exist and be approved); approve-and-publish first.
-  const parts: Array<{ path: string; version: string; slug: string }> = [];
-  for (const slug of chapters) {
-    for (const path of [`concepts/${slug}.md`, `assessment-support/${slug}.md`]) {
-      const f = working.get(path);
-      if (f?.text !== undefined) parts.push({ path, version: await sha256Hex(f.text), slug });
-    }
-  }
-  const toApprove = parts.filter((p) => i.choices.approveAndPublish.includes(approvalKey(p.path, p.version)));
-  if (toApprove.length) await store.approve(i.packageId, i.by, i.role, toApprove);
-  const approvedPaths = await store.approvedAt(i.packageId, parts);
-  const approved = new Set<string>();
-  for (const slug of chapters) {
-    const mine = parts.filter((p) => p.slug === slug);
-    if (mine.length === 2 && mine.every((p) => approvedPaths.has(p.path))) approved.add(slug);
+    working.set(e.path, text === null ? { blobSha: e.blobSha, unit: unitKey(u) } : { text, blobSha: await gitBlobSha(text), unit: unitKey(u) });
   }
 
-  // Published chapter and course texts, with their unit: assembly uses those of KEPT units to keep the
-  // deleted assets they still link to (G3 H3; r2 M1: whatever the record's version; r2 M2: keyed by unit).
-  const keptTexts = new Map<string, { unit: string; text: string }>();
-  if (P !== null) {
-    const textual = previously.filter((f) => f.unit.startsWith("chapter:") || f.unit === "course");
-    const texts = await mapLimit(textual, READ_CONCURRENCY, (f) => pub.readText(P!, f.path));
-    for (const [k, f] of textual.entries()) if (texts[k] !== null) keptTexts.set(f.path, { unit: f.unit, text: texts[k]! });
-  }
-
-  // 7–9. Decide, assemble, link check.
-  const draft = new Set(manifest.chapters.filter((c) => c.mode === "draft").map((c) => c.slug));
-  // What a held-back unit keeps from earlier Publishes, minus anything the site can't serve safely (audit r4
-  // MEDIUM-A): a file of an unsafe kind, or an SVG that fails today's check, leaves even if its unit is kept.
-  const publishedMap = new Map(previously.filter((f) => fileKind(f.path) !== null).map((f) => [f.path, { blobSha: f.blobSha, unit: f.unit }]));
+  // 7. What was published before (minus anything the site can't serve safely: audit r4 MEDIUM-A).
+  const publishedMap = new Map(previously.filter((f) => fileKind(f.path) !== null).map((f) => [f.path, { blobSha: f.blobSha, unit: f.unit } as TreeFile & { unit: string }]));
   for (const f of previously) if (fileKind(f.path) === null && !leftOut.includes(f.path)) leftOut.push(f.path);
+  // Pages kept at their published version for safety count as drafts for this Publish.
+  const status = fallback.size ? Object.fromEntries(Object.entries(manifest.status ?? {}).filter(([p]) => !fallback.has(p))) : manifest.status;
+  // The published texts of drafts that keep their last published version (to keep the figures they show), and of
+  // kept SVGs (re-checked).
+  const keptDrafts = [...working.keys()].filter((p) => isPage(p) && statusOf(status, p) === "draft" && publishedMap.has(p));
+  const publishedTexts = new Map<string, string>();
   if (P !== null) {
-    // Every kept SVG, also those whose path exists at W (a held-back unit keeps its published blob; audit r5 M1).
-    const keptSvgs = previously.filter((f) => isSvgPath(f.path) && publishedMap.has(f.path));
+    const texts = await mapLimit(keptDrafts, READ_CONCURRENCY, (p) => pub.readText(P!, p));
+    for (const [k, p] of keptDrafts.entries()) {
+      if (texts[k] == null) { publishedMap.delete(p); continue; }
+      publishedTexts.set(p, texts[k]!);
+      publishedMap.set(p, { ...publishedMap.get(p)!, text: texts[k]! });
+    }
+    const keptSvgs = previously.filter((f) => isSvgPath(f.path) && publishedMap.has(f.path) && !working.has(f.path));
     const svgTexts = await mapLimit(keptSvgs, READ_CONCURRENCY, (f) => pub.readText(P!, f.path));
     for (const [k, f] of keptSvgs.entries()) {
       const t = svgTexts[k];
-      if (t == null || svgProblems(t).length) { publishedMap.delete(f.path); leftOut.push(f.path); }
+      if (t == null || svgProblems(t).length) { publishedMap.delete(f.path); if (!leftOut.includes(f.path)) leftOut.push(f.path); }
     }
   }
   const generated = new Map<string, TreeFile>();
@@ -411,19 +388,9 @@ export async function runPublish(i: PublishInput, w: WorkingSide, pub: PublicSid
     if (path === "alembic.json" || ownersFolder(path) || !isPublishGenerated(path)) throw new Error(`"${path}" is not a file Publish generates`);
     generated.set(path, { text });
   }
-  // Publish anyway covers a chapter only for the problems that were shown.
-  const anywayKeys: Record<string, string> = {};
-  const anyway = new Set<string>();
-  for (const slug of chapters) {
-    const defaults = findings.filter((f) => f.unit === `chapter:${slug}` && f.severity === "default");
-    if (!defaults.length) continue;
-    anywayKeys[slug] = await findingsDigest(defaults);
-    if (i.choices.publishAnyway.includes(anywayKey(slug, anywayKeys[slug]!))) anyway.add(slug);
-  }
-  const { tree: assembled, decisions } = publishWithLinkCheck(
-    { working, published: publishedMap, manifest, everPublishedChapters: everPublished, keptTexts, generated },
-    { units, findings, draft, approved, publishAnyway: anyway },
-  );
+
+  // 8. Assemble: the person's statuses decide; nothing about content is checked (SITE-TYPE-CONTRACT §7).
+  const assembled = assembleByFile({ working, published: publishedMap, publishedTexts, status, manifest, generated });
 
   // Records: every file carries its public blob id; a file with neither text nor blob is an error (G3 H2).
   const records: PublishedRecord[] = [];
@@ -445,6 +412,8 @@ export async function runPublish(i: PublishInput, w: WorkingSide, pub: PublicSid
     }
   }
 
+  const extras = { ...(leftOut.length ? { leftOut } : {}), ...(htmlAsText.length ? { htmlAsText } : {}), ...(i.broughtIn?.length ? { broughtIn: i.broughtIn } : {}) };
+
   // 10. Record pending, then one commit to the public repo (CAS on P, retried).
   // Every exit after the pending record either marks the run committed or stopped (G3 r3 L-c).
   if (P === null) P = await pub.create();
@@ -462,24 +431,24 @@ export async function runPublish(i: PublishInput, w: WorkingSide, pub: PublicSid
     }
     // Nothing would change: record the run on the current head, with no commit (no empty commits).
     if (attempt === 0 && deletions.length === 0 && (await sameAsTree(current.entries, files))) {
-      await store.insertPendingRun({ id: i.runId, packageId: i.packageId, by: i.by, workingSha: W, publicParent: P, choices: i.choices, intendedFiles: records });
+      await store.insertPendingRun({ id: i.runId, packageId: i.packageId, by: i.by, workingSha: W, publicParent: P, choices: i.choices ?? {}, intendedFiles: records });
       pendingInserted = true;
-      await store.markCommitted(i.runId, P, records, { decisions: [...decisions.values()], unchanged: true });
+      await store.markCommitted(i.runId, P, records, { unchanged: true, kept: assembled.kept });
       finished = true;
       await store.acknowledge(i.packageId, P);
-      return { status: "committed", runId: i.runId, publicSha: P, decisions: [...decisions.values()], published: [...assembled.publishedChapters], anywayKeys, unchanged: true, ...(leftOut.length ? { leftOut } : {}), ...(htmlAsText.length ? { htmlAsText } : {}) };
+      return { status: "committed", runId: i.runId, publicSha: P, published: [...assembled.publishedChapters], kept: assembled.kept, unchanged: true, ...extras };
     }
     if (attempt === 0) {
-      await store.insertPendingRun({ id: i.runId, packageId: i.packageId, by: i.by, workingSha: W, publicParent: P, choices: i.choices, intendedFiles: records });
+      await store.insertPendingRun({ id: i.runId, packageId: i.packageId, by: i.by, workingSha: W, publicParent: P, choices: i.choices ?? {}, intendedFiles: records });
       pendingInserted = true;
     }
     try {
       const publicSha = await pub.commit({ expectedHead: P, message: `Publish\n\n${TRAILER}: ${i.runId}`, files: [...files, ...deletions] });
       // 11. Record committed immediately (before any site build).
-      await store.markCommitted(i.runId, publicSha, records, { decisions: [...decisions.values()] });
+      await store.markCommitted(i.runId, publicSha, records, { kept: assembled.kept });
       finished = true;
       await store.acknowledge(i.packageId, publicSha);
-      return { status: "committed", runId: i.runId, publicSha, decisions: [...decisions.values()], published: [...assembled.publishedChapters], anywayKeys, ...(leftOut.length ? { leftOut } : {}), ...(htmlAsText.length ? { htmlAsText } : {}) };
+      return { status: "committed", runId: i.runId, publicSha, published: [...assembled.publishedChapters], kept: assembled.kept, ...extras };
     } catch (e) {
       if (!(e instanceof Error && e.name === "HeadMovedError") || attempt >= 2) {
         if (e instanceof Error && e.name === "HeadMovedError") {

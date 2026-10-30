@@ -183,12 +183,14 @@ export function applyCourseOp(manifestText: string | null, paths: ReadonlySet<st
       break;
     }
     case "setStatus": {
-      for (const p of op.paths) {
-        if (!paths.has(p)) return { ok: false, reason: `${p.split("/").pop()} is no longer in the course` };
+      // A page deleted since the person looked is skipped, not a reason to refuse the rest (many pages at once).
+      const present = op.paths.filter((p) => paths.has(p));
+      if (!present.length) return { ok: false, reason: op.paths.length === 1 ? `${op.paths[0]!.split("/").pop()} is no longer in the course` : "those pages are no longer in the course" };
+      for (const p of present) {
         if (!takesStatus(p)) return { ok: false, reason: `${p.split("/").pop()} is instructor-only and never published` };
         if ((op.status === "draft" || op.status === "completed") && !isPage(p)) return { ok: false, reason: `${p.split("/").pop()} isn't a page; take it off the website instead` };
       }
-      const status = setStatuses(m.status, op.paths, op.status);
+      const status = setStatuses(m.status, present, op.status);
       next = { ...m, status };
       if (Object.keys(status).length === 0) delete (next as { status?: unknown }).status;
       break;

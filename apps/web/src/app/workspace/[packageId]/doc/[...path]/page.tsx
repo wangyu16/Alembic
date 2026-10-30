@@ -2,7 +2,7 @@ import { GithubBusy, githubBusy } from "@/lib/github-busy";
 import Link from "next/link";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { normalizePath } from "@alembic/package-contract";
+import { canWritePath, isPage, normalizePath, statusOf, type StatusMap } from "@alembic/package-contract";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { v3Enabled } from "@/lib/db";
 import { courseRepo, recordDocVersion } from "@/lib/course-v3";
@@ -10,6 +10,7 @@ import { assetSecret, assetUrlMap } from "@/lib/course-assets";
 import { can, type Role } from "@alembic/package-contract";
 import { kindOfPath } from "@/lib/orz-editor/kit";
 import { DocEditor } from "./doc-editor";
+import { StatusControl } from "./status-control";
 
 export const dynamic = "force-dynamic";
 
@@ -41,6 +42,10 @@ async function DocPageInner({ params }: { params: Promise<{ packageId: string; p
     if (githubBusy(e)) throw e;
     return { entries: [] as Array<{ path: string; type: string; sha: string }> };
   });
+  // The page's status (family SITE-TYPE-CONTRACT §7) and whether it is on the website.
+  let statusMap: StatusMap | undefined;
+  try { statusMap = (JSON.parse((await c.repo.readFile(head, "alembic.json")) ?? "{}") as { status?: StatusMap }).status; } catch { statusMap = undefined; }
+  const { data: pubRow } = await supabase.from("published_files").select("path").eq("package_id", packageId).eq("path", path).maybeSingle();
   const secret = assetSecret();
   const assets = secret ? assetUrlMap(packageId, tree.entries.filter((e) => e.type === "blob"), can(role as Role, "edit.private"), secret) : new Map<string, string>();
 
@@ -51,6 +56,10 @@ async function DocPageInner({ params }: { params: Promise<{ packageId: string; p
         <Link prefetch={false} href={`/workspace/${packageId}/history/${path.split("/").map(encodeURIComponent).join("/")}`} className="underline" data-testid="history-link">History</Link>
         <span className="font-medium">{docTitle(text) ?? path}</span>
         {docTitle(text) ? <span className="text-xs text-muted">{path}</span> : null}
+        {isPage(path) ? (
+          <StatusControl packageId={packageId} path={path} status={statusOf(statusMap, path)} published={!!pubRow}
+            canEdit={canWritePath(role as Role, path)} lead={can(role as Role, "edit.course-files")} />
+        ) : null}
       </div>
       <div className="min-h-0 flex-1">
         <DocEditor kind={kind} packageId={packageId} path={path} text={text} version={version} renderedAt={renderedAt} isPrivate={path.startsWith("private/")} assets={[...assets]} nonce={(await headers()).get("x-nonce") ?? undefined} />

@@ -88,9 +88,12 @@ describe("setStatus (SITE-TYPE-CONTRACT §7)", () => {
     const w = applyCourseOp(m, files, { op: "setStatus", paths: ["assets/gases/f.png"], status: "withdrawn" }, uid);
     expect(w.ok && w.manifest.status).toEqual({ "assets/gases/f.png": "withdrawn" });
   });
-  it("[K1.22] refuses with a plain reason: a file that's gone, an instructor-only file, completing a non-page", () => {
+  it("[K1.22] refuses with a plain reason: a file that's gone, an instructor-only file, completing a non-page; in a bulk change a gone page is skipped", () => {
     const why = (paths: string[], status: "completed" | "withdrawn") => { const r = applyCourseOp(m, files, { op: "setStatus", paths, status }, uid); return r.ok ? "" : r.reason; };
     expect(why(["study-guide/atoms.md"], "completed")).toMatch(/no longer in the course/);
+    // Many at once: a page deleted meanwhile is skipped, the rest change.
+    const some = applyCourseOp(m, files, { op: "setStatus", paths: ["study-guide/atoms.md", "study-guide/gases.md"], status: "completed" }, uid);
+    expect(some.ok && some.manifest.status).toEqual({ "study-guide/gases.md": "completed" });
     expect(why(["private/instructor/key.md"], "withdrawn")).toMatch(/instructor-only/);
     expect(why(["assets/gases/f.png"], "completed")).toMatch(/isn't a page/);
   });

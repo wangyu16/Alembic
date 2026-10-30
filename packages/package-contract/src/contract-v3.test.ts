@@ -99,8 +99,9 @@ describe("K1.3 projection", () => {
   it("projects public content but never generated or private paths", () => {
     for (const d of PUBLIC_DIRS.filter((d) => d !== "provenance")) expect(isProjectable(`${d}/x.md`), d).toBe(true);
     expect(isProjectable("provenance/sources.md")).toBe(true);
+    // The type package's public records are published as they are (family SITE-TYPE-CONTRACT §5).
+    expect(isProjectable("provenance/coursewerk/summary.json")).toBe(true);
     for (const p of [
-      "provenance/coursewerk/summary.json",
       ".github/workflows/deploy.yml",
       ".alembic/assets/a.json",
       ".gitignore",

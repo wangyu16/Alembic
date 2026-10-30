@@ -1,13 +1,13 @@
 /**
  * Publish over the real records (migrations 0042, 0057; PGlite, service role
  * for the job, the signed-in member for the request): the Publish job with
- * SqlPublishStore records runs, files and approvals; a crashed run is
+ * SqlPublishStore records runs and files (pages go out by their status: family SITE-TYPE-CONTRACT §7); a crashed run is
  * recovered from its trailer; requests are owner/deputy only, one open per
  * course, and claimed one running per course.
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { PGlite } from "@electric-sql/pglite";
-import { approvalKey, runPublish, SqlPublishStore } from "@alembic/package-ops";
+import { runPublish, SqlPublishStore } from "@alembic/package-ops";
 import { FakePublic, h, manifestJson, working } from "../../../../packages/package-ops/src/publish-fakes";
 import { asRole, freshDatabase, seedPackage, seedUser } from "./discovery-pglite";
 
@@ -26,9 +26,11 @@ async function course() {
 }
 
 const PLAN = { concepts: "# Map\n", support: "# Guide\n" };
+/** The course settings with every page of chapter 1 marked completed. */
+const completedJson = () => JSON.stringify({ ...JSON.parse(manifestJson([{ slug: "ch1" }])), status: { "study-guide/ch1.md": "completed", "concepts/ch1.md": "completed", "assessment-support/ch1.md": "completed" } });
 function tree() {
   return working({
-    "alembic.json": manifestJson([{ slug: "ch1" }]),
+    "alembic.json": completedJson(),
     "study-guide/ch1.md": "# One\n",
     "concepts/ch1.md": PLAN.concepts,
     "assessment-support/ch1.md": PLAN.support,
@@ -36,7 +38,8 @@ function tree() {
   });
 }
 const store = () => new SqlPublishStore(sql, { readPublic: async () => null });
-const SHOWN = [approvalKey("concepts/ch1.md", h(PLAN.concepts)), approvalKey("assessment-support/ch1.md", h(PLAN.support))];
+/** A request's recorded choices (retired from the job, still stored as given by the database function). */
+const SHOWN = [`concepts/ch1.md@${h(PLAN.concepts)}`];
 const uuid = (n: number) => `00000000-0000-4000-9000-${n.toString(16).padStart(12, "0")}`;
 
 beforeAll(async () => {
@@ -47,11 +50,11 @@ beforeAll(async () => {
 afterAll(async () => { await db?.close(); });
 
 describe("Publish job over the SQL records", () => {
-  it("approve-and-publish: records the run, the files with blob ids, and the approvals", async () => {
+  it("Publish records the run and the files with blob ids; completed pages go out, private never", async () => {
     const pkg = await course();
     const pub = new FakePublic();
     const out = await runPublish(
-      { runId: uuid(1), packageId: pkg, by: owner, role: "owner", choices: { publishAnyway: [], approveAndPublish: SHOWN }, generated: { ".alembic/build/build-site.mjs": "// build\n" } },
+      { runId: uuid(1), packageId: pkg, by: owner, role: "owner", generated: { ".alembic/build/build-site.mjs": "// build\n" } },
       tree(), pub, store(), []);
     expect(out.status).toBe("committed");
     expect(pub.file("study-guide/ch1.md")).toBe("# One\n");
@@ -62,14 +65,12 @@ describe("Publish job over the SQL records", () => {
     const { rows: files } = await db.query<{ path: string; unit: string }>(`select path, unit from public.published_files where package_id = $1 order by path`, [pkg]);
     expect(files.map((f) => f.path)).toContain("study-guide/ch1.md");
     expect(files.some((f) => f.path.startsWith(".alembic/"))).toBe(false); // the site build is not a unit
-    const { rows: ap } = await db.query<{ part_path: string; version: string }>(`select part_path, version from public.approvals where package_id = $1 order by part_path`, [pkg]);
-    expect(ap).toEqual([{ part_path: "assessment-support/ch1.md", version: h(PLAN.support) }, { part_path: "concepts/ch1.md", version: h(PLAN.concepts) }]);
     const { rows: ack } = await db.query<{ public_sha: string }>(`select public_sha from public.public_acknowledged where package_id = $1`, [pkg]);
     expect(ack[0]!.public_sha).toBe(pub.headSha);
 
     // A second Publish: the files no longer public are removed from the records, the rest replaced.
-    const out2 = await runPublish({ runId: uuid(2), packageId: pkg, by: owner, role: "owner", choices: { publishAnyway: [], approveAndPublish: [] } },
-      working({ "alembic.json": manifestJson([{ slug: "ch1" }]), "study-guide/ch1.md": "# One, again\n", "concepts/ch1.md": PLAN.concepts, "assessment-support/ch1.md": PLAN.support }),
+    const out2 = await runPublish({ runId: uuid(2), packageId: pkg, by: owner, role: "owner" },
+      working({ "alembic.json": completedJson(), "study-guide/ch1.md": "# One, again\n", "concepts/ch1.md": PLAN.concepts, "assessment-support/ch1.md": PLAN.support }),
       pub, store(), []);
     expect(out2.status).toBe("committed");
     expect(pub.file("study-guide/ch1.md")).toBe("# One, again\n");

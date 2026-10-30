@@ -16,6 +16,6 @@ describe("a rate-limited course page (RC.12)", () => {
     }
     // The Publish page's actions that read GitHub turn a rate limit into a message too.
     const actions = readFileSync(join(__dirname, "../app/workspace/[packageId]/publish/actions.ts"), "utf8");
-    for (const a of ["startPlanAction", "setChapterModeAction"]) expect(actions, a).toMatch(new RegExp(`export async function ${a}\\([^)]*\\)[^{]*\\{\\s*return withGithub\\(`));
+    for (const a of ["setStatusAction"]) expect(actions, a).toMatch(new RegExp(`export async function ${a}\\([^)]*\\)[^{]*\\{\\s*return withGithub\\(`));
   });
 });
