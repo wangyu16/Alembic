@@ -8,7 +8,6 @@
 import { CompareIncompleteError, fetchPublicRepoBytes, fetchPublicTree, GitHubClient, GitHubError, installationTokenSource, treeReader, type ChainFile, type RepoCoords } from "@alembic/github-bridge";
 import {
   classifyBytes,
-  copyChecks,
   mapLimit,
   READ_CONCURRENCY,
   runPublish,
@@ -20,6 +19,7 @@ import {
   type WorkingSide,
   cleanRawHtml,
   type MdToken,
+  type UnitCheck,
 } from "@alembic/package-ops";
 import { isPublishGenerated, type Role } from "@alembic/package-contract";
 import { md } from "orz-markdown";
@@ -147,12 +147,10 @@ async function publishRun(cfg: PublishConfig, req: Claimed): Promise<PublishOutc
     },
   });
 
-  // Checks: copying from sources (fingerprints). Whether a file is public is decided by where it is, never by its
-  // text, so there is no answer-key check against private files (owner ruling 2026-10-30, O23).
-  const { rows: fps } = await cfg.sql.query<{ source_id: string; n: number; hashes: string[] }>(
-    `select f.source_id, f.n, f.hashes from public.source_fingerprints f join public.sources s on s.id = f.source_id where s.package_id = $1`,
-    [req.package_id]);
-  const checks = copyChecks([], fps.map((f) => ({ sourceId: f.source_id, n: f.n, hashes: f.hashes })));
+  // No content checks here: what a course says (copying, answer keys, quality) is Coursewerk's to check, and whether
+  // a file is public depends only on where it is (owner rulings 2026-10-30, FD-09). Publish keeps its safety checks
+  // (figures, raw HTML) and the profile's structure rules.
+  const checks: UnitCheck[] = [];
 
   const store = new SqlPublishStore(cfg.sql, {
     async readPublic(sha, path) {

@@ -41,8 +41,8 @@ export default function PublishPage() {
             guide, as they are now.
           </li>
           <li>
-            The <strong>checks pass</strong>: nothing in the chapter repeats an answer
-            key or copies a source.
+            The <strong>checks pass</strong>: its parts are in place, and its figures and
+            pages are safe to put on the web.
           </li>
         </ol>
       </GuideSection>
@@ -123,9 +123,10 @@ export default function PublishPage() {
 
       <GuideSection heading="When a check finds something">
         <p>
-          The checks look for a chapter copying a source. Answer keys and other
-          instructor-only files stay private because of where they are, so nothing in
-          them is ever published. If a check finds something, that chapter stays as it was
+          The checks look at a chapter&rsquo;s shape and safety: its parts are in place, and
+          its figures and pages can&rsquo;t run anything harmful on the web. They don&rsquo;t judge
+          what you wrote. Instructor-only files stay private because of where they are, so
+          nothing in them is ever published. If a check finds something, that chapter stays as it was
           and the result says what was found. Fix it and publish again. If you are sure
           the chapter is fine, the owner or deputy can tick <strong>Publish anyway</strong>{" "}
           in that chapter&rsquo;s row and press <strong>Publish</strong>.

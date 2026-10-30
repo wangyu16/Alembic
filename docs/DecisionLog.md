@@ -27,9 +27,14 @@ Guiding principle (owner): **easy authoring over strict rules.**
    text is never compared with private files to decide. So Publish no longer
    runs the answer-key check, and a restore no longer refuses a version
    because it repeats private text or because the file was later moved into
-   `private/`. (The copying check against sources stays: it is about
-   copyright, not privacy.) Supersedes the "always block" part of R27 for
-   answer keys, and history-v3 H.8's private-move rule.
+   `private/`. Supersedes the "always block" part of R27 for answer keys,
+   and history-v3 H.8's private-move rule.
+3. **Content is not Alembic's business** (owner, later the same day):
+   "Coursewerk is responsible to check copyright issues. Anything about
+   contents is not Alembic's business." Publish no longer runs the copying
+   check against sources either; it runs no content checks at all. It keeps
+   platform safety (safe figures, raw HTML cleaned), the profile's structure
+   rules and privacy by place. Family FD-09 is clarified to match.
 
 ## 2026-10-29 (evening) — Owner rulings for the overnight foundations run
 

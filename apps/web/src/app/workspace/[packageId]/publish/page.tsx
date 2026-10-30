@@ -113,8 +113,7 @@ async function PublishPageInner({ params, searchParams }: { params: Promise<{ pa
       <p className="mt-2 max-w-3xl text-sm text-muted">
         Publishing copies the chapters that are ready to the course&apos;s public copy{" "}
         {pub ? <>(<a className="underline" href={`https://github.com/${pub.owner}/${pub.name}`}>on GitHub</a>)</> : "(made on the first Publish)"}{" "}and updates its website.
-        A chapter is ready when it isn&apos;t a draft, its course plan is approved, and the checks pass (nothing in it copies a
-        source). Instructor-only files are never published. A draft chapter stays on the website as it was last published (or isn&apos;t there yet); its new edits wait.
+        A chapter is ready when it isn&apos;t a draft, its course plan is approved, and the checks pass (its parts are in place, and its figures and pages are safe for the web). Instructor-only files are never published. A draft chapter stays on the website as it was last published (or isn&apos;t there yet); its new edits wait.
       </p>
       {message ? <p className="notice mt-3" role="status">{message}</p> : null}
       {site.kind !== "none" ? (
