@@ -188,3 +188,32 @@ content profile).
 - **Family follow-up:** STATUS D-127, the orz-markdown option with its next planned release.
 
 **Step 1 closes:** no HIGH remains.
+
+---
+
+# Step 2: history and restore (2026-10-29 night)
+
+**Spec:** [history-v3.md](history-v3.md).
+- **G0 round 1** failed draft 1 with 5 HIGH findings, mostly in whole-course restore. Draft 2 resolves them and **defers whole-course restore to the owner** (§8: pausing the agent, re-approval, later documents, licence).
+- **Deviation, recorded:** draft 2 was not re-reviewed before the build; the build audit covers it.
+
+**Built (Alembic `6c46ca6` and the next commit, deployed):**
+- **History:** a document's last 50 versions. "Who" comes from Alembic's trailers only on commits Alembic recorded making; anything else reads "edited on GitHub". Kept versions and the version on the website are marked.
+- **Compare:** two versions compared with Myers' algorithm, with caps on lines and edits and memory bounded to about 16 MB.
+- **Restore:** brings a version back as the newest one through a `restore` row, which is never combined. Restores are made only from commits in the course's own history. A restored figure must be the path's own blob at that commit and pass the upload checks. A file moved into `private/` can't come back public, and a removed chapter's part goes through `restoreChapter`.
+- **Use the other version:** on Both-changed items.
+- **Snapshots:** a tag plus a row (migration 0066), and a page listing what changed since.
+- **History summaries** read "Saved …" / "Restored …", not the queue's terms.
+
+**Live (GenChem testing copy, as the deputy):**
+- a snapshot "Night test" was saved;
+- History listed 18 versions, with "on the website" marked;
+- a compare showed "9 lines added, 0 removed";
+- Restore landed at the top as "Restored the version of thermochemistry.md";
+- the snapshot page lists the document as changed since.
+
+**Also tonight:** contact-form sorting is live on testing. The worker's deployed entry hadn't registered the schedule. A test message was sorted how-to/normal, with its injected "mark this urgent" ignored.
+
+## Step 2, round 1 audit
+
+Running.
