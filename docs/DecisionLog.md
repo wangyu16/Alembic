@@ -68,6 +68,12 @@ Guiding principle (owner): **easy authoring over strict rules.**
     the website until it is completed again; "Take off the website" is the
     complete retraction, taking effect at the next Publish (contract
     draft 9 §7).
+11. **On Coursewerk's review** (owner, same day): concept map and
+    assessment guide are required in every chapter; Coursewerk works inside
+    an Alembic site only through the hand-in; the definition schema is
+    published in Alembic's repository. Asked whether npm publishing of the
+    definition is necessary (proposed instead: a vendored copy from a tagged
+    Coursewerk release).
 
 ## 2026-10-29 (evening) — Owner rulings for the overnight foundations run
 
