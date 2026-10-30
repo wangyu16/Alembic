@@ -232,3 +232,61 @@ are never written by automatic work.
    run through the answer-key and copying checks like any public file, with
    all text fields of a record concatenated, so passages split across
    fields can't slip under the 12-word limit.
+
+## 11. Round 3 amendments (2026-10-29): the hand-in after foundations steps 1–2
+
+The course contract changed under this spec: package-contract-v3 draft 5
+(FD-09/FD-10, §11–§14) and history-v3 draft 2. The agent's changesets now
+follow exactly the rules people's writes follow; the agent gets no route of
+its own.
+
+1. **File entries are the write path's** (package-contract-v3 §11.2). Each
+   `files[]` entry becomes one row entry:
+   - **text** (`encoding: utf-8`): `{path, baseVersion, text}`.
+   - **non-text** (`encoding: base64`, ≤ 4 MB decoded): the endpoint runs the
+     upload route's checks before anything is queued. Those are `fileKind`
+     from the active profile, `mediaProblems` (bytes and SVG), the course's
+     total, and the rate limits, counted against the **invoker** and the
+     course. Then it creates the GitHub blob, records it in `course_blobs`
+     (`uploaded_by` = the invoker), and queues a blob reference. So the
+     committer's ledger check (K1.10) holds for the agent too.
+   - **delete** (`content: null`): the §11.6 rules apply. A listed chapter's
+     part files are never deleted (only `removeChapter`), and deleting in
+     `private/` needs `delete.private`, which the agent doesn't have.
+   - **move** (`movedFrom`): §11.6, checked on both paths, with kind and
+     extension kept.
+2. **Course operations are proposals, never writes.** `alembic.json` isn't a
+   file entry (it is `settings` in the profile's path classes). A changeset
+   may carry `courseOps: [<operation>]` (contract §13.1 shapes, checked by
+   `parseCourseOp`):
+   - each becomes a Needs-you **approve** item for the owner and deputy;
+   - on approval it is queued as a `courseop` row with the **approver** as
+     actor, so the usual re-check at execution applies;
+   - `setLicense` goes to the owner only.
+3. **Restores** are ordinary text or blob entries carrying the old content.
+   The agent gets no `restore` rows; the version rule treats them like any
+   edit.
+4. **Content safety is the same as for people.** The SVG check runs on every
+   write. Raw HTML in Markdown is published only as a clean copy (K1.20); the
+   agent's text is the main reason that exists. The answer-key and copying
+   checks apply at Publish (§6).
+5. **Paths come from the active profile** (FD-10). Harness records sit at the
+   profile's records folder (Coursewerk OER: `private/coursewerk/`); its
+   server-only notes (`serverOnlyFiles`) are refused.
+6. **History and Needs you:**
+   - changeset commits read "the assistant, for <invoker>" (H.1: the
+     `Alembic-On-Behalf-Of` trailer on Alembic's own commits);
+   - a changeset file that ends **both changed** raises the usual item with
+     the version not on top, offering "Use the other version" (history-v3 §4).
+7. **Budget:** binaries in a changeset count toward the invoker's and the
+   course's upload limits, so a looping agent can't spend the owner's GitHub
+   budget faster than a person could.
+
+**Claims (round 3):**
+- **R.20** A changeset's non-text entries pass the upload checks and enter the
+  ledger before they are queued; a changeset can't place a blob a person
+  couldn't.
+- **R.21** A changeset never writes `alembic.json`. Its course operations
+  become approve items, queued only as the approver.
+- **R.22** A changeset can't delete a listed chapter's part or anything in
+  `private/`, and moves follow the contract.
