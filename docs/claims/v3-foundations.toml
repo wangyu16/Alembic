@@ -119,3 +119,15 @@ oracle = "conformance"
 bound_to = [
   "apps/web/src/lib/upload.test.ts :: uploads are limited per person and per course each hour, and by the course's total, counted from the ledger",
 ]
+
+[[claim]]
+id = "K1.20"
+claim = "Raw HTML in published course text never runs on the course site: Publish writes each Markdown text as its clean copy (tags outside a short safe list, and any attributes, become text a reader sees), found with the same orz-markdown parser the site renders with and re-checked fail closed; the working copy is untouched and the files changed are listed."
+oracle = "conformance"
+bound_to = [
+  "apps/worker/src/raw-html.test.ts :: raw HTML outside the safe list becomes text a reader sees; it never reaches the page as HTML",
+  "apps/worker/src/raw-html.test.ts :: the safe tags and slide markers are kept exactly; text without raw HTML is untouched",
+  "apps/worker/src/raw-html.test.ts :: every Markdown text of the real General Chemistry course passes unchanged (it uses only <br>)",
+  "packages/package-ops/src/publish-job.test.ts :: Publish writes each Markdown text as its clean copy, lists the files whose HTML became text, and stops on one it can't clean",
+]
+note = "Owner, 2026-10-29: the Alembic-side clean copy instead of new family releases; an orz-markdown allowlist option for authors' own text rides along with orz-markdown's next planned release (family request)."

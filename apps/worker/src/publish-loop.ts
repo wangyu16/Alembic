@@ -18,8 +18,11 @@ import {
   type SqlClient,
   type TreeEntry,
   type WorkingSide,
+  cleanRawHtml,
+  type MdToken,
 } from "@alembic/package-ops";
 import { isPublishGenerated, type Role } from "@alembic/package-contract";
+import { md } from "orz-markdown";
 
 export interface PublishConfig {
   sql: SqlClient;
@@ -172,6 +175,8 @@ async function publishRun(cfg: PublishConfig, req: Claimed): Promise<PublishOutc
       runId: req.id, packageId: req.package_id, by: req.by_user, role: c.role,
       choices: { publishAnyway: list(choices.publishAnyway), approveAndPublish: list(choices.approveAndPublish) },
       generated: await siteBuildFiles(cfg),
+      // Raw HTML in course text: the clean copy, read with the orz-markdown the site renders with (round 5 H1).
+      cleanMarkdown: (_path, text) => cleanRawHtml(text, (src) => md.parse(src, {}) as unknown as MdToken[]),
       stillHeld: async () => (await cfg.sql.query(
         `select 1 from public.publish_requests where id = $1 and status = 'running' and started_at = $2::text::timestamptz`,
         [req.id, req.started_at])).rows.length > 0,

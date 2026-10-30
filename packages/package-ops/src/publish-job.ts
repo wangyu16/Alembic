@@ -22,6 +22,7 @@ import {
   isSvgPath,
   svgProblems,
 } from "@alembic/package-contract";
+import type { CleanText } from "./raw-html";
 import { publishWithLinkCheck, unitKey, unitOf, type Decision, type Finding, type TreeFile } from "./publisher";
 
 /* -------------------------------------------------------------------------- *
@@ -138,6 +139,11 @@ export interface PublishInput {
    */
   choices: { publishAnyway: string[]; approveAndPublish: string[] };
   /**
+   * The clean copy of a Markdown text (raw HTML outside the safe list turned into text; foundations round 5 H1).
+   * The worker passes `cleanRawHtml` with the orz-markdown version the site renders with.
+   */
+  cleanMarkdown?: (path: string, text: string) => CleanText;
+  /**
    * Files Publish writes itself (`.github/`, `.alembic/`, `.gitignore`): the
    * site build. Each path must be on the generated list (spec §2); without
    * them a Publish removes the build files the public repo started with.
@@ -148,7 +154,7 @@ export interface PublishInput {
 }
 
 export type PublishOutcome =
-  | { status: "committed"; runId: string; publicSha: string; decisions: Decision[]; published: string[]; anywayKeys: Record<string, string>; unchanged?: true; leftOut?: string[] }
+  | { status: "committed"; runId: string; publicSha: string; decisions: Decision[]; published: string[]; anywayKeys: Record<string, string>; unchanged?: true; leftOut?: string[]; htmlAsText?: string[] }
   | { status: "stopped"; reason: string; drift?: string[] };
 
 const TRAILER = "Alembic-Publish-Run";
@@ -312,6 +318,8 @@ export async function runPublish(i: PublishInput, w: WorkingSide, pub: PublicSid
   // 6. Read units at W; a text file that can't be read stops the run (fail closed, G3 M2).
   const working = new Map<string, TreeFile>();
   const svgVerdicts = new Map<string, string[]>();
+  const htmlRefused = new Map<string, string>();
+  const htmlAsText: string[] = [];
   const byUnit = new Map<string, Array<{ path: string; text: string | null }>>();
   // Reads run READ_CONCURRENCY at a time (a real course has hundreds of files); results keep tree order.
   // A file of a kind the website can't serve safely (not a course text or an allowed figure: .html, .js …) is
@@ -328,6 +336,12 @@ export async function runPublish(i: PublishInput, w: WorkingSide, pub: PublicSid
     // Every SVG goes out as the clean copy rebuilt from what the check read (contract v3 §11.4, foundations loop
     // round 4): a browser then reads exactly what the check read. Read once (audit r5 L2); an unsafe one stops the
     // Publish below.
+    // Raw HTML in a Markdown text: the clean copy, read with the renderer's own parser (round 5 H1).
+    if (text !== null && i.cleanMarkdown && /\.md$/i.test(e.path)) {
+      const r = i.cleanMarkdown(e.path, text);
+      if (!r.ok) htmlRefused.set(e.path, r.reason);
+      else { if (r.escaped) htmlAsText.push(e.path); text = r.text; }
+    }
     if (isSvgPath(e.path)) {
       await new Promise((r) => setTimeout(r, 0)); // let other courses' work run between figures (audit r4 LOW-A)
       const r = checkSvg(text ?? ("decoded" in content ? content.decoded : "") ?? "");
@@ -342,6 +356,8 @@ export async function runPublish(i: PublishInput, w: WorkingSide, pub: PublicSid
   }
   // An unsafe SVG is never published (contract v3 §11.4): GitHub Pages sends no CSP, so the check is the protection.
   for (const { e } of toRead) {
+    const html = htmlRefused.get(e.path);
+    if (html) return { status: "stopped", reason: `${e.path} can't be published: ${html}. Fix it, then publish again.` };
     const problems = svgVerdicts.get(e.path);
     if (problems?.length) return { status: "stopped", reason: `${e.path} can't be published: ${problems[0]}. Fix or remove it, then publish again.` };
   }
@@ -451,7 +467,7 @@ export async function runPublish(i: PublishInput, w: WorkingSide, pub: PublicSid
       await store.markCommitted(i.runId, P, records, { decisions: [...decisions.values()], unchanged: true });
       finished = true;
       await store.acknowledge(i.packageId, P);
-      return { status: "committed", runId: i.runId, publicSha: P, decisions: [...decisions.values()], published: [...assembled.publishedChapters], anywayKeys, unchanged: true, ...(leftOut.length ? { leftOut } : {}) };
+      return { status: "committed", runId: i.runId, publicSha: P, decisions: [...decisions.values()], published: [...assembled.publishedChapters], anywayKeys, unchanged: true, ...(leftOut.length ? { leftOut } : {}), ...(htmlAsText.length ? { htmlAsText } : {}) };
     }
     if (attempt === 0) {
       await store.insertPendingRun({ id: i.runId, packageId: i.packageId, by: i.by, workingSha: W, publicParent: P, choices: i.choices, intendedFiles: records });
@@ -463,7 +479,7 @@ export async function runPublish(i: PublishInput, w: WorkingSide, pub: PublicSid
       await store.markCommitted(i.runId, publicSha, records, { decisions: [...decisions.values()] });
       finished = true;
       await store.acknowledge(i.packageId, publicSha);
-      return { status: "committed", runId: i.runId, publicSha, decisions: [...decisions.values()], published: [...assembled.publishedChapters], anywayKeys, ...(leftOut.length ? { leftOut } : {}) };
+      return { status: "committed", runId: i.runId, publicSha, decisions: [...decisions.values()], published: [...assembled.publishedChapters], anywayKeys, ...(leftOut.length ? { leftOut } : {}), ...(htmlAsText.length ? { htmlAsText } : {}) };
     } catch (e) {
       if (!(e instanceof Error && e.name === "HeadMovedError") || attempt >= 2) {
         if (e instanceof Error && e.name === "HeadMovedError") {

@@ -24,6 +24,17 @@ const approveAll = (st: FakeStore, files: Record<string, string>) => {
 };
 
 describe("runPublish", () => {
+  it("[K1.20] Publish writes each Markdown text as its clean copy, lists the files whose HTML became text, and stops on one it can't clean", async () => {
+    const st = new FakeStore(); approveAll(st, W); const pub = new FakePublic();
+    const cleanMarkdown = (_p: string, t: string) => t.includes("REFUSE") ? { ok: false as const, reason: "it contains raw HTML that can't be published safely" }
+      : t.includes("<img") ? { ok: true as const, text: t.replace("<img", "&lt;img"), escaped: 1 } : { ok: true as const, text: t, escaped: 0 };
+    const out = await runPublish(input({ cleanMarkdown }), working({ ...W, "study-guide/atoms.md": "# Atoms <img src=x onerror=1>" }), pub, st, noChecks);
+    expect(out).toMatchObject({ status: "committed", htmlAsText: ["study-guide/atoms.md"] });
+    expect(pub.file("study-guide/atoms.md")).toBe("# Atoms &lt;img src=x onerror=1>");
+    const stop = await runPublish(input({ runId: id(2), cleanMarkdown }), working({ ...W, "study-guide/atoms.md": "# Atoms REFUSE" }), pub, st, noChecks);
+    expect(stop).toMatchObject({ status: "stopped", reason: expect.stringMatching(/^study-guide\/atoms\.md can't be published/) });
+  });
+
   it("[K1.11] every SVG is published as the clean copy the check read: comments and declarations gone, values re-escaped", async () => {
     const st = new FakeStore(); approveAll(st, W); const pub = new FakePublic();
     const src = '<?xml version="1.0"?>\n<!-- made by a tool --><svg xmlns="http://www.w3.org/2000/svg" viewBox=\'0 0 1 1\'><path d="M0 0"/></svg>';
