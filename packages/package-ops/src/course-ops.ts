@@ -8,7 +8,7 @@
  * Validity is the content profile's (FD-09, FD-10): the manifest schema, the
  * licence list and the tree-aware unit rule.
  */
-import { activeProfile, WorkingManifestV3Schema, type WorkingManifestV3 } from "@alembic/package-contract";
+import { activeProfile, isPage, normalizePath, setStatuses, statusOf, takesStatus, WorkingManifestV3Schema, type StatusChange, type WorkingManifestV3 } from "@alembic/package-contract";
 import { addChapters, chapterPartPath, chapterPartText, CHAPTER_PARTS } from "./chapter-parts";
 import { licenseFileContent } from "./license-file";
 
@@ -20,7 +20,12 @@ export type CourseOp =
   | { op: "setChapterMode"; slug: string; mode: "draft" | "package" }
   | { op: "setCourseDetails"; title?: string; description?: string; audience?: string } // `level`: D-126 item 8
   | { op: "setLicense"; license: string }
-  | { op: "restoreChapter"; slug: string; fromCommit: string };
+  | { op: "restoreChapter"; slug: string; fromCommit: string }
+  /** Files' status (family SITE-TYPE-CONTRACT §7), many at once: mark pages draft or completed; take files off the website or bring them back. */
+  | { op: "setStatus"; paths: string[]; status: StatusChange };
+
+/** The most files one status change may name (a whole course at once). */
+export const MAX_STATUS_PATHS = 1000;
 
 /** What restoreChapter brings back: the chapter's entry and its part files as they were at `fromCommit` (read by the committer). */
 export interface ChapterSnapshot {
@@ -64,6 +69,16 @@ export function parseCourseOp(raw: unknown): CourseOp | null {
     }
     case "setLicense":
       return typeof r.license === "string" && activeProfile.licences.allowed.includes(r.license) ? { op: "setLicense", license: r.license } : null;
+    case "setStatus": {
+      if (!Array.isArray(r.paths) || r.paths.length === 0 || r.paths.length > MAX_STATUS_PATHS) return null;
+      if (r.status !== "draft" && r.status !== "completed" && r.status !== "withdrawn" && r.status !== "public") return null;
+      const paths: string[] = [];
+      for (const p of r.paths) {
+        if (typeof p !== "string") return null;
+        try { paths.push(normalizePath(p)); } catch { return null; }
+      }
+      return { op: "setStatus", paths: [...new Set(paths)], status: r.status };
+    }
     case "restoreChapter":
       return slugOk(r.slug) && typeof r.fromCommit === "string" && /^[0-9a-f]{40}$/.test(r.fromCommit) ? { op: "restoreChapter", slug: r.slug, fromCommit: r.fromCommit } : null;
     default:
@@ -83,6 +98,10 @@ function describe(op: CourseOp, m: WorkingManifestV3): string {
     case "setCourseDetails": return "Changed the course details";
     case "setLicense": return `Changed the licence to ${op.license}`;
     case "restoreChapter": return `Restored chapter “${op.slug}”`;
+    case "setStatus": {
+      const what = op.paths.length === 1 ? (op.paths[0]!.split("/").pop() ?? op.paths[0]!) : `${op.paths.length} files`;
+      return op.status === "completed" ? `Marked ${what} completed` : op.status === "draft" ? `Marked ${what} draft` : op.status === "withdrawn" ? `Took ${what} off the website` : `Brought ${what} back to the website`;
+    }
   }
 }
 
@@ -161,6 +180,17 @@ export function applyCourseOp(manifestText: string | null, paths: ReadonlySet<st
         if (activeProfile.licences.open.includes(op.license)) lines.splice(Math.max(1, lines.findIndex((l) => /^title:/.test(l)) + 1), 0, `license: ${op.license}`);
         writes.push({ path: "CITATION.cff", content: lines.join("\n") });
       }
+      break;
+    }
+    case "setStatus": {
+      for (const p of op.paths) {
+        if (!paths.has(p)) return { ok: false, reason: `${p.split("/").pop()} is no longer in the course` };
+        if (!takesStatus(p)) return { ok: false, reason: `${p.split("/").pop()} is instructor-only and never published` };
+        if ((op.status === "draft" || op.status === "completed") && !isPage(p)) return { ok: false, reason: `${p.split("/").pop()} isn't a page; take it off the website instead` };
+      }
+      const status = setStatuses(m.status, op.paths, op.status);
+      next = { ...m, status };
+      if (Object.keys(status).length === 0) delete (next as { status?: unknown }).status;
       break;
     }
     case "restoreChapter": {

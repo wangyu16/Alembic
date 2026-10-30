@@ -519,6 +519,31 @@ describe("files that aren't text, deletes and moves (contract v3 §11)", () => {
     expect(repo.file("assets/gases/old.png")).toBeNull();
     expect(repo.file("assets/gases/moved.png")).toBe(`blob:${SHA(1)}`);
   });
+  it("[K1.22] a status follows its file in the same commit: a move carries it, a delete drops it", async () => {
+    const { repo, q } = files();
+    const withStatus = (status: Record<string, string>) => `${JSON.stringify({ ...JSON.parse(repo.file("alembic.json")!), status }, null, 2)}\n`;
+    repo.push({ "alembic.json": withStatus({ "assets/gases/old.png": "withdrawn", "study-guide/notes.md": "completed" }), "study-guide/notes.md": "notes\n" });
+    q.remember("notes\n");
+    q.add(row("s1", "co", { path: "assets/gases/moved.png", baseVersion: null, text: null, movedFrom: "assets/gases/old.png", baseBlob: SHA(1) }));
+    q.add(row("s2", "owner", { path: "study-guide/notes.md", baseVersion: h("notes\n"), text: null }));
+    await drainCourse(P, "w", q, repo);
+    expect([q.status("s1"), q.status("s2")]).toEqual(["done", "done"]);
+    expect(JSON.parse(repo.file("alembic.json")!).status).toEqual({ "assets/gases/moved.png": "withdrawn" });
+    const moveCommit = repo.commits.find((c) => c.files.get("assets/gases/moved.png") === `blob:${SHA(1)}` && c.files.has("alembic.json"));
+    expect(moveCommit, "the status moved in the same commit as the file").toBeTruthy();
+  });
+  it("[K1.22] marking pages draft or completed is for anyone who may edit them; taking files off the website is the owner's or deputy's, and a withdrawn page stays theirs", async () => {
+    const { repo, q } = files();
+    const op = (id: string, actor: string, o: unknown): Omit<QueueRow, "attempts"> => ({ id, packageId: P, kind: "courseop", actorId: actor, invokerId: null, payload: { files: [], op: o } });
+    q.add(op("t1", "co", { op: "setStatus", paths: ["study-guide/gases.md"], status: "completed" }));
+    q.add(op("t2", "co", { op: "setStatus", paths: ["assets/gases/old.png"], status: "withdrawn" }));
+    q.add(op("t3", "owner", { op: "setStatus", paths: ["study-guide/gases.md"], status: "withdrawn" }));
+    q.add(op("t4", "co", { op: "setStatus", paths: ["study-guide/gases.md"], status: "completed" }));
+    await drainCourse(P, "w", q, repo);
+    expect([q.status("t1"), q.status("t2"), q.status("t3"), q.status("t4")]).toEqual(["done", "refused", "done", "refused"]);
+    expect(reason(q, "t4")).toMatch(/off the website; the owner or deputy brings it back/);
+    expect(JSON.parse(repo.file("alembic.json")!).status).toEqual({ "study-guide/gases.md": "withdrawn" });
+  });
   it("[K1.13] a listed chapter's part can't be deleted or moved away; deleting in private/ needs the owner or deputy", async () => {
     const { repo, q } = files();
     q.add(row("d1", "owner", { path: "study-guide/gases.md", baseVersion: h(base), text: null }));

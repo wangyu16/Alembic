@@ -8,7 +8,7 @@
  * so it is tested with fakes and runs unchanged on the worker.
  */
 
-import { activeProfile, can, canWritePath, fileKind, isHarnessPath, isServerOnlyPath, isSvgPath, mediaProblems, newDocId, normalizePath, svgProblems, unitPartForPath, sha256Hex, WorkingManifestV3Schema, type Role } from "@alembic/package-contract";
+import { activeProfile, can, canWritePath, fileKind, isHarnessPath, isServerOnlyPath, isSvgPath, mediaProblems, newDocId, normalizePath, svgProblems, unitPartForPath, sha256Hex, followFiles, WorkingManifestV3Schema, type Role, type StatusMap } from "@alembic/package-contract";
 import { applyCourseOp, parseCourseOp, type ChapterSnapshot } from "./course-ops";
 import { decideFile, type FileDecision, type FileKind } from "./version-rule";
 
@@ -346,6 +346,10 @@ export async function processRow(row: QueueRow, store: QueueStore, repo: Working
           }
         }
       }
+      // A status follows its file in the same commit (SITE-TYPE-CONTRACT §7): moves carry it, deletes drop it,
+      // a restored file gets back the status it had.
+      const statusWrite = await followStatus(row, repo, head, top);
+      if (statusWrite) top.push(statusWrite);
       const files: FileOutcome[] = [...special.outcomes, ...decisions.map(({ file, d }) => ({
         path: file.path,
         outcome: d.outcome,
@@ -531,6 +535,33 @@ async function decideFilesOnTree(row: QueueRow, store: QueueStore, repo: Working
   return out;
 }
 
+/** The new alembic.json when files in this commit move, go or come back with a status; null when no status changes. */
+async function followStatus(row: QueueRow, repo: WorkingRepo, head: string, top: readonly ChainEntry[]): Promise<ChainEntry | null> {
+  if (top.some((e) => e.path === "alembic.json")) return null; // a settings write of its own decides the statuses
+  const moves = row.payload.files.filter((f) => f.movedFrom).map((f) => ({ from: normalizePath(f.movedFrom!), to: f.path }));
+  const moved = new Set(moves.map((m) => m.from));
+  const deletes = top.filter((e) => "content" in e && e.content === null && !moved.has(e.path)).map((e) => e.path);
+  const restoring = row.kind === "restore" ? row.payload.files.filter((f) => f.restoreOf) : [];
+  if (!moves.length && !deletes.length && !restoring.length) return null;
+  const text = await repo.readFile(head, "alembic.json");
+  if (text === null) return null;
+  let manifest: Record<string, unknown>;
+  try { manifest = JSON.parse(text) as Record<string, unknown>; } catch { return null; }
+  const restored: Array<{ path: string; status: "completed" | "withdrawn" | undefined }> = [];
+  for (const f of restoring) {
+    if ((await repo.readFile(head, f.path)) !== null) continue; // an existing file keeps its status; only a file that comes back gets its old one
+    let then: StatusMap | undefined;
+    try { then = (JSON.parse((await repo.readFile(f.restoreOf!, "alembic.json")) ?? "{}") as { status?: StatusMap }).status; } catch { then = undefined; }
+    restored.push({ path: f.path, status: then?.[f.path] });
+  }
+  const next = followFiles(manifest.status as StatusMap | undefined, { moves, deletes, restored });
+  if (!next) return null;
+  const out = { ...manifest, status: next };
+  if (Object.keys(next).length === 0) delete (out as { status?: unknown }).status;
+  if (!WorkingManifestV3Schema.safeParse(out).success) return null;
+  return { path: "alembic.json", content: `${JSON.stringify(out, null, 2)}\n` };
+}
+
 /** A chapter's manifest entry and part files at an earlier commit (restoreChapter reads the removal's parent). */
 async function chapterAt(repo: WorkingRepo, commit: string, slug: string): Promise<ChapterSnapshot | undefined> {
   let text: string | null;
@@ -573,7 +604,13 @@ async function processCourseOp(row: QueueRow, store: QueueStore, repo: WorkingRe
     if ((row.abandons ?? 0) >= MAX_ABANDONS) return { status: "failed", error: "abandoned repeatedly while being processed" };
     if (!row.actorId) return { status: "refused", reason: "no actor" };
     const role = await store.roleOf(row.packageId, row.actorId);
-    if (op.op === "setLicense" ? !can(role, "license.change") : !can(role, "edit.course-files")) {
+    if (op.op === "setStatus") {
+      // Draft ⇄ completed: anyone who may edit the page. Taking off the website and bringing back: the owner or deputy (SITE-TYPE-CONTRACT §6).
+      const lead = can(role, "edit.course-files");
+      if ((op.status === "withdrawn" || op.status === "public") && !lead) return { status: "refused", reason: "only the owner or deputy takes files off the website or brings them back" };
+      const denied = op.paths.find((p) => !canWritePath(role, p));
+      if (denied) return { status: "refused", reason: `not allowed to change ${denied.split("/").pop()}` };
+    } else if (op.op === "setLicense" ? !can(role, "license.change") : !can(role, "edit.course-files")) {
       return { status: "refused", reason: op.op === "setLicense" ? "only the owner changes the licence" : "only the owner or deputy changes the course's chapters and details" };
     }
     if (!repo.listPaths) return { status: "failed", error: "this repository can't list files" };
@@ -584,6 +621,13 @@ async function processCourseOp(row: QueueRow, store: QueueStore, repo: WorkingRe
       const ctx: Parameters<typeof applyCourseOp>[4] = {};
       if (op.op === "restoreChapter") ctx.snapshot = await chapterAt(repo, op.fromCommit, op.slug);
       if (op.op === "setLicense") ctx.citation = await repo.readFile(head, "CITATION.cff");
+      // A withdrawn file's status is the lead's while it stays withdrawn (SITE-TYPE-CONTRACT §7).
+      if (op.op === "setStatus" && !can(role, "edit.course-files")) {
+        let status: StatusMap | undefined;
+        try { status = (JSON.parse(manifestText ?? "{}") as { status?: StatusMap }).status; } catch { status = undefined; }
+        const held = op.paths.find((p) => status?.[p] === "withdrawn");
+        if (held) return { status: "refused", reason: `${held.split("/").pop()} is off the website; the owner or deputy brings it back` };
+      }
       const r = applyCourseOp(manifestText, new Set(paths), op, newDocId, ctx);
       if (!r.ok) return { status: "refused", reason: r.reason };
       const files: FileOutcome[] = r.writes.map((w) => ({ path: w.path, outcome: "landed" as const }));

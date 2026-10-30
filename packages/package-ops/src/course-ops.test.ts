@@ -76,3 +76,28 @@ describe("course operations applied at the head (K1.15)", () => {
     expect(add.ok).toBe(true);
   });
 });
+
+describe("setStatus (SITE-TYPE-CONTRACT §7)", () => {
+  const files = new Set(["alembic.json", "study-guide/gases.md", "slides/gases.slides.md", "assets/gases/f.png", "private/instructor/key.md"]);
+  const m = `${JSON.stringify({ schemaVersion: 3, packageId: "pkg-a", title: "Chem", license: "CC-BY-4.0", createdAt: "2026-10-30T00:00:00Z", chapters: [] })}\n`;
+  const uid = () => "doc-x";
+  it("[K1.22] marks many pages completed at once, and takes any public file off the website", () => {
+    const r = applyCourseOp(m, files, { op: "setStatus", paths: ["study-guide/gases.md", "slides/gases.slides.md"], status: "completed" }, uid);
+    expect(r.ok && r.manifest.status).toEqual({ "study-guide/gases.md": "completed", "slides/gases.slides.md": "completed" });
+    expect(r.ok && r.summary).toBe("Marked 2 files completed");
+    const w = applyCourseOp(m, files, { op: "setStatus", paths: ["assets/gases/f.png"], status: "withdrawn" }, uid);
+    expect(w.ok && w.manifest.status).toEqual({ "assets/gases/f.png": "withdrawn" });
+  });
+  it("[K1.22] refuses with a plain reason: a file that's gone, an instructor-only file, completing a non-page", () => {
+    const why = (paths: string[], status: "completed" | "withdrawn") => { const r = applyCourseOp(m, files, { op: "setStatus", paths, status }, uid); return r.ok ? "" : r.reason; };
+    expect(why(["study-guide/atoms.md"], "completed")).toMatch(/no longer in the course/);
+    expect(why(["private/instructor/key.md"], "withdrawn")).toMatch(/instructor-only/);
+    expect(why(["assets/gases/f.png"], "completed")).toMatch(/isn't a page/);
+  });
+  it("[K1.22] a client's status change is shape-checked: at most a thousand paths, clean paths, a known status", () => {
+    expect(parseCourseOp({ op: "setStatus", paths: ["../x.md"], status: "completed" })).toBeNull();
+    expect(parseCourseOp({ op: "setStatus", paths: ["a.md"], status: "published" })).toBeNull();
+    expect(parseCourseOp({ op: "setStatus", paths: Array.from({ length: 1001 }, (_, i) => `p${i}.md`), status: "draft" })).toBeNull();
+    expect(parseCourseOp({ op: "setStatus", paths: ["a.md", "a.md"], status: "draft" })).toEqual({ op: "setStatus", paths: ["a.md"], status: "draft" });
+  });
+});

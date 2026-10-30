@@ -36,6 +36,8 @@ const v3Fields = {
   audience: z.string().max(500).optional(),
   /** The Coursewerk version this course runs (FC-16 v1); absent = no Coursewerk yet. */
   coursewerk: z.object({ version: z.string().min(1) }).optional(),
+  /** Each file's status (family SITE-TYPE-CONTRACT §7): path → completed | withdrawn; a page not listed is a draft. Never public. */
+  status: z.record(z.string().min(1).max(300), z.enum(["completed", "withdrawn"])).optional(),
 };
 
 function uniqueSlugs(m: { chapters: Array<{ slug: string }> }, ctx: z.RefinementCtx): void {
@@ -58,6 +60,7 @@ export type WorkingManifestV3 = z.infer<typeof WorkingManifestV3Schema>;
 export const PublicManifestV3Schema = base
   .omit({ privateRepo: true, publicRepo: true })
   .extend(v3Fields)
+  .omit({ status: true })
   .strict()
   .superRefine(uniqueSlugs);
 export type PublicManifestV3 = z.infer<typeof PublicManifestV3Schema>;
@@ -68,7 +71,7 @@ export type PublicManifestV3 = z.infer<typeof PublicManifestV3Schema>;
  * working manifest, filtered to `publishedSlugs`.
  */
 export function toPublicManifest(working: WorkingManifestV3, publishedSlugs: ReadonlySet<string>): PublicManifestV3 {
-  const { privateRepo: _priv, publicRepo: _pub, ...rest } = working;
+  const { privateRepo: _priv, publicRepo: _pub, status: _status, ...rest } = working;
   return PublicManifestV3Schema.parse({
     ...rest,
     chapters: working.chapters.filter((c) => publishedSlugs.has(c.slug)),
