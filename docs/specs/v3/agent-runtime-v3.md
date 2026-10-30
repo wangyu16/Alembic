@@ -134,17 +134,19 @@ and returns a signed link valid for 60 s.
 ## 6. Agent-authored content (R-5, R-11)
 
 - **The agent may read private instructor files and AI-allowed sources.**
-  What stops their text reaching students is Publish's answer-key and
-  copying checks (B5): any 12-word run from `private/instructor/` blocks,
-  and so do passages over 50 words matching a source's fingerprints.
+  ~~What stops their text reaching students is Publish's answer-key and
+  copying checks (B5).~~ Superseded (§13): what is published is the
+  person's decision (only pages they mark completed), and content checks
+  are the type package's own workflow. Privacy is by place.
 - **The Publish summary lists every file the agent changed since the last
   Publish**, with a link to see the changes, so the approver sees what the
   agent wrote.
 - **Records are claims, not authority.** `private/coursewerk/` records are
   written by the harness, and an injected agent could forge them. Alembic
-  never derives a permission or an approval from them. They are public only
-  through the publish profile, which writes JSON validated against a schema,
-  with text fields length-limited and rendered as plain text.
+  never derives a permission or an approval from them. ~~They are public only
+  through the publish profile …~~ Superseded (§13): the type package's tools
+  write the public records folder (`provenance/coursewerk/`) directly
+  through the hand-in, and it is published as it is.
 
 ## 7. Session reasons and endpoint behaviour (A-2, A-3)
 
@@ -193,7 +195,7 @@ are never written by automatic work.
 | R-2 token claims and keys | §2 |
 | R-3 isolation | §3; R.7 includes peers |
 | R-4 events forging approvals | §4.4 |
-| R-5 private-to-public copying | §6 answer-key and copying checks at Publish; agent-changed files in the Publish summary |
+| R-5 private-to-public copying | Privacy by place; only pages the person marks completed are published; agent-changed files in the Publish summary (§13) |
 | R-6 grants and RLS | R.11; queue spec §7 extended |
 | R-7 pending re-checks | §5 |
 | R-8 catch-up exposure | §4.3 |
@@ -228,10 +230,8 @@ are never written by automatic work.
 4. **Automatic jobs are capped at co-author rights at every check (R-10):**
    the changeset records `rights_cap = 'co-author'`, and both §4.1 step 3
    and the committer's re-check use `min(invoker role, rights_cap)`.
-5. **Public records are checked (R-5):** the publish profile's output is
-   run through the answer-key and copying checks like any public file, with
-   all text fields of a record concatenated, so passages split across
-   fields can't slip under the 12-word limit.
+5. ~~**Public records are checked (R-5)** …~~ Superseded (§13): no checks
+   at Publish; public records are the type package's, published as they are.
 
 ## 11. Round 3 amendments (2026-10-29): the hand-in after foundations steps 1–2
 
@@ -268,11 +268,12 @@ its own.
    edit.
 4. **Content safety is the same as for people.** The SVG check runs on every
    write. Raw HTML in Markdown is published only as a clean copy (K1.20); the
-   agent's text is the main reason that exists. The answer-key and copying
-   checks apply at Publish (§6).
+   agent's text is the main reason that exists. ~~The answer-key and copying
+   checks apply at Publish (§6).~~ (Superseded, §13.)
 5. **Paths come from the active profile** (FD-10). Harness records sit at the
    profile's records folder (Coursewerk OER: `private/coursewerk/`); its
-   server-only notes (`serverOnlyFiles`) are refused.
+   server-only notes (`serverOnlyFiles`) are refused. (Under the site type
+   contract: the definition's `records` folders and `fixed` entries.)
 6. **History and Needs you:**
    - changeset commits read "the assistant, for <invoker>" (H.1: the
      `Alembic-On-Behalf-Of` trailer on Alembic's own commits);
@@ -309,8 +310,36 @@ its own.
 | **L2** approved op shows only the approver | An `Alembic-Proposed-By: assistant (for <invoker>)` trailer on Alembic's own commit; History shows it. |
 | **L3** proposal floods, stale proposals | At most 10 operations per changeset; a removed invoker's open proposals are withdrawn; the queue key is derived by the server. |
 | **L4** changeset items unaddressed | Both-changed items from changesets are addressed to the invoker. |
-| **L5** restore by rewriting old content | Noted. The agent's text goes through Publish's answer-key check, which is widened to all of `private/` (not only `private/instructor/`). |
+| **L5** restore by rewriting old content | Noted. ~~The agent's text goes through Publish's answer-key check …~~ Superseded (§13): privacy by place; the person decides what is published. |
 | **L6** harness records as blobs/moves/deletes | Records are text writes only; anything else is refused. |
 | **L7** code drift | `permitted()` gains `rights_cap`, and the `canAgent` comment is corrected, when C4 is built. Both are tracked as C4 entry conditions. |
 
 **Status:** with these, round 3 is "pass with fixes" in substance. A fresh G7 round runs before C4 code, as the gate requires.
+
+## 13. Alignment with the site type contract (2026-10-30)
+
+The owner's rulings of 2026-10-30 and the site type contract (family
+`docs/SITE-TYPE-CONTRACT.md`) change this spec:
+- **No content checks at Publish.** The answer-key and copying checks, and
+  the "publish profile" that wrote checked public records, are gone (§6,
+  §10.5, §11.4, L5 above are marked superseded). The person publishes what
+  they marked completed; the type package's workflow (Coursewerk) carries
+  its own checks, approvals and reviews while the author works.
+- **Records:** the type package's tools write both `records` folders through
+  this hand-in; the public one is published as it is. Records are **never
+  combined**: a record whose base version isn't current refuses the whole
+  changeset (the tools retry), because a hash-chained log can't have two
+  tops (Coursewerk's review, 2026-10-30).
+- **Records budget** (Coursewerk's request): record files are exempt from
+  the 50-files-per-changeset cap (§12 M6) up to 200 record files per
+  changeset; each record file at most 4 MB; `.jsonl` is accepted under
+  `records`; a site's records stay under 50 MB in total (the hand-in refuses
+  more and says so).
+- **What the tools may read:** `alembic.json` (units, statuses, licence,
+  details) through catch-up, and the person's own words with their identity
+  (answers to the assistant's questions and chat messages, tagged with the
+  person and the event seq). Alembic derives nothing from them (§4.4).
+- **Outside Alembic:** inside an Alembic site the type package's tools work
+  only through this hand-in; pushes to the `records` folders made on GitHub
+  are undone. A package made outside Alembic is brought in once.
+
