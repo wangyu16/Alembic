@@ -176,3 +176,15 @@ content profile).
 - **L2:** each SVG is read once per Publish, with a yield between figures.
 
 **Stop rule:** the SVG boundary and the rest of step 1 had no HIGH this round. Step 1 closes, except for H1, which waits for the owner's ruling.
+
+## Round 5 H1 resolved (2026-10-29): raw HTML in Markdown
+
+**Owner's ruling:** an Alembic-side fix instead of new family releases.
+- **The fix:** Publish writes each Markdown text as a clean copy. Raw HTML outside a short safe list (`br sub sup b i em strong u s small mark kbd`, with no attributes; strict comments, so slide markers stay) becomes text a reader sees.
+- **How the HTML is found:** with the same orz-markdown parser and version the site renders with (the worker's 2.5.0); the clean copy is parsed again and refused if anything is left (fail closed).
+- **The working copy** is untouched, and the result lists the files whose HTML became text (`htmlAsText`).
+- **The real course:** all of GenChem's Markdown passes unchanged (it uses only `<br>`).
+- **Live:** an `<img src=x onerror=…>` line synced into a published chapter was published as `&lt;img …`. The site page shows it as text, with no handler element and no dialog.
+- **Family follow-up:** STATUS D-127, the orz-markdown option with its next planned release.
+
+**Step 1 closes:** no HIGH remains.
