@@ -236,3 +236,19 @@ content profile).
 - **The hole:** a move or delete in a row without a person's role (an agent changeset) could move or delete `alembic.json`, `LICENSE` or `CITATION.cff`.
 - **Now:** these files, plus server-only and harness files, can never be deleted or moved through file entries, by anyone. A changeset's move source is checked with the agent's capped rights.
 - **Test:** the reviewer's own payload is refused.
+
+## Step 2, round 2 audit
+
+**1 HIGH, 1 MEDIUM, 5 LOW.** Every round-1 fix was verified: H-1 for its stated cases, plus M-1, M-2, M-4, L-2, L-5, the default button and G7 H1. Worst hostile diff input: about 280 ms.
+
+- **H2-1 (introduced by the H-1 fix):** a restore into a public place read up to 40 changed instructor files on the web server, of any size, and indexed each one. That took 6 s at 40 × 150 KB and 95 s at 40 × 1.5 MB. **Now (`6d44a68`):** `mayRepeatPrivate` reads the head tree once and adds up the changed instructor files' sizes. Over 1 MB, a truncated tree, or a range too large to list, it refuses with "ask the owner".
+- **M2-1:** short answer keys (under 12 words) and exact copies came back public when a stub sat at the old path. **Now:** a restore is refused if its content id equals any `private/` file's at the head, whatever the length. It is also refused if a changed instructor file under 12 words appears whole in the restored text.
+- **L-a:** "Use the other version" closed the item even when the restore was then refused. **Now:** the item is answered only after every check, just before the row is queued.
+- **L-c:** the history range and the instructor reads could use two heads. **Now:** they use one.
+- **Open, with reasons:**
+  - **L-b:** a missing `topVersion` (an old item, or the file absent on top) falls back to the version at click time. The committer still keeps both versions when that one is stale; a later edit would need to land in the same seconds.
+  - **L-d:** a figure's History page costs a 4th call (a recursive tree read), so the H.1 count is three for text and four for figures. A truncated tree is now refused for figure restores.
+  - **L-e:** the owner also sees "ask the owner" on an unlistable range; the owner restores by chapter or, later, by whole-course restore (§8).
+- **Answer to the question asked:** an instructor file unchanged since the chosen version isn't checked. It sat in the same course next to that text then, so restoring adds nothing new, and Publish's full check still runs.
+
+**Live (`6d44a68`):** a public study guide was restored on the testing copy, with the new check in the path. It landed at the top in under 15 s.
