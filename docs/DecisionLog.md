@@ -47,6 +47,17 @@ Guiding principle (owner): **easy authoring over strict rules.**
    does not add additional warnings or checkpoints." Today's course-plan gate
    and draft hold-back in Publish are to be removed with the site type
    contract (inventory: family `docs/ALEMBIC-CONTENT-LOGIC.md`).
+6. **Draft or completed per file** (owner, same day): "it should be explicit
+   that a file is in draft stage or completed. When publishing a course,
+   only completed will be published."
+7. **Element-level sharing** (owner): "a nice graphic illustration, a
+   chart/diagram, a block of math of important proof, etc. can be shared as
+   individual elements allowing other people to use."
+8. **Course-website add-ons** (owner): "for course materials development,
+   not in Coursewerk, per semester items, private items such as exams,
+   should be added as add-on features to make it convenient to use as
+   course websites." All three are written into the site type contract
+   (family `docs/SITE-TYPE-CONTRACT.md` draft 6, §7, §9, §10).
 
 ## 2026-10-29 (evening) — Owner rulings for the overnight foundations run
 
