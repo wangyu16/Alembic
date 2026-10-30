@@ -63,6 +63,11 @@ Guiding principle (owner): **easy authoring over strict rules.**
    should be a way for user to retract a published file completely to draft
    status, i.e., not to list that file in the published site" (status
    `withdrawn`, taken off at once; contract draft 7 §7).
+10. **Draft keeps the last published version** (owner, same day: "A"): a
+    published page set back to draft keeps its last published version on
+    the website until it is completed again; "Take off the website" is the
+    complete retraction, taking effect at the next Publish (contract
+    draft 9 §7).
 
 ## 2026-10-29 (evening) — Owner rulings for the overnight foundations run
 
