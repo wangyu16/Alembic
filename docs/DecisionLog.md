@@ -58,6 +58,11 @@ Guiding principle (owner): **easy authoring over strict rules.**
    should be added as add-on features to make it convenient to use as
    course websites." All three are written into the site type contract
    (family `docs/SITE-TYPE-CONTRACT.md` draft 6, §7, §9, §10).
+9. **Answers (owner, same day):** a new document starts as draft; the
+   course-website add-on is a small side package within Alembic; and "there
+   should be a way for user to retract a published file completely to draft
+   status, i.e., not to list that file in the published site" (status
+   `withdrawn`, taken off at once; contract draft 7 §7).
 
 ## 2026-10-29 (evening) — Owner rulings for the overnight foundations run
 
