@@ -192,3 +192,17 @@ bound_to = [
   "packages/package-contract/src/site-type/site-type.test.ts :: allows a site type without units (a one-page site)",
 ]
 
+
+[[claim]]
+id = "K1.22"
+claim = "Each file's status lives in alembic.json and never reaches the public copy: pages are draft until a person marks them completed, any public file can be withdrawn; many files change in one operation; draft/completed is for anyone who may edit the page, withdrawing and bringing back is the owner's or deputy's (and a withdrawn file stays theirs); a status follows its file in the same commit when it moves or is deleted."
+oracle = "conformance"
+bound_to = [
+  "packages/package-contract/src/site-type/status.test.ts :: pages are draft until marked completed; other public files are published as they are; any can be withdrawn",
+  "packages/package-contract/src/site-type/status.test.ts :: a status follows its file: a move carries it (not into private/), a delete drops it, a restored file gets its old one back",
+  "packages/package-contract/src/site-type/status.test.ts :: statuses never reach the public copy",
+  "packages/package-ops/src/course-ops.test.ts :: marks many pages completed at once, and takes any public file off the website",
+  "packages/package-ops/src/course-ops.test.ts :: refuses with a plain reason: a file that's gone, an instructor-only file, completing a non-page",
+  "packages/package-ops/src/course-committer.test.ts :: a status follows its file in the same commit: a move carries it, a delete drops it",
+  "packages/package-ops/src/course-committer.test.ts :: marking pages draft or completed is for anyone who may edit them; taking files off the website is the owner's or deputy's, and a withdrawn page stays theirs",
+]
