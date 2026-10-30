@@ -38,6 +38,8 @@ export function historyOf(commits: readonly CommitInfo[], ours: ReadonlySet<stri
     const summary = (c.message.split("\n")[0] ?? "").replace(/[\u0000-\u001f\u007f]+/g, " ").slice(0, 200);
     // Not the commit's author login: GitHub maps it from the author email, which anyone can set (audit r1 M-2).
     if (!mine) return { sha: c.sha, date: c.date, summary, who: { kind: "github", login: null }, kept: false, ours: false };
+    // Commits from before the plain summaries (2026-10-29) read "sync N file(s)".
+    const said = /^sync \d+ file\(s\)$/.test(summary) ? "Saved" : summary;
     const actor = trailer(c.message, "Alembic-Actor");
     const onBehalf = trailer(c.message, "Alembic-On-Behalf-Of");
     const door = trailer(c.message, "Alembic-Door");
@@ -45,6 +47,6 @@ export function historyOf(commits: readonly CommitInfo[], ours: ReadonlySet<stri
       door === "changeset" && onBehalf ? { kind: "assistant", forName: nameOf(onBehalf) ?? "a member" }
       : actor ? { kind: "member", name: nameOf(actor) ?? "a former member" }
       : { kind: "alembic" };
-    return { sha: c.sha, date: c.date, summary, who, kept: trailer(c.message, "Alembic-Kept") === "true", ours: true };
+    return { sha: c.sha, date: c.date, summary: said, who, kept: trailer(c.message, "Alembic-Kept") === "true", ours: true };
   });
 }

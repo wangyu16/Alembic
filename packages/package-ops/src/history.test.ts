@@ -29,3 +29,15 @@ describe("a document's History (history-v3 §1)", () => {
     expect(h[0]!.summary).toBe("Line one");
   });
 });
+
+describe("historyOf: older summaries", () => {
+  it("reads an old 'sync N file(s)' summary of Alembic's own commit as Saved, but not on other commits", () => {
+    const commits = [
+      { sha: "a".repeat(40), message: "sync 1 file(s)\n\nAlembic-Actor: u1", date: "2026-10-29T00:00:00Z" },
+      { sha: "b".repeat(40), message: "sync 1 file(s)", date: "2026-10-28T00:00:00Z" },
+    ];
+    const [ours, theirs] = historyOf(commits, new Set(["a".repeat(40)]), () => "Ann");
+    expect(ours!.summary).toBe("Saved");
+    expect(theirs!.summary).toBe("sync 1 file(s)");
+  });
+});
