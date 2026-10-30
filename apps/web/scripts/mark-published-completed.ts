@@ -18,7 +18,8 @@ if (!packageId || !process.env.DATABASE_URL) {
 const sql = postgres(process.env.DATABASE_URL, { max: 1, prepare: false });
 const client: SqlClient = { query: async <T>(text: string, params: unknown[] = []) => ({ rows: (await sql.unsafe(text, params as never[])) as unknown as T[] }) };
 
-try {
+async function main(): Promise<void> {
+ try {
   const { rows: files } = await client.query<{ path: string }>(`select path from public.published_files where package_id = $1`, [packageId]);
   const pages = files.map((f) => f.path).filter(isPage).sort();
   const { rows: owners } = await client.query<{ user_id: string }>(`select user_id from public.course_members where package_id = $1 and role = 'owner' limit 1`, [packageId]);
@@ -33,6 +34,8 @@ try {
     }
     console.log("queued; the worker applies it in a few seconds");
   }
-} finally {
+ } finally {
   await sql.end();
+ }
 }
+void main().catch((e) => { console.error(e instanceof Error ? e.message : e); process.exit(1); });
