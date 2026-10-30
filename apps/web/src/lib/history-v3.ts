@@ -57,11 +57,11 @@ export async function documentHistory(packageId: string, path: string): Promise<
  * Is `sha` in the course's own history (an ancestor of the head, or the head)? With it, the files changed since
  * (null when too many to list): a restore checks the instructor files added or changed in that range (audit r1 H-1).
  */
-export async function inCourseHistory(packageId: string, sha: string): Promise<{ ok: boolean; changed: Array<{ path: string; status: string }> | null }> {
+export async function inCourseHistory(packageId: string, sha: string, atHead?: string): Promise<{ ok: boolean; changed: Array<{ path: string; status: string }> | null }> {
   if (!/^[0-9a-f]{40}$/.test(sha)) return { ok: false, changed: null };
   const c = await courseRepo(packageId);
   if (!c) return { ok: false, changed: null };
-  const head = await c.repo.head();
+  const head = atHead ?? (await c.repo.head()); // the caller's head, so the range and its later reads agree (audit r2 L-c)
   if (head === sha) return { ok: true, changed: [] };
   try {
     return { ok: true, changed: await c.client.compareCommits({ owner: c.owner, repo: c.name }, sha, head) };
