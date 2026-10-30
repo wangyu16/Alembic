@@ -7,6 +7,21 @@ design, and what is deferred to the future. Complements [Status.md](Status.md)
 ---
 
 
+## 2026-10-29 (evening) — Owner rulings for the overnight foundations run
+
+1. **History restore rights:** anyone who may edit a document may restore an
+   earlier version of it (a restore is an edit; both versions stay in
+   history). Restoring a whole course to an earlier date is owner/deputy only.
+2. **History depth:** a document's history lists its last 50 versions; older
+   ones remain reachable on GitHub.
+3. **Contact-form sorting on testing:** a dedicated AI key with a small daily
+   budget (the 200-a-day cap already holds).
+4. **Order:** foundations step 2 (history and restore) first, then Alembic's
+   half of the agent hand-in format; if time remains, UI polish (with the
+   impeccable skill).
+5. **Raw HTML in Markdown:** Publish writes a clean copy (K1.20); the
+   orz-markdown option rides along with its next planned release (D-127).
+
 ## 2026-10-29 — Owner rulings after the real-course loop (v3 workspace)
 
 1. **Idle sync: 30 seconds.** A document goes to the course 30 s after the
