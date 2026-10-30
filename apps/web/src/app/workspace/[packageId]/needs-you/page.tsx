@@ -12,7 +12,7 @@ const OWNER_KINDS = new Set(["approve", "to-confirm", "suggestion", "update", "m
 /** Kinds this page answers itself; the rest open where they are decided. */
 const HERE = new Set(["question", "to-confirm", "update", "suggestion", "both-changed"]);
 
-interface Item { id: string; kind: NeedsYouKind; chapter: string | null; payload: { title?: string; detail?: string; action?: { op?: string }; path?: string; keptCommit?: string | null } | null; created_at: string; addressed_to: string[] }
+interface Item { id: string; kind: NeedsYouKind; chapter: string | null; payload: { title?: string; detail?: string; action?: { op?: string }; path?: string; keptCommit?: string | null; topVersion?: string | null } | null; created_at: string; addressed_to: string[] }
 
 export default async function NeedsYouPage({ params }: { params: Promise<{ packageId: string }> }) {
   const { packageId } = await params;
@@ -75,7 +75,7 @@ export default async function NeedsYouPage({ params }: { params: Promise<{ packa
                       ) : i.kind === "both-changed" ? (
                         <>
                           {i.payload?.keptCommit && i.payload.path ? (
-                            <button className="rounded bg-black px-3 py-1 text-white" title="Bring the other version back as the newest one" formAction={restoreVersionAction.bind(null, packageId, i.payload.path, i.payload.keptCommit, null, i.id)}>Use the other version</button>
+                            <button className="rounded bg-black px-3 py-1 text-white" title="Bring the other version back as the newest one" formAction={restoreVersionAction.bind(null, packageId, i.payload.path, i.payload.keptCommit, i.payload.topVersion ?? null, i.id)}>Use the other version</button>
                           ) : null}
                           <button className="underline" title="Both versions are kept.">Keep it as it is</button>
                         </>

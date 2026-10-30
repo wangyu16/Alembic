@@ -136,7 +136,7 @@ note = "Owner, 2026-10-29: the Alembic-side clean copy instead of new family rel
 
 [[claim]]
 id = "H.1"
-claim = "A document's History lists its last 50 versions with when, who (from Alembic's trailers only on commits Alembic recorded; a forged trailer on a GitHub push reads 'edited on GitHub'), what, and kept and published marks; one GitHub call per view."
+claim = "A document's History lists its last 50 versions with when, who (from Alembic's trailers only on commits Alembic recorded; any other commit reads 'edited on GitHub', with no author name, which GitHub derives from a settable email), what, and kept and published marks; three GitHub calls per view (the version list, the head, the current text) — corrected by audit r1 M-3."
 oracle = "conformance"
 bound_to = [
   "packages/package-ops/src/history.test.ts :: who comes from Alembic's trailers only on commits Alembic made; a forged trailer on a GitHub push reads 'edited on GitHub'",

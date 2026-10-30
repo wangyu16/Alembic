@@ -9,7 +9,7 @@
 import { createHash } from "node:crypto";
 import { GitHubClient, installationTokenSource, workingRepo } from "@alembic/github-bridge";
 import { drainCourse, itemsForLandedChange, SqlQueueStore, type FileOutcome, type QueueRow, type QueueStore, type RemovedChapter, type SqlClient } from "@alembic/package-ops";
-import { unitPartForPath, WorkingManifestV3Schema } from "@alembic/package-contract";
+import { fileKind, unitPartForPath, WorkingManifestV3Schema } from "@alembic/package-contract";
 
 export interface CommitterConfig {
   sql: SqlClient;
@@ -114,7 +114,7 @@ export async function committerPass(cfg: CommitterConfig): Promise<number> {
  * per file where two changes met; for typing that arrived in a removed
  * chapter, an item for its author and a Restore offer for the owner and deputy.
  */
-async function raiseBothChanged(cfg: CommitterConfig, packageId: string, row: QueueRow, result: unknown, repo: { readFile(ref: string, path: string): Promise<string | null> }): Promise<void> {
+async function raiseBothChanged(cfg: CommitterConfig, packageId: string, row: QueueRow, result: unknown, repo: { readFile(ref: string, path: string): Promise<string | null>; treeAt?(ref: string): Promise<Map<string, { sha: string; mode: string }>> }): Promise<void> {
   const res = (result ?? {}) as { files?: FileOutcome[]; commits?: string[]; head?: string; base?: string };
   const both = (res.files ?? []).filter((f) => f.outcome === "both-changed");
   if (!both.length || !res.head) return;
@@ -137,7 +137,14 @@ async function raiseBothChanged(cfg: CommitterConfig, packageId: string, row: Qu
   }
   const { rows: who } = await cfg.sql.query<{ user_id: string }>(
     `select user_id from public.course_members where package_id = $1 and public.course_role_of($1, user_id) in ('owner', 'deputy')` /* a deputy is a co-author with deputy_until: ask the role function */, [packageId]);
-  const items = itemsForLandedChange({ rowId: row.id, actorId: row.actorId ?? null, files: both, commits: res.commits ?? [], removed, deciders: who.map((w) => w.user_id), base: res.base ?? null });
+  // The version on top now, per path (text: sha256; figure: blob id).
+  const tops = new Map<string, string | null>();
+  let tree: Map<string, { sha: string; mode: string }> | null = null;
+  for (const f of both) {
+    if (fileKind(f.path) === "text") { const t = await repo.readFile(res.head, f.path); tops.set(f.path, t === null ? null : sha256(t)); }
+    else { tree ??= repo.treeAt ? await repo.treeAt(res.head) : new Map(); tops.set(f.path, tree.get(f.path)?.sha ?? null); }
+  }
+  const items = itemsForLandedChange({ tops, rowId: row.id, actorId: row.actorId ?? null, files: both, commits: res.commits ?? [], removed, deciders: who.map((w) => w.user_id), base: res.base ?? null });
   for (const it of items) {
     await cfg.sql.query(`select public.needs_you_raise($1, 'both-changed', 'platform', $2, $3::text::jsonb, $4, $5, false, $6::uuid[])`,
       [packageId, it.dedupe, JSON.stringify(it.payload), it.chapter, it.target, it.addressed]);

@@ -30,7 +30,9 @@ async function HistoryInner({ params, searchParams }: { params: Promise<{ packag
   const mayRestore = canWritePath(role as Role, path);
   const c = await courseRepo(packageId);
   const current = isText && c ? await c.repo.readFile(h.head, path) : null;
-  const seen = current === null ? null : textVersion(current);
+  // The version the person sees: a text's sha256, or a figure's blob id (audit r1 M-1).
+  const seen = isText ? (current === null ? null : textVersion(current))
+    : c ? ((await c.client.listTreeEntries({ owner: c.owner, repo: c.name }, h.head)).entries.find((e) => e.path === path)?.sha ?? null) : null;
   const valid = (x?: string) => (x && /^[0-9a-f]{40}$/.test(x) && h.entries.some((e) => e.sha === x) ? x : null);
   const ca = valid(a);
   const cb = b === "current" ? "current" : valid(b);
@@ -62,6 +64,8 @@ async function HistoryInner({ params, searchParams }: { params: Promise<{ packag
         </section>
       ) : null}
       <form className="mt-4" method="get">
+        {/* The form's default button (Enter in a field) is Compare, never a Restore (audit r1). */}
+        <button type="submit" className="hidden" aria-hidden="true" tabIndex={-1} />
         <table className="w-full text-sm" data-testid="history">
           <thead><tr className="text-left"><th className="py-1">When</th><th>Who</th><th>What</th>{isText ? <th>Compare</th> : null}<th /></tr></thead>
           <tbody className="divide-y">

@@ -36,7 +36,8 @@ export function historyOf(commits: readonly CommitInfo[], ours: ReadonlySet<stri
   return commits.slice(0, HISTORY_DEPTH).map((c) => {
     const mine = ours.has(c.sha);
     const summary = (c.message.split("\n")[0] ?? "").replace(/[\u0000-\u001f\u007f]+/g, " ").slice(0, 200);
-    if (!mine) return { sha: c.sha, date: c.date, summary, who: { kind: "github", login: c.login ?? null }, kept: false, ours: false };
+    // Not the commit's author login: GitHub maps it from the author email, which anyone can set (audit r1 M-2).
+    if (!mine) return { sha: c.sha, date: c.date, summary, who: { kind: "github", login: null }, kept: false, ours: false };
     const actor = trailer(c.message, "Alembic-Actor");
     const onBehalf = trailer(c.message, "Alembic-On-Behalf-Of");
     const door = trailer(c.message, "Alembic-Door");

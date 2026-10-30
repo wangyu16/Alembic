@@ -25,6 +25,9 @@ export interface ItemSpec {
     path: string;
     /** The commit holding the version that is not on top (for "use this one", later). */
     keptCommit?: string | null;
+    /** The version on top when the item was raised (sha256 of a text, or a figure's blob id): "Use the other version"
+     *  lands only on it, so newer work is never overwritten silently (audit r1 M-1). */
+    topVersion?: string | null;
     /** What the item offers to do (the page runs it after checking the person's right). */
     action?: { op: "restoreChapter"; slug: string; fromCommit: string };
   };
@@ -44,6 +47,8 @@ export function itemsForLandedChange(i: {
   removed: ReadonlyMap<string, RemovedChapter>;
   /** The course's owner and deputy (they decide a restore). */
   deciders: readonly string[];
+  /** The version on top of each path after the change. */
+  tops?: ReadonlyMap<string, string | null>;
 }): ItemSpec[] {
   const out: ItemSpec[] = [];
   // The commit holding the version that isn't on top: the kept-version commit, or, when the typist's text went on
@@ -80,7 +85,7 @@ export function itemsForLandedChange(i: {
           : f.reason === "delete-vs-edit"
             ? "Someone deleted this while another person was changing it. The changed version stays; nothing was lost."
             : "Two people changed the same place at nearly the same time. Both versions are kept: one is in the course now, the other in its history.",
-        path: f.path, keptCommit,
+        path: f.path, keptCommit, topVersion: i.tops?.get(f.path) ?? null,
       },
     });
   }

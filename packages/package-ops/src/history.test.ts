@@ -15,7 +15,7 @@ describe("a document's History (history-v3 §1)", () => {
     const h = historyOf(commits, new Set(["c3", "c1", "c0"]), nameOf);
     expect(h.map((e) => e.who)).toEqual([
       { kind: "member", name: "Ana" },
-      { kind: "github", login: "mallory" },
+      { kind: "github", login: null },
       { kind: "member", name: "Ben" },
       { kind: "assistant", forName: "Ana" },
     ]);

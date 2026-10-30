@@ -216,4 +216,23 @@ content profile).
 
 ## Step 2, round 1 audit
 
-Running.
+**1 HIGH, 4 MEDIUM, 6 LOW.** All fixed except L-1, L-3 and L-4.
+
+- **H-1 (H.8):** an answer key moved into `private/` could come back public in two cases: a stub was re-created at the public path, or the private copy was edited. **Now:** a text restored into a public place is refused if it shares a 12-word run (Publish's own answer-key check) with any instructor file added or changed since that version. Over 40 such files, or a range too large to list, are refused with "ask the owner". A figure is refused if the same picture is now under `private/`.
+- **M-1:** "Use the other version" could overwrite newer work. **Now:** the item carries the version on top when it was raised (`topVersion`, text or blob), and the restore lands only on it. The item is answered first, so a stale or second click does nothing. Figure restores on the History page pass the current blob.
+- **M-2:** "edited on GitHub (login)" could name a victim, because GitHub derives the login from a settable email. The login is dropped.
+- **M-3:** H.1's "one call" was wrong; the claim is corrected to three calls per view.
+- **M-4:** large diffs held the web thread for 0.7–1.4 s. A work budget (3M steps), a 2 MB input cap and 1,000 edits now bound it.
+- **LOWs fixed:**
+  - **L-2:** restored figures over 4 MB are refused;
+  - **L-5:** the snapshot page tells a rewritten history from a big change;
+  - **Unconfirmed default button:** Enter in the History form compares, never restores.
+- **Open, with reasons:**
+  - **L-1:** "on the website" marks are by the commit where a version was first seen (cosmetic).
+  - **L-3:** a result recovered after a crash has no `base`, so it gets no "other version" button. Rare; the version is still in History.
+  - **L-4:** the snapshot list doesn't show "published", there is no figure compare, and snapshot creation has no rate limit. Later.
+
+**Also from the G7 round 3 review of the agent hand-in, fixed in code now:**
+- **The hole:** a move or delete in a row without a person's role (an agent changeset) could move or delete `alembic.json`, `LICENSE` or `CITATION.cff`.
+- **Now:** these files, plus server-only and harness files, can never be deleted or moved through file entries, by anyone. A changeset's move source is checked with the agent's capped rights.
+- **Test:** the reviewer's own payload is refused.

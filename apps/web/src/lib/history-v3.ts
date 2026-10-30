@@ -53,19 +53,21 @@ export async function documentHistory(packageId: string, path: string): Promise<
   return { entries, head };
 }
 
-/** Is `sha` in the course's own history (an ancestor of the head, or the head)? */
-export async function inCourseHistory(packageId: string, sha: string): Promise<boolean> {
-  if (!/^[0-9a-f]{40}$/.test(sha)) return false;
+/**
+ * Is `sha` in the course's own history (an ancestor of the head, or the head)? With it, the files changed since
+ * (null when too many to list): a restore checks the instructor files added or changed in that range (audit r1 H-1).
+ */
+export async function inCourseHistory(packageId: string, sha: string): Promise<{ ok: boolean; changed: Array<{ path: string; status: string }> | null }> {
+  if (!/^[0-9a-f]{40}$/.test(sha)) return { ok: false, changed: null };
   const c = await courseRepo(packageId);
-  if (!c) return false;
+  if (!c) return { ok: false, changed: null };
   const head = await c.repo.head();
-  if (head === sha) return true;
+  if (head === sha) return { ok: true, changed: [] };
   try {
-    await c.client.compareCommits({ owner: c.owner, repo: c.name }, sha, head);
-    return true;
+    return { ok: true, changed: await c.client.compareCommits({ owner: c.owner, repo: c.name }, sha, head) };
   } catch (e) {
-    if (e instanceof CompareIncompleteError) return e.reason === "too-many-files"; // an ancestor, just a big change
-    return false;
+    if (e instanceof CompareIncompleteError) return { ok: e.reason === "too-many-files", changed: null }; // an ancestor, just a big change
+    return { ok: false, changed: null };
   }
 }
 

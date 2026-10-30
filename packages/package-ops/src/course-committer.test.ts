@@ -530,6 +530,18 @@ describe("files that aren't text, deletes and moves (contract v3 §11)", () => {
     expect(reason(q, "d1")).toMatch(/removed with the chapter/);
     expect(repo.file("study-guide/gases.md")).toBe(base);
   });
+  it("[K1.13] the course settings, licence files and harness records can't be moved or deleted through file entries, by people or by the assistant (G7 r3 H1)", async () => {
+    const { repo, q } = files();
+    repo.push({ LICENSE: "license text\n" });
+    q.remember("license text\n");
+    q.add({ id: "a1", packageId: P, kind: "changeset", actorId: null, invokerId: "owner", payload: { files: [{ path: "private/coursewerk/alembic.json", baseVersion: null, text: null, movedFrom: "alembic.json", baseBlob: null }] } });
+    q.add(row("a2", "owner", { path: "LICENSE", baseVersion: h("license text\n"), text: null }));
+    q.add(row("a3", "owner", { path: "assets/x.json", baseVersion: null, text: null, movedFrom: "alembic.json", baseBlob: null }));
+    await drainCourse(P, "w", q, repo);
+    expect([q.status("a1"), q.status("a2"), q.status("a3")]).toEqual(["refused", "refused", "refused"]);
+    expect(repo.file("alembic.json")).toBe(M);
+    expect(repo.file("LICENSE")).toBe("license text\n");
+  });
   it("[K1.11] text with a script can't be saved to an SVG path, and text can't be saved to a picture's path", async () => {
     const { repo, q } = files();
     q.add(row("s1", "co", { path: "assets/gases/mol.ketcher.svg", baseVersion: null, text: '<svg onload="x()"></svg>' }));

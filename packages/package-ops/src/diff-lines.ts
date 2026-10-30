@@ -8,7 +8,10 @@
 export type DiffLine = { op: "same" | "add" | "remove"; text: string } | { op: "fold"; count: number };
 
 export const MAX_DIFF_LINES = 20_000;
-export const MAX_DIFF_EDITS = 2_000;
+export const MAX_DIFF_EDITS = 1_000;
+/** Comparisons of lines the search may make, and characters it may read, before it gives up (audit r1 M-4). */
+export const MAX_DIFF_WORK = 3_000_000;
+export const MAX_DIFF_CHARS = 2_000_000;
 
 export type DiffResult = { ok: true; lines: DiffLine[]; added: number; removed: number } | { ok: false; reason: "too-large" };
 
@@ -16,7 +19,7 @@ export type DiffResult = { ok: true; lines: DiffLine[]; added: number; removed: 
 export function diffLines(a: string, b: string, context = 3): DiffResult {
   const x = a.split("\n");
   const y = b.split("\n");
-  if (x.length > MAX_DIFF_LINES || y.length > MAX_DIFF_LINES) return { ok: false, reason: "too-large" };
+  if (x.length > MAX_DIFF_LINES || y.length > MAX_DIFF_LINES || a.length + b.length > MAX_DIFF_CHARS) return { ok: false, reason: "too-large" };
   // Trim the common head and tail first (cheap, and the usual case is a small edit).
   let head = 0;
   while (head < x.length && head < y.length && x[head] === y[head]) head++;
@@ -44,13 +47,15 @@ function myers(x: string[], y: string[]): Array<{ op: "same" | "add" | "remove";
   let v: Int32Array = new Int32Array(2 * band + 3);
   const trace: Int32Array[] = [];
   let found = -1;
+  let work = 0;
   for (let d = 0; d <= max; d++) {
     if (d > MAX_DIFF_EDITS) return null;
     trace.push(v.slice(offset - d - 1, offset + d + 2));
     for (let k = -d; k <= d; k += 2) {
       let i = k === -d || (k !== d && v[offset + k - 1]! < v[offset + k + 1]!) ? v[offset + k + 1]! : v[offset + k - 1]! + 1;
       let j = i - k;
-      while (i < n && j < m && x[i] === y[j]) { i++; j++; }
+      while (i < n && j < m && x[i] === y[j]) { i++; j++; work++; }
+      if (++work > MAX_DIFF_WORK) return null;
       v[offset + k] = i;
       if (i >= n && j >= m) { found = d; break; }
     }

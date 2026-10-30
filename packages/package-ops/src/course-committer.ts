@@ -8,7 +8,7 @@
  * so it is tested with fakes and runs unchanged on the worker.
  */
 
-import { activeProfile, can, canWritePath, fileKind, isSvgPath, mediaProblems, newDocId, normalizePath, svgProblems, unitPartForPath, sha256Hex, WorkingManifestV3Schema, type Role } from "@alembic/package-contract";
+import { activeProfile, can, canWritePath, fileKind, isHarnessPath, isServerOnlyPath, isSvgPath, mediaProblems, newDocId, normalizePath, svgProblems, unitPartForPath, sha256Hex, WorkingManifestV3Schema, type Role } from "@alembic/package-contract";
 import { applyCourseOp, parseCourseOp, type ChapterSnapshot } from "./course-ops";
 import { decideFile, type FileDecision, type FileKind } from "./version-rule";
 
@@ -466,7 +466,13 @@ async function decideFilesOnTree(row: QueueRow, store: QueueStore, repo: Working
     return listed.has(part.slug);
   };
   const role = row.actorId ? await store.roleOf(row.packageId, row.actorId) : null;
+  // An agent changeset has no actor: its rights are the agent's, capped by the invoker's (G7 r3 H1).
+  const invoker = row.kind === "changeset" && row.invokerId ? await store.roleOf(row.packageId, row.invokerId) : null;
+  const mayWrite = (p: string) => (row.kind === "changeset" ? !!invoker && canWritePath("agent", p, { invoker }) : !!role && canWritePath(role, p));
   const mayDelete = async (path: string): Promise<string | null> => {
+    // Never through file entries, whoever asks (G7 r3 H1): the settings, the licence files, server-only and
+    // harness files have their own ways (course operations, setLicense, the server, the harness).
+    if (path === "alembic.json" || path === "LICENSE" || path === "CITATION.cff" || isServerOnlyPath(path) || isHarnessPath(path)) return `${path}: this file can't be deleted or moved`;
     if (await isListedPart(path)) return `${path}: a chapter's parts are removed with the chapter`;
     if (path.startsWith("private/") && !(role && can(role, "delete.private"))) return `${path}: only the owner or deputy deletes private files`;
     return null;
@@ -512,7 +518,7 @@ async function decideFilesOnTree(row: QueueRow, store: QueueStore, repo: Working
       const ext = (p: string) => (p.split("/").pop() ?? "").toLowerCase().replace(/^[^.]*/, "");
       if (fileKind(from) !== fileKind(f.path) || ext(from) !== ext(f.path)) return { refused: `${f.path}: a move can't change the kind of file` };
       if (tree.has(f.path)) return { refused: `${f.path}: a file is already there` };
-      if (role && !canWritePath(role, from)) return { refused: `not allowed to change ${from}` };
+      if (!mayWrite(from)) return { refused: `not allowed to change ${from}` };
       const why = await mayDelete(from);
       if (why) return { refused: why };
       out.top.push({ path: from, content: null }, { path: f.path, blobSha: src.sha, mode: src.mode === "100755" ? "100755" : "100644" });

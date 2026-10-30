@@ -4,8 +4,8 @@ import { randomUUID } from "node:crypto";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { gitBlobSha } from "@alembic/github-bridge";
-import { can, canWritePath, fileKind, normalizePath, unitPartForPath, WorkingManifestV3Schema, type Role } from "@alembic/package-contract";
-import { SqlQueueStore } from "@alembic/package-ops";
+import { can, canWritePath, fileKind, MAX_UPLOAD_BYTES, normalizePath, unitPartForPath, WorkingManifestV3Schema, type Role } from "@alembic/package-contract";
+import { checkAnswerKeys, SqlQueueStore } from "@alembic/package-ops";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { directDb } from "@/lib/db";
 import { courseRepo, textVersion } from "@/lib/course-v3";
@@ -32,7 +32,13 @@ export async function restoreVersionAction(packageId: string, rawPath: string, s
   const to = docHref(packageId, path);
   const { supabase, user, role } = await member(packageId);
   if (!can(role, "history.restore-doc") || !canWritePath(role, path)) back(to, "You can't change this document.");
-  if (!(await inCourseHistory(packageId, sha))) back(to, "That version isn't in this course's history.");
+  const range = await inCourseHistory(packageId, sha);
+  if (!range.ok) back(to, "That version isn't in this course's history.");
+  // "Use the other version": answer the item first; a stale or second click does nothing (audit r1 M-1).
+  if (itemId) {
+    const { error } = await supabase.rpc("needs_you_answer", { p_id: itemId, p_answer: { decision: "used-version", commit: sha } });
+    if (error) back(to, "That choice was already made.");
+  }
   const c = await courseRepo(packageId);
   const sql = directDb();
   if (!c || !sql) back(to, "This course can't be reached right now.");
@@ -46,17 +52,27 @@ export async function restoreVersionAction(packageId: string, rawPath: string, s
     if (old === null) back(to, "This document didn't exist at that point.");
     const current = await c!.repo.readFile(head, path);
     if (current === null) await mayRestoreRemoved(c!, head, path, gitBlobSha(new TextEncoder().encode(old!)), to);
+    // Never back into a public place if it repeats instructor-only text added or changed since (an answer key moved
+    // into private/, then edited, or a stub re-created at the public path: audit r1 H-1). Publish's own check.
+    if (!path.startsWith("private/")) {
+      const priv = range.changed === null ? null : range.changed.filter((f) => f.path.startsWith("private/") && f.status !== "removed" && fileKind(f.path) === "text");
+      if (priv === null || priv.length > 40) back(to, "Too much instructor-only material changed since that version to check it; ask the owner.");
+      const texts = (await Promise.all(priv!.map(async (f) => ({ path: f.path, text: (await c!.repo.readFile(head, f.path)) ?? "" })))).filter((t) => t.text);
+      if (checkAnswerKeys(path, old!, texts).length) back(to, "That version repeats instructor-only material, so it can't come back to a public place.");
+    }
     file = { path, baseVersion: seen ?? (current === null ? null : textVersion(current)), text: old!, restoreOf: sha };
   } else {
     const [then, now] = await Promise.all([c!.client.listTreeEntries(coords, sha), c!.client.listTreeEntries(coords, head)]);
-    const blob = then.entries.find((e) => e.path === path)?.sha;
+    const was = then.entries.find((e) => e.path === path);
+    const blob = was?.sha;
     if (!blob) back(to, "This figure didn't exist at that point.");
+    if ((was?.size ?? 0) > MAX_UPLOAD_BYTES) back(to, "That version is larger than 4 MB, the most a course file may be."); // audit r1 L-2
+    if (!path.startsWith("private/") && now.entries.some((e) => e.path.startsWith("private/") && e.sha === blob)) back(to, "This picture is now instructor-only, so it can't come back to a public place.");
     const current = now.entries.find((e) => e.path === path)?.sha ?? null;
     if (current === null) await mayRestoreRemoved(c!, head, path, blob!, to);
     file = { path, baseVersion: null, text: null, blob: { sha: blob!, size: 0 }, baseBlob: seen ?? current, restoreOf: sha };
   }
   await new SqlQueueStore(sql!).insert({ packageId, kind: "restore", idem: randomUUID(), actorId: user.id, payload: { files: [file!], summary: `Restored the version of ${path.split("/").pop()}` } });
-  if (itemId) await supabase.rpc("needs_you_answer", { p_id: itemId, p_answer: { decision: "used-version", commit: sha } });
   back(to, "Restoring that version; it shows here in a few seconds.");
 }
 
