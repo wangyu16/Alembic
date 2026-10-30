@@ -38,13 +38,17 @@ export function itemsForLandedChange(i: {
   files: readonly FileOutcome[];
   /** The commits the change made, oldest first (a kept version comes first). */
   commits: readonly string[];
+  /** The head the change was made on (when one commit was made, the version not on top is there). */
+  base?: string | null;
   /** For files whose chapter is gone: which chapter, and where it can be restored from. */
   removed: ReadonlyMap<string, RemovedChapter>;
   /** The course's owner and deputy (they decide a restore). */
   deciders: readonly string[];
 }): ItemSpec[] {
   const out: ItemSpec[] = [];
-  const keptCommit = i.commits.length > 1 ? i.commits[0]! : null;
+  // The commit holding the version that isn't on top: the kept-version commit, or, when the typist's text went on
+  // top in one commit, the head it replaced (history-v3 §4, G0r1 B9).
+  const keptCommit = i.commits.length > 1 ? i.commits[0]! : (i.base ?? null);
   for (const f of i.files) {
     if (f.outcome !== "both-changed") continue;
     const gone = i.removed.get(f.path);

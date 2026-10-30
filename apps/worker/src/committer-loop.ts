@@ -115,7 +115,7 @@ export async function committerPass(cfg: CommitterConfig): Promise<number> {
  * chapter, an item for its author and a Restore offer for the owner and deputy.
  */
 async function raiseBothChanged(cfg: CommitterConfig, packageId: string, row: QueueRow, result: unknown, repo: { readFile(ref: string, path: string): Promise<string | null> }): Promise<void> {
-  const res = (result ?? {}) as { files?: FileOutcome[]; commits?: string[]; head?: string };
+  const res = (result ?? {}) as { files?: FileOutcome[]; commits?: string[]; head?: string; base?: string };
   const both = (res.files ?? []).filter((f) => f.outcome === "both-changed");
   if (!both.length || !res.head) return;
   const removed = new Map<string, RemovedChapter>();
@@ -137,7 +137,7 @@ async function raiseBothChanged(cfg: CommitterConfig, packageId: string, row: Qu
   }
   const { rows: who } = await cfg.sql.query<{ user_id: string }>(
     `select user_id from public.course_members where package_id = $1 and public.course_role_of($1, user_id) in ('owner', 'deputy')` /* a deputy is a co-author with deputy_until: ask the role function */, [packageId]);
-  const items = itemsForLandedChange({ rowId: row.id, actorId: row.actorId ?? null, files: both, commits: res.commits ?? [], removed, deciders: who.map((w) => w.user_id) });
+  const items = itemsForLandedChange({ rowId: row.id, actorId: row.actorId ?? null, files: both, commits: res.commits ?? [], removed, deciders: who.map((w) => w.user_id), base: res.base ?? null });
   for (const it of items) {
     await cfg.sql.query(`select public.needs_you_raise($1, 'both-changed', 'platform', $2, $3::text::jsonb, $4, $5, false, $6::uuid[])`,
       [packageId, it.dedupe, JSON.stringify(it.payload), it.chapter, it.target, it.addressed]);

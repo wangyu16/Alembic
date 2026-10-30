@@ -18,6 +18,8 @@ export interface WorkingRepoAdapter {
   listPaths(ref: string): Promise<string[]>;
   /** Every file at `ref` with its blob id and mode (non-text files and moves, contract v3 §11). Refuses a truncated listing. */
   treeAt(ref: string): Promise<Map<string, { sha: string; mode: string }>>;
+  /** A blob's bytes. */
+  readBlob(sha: string): Promise<Uint8Array>;
   recentCommits(limit: number): Promise<Array<{ sha: string; message: string }>>;
   commitChain(input: {
     expectedHead: string;
@@ -39,6 +41,9 @@ export function workingRepo(client: GitHubClient, coords: RepoCoords, branch = "
       const t = await client.listTree(coords, ref);
       if (t.truncated) throw new Error("the course has too many files to list");
       return t.paths;
+    },
+    readBlob(sha) {
+      return client.getBlob(coords, sha);
     },
     async treeAt(ref) {
       const t = await client.listTreeEntries(coords, ref);

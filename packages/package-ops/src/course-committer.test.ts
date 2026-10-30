@@ -47,6 +47,12 @@ class FakeRepo implements WorkingRepo {
   async listPaths(ref: string) {
     return [...this.byId(ref).files.keys()];
   }
+  blobs = new Map<string, Uint8Array>();
+  async readBlob(sha: string) {
+    const b = this.blobs.get(sha);
+    if (!b) throw Object.assign(new Error("Not Found"), { status: 404 });
+    return b;
+  }
   async treeAt(ref: string) {
     const out = new Map<string, { sha: string; mode: string }>();
     for (const [p, t] of this.byId(ref).files) out.set(p, { sha: t.startsWith("blob:") ? t.slice(5) : createHash("sha1").update(t).digest("hex"), mode: "100644" });
@@ -539,6 +545,41 @@ describe("files that aren't text, deletes and moves (contract v3 §11)", () => {
     await drainCourse(P, "w", q, repo);
     expect(q.status("u1")).toBe("done");
     expect(repo.file("assets/legacy.svg")).toBe(old);
+  });
+});
+
+describe("restores (history-v3 §3)", () => {
+  const SHA = (n: number) => String(n).repeat(40).slice(0, 40);
+  const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0]);
+  const restore = (id: string, actor: string, f: RowFile): Omit<QueueRow, "attempts"> => ({ id, packageId: P, kind: "restore", actorId: actor, invokerId: null, payload: { files: [f] } });
+  it("[H.3] a restore made from the current version lands as the newest version; one made from an older one keeps both, current on top, never combined", async () => {
+    const { repo, q } = setup();
+    const v2 = sg("ONE", "two", "three");
+    repo.push({ "study-guide/gases.md": v2 });
+    q.add(restore("r1", "co", { path: "study-guide/gases.md", baseVersion: h(v2), text: base, restoreOf: "c0" }));
+    await drainCourse(P, "w", q, repo);
+    expect(q.status("r1")).toBe("done");
+    expect(repo.file("study-guide/gases.md")).toBe(base);
+    // Someone edits a different section after the person looked; the stale restore is kept, not merged in.
+    const v3 = sg("one", "two", "THREE");
+    repo.push({ "study-guide/gases.md": v3 });
+    q.add(restore("r2", "co", { path: "study-guide/gases.md", baseVersion: h(base), text: sg("ONE", "two", "three"), restoreOf: "c1" }));
+    await drainCourse(P, "w", q, repo);
+    expect(q.status("r2")).toBe("done");
+    expect(repo.file("study-guide/gases.md")).toBe(v3);
+    expect((q.rows.find((r) => r.id === "r2")!.result as { files: Array<{ outcome: string; reason?: string }> }).files[0]).toMatchObject({ outcome: "both-changed", reason: "restore-vs-edit" });
+  });
+  it("[H.8] a restored figure must be this path's own blob at the commit named, and pass the upload checks", async () => {
+    const { repo, q } = setup();
+    repo.push({ "assets/g/fig.png": `blob:${SHA(1)}` });
+    const then = repo.headSha;
+    repo.blobs.set(SHA(1), PNG);
+    repo.push({ "assets/g/fig.png": `blob:${SHA(2)}` });
+    q.add(restore("b1", "co", { path: "assets/g/fig.png", baseVersion: null, text: null, blob: { sha: SHA(1), size: 9 }, baseBlob: SHA(2), restoreOf: then }));
+    q.add(restore("b2", "co", { path: "assets/g/fig.png", baseVersion: null, text: null, blob: { sha: SHA(9), size: 9 }, baseBlob: SHA(1), restoreOf: then }));
+    await drainCourse(P, "w", q, repo);
+    expect([q.status("b1"), q.status("b2")]).toEqual(["done", "refused"]);
+    expect(repo.file("assets/g/fig.png")).toBe(`blob:${SHA(1)}`);
   });
 });
 

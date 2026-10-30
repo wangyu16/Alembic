@@ -12,6 +12,8 @@ import { CHAPTER_PARTS } from "@alembic/package-ops";
 import { SubmitButton } from "../../submit-button";
 import { RefreshWhile } from "../publish/refresh-while";
 import { addChaptersAction, startPartsAction } from "./actions";
+import { createSnapshotAction } from "../history/actions";
+import { LocalTime } from "@/lib/local-time";
 
 export const dynamic = "force-dynamic";
 
@@ -54,6 +56,8 @@ async function CourseHomeV3Inner({ params, searchParams }: { params: Promise<{ p
   }
   const mayAddChapters = can(role as Role, "edit.course-files");
   const partOf = new Map(CHAPTER_PARTS.map((x) => [x.label, x.part]));
+  const { data: snapRows } = await supabase.from("course_snapshots").select("slug, name, created_at").eq("package_id", packageId).order("created_at", { ascending: false });
+  const snaps = (snapRows ?? []) as Array<{ slug: string; name: string; created_at: string }>;
   const o = courseOutline(Array.isArray(chapters) ? chapters : [], docs);
   const href = (p: string) => `/workspace/${packageId}/doc/${p.split("/").map(encodeURIComponent).join("/")}`;
   const list = (items: Array<{ label: string; path: string }>) => (
@@ -116,6 +120,21 @@ async function CourseHomeV3Inner({ params, searchParams }: { params: Promise<{ p
           </form>
         </details>
       ) : null}
+      <details className="mt-6 rounded border p-3" data-testid="snapshots">
+        <summary className="cursor-pointer font-medium">Snapshots ({snaps.length})</summary>
+        <p className="mt-2 text-sm text-gray-700">Name the course as it is now (for example &ldquo;Fall 2026&rdquo;), and later see what changed since.</p>
+        <form action={createSnapshotAction.bind(null, packageId)} className="mt-2 flex gap-2">
+          <input name="name" required maxLength={120} placeholder="Fall 2026" className="input flex-1" />
+          <SubmitButton className="btn" pending="Saving…">Save a snapshot</SubmitButton>
+        </form>
+        {snaps.length ? (
+          <ul className="mt-3 space-y-1 text-sm">
+            {snaps.map((sn) => (
+              <li key={sn.slug}><Link prefetch={false} className="underline" href={`/workspace/${packageId}/snapshots/${sn.slug}`}>{sn.name}</Link> <span className="text-gray-600">· <LocalTime at={sn.created_at} /></span></li>
+            ))}
+          </ul>
+        ) : null}
+      </details>
       {o.course.length ? (
         <details className="mt-6 rounded border p-3">
           <summary className="cursor-pointer font-medium">Course-wide files ({o.course.length})</summary>

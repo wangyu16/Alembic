@@ -170,6 +170,7 @@ export type BothReason =
   | "plan-file"
   | "binary"
   | "delete-vs-edit"
+  | "restore-vs-edit"
   | "edit-vs-delete"
   | "create-exists"
   | "invalid-combination";

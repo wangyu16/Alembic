@@ -8,7 +8,7 @@
  * so it is tested with fakes and runs unchanged on the worker.
  */
 
-import { activeProfile, can, canWritePath, fileKind, isSvgPath, newDocId, normalizePath, svgProblems, unitPartForPath, sha256Hex, WorkingManifestV3Schema, type Role } from "@alembic/package-contract";
+import { activeProfile, can, canWritePath, fileKind, isSvgPath, mediaProblems, newDocId, normalizePath, svgProblems, unitPartForPath, sha256Hex, WorkingManifestV3Schema, type Role } from "@alembic/package-contract";
 import { applyCourseOp, parseCourseOp, type ChapterSnapshot } from "./course-ops";
 import { decideFile, type FileDecision, type FileKind } from "./version-rule";
 
@@ -40,6 +40,8 @@ export interface RowFile {
   baseVersion: string | null;
   /** null = delete (unless `blob` or `movedFrom` is set: then null and unused) */
   text: string | null;
+  /** Restores (history-v3 §3): the commit the old version is taken from. */
+  restoreOf?: string;
   /** A non-text file (contract v3 §11.2): a blob the upload route created and recorded in the ledger. */
   blob?: { sha: string; size: number };
   /** For `blob` and `movedFrom` entries: the blob id the change was made from (null = a new file). */
@@ -83,6 +85,8 @@ export interface WorkingRepo {
   listPaths?(ref: string): Promise<string[]>;
   /** Every file at `ref` with its blob id and mode (non-text files, deletes and moves). */
   treeAt?(ref: string): Promise<Map<string, { sha: string; mode: string }>>;
+  /** A blob's bytes (restored figures are checked like uploads). */
+  readBlob?(sha: string): Promise<Uint8Array>;
   commitChain(input: {
     expectedHead: string;
     steps: Array<{ message: string; files: Array<ChainEntry> }>;
@@ -284,6 +288,17 @@ export async function processRow(row: QueueRow, store: QueueStore, repo: Working
           decisions.push({ file, d: { outcome: "landed", write: file.text, noop: currentText === file.text } });
           continue;
         }
+        // A restore (history-v3 §3) is never combined: it lands on the version it was made from, else both are
+        // kept with the current version on top (G0r1 B6).
+        if (row.kind === "restore") {
+          const current = currentText === null ? null : await sha256Hex(currentText);
+          if (current === file.baseVersion || currentText === file.text) {
+            decisions.push({ file, d: { outcome: "landed", write: file.text, noop: currentText === file.text } });
+          } else {
+            decisions.push({ file, d: { outcome: "both-changed", top: currentText, kept: file.text, reason: "restore-vs-edit" } });
+          }
+          continue;
+        }
         const baseText = file.baseVersion === null ? null : await store.baseText(row.packageId, file.path, file.baseVersion);
         const d = await decideFile({
           path: file.path,
@@ -371,7 +386,7 @@ export async function processRow(row: QueueRow, store: QueueStore, repo: Working
             if (opts.claim && store.recordPlanned) await store.recordPlanned(row.id, opts.claim.holder, opts.claim.fence, row.attempts, shas);
           },
         });
-        return { status: "done", result: { head: out.head, commits: out.commitShas, files } };
+        return { status: "done", result: { head: out.head, commits: out.commitShas, files, base: head } }; // base: the head it replaced
       } catch (e) {
         if (isHeadMoved(e)) continue; // decide again on the new head (re-scanning first)
         if (e instanceof AttemptSuperseded) return { status: "retry", error: "attempt superseded", retryAfterSeconds: 0 };
@@ -462,7 +477,15 @@ async function decideFilesOnTree(row: QueueRow, store: QueueStore, repo: Working
     } else if (f.blob) {
       const kind = fileKind(f.path);
       if (!kind || kind === "text") return { refused: `${f.path}: not a kind of file this course can hold` };
-      if (!store.blobKnown || !(await store.blobKnown(row.packageId, f.blob.sha, kind))) return { refused: `${f.path}: that file wasn't uploaded to this course` };
+      if (row.kind === "restore") {
+        // The second source of blobs (history-v3 §3): this path's own blob at the commit restored from, and its
+        // bytes pass the same checks as an upload (G0r1 B1).
+        if (!f.restoreOf || !repo.readBlob) return { refused: `${f.path}: nothing to restore from` };
+        const then = await repo.treeAt(f.restoreOf).catch(() => null);
+        if (then?.get(f.path)?.sha !== f.blob.sha) return { refused: `${f.path}: that version isn't in this course's history` };
+        const problems = mediaProblems(kind, await repo.readBlob(f.blob.sha));
+        if (problems.length) return { refused: `${f.path}: ${problems[0]}` };
+      } else if (!store.blobKnown || !(await store.blobKnown(row.packageId, f.blob.sha, kind))) return { refused: `${f.path}: that file wasn't uploaded to this course` };
       const current = tree.get(f.path);
       const base = f.baseBlob ?? null;
       const mode = (current?.mode === "100755" ? "100755" : "100644") as "100644" | "100755";

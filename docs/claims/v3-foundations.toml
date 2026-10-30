@@ -131,3 +131,49 @@ bound_to = [
   "packages/package-ops/src/publish-job.test.ts :: Publish writes each Markdown text as its clean copy, lists the files whose HTML became text, and stops on one it can't clean",
 ]
 note = "Owner, 2026-10-29: the Alembic-side clean copy instead of new family releases; an orz-markdown allowlist option for authors' own text rides along with orz-markdown's next planned release (family request)."
+
+# Foundations step 2: history and restore (docs/specs/v3/history-v3.md, draft 2).
+
+[[claim]]
+id = "H.1"
+claim = "A document's History lists its last 50 versions with when, who (from Alembic's trailers only on commits Alembic recorded; a forged trailer on a GitHub push reads 'edited on GitHub'), what, and kept and published marks; one GitHub call per view."
+oracle = "conformance"
+bound_to = [
+  "packages/package-ops/src/history.test.ts :: who comes from Alembic's trailers only on commits Alembic made; a forged trailer on a GitHub push reads 'edited on GitHub'",
+  "packages/package-ops/src/history.test.ts :: at most 50 entries; summaries are one plain line",
+]
+
+[[claim]]
+id = "H.2"
+claim = "Comparing two versions shows exactly the added and removed lines, unchanged runs folded; huge or wholly different inputs are refused quickly with bounded memory."
+oracle = "conformance"
+bound_to = [
+  "packages/package-ops/src/diff-lines.test.ts :: the diff is exact: same + added lines rebuild the new text, same + removed rebuild the old one",
+  "packages/package-ops/src/diff-lines.test.ts :: unchanged runs fold to context; a one-line edit in a long text is small",
+  "packages/package-ops/src/diff-lines.test.ts :: huge or wholly different inputs are refused quickly, not computed",
+]
+
+[[claim]]
+id = "H.3"
+claim = "A restore brings an old version back as the newest one through the write path; if the document changed since it was seen, both are kept (current on top), never combined; only people who may edit the path can restore it."
+oracle = "conformance"
+bound_to = [
+  "packages/package-ops/src/course-committer.test.ts :: a restore made from the current version lands as the newest version; one made from an older one keeps both, current on top, never combined",
+]
+
+[[claim]]
+id = "H.6"
+claim = "A snapshot is a tag on the working repo plus a row (the row's commit is the authority); names become safe slugs and never collide."
+oracle = "conformance"
+bound_to = [
+  "apps/web/src/lib/snapshot-slug.test.ts :: a name becomes a safe tag slug; a non-Latin or empty name falls back to the date",
+]
+
+[[claim]]
+id = "H.8"
+claim = "A restore references only commits in the course's own history (ancestors of the head); restored figures must be the path's own blob at that commit and pass the upload checks; a file moved into private/ can't be restored into a public space."
+oracle = "conformance"
+bound_to = [
+  "packages/package-ops/src/course-committer.test.ts :: a restored figure must be this path's own blob at the commit named, and pass the upload checks",
+]
+note = "Ancestry and the private-move rule are enforced in the server action (history/actions.ts); live-checked, no unit test yet."
