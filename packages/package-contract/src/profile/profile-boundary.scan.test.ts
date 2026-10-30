@@ -34,7 +34,7 @@ function counts(): Record<string, number> {
       try { statSync(src); } catch { continue; }
       for (const f of files(src)) {
         const rel = relative(ROOT, f);
-        if (rel.includes("/src/profile/")) continue;
+        if (rel.includes("/src/profile/") || rel.includes("/src/site-type/")) continue; // the seam: the profile and the site type definitions (family SITE-TYPE-CONTRACT)
         const n = (readFileSync(f, "utf8").match(LITERAL) ?? []).length;
         if (n) out[rel] = n;
       }

@@ -68,7 +68,8 @@ oracle = "conformance"
 bound_to = [
   "packages/package-ops/src/course-ops.test.ts :: two operations made from the same version both land, in order (no lost change, no browser re-apply)",
   "packages/package-ops/src/course-ops.test.ts :: an operation that no longer applies is refused with a reason, and nothing is written",
-  "packages/package-ops/src/course-ops.test.ts :: adding chapters starts the parts the profile requires (study guide), or all five; never a chapter without its study guide",
+  "packages/package-ops/src/course-ops.test.ts :: adding chapters starts the parts the profile requires (concept map, study guide, assessment guide), or all five; never a chapter without them",
+  "packages/package-ops/src/course-ops.test.ts :: renaming a chapter that already lacks a required part isn't a new problem (problems compare under the new title)",
   "packages/package-ops/src/course-ops.test.ts :: a course that already breaks a rule can still be changed; an operation can't introduce a new break",
   "packages/package-ops/src/course-ops.test.ts :: operations from a client are shape-checked; unknown operations and bad slugs are refused",
   "packages/package-ops/src/course-committer.test.ts :: two deputies' operations queued at the same moment both land, in order, each in its own commit",
@@ -98,8 +99,8 @@ claim = "Course content rules live in the active content profile (package-contra
 oracle = "conformance"
 bound_to = [
   "packages/package-contract/src/profile/profile-boundary.scan.test.ts :: no file outside the profile gains course paths or licence names; legacy files only go down",
-  "packages/package-contract/src/profile/profile.test.ts :: the active profile is Coursewerk's OER profile, versioned, and every part path maps back to its part",
-  "packages/package-contract/src/profile/profile.test.ts :: a listed chapter without its study guide is a problem the profile names",
+  "packages/package-contract/src/profile/profile.test.ts :: the active profile is built from Coursewerk's site type definition, versioned, and every part path maps back to its part",
+  "packages/package-contract/src/profile/profile.test.ts :: a listed chapter without a required part is a problem the profile names (concept map, study guide, assessment guide: owner 2026-10-30)",
 ]
 
 [[claim]]
@@ -177,3 +178,17 @@ bound_to = [
   "packages/package-ops/src/course-committer.test.ts :: a restored figure must be this path's own blob at the commit named, and pass the upload checks",
 ]
 note = "Ancestry is enforced in the server action (history/actions.ts); live-checked, no unit test yet."
+
+[[claim]]
+id = "K1.21"
+claim = "The course's content rules come from the vendored, schema-checked site type definition (family SITE-TYPE-CONTRACT): a definition that breaks the schema or its cross-field rules can't be loaded, the bundle matches the vendored folder's checksum, and the profile built from it classifies every path, places every part and starts every part exactly as the hand-written profile did, except the owner's changes (required concept map and assessment guide, the contract's ids, labels and figure-folder rule)."
+oracle = "conformance"
+bound_to = [
+  "packages/package-contract/src/site-type/site-type.test.ts :: load, pass the schema and the cross-field rules, and carry every file they name",
+  "packages/package-contract/src/site-type/site-type.test.ts :: the bundle and the JSON Schema are up to date with the vendored folders",
+  "packages/package-contract/src/site-type/site-type.test.ts :: classifies every kind of path the same way",
+  "packages/package-contract/src/site-type/site-type.test.ts :: has the same parts at the same paths, with the same starters; ids and one label follow the contract",
+  "packages/package-contract/src/site-type/site-type.test.ts :: refuses Alembic's own paths and the front page files",
+  "packages/package-contract/src/site-type/site-type.test.ts :: allows a site type without units (a one-page site)",
+]
+

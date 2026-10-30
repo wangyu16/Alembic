@@ -24,3 +24,4 @@ export * from "./access";
 export * from "./fetch-policy";
 export * from "./profile";
 export * from "./files";
+export * from "./site-type";

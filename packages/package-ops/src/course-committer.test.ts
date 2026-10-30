@@ -455,7 +455,8 @@ describe("course operations in the committer (contract v3 §13.3)", () => {
     const r = applyCourseOp(repo.file("alembic.json"), new Set(["alembic.json", "study-guide/atoms.md", "study-guide/gases.md"]),
       { op: "restoreChapter", slug: "gases", fromCommit: "a".repeat(40) }, () => "doc-x",
       { snapshot: { chapter: { slug: "gases", title: "Gases", mode: "package" }, files: [{ path: "study-guide/gases.md", content: base }] } });
-    expect(r.ok && r.writes.map((w) => w.path)).toEqual(["alembic.json", "study-guide/gases-restored.md"]);
+    // Parts the snapshot lacked but the profile now requires are started (concept map and assessment guide: owner 2026-10-30).
+    expect(r.ok && r.writes.map((w) => w.path)).toEqual(["alembic.json", "study-guide/gases-restored.md", "concepts/gases-restored.md", "assessment-support/gases-restored.md"]);
     expect(r.ok && r.manifest.chapters.at(-1)).toEqual({ slug: "gases-restored", title: "Gases (restored)", mode: "package" });
   });
   it("[K1.18] only the owner changes the licence, and LICENSE and the citation's licence line follow in the same commit", async () => {

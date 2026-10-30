@@ -3,12 +3,13 @@
  * chooses the active profile. Core code imports `activeProfile` from here,
  * never a profile directly, so a sibling platform swaps one line.
  */
-import { coursewerkOerProfile } from "./coursewerk-oer";
+import { DEFAULT_SITE_TYPE, profileFromDefinition, siteType } from "../site-type";
 
 export type { ContentProfile, MediaKind, PathClass, UnitPart } from "./types";
 export { COURSEWERK_CONTENT_VERSION, firstStudyGuide } from "./coursewerk-oer";
 
-export const activeProfile = coursewerkOerProfile;
+/** Built from the vendored site type definition (family docs/SITE-TYPE-CONTRACT.md), through the bridge. */
+export const activeProfile = (() => { const t = siteType(DEFAULT_SITE_TYPE); return profileFromDefinition(t.definition, t.files); })();
 
 /** The part of a unit a path is, if any (exact inverse of `part.path`). */
 export function unitPartForPath(path: string): { part: string; slug: string } | null {

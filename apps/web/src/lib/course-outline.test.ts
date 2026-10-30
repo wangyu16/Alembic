@@ -11,9 +11,9 @@ describe("the course page as a course", () => {
     ];
     const o = courseOutline(chapters, docs);
     expect(o.chapters.map((c) => c.title)).toEqual(["Introduction to Chemistry", "Gases"]);
-    expect(o.chapters[1]!.parts.map((p) => p.label)).toEqual(["Concept map", "Study guide", "Slides", "Assessment guide", "Practice"]);
+    expect(o.chapters[1]!.parts.map((p) => p.label)).toEqual(["Concept map", "Study guide", "Slides", "Assessment guide", "Practice questions"]);
     expect(o.chapters[1]!.draft).toBe(true);
-    expect(o.chapters[0]!.missing).toEqual(["Slides", "Assessment guide", "Practice"]);
+    expect(o.chapters[0]!.missing).toEqual(["Slides", "Assessment guide", "Practice questions"]);
     expect(o.chapters[1]!.more).toEqual([{ label: "Extra reading", path: "study-guide/chapters/gases/extra-reading.md" }]);
     expect(o.course.map((c) => c.label)).toEqual(["README", "Course map", "ATTRIBUTION"]);
     expect(o.instructor.map((c) => c.label)).toEqual(["Answer key"]);

@@ -7,7 +7,7 @@ const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0]);
 describe("uploading a file (contract v3 §11.2–§11.4)", () => {
   it("[K1.14] a figure added from an instructor-only document is stored privately, never in the published figures folder", async () => {
     const { activeProfile } = await import("@alembic/package-contract");
-    expect(activeProfile.figureFolder("private/instructor/answers.md")).toBe("private/instructor/figures/answers");
+    expect(activeProfile.figureFolder("private/instructor/answers.md")).toBe("private/instructor/figures/private--instructor--answers"); // the whole-path rule (SITE-TYPE-CONTRACT §5 {doc})
     expect(activeProfile.figureFolder("slides/gases.slides.md")).toBe("assets/gases");
     expect(checkUpload({ path: "assets/answers/key.png", size: 10, role: "owner", counts, fromDoc: "private/instructor/answers.md" })).toMatchObject({ ok: false, status: 403 });
     expect(checkUpload({ path: "private/instructor/figures/answers/key.png", size: 10, role: "co-author", counts, fromDoc: "private/instructor/answers.md" })).toMatchObject({ ok: true });

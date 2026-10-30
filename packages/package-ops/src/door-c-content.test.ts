@@ -15,7 +15,7 @@ describe("Door C: what a push may not change by content (contract v3 §13.6)", (
   it("[K1.15] pushed course settings that are invalid, change Alembic's own fields, or list a chapter with no study guide are undone; a title change is taken", () => {
     expect(run([{ path: "alembic.json", status: "modified" }], "{not json").undo[0]!.why).toMatch(/aren't valid/);
     expect(run([{ path: "alembic.json", status: "modified" }], M({ publicRepo: { owner: "evil", name: "x" } })).undo[0]!.why).toMatch(/Alembic's own settings/);
-    expect(run([{ path: "alembic.json", status: "modified" }], M({ chapters: [{ slug: "gases", title: "Gases", mode: "package" }, { slug: "atoms", title: "Atoms", mode: "package" }] })).undo[0]!.why).toMatch(/no study guide/);
+    expect(run([{ path: "alembic.json", status: "modified" }], M({ chapters: [{ slug: "gases", title: "Gases", mode: "package" }, { slug: "atoms", title: "Atoms", mode: "package" }] })).undo[0]!.why).toMatch(/has no (concept map|study guide)/);
     expect(run([{ path: "alembic.json", status: "modified" }], M({ title: "General Chemistry" })).undo).toEqual([]);
   });
   it("[K1.13] removing a listed chapter's part on GitHub is undone; removing another file is taken", () => {

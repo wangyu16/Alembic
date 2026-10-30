@@ -154,7 +154,9 @@ export function classifyPushedContent(i: {
     else if (!activeProfile.licences.allowed.includes(after.license)) undo("alembic.json", "that licence isn't allowed");
     else if (MECHANICS_FIELDS.some((k) => JSON.stringify(rb[k]) !== JSON.stringify(ra[k]))) undo("alembic.json", "Alembic's own settings can only change in Alembic");
     else {
-      const problemsBefore = new Set(before ? activeProfile.unitProblems(before.chapters, i.pathsAfter) : []);
+      // Compared under the new titles (a renamed chapter that already lacked a part isn't a new problem).
+      const hadSlug = new Set(before ? before.chapters.map((c) => c.slug) : []);
+      const problemsBefore = new Set(before ? activeProfile.unitProblems(after.chapters.filter((c) => hadSlug.has(c.slug)), i.pathsAfter) : []);
       const introduced = activeProfile.unitProblems(after.chapters, i.pathsAfter).filter((p) => !problemsBefore.has(p));
       if (introduced.length) undo("alembic.json", introduced[0]!);
       else if (before && after.license !== before.license) {

@@ -75,7 +75,7 @@ async function startPlan(packageId: string, slug: string): Promise<void> {
   const ch = m.chapters.find((x) => x.slug === slug);
   if (!ch) back(packageId, "That chapter isn't in the course.");
   const files = [];
-  for (const part of ["concepts", "assessment-support"] as const) {
+  for (const part of ["concept-map", "assessment-guide"] as const) { // the site type's ids (family SITE-TYPE-CONTRACT §5)
     const path = chapterPartPath(part, slug);
     if ((await c!.repo.readFile(head, path)) === null) files.push({ path, baseVersion: null, text: chapterPartText(part, ch!.title, newDocId()) });
   }

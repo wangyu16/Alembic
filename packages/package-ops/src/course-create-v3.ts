@@ -7,6 +7,7 @@
  * against the working-repo rule before it is written.
  */
 import {
+  activeProfile,
   assertPathAllowedInWorkingRepo,
   newDocId,
   newPackageId,
@@ -51,7 +52,7 @@ export async function createCourseRepoV3(n: NewCourse, deps: CourseRepoDeps): Pr
   const files = [{ path: "alembic.json", content: `${JSON.stringify(manifest, null, 2)}\n` }];
   for (const ch of added) {
     for (const { part } of CHAPTER_PARTS) {
-      if (n.startParts || part === "study-guide") files.push({ path: chapterPartPath(part, ch.slug), content: chapterPartText(part, ch.title, newDocId()) });
+      if (n.startParts || activeProfile.requiredParts.includes(part)) files.push({ path: chapterPartPath(part, ch.slug), content: chapterPartText(part, ch.title, newDocId()) });
     }
   }
   for (const f of files) assertPathAllowedInWorkingRepo(f.path);

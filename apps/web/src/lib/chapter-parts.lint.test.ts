@@ -17,6 +17,6 @@ describe("starting a chapter's parts (no agent)", () => {
       expect(text).not.toContain("{{odd}}");
     }
     expect(chapterPartPath("slides", "gases")).toBe("slides/gases.slides.md");
-    expect(chapterPartPath("concepts", "gases")).toBe("concepts/gases.md");
+    expect(chapterPartPath("concept-map", "gases")).toBe("concepts/gases.md");
   });
 });

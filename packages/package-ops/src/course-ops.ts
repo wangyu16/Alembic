@@ -180,6 +180,11 @@ export function applyCourseOp(manifestText: string | null, paths: ReadonlySet<st
         const path = hit.path(slug);
         if (!paths.has(path)) writes.push({ path, content: f.content });
       }
+      // A part it never had but the profile now requires is started, as for a new chapter.
+      for (const p of activeProfile.unitParts) {
+        const path = p.path(slug);
+        if (activeProfile.requiredParts.includes(p.id) && !paths.has(path) && !writes.some((w) => w.path === path)) writes.push({ path, content: p.starter(title, newUid()) });
+      }
       break;
     }
   }
@@ -190,7 +195,9 @@ export function applyCourseOp(manifestText: string | null, paths: ReadonlySet<st
   const after = new Set(paths);
   for (const w of writes) (w.content === null ? after.delete(w.path) : after.add(w.path));
   // Only problems this operation would introduce: a course that already breaks a rule can still be changed (and mended).
-  const before = new Set(activeProfile.unitProblems(m.chapters, paths));
+  // Problems are compared under the new titles, so renaming a chapter that already lacks a part isn't a new problem.
+  const hadSlug = new Set(m.chapters.map((c) => c.slug));
+  const before = new Set(activeProfile.unitProblems(parsed.data.chapters.filter((c) => hadSlug.has(c.slug)), paths));
   const introduced = activeProfile.unitProblems(parsed.data.chapters, after).filter((p) => !before.has(p));
   if (introduced.length) return { ok: false, reason: introduced[0]! };
   writes.unshift({ path: "alembic.json", content: `${JSON.stringify(parsed.data, null, 2)}\n` });

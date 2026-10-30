@@ -3,17 +3,18 @@ import { activeProfile, coursewerkOerProfileForTests, unitPartForPath } from "./
 import { can, editActionForPath } from "../access";
 
 describe("the content profile (FD-10)", () => {
-  it("[K1.17] the active profile is Coursewerk's OER profile, versioned, and every part path maps back to its part", () => {
-    expect(activeProfile).toBe(coursewerkOerProfileForTests);
-    expect(activeProfile.version).toMatch(/^0\.11\.0/);
+  it("[K1.17] the active profile is built from Coursewerk's site type definition, versioned, and every part path maps back to its part", () => {
+    expect(activeProfile.id).toBe("oer-course");
+    expect(activeProfile.version).toMatch(/^1\.0\.0/);
+    expect(activeProfile.unitParts.map((p) => p.path("x"))).toEqual(coursewerkOerProfileForTests.unitParts.map((p) => p.path("x")));
     for (const p of activeProfile.unitParts) expect(unitPartForPath(p.path("gases"))).toEqual({ part: p.id, slug: "gases" });
     expect(unitPartForPath("study-guide/a/b.md")).toBeNull();
     expect(unitPartForPath("assets/gases.md")).toBeNull();
   });
-  it("[K1.17] a listed chapter without its study guide is a problem the profile names", () => {
-    const files = new Set(["study-guide/gases.md"]);
+  it("[K1.17] a listed chapter without a required part is a problem the profile names (concept map, study guide, assessment guide: owner 2026-10-30)", () => {
+    const files = new Set(["concepts/gases.md", "study-guide/gases.md", "assessment-support/gases.md"]);
     expect(activeProfile.unitProblems([{ slug: "gases", title: "Gases" }], files)).toEqual([]);
-    expect(activeProfile.unitProblems([{ slug: "atoms", title: "Atoms" }], files)).toEqual(["Chapter “Atoms” has no study guide."]);
+    expect(activeProfile.unitProblems([{ slug: "atoms", title: "Atoms" }], files)).toEqual(["Chapter “Atoms” has no concept map.", "Chapter “Atoms” has no study guide.", "Chapter “Atoms” has no assessment guide."]);
   });
 });
 

@@ -46,9 +46,9 @@ describe("course operations applied at the head (K1.15)", () => {
     expect(r.ok && r.writes.filter((w) => w.content === null).map((w) => w.path).sort()).toEqual(parts("gases").sort());
     expect(r.ok && r.summary).toBe("Removed chapter “Gases”");
   });
-  it("[K1.15] adding chapters starts the parts the profile requires (study guide), or all five; never a chapter without its study guide", () => {
+  it("[K1.15] adding chapters starts the parts the profile requires (concept map, study guide, assessment guide), or all five; never a chapter without them", () => {
     const r = applyCourseOp(manifest([]), new Set(), { op: "addChapters", titles: ["Gases", "Atoms"], startParts: false }, uid);
-    expect(r.ok && r.writes.map((w) => w.path)).toEqual(["alembic.json", "study-guide/gases.md", "study-guide/atoms.md"]);
+    expect(r.ok && r.writes.map((w) => w.path)).toEqual(["alembic.json", "concepts/gases.md", "study-guide/gases.md", "assessment-support/gases.md", "concepts/atoms.md", "study-guide/atoms.md", "assessment-support/atoms.md"]);
     const all = applyCourseOp(manifest([]), new Set(), { op: "addChapters", titles: ["Gases"], startParts: true }, uid);
     expect(all.ok && all.writes.length).toBe(6);
   });
@@ -68,5 +68,11 @@ describe("course operations applied at the head (K1.15)", () => {
     expect(parseCourseOp({ op: "setCourseDetails" })).toBeNull();
     const d = applyCourseOp(manifest([]), new Set(), parseCourseOp({ op: "setCourseDetails", description: "An open course." })!, uid);
     expect(d.ok && JSON.parse(d.writes[0]!.content!).description).toBe("An open course.");
+  });
+  it("[K1.15] renaming a chapter that already lacks a required part isn't a new problem (problems compare under the new title)", () => {
+    const r = applyCourseOp(manifest([{ slug: "gases", title: "Gases" }]), new Set(["study-guide/gases.md"]), { op: "renameChapter", slug: "gases", title: "The Gas Laws" }, uid);
+    expect(r.ok).toBe(true);
+    const add = applyCourseOp(manifest([{ slug: "gases", title: "Gases" }]), new Set(["study-guide/gases.md"]), { op: "removeChapter", slug: "gases" }, uid);
+    expect(add.ok).toBe(true);
   });
 });
