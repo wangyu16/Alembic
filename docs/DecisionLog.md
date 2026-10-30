@@ -7,6 +7,30 @@ design, and what is deferred to the future. Complements [Status.md](Status.md)
 ---
 
 
+## 2026-10-30 — Owner rulings: whole-course restore; public or private by place, not by text
+
+Guiding principle (owner): **easy authoring over strict rules.**
+
+1. **Whole-course restore (history-v3 §8), as recommended:**
+   - it brings back the documents that existed at the snapshot to their text
+     then; documents and chapters added since are **kept** (listed as "added
+     since the snapshot", each removable in one click);
+   - a snapshot "Before restoring to <name>" is made first, so undoing it is
+     one more restore;
+   - **no lock and no agent pause:** edits made meanwhile follow the usual
+     version rule (the newer text on top, the other version kept);
+   - course plans come back approved only if that exact text was approved
+     (approvals follow content); no batch Approve;
+   - the licence, the Coursewerk version and the mechanics stay as they are now.
+2. **Whether a file is public depends only on where it is** (O23, and wider):
+   a file is public unless the author puts it in the private category. Its
+   text is never compared with private files to decide. So Publish no longer
+   runs the answer-key check, and a restore no longer refuses a version
+   because it repeats private text or because the file was later moved into
+   `private/`. (The copying check against sources stays: it is about
+   copyright, not privacy.) Supersedes the "always block" part of R27 for
+   answer keys, and history-v3 H.8's private-move rule.
+
 ## 2026-10-29 (evening) — Owner rulings for the overnight foundations run
 
 1. **History restore rights:** anyone who may edit a document may restore an

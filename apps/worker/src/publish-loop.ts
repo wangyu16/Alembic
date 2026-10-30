@@ -147,16 +147,12 @@ async function publishRun(cfg: PublishConfig, req: Claimed): Promise<PublishOutc
     },
   });
 
-  // Checks: answer keys (the pinned private instructor files) and copying (source fingerprints).
-  const { entries } = await wClient.listTreeEntries(working, W);
-  const instructor = entries.filter((e) => e.type === "blob" && e.path.startsWith("private/instructor/"));
-  const read = await mapLimit(instructor, READ_CONCURRENCY, (e) => w.readFile(W, e.path));
-  const privateTexts: Array<{ path: string; text: string }> = [];
-  for (const [k, e] of instructor.entries()) { const f = read[k]; if (f && "text" in f) privateTexts.push({ path: e.path, text: f.text }); }
+  // Checks: copying from sources (fingerprints). Whether a file is public is decided by where it is, never by its
+  // text, so there is no answer-key check against private files (owner ruling 2026-10-30, O23).
   const { rows: fps } = await cfg.sql.query<{ source_id: string; n: number; hashes: string[] }>(
     `select f.source_id, f.n, f.hashes from public.source_fingerprints f join public.sources s on s.id = f.source_id where s.package_id = $1`,
     [req.package_id]);
-  const checks = copyChecks(privateTexts, fps.map((f) => ({ sourceId: f.source_id, n: f.n, hashes: f.hashes })));
+  const checks = copyChecks([], fps.map((f) => ({ sourceId: f.source_id, n: f.n, hashes: f.hashes })));
 
   const store = new SqlPublishStore(cfg.sql, {
     async readPublic(sha, path) {

@@ -171,9 +171,9 @@ bound_to = [
 
 [[claim]]
 id = "H.8"
-claim = "A restore references only commits in the course's own history (ancestors of the head); restored figures must be the path's own blob at that commit and pass the upload checks; a file moved into private/ can't be restored into a public space."
+claim = "A restore references only commits in the course's own history (ancestors of the head); restored figures must be the path's own blob at that commit and pass the upload checks. (Amended 2026-10-30, owner ruling: a file is public or private by where it is, never by its text, so the private-move and answer-key refusals were removed.)"
 oracle = "conformance"
 bound_to = [
   "packages/package-ops/src/course-committer.test.ts :: a restored figure must be this path's own blob at the commit named, and pass the upload checks",
 ]
-note = "Ancestry and the private-move rule are enforced in the server action (history/actions.ts); live-checked, no unit test yet."
+note = "Ancestry is enforced in the server action (history/actions.ts); live-checked, no unit test yet."

@@ -75,8 +75,8 @@ course has already had, through the one write path.
     kept and offered again).
 - **Restoring a removed file** (G0r1 B7):
   - allowed for a path the person may write;
-  - **refused** when the file's last removal was a move into `private/` (an
-    answer key must not come back into a public space);
+  - whether it is public depends only on its place (owner ruling 2026-10-30):
+    its text is not compared with private files;
   - a removed chapter's part file is restored with `restoreChapter` (owner,
     deputy); a co-author sees "ask the owner or deputy".
 
@@ -104,21 +104,19 @@ answers the item.
 - **Compare with now:** the list of documents that differ (one tree call
   each), each openable as a §2 diff.
 
-## 8. Deferred to the owner: restoring a whole course
+## 8. Restoring a whole course (owner rulings 2026-10-30)
 
-Draft 1's whole-course restore needs rulings the design and the review don't
-settle (G0r1 B3, B5, B8):
-1. **During the restore:** pause the agent and lock editing (design §6.4), or
-   let later edits land on top?
-2. **Course plans that come back:** approved again by themselves (approvals
-   are by content), or one Approve batch (design)?
-3. **Documents added since the snapshot:** removed (with their authors told),
-   or kept?
-4. **Licence and Coursewerk version:** kept from now (recommended), or taken
-   from the snapshot?
+Draft 1's open points (G0r1 B3, B5, B8) are settled for easy use:
+1. **What comes back:** every document that existed at the snapshot, with its text then. Documents and chapters
+   added since are **kept** and listed as "added since the snapshot", each removable in one click.
+2. **Undo:** a snapshot "Before restoring to <name>" is made first.
+3. **No lock, no agent pause:** the restore is one write through the queue; an edit made meanwhile follows the usual
+   version rule (the newer text on top, the other kept).
+4. **Course plans:** approved only if that exact text was approved before (approvals follow content); no batch.
+5. **Kept from now:** the licence, the Coursewerk version and the mechanics fields.
+6. **Who:** owner and deputy (`snapshot.restore-course`).
 
-Until then, a whole course can be brought back document by document (§3),
-and snapshots give the names and the comparison.
+Not built yet; it follows the agent hand-in.
 
 ## 6. Interfaces
 
@@ -147,10 +145,11 @@ and snapshots give the names and the comparison.
   and answers the item.
 - **H.6** A snapshot is a tag on the working repo plus a row; names never
   collide.
-- **H.7** (deferred with §8.)
+- **H.7** A whole-course restore (§8) brings back the snapshot's documents, keeps those added since, makes a
+  "Before restoring" snapshot first, and keeps the licence and mechanics. (Not built yet.)
 - **H.8** A restore references only commits that are ancestors of the head.
-  Restored content passes every write check, a restore is never combined, and
-  a file moved into `private/` can't be restored into a public space.
+  Restored content passes every write check and a restore is never combined.
+  Whether a file is public depends only on its place (owner ruling 2026-10-30).
 
 ## 9. Review resolutions (G0 round 1)
 

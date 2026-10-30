@@ -123,8 +123,9 @@ export default function PublishPage() {
 
       <GuideSection heading="When a check finds something">
         <p>
-          The checks look for two things: a chapter repeating an answer key, and a
-          chapter copying a source. If one finds something, that chapter stays as it was
+          The checks look for a chapter copying a source. Answer keys and other
+          instructor-only files stay private because of where they are, so nothing in
+          them is ever published. If a check finds something, that chapter stays as it was
           and the result says what was found. Fix it and publish again. If you are sure
           the chapter is fine, the owner or deputy can tick <strong>Publish anyway</strong>{" "}
           in that chapter&rsquo;s row and press <strong>Publish</strong>.

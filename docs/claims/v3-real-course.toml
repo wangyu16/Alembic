@@ -60,7 +60,7 @@ oracle = "scenario"
 bound_to = [
   "packages/package-ops/src/copy-check.scale.test.ts :: 95 documents of 4,000 words and 188 images of 300 KB against 19 answer keys run in bounded time, and still catch a copied answer, also one hidden in an image",
 ]
-note = "Audit r1 F1 (HIGH). Before: key shingles rebuilt per public file and images checked as windows-1252 noise; the scale run passed 15 min unfinished. After: 10.4 s locally (incl. generating 56 MB of test images)."
+note = "Since 2026-10-30 (owner ruling, O23) Publish no longer runs the answer-key check (it passes no private texts); the check itself and this bound stay as library tests, and the copying check from sources still runs. Audit r1 F1 (HIGH). Before: key shingles rebuilt per public file and images checked as windows-1252 noise; the scale run passed 15 min unfinished. After: 10.4 s locally (incl. generating 56 MB of test images)."
 
 [[claim]]
 id = "RC.7"

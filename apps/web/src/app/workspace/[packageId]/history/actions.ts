@@ -3,9 +3,8 @@
 import { randomUUID } from "node:crypto";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { gitBlobSha } from "@alembic/github-bridge";
 import { can, canWritePath, fileKind, MAX_UPLOAD_BYTES, normalizePath, unitPartForPath, WorkingManifestV3Schema, type Role } from "@alembic/package-contract";
-import { checkAnswerKeys, SqlQueueStore, words } from "@alembic/package-ops";
+import { SqlQueueStore } from "@alembic/package-ops";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { directDb } from "@/lib/db";
 import { courseRepo, textVersion } from "@/lib/course-v3";
@@ -46,8 +45,7 @@ export async function restoreVersionAction(packageId: string, rawPath: string, s
     const old = await c!.repo.readFile(sha, path);
     if (old === null) back(to, "This document didn't exist at that point.");
     const current = await c!.repo.readFile(head, path);
-    if (current === null) await mayRestoreRemoved(c!, head, path, gitBlobSha(new TextEncoder().encode(old!)), to);
-    if (!path.startsWith("private/")) await mayRepeatPrivate(c!, head, path, old!, range.changed, to);
+    if (current === null) await mayRestoreRemoved(c!, head, path, to);
     file = { path, baseVersion: seen ?? (current === null ? null : textVersion(current)), text: old!, restoreOf: sha };
   } else {
     const [then, now] = await Promise.all([c!.client.listTreeEntries(coords, sha), c!.client.listTreeEntries(coords, head)]);
@@ -55,9 +53,8 @@ export async function restoreVersionAction(packageId: string, rawPath: string, s
     const blob = was?.sha;
     if (!blob) back(to, "This figure didn't exist at that point.");
     if ((was?.size ?? 0) > MAX_UPLOAD_BYTES) back(to, "That version is larger than 4 MB, the most a course file may be."); // audit r1 L-2
-    if (!path.startsWith("private/") && (now.truncated || now.entries.some((e) => e.path.startsWith("private/") && e.sha === blob))) back(to, "This picture is now instructor-only, so it can't come back to a public place.");
     const current = now.entries.find((e) => e.path === path)?.sha ?? null;
-    if (current === null) await mayRestoreRemoved(c!, head, path, blob!, to);
+    if (current === null) await mayRestoreRemoved(c!, head, path, to);
     file = { path, baseVersion: null, text: null, blob: { sha: blob!, size: 0 }, baseBlob: seen ?? current, restoreOf: sha };
   }
   // "Use the other version": the item is answered only once the restore passed every check, so a refusal leaves it
@@ -74,52 +71,15 @@ export async function restoreVersionAction(packageId: string, rawPath: string, s
 }
 
 /**
- * A removed file comes back only to a place it may be (history-v3 §3, G0r1 B7): not a listed chapter's part (that is
- * restoreChapter's), and not into a public space when the same content now sits under private/ (an answer key moved
- * there must not come back public).
+ * A removed file comes back only to a place it may be (history-v3 §3): not a removed chapter's part (that is
+ * restoreChapter's). Whether it is public is decided by its place, never by its text (owner ruling 2026-10-30).
  */
-async function mayRestoreRemoved(c: NonNullable<Awaited<ReturnType<typeof courseRepo>>>, head: string, path: string, blob: string, to: string): Promise<void> {
+async function mayRestoreRemoved(c: NonNullable<Awaited<ReturnType<typeof courseRepo>>>, head: string, path: string, to: string): Promise<void> {
   const part = unitPartForPath(path);
   if (part) {
     const m = WorkingManifestV3Schema.safeParse(JSON.parse((await c.repo.readFile(head, "alembic.json")) ?? "null"));
     if (!m.success || !m.data.chapters.some((ch) => ch.slug === part.slug)) back(to, "This part belongs to a removed chapter: ask the owner or deputy to restore the chapter.");
   }
-  if (!path.startsWith("private/")) {
-    const now = await c.client.listTreeEntries({ owner: c.owner, repo: c.name }, head);
-    if (now.entries.some((e) => e.path.startsWith("private/") && e.sha === blob)) back(to, "This content is now instructor-only, so it can't come back to a public place.");
-  }
-
-}
-
-/** The most instructor-only text a restore reads to check against (audit r2 H2-1: unbounded reads stalled the server). */
-const MAX_PRIVATE_CHECK_BYTES = 1_000_000;
-
-/**
- * Never back into a public place a text that repeats instructor-only material (audit r1 H-1, r2 H2-1/M2-1):
- * - an exact copy of any file under private/ now (one tree read, compared by content id), whatever its length;
- * - a 12-word run from, or the whole of a short, instructor file added or changed since that version (Publish's
- *   own check), read within a byte budget: over it, or when the change is too large to list, the person is told
- *   to ask the owner. Files unchanged since were public alongside it then, and Publish still checks them.
- */
-async function mayRepeatPrivate(c: NonNullable<Awaited<ReturnType<typeof courseRepo>>>, head: string, path: string, old: string, changed: Array<{ path: string; status: string }> | null, to: string): Promise<void> {
-  const now = await c.client.listTreeEntries({ owner: c.owner, repo: c.name }, head);
-  const tooMuch = "Too much instructor-only material changed since that version to check it here; ask the owner.";
-  if (now.truncated || old.length > MAX_PRIVATE_CHECK_BYTES) back(to, tooMuch); // audit r3 M3-1: the old text bounds the check too
-  const blob = gitBlobSha(new TextEncoder().encode(old));
-  if (now.entries.some((e) => e.path.startsWith("private/") && e.sha === blob)) back(to, "This content is now instructor-only, so it can't come back to a public place.");
-  if (changed === null) back(to, tooMuch);
-  const entries = new Map(now.entries.map((e) => [e.path, e]));
-  const priv = changed!.filter((f) => f.path.startsWith("private/") && f.status !== "removed" && fileKind(f.path) === "text");
-  // Only plain files are read, by content id: a link or submodule, or a path missing from the tree, refuses (audit r3 L3-2, L3-3).
-  if (priv.some((f) => { const e = entries.get(f.path); return !e || e.type !== "blob" || e.mode === "120000" || e.size === undefined; })) back(to, tooMuch);
-  if (priv.reduce((n, f) => n + entries.get(f.path)!.size!, 0) > MAX_PRIVATE_CHECK_BYTES) back(to, tooMuch);
-  const texts = (await Promise.all(priv.map((f) => c.client.getBlob({ owner: c.owner, repo: c.name }, entries.get(f.path)!.sha)))).map((b) => new TextDecoder().decode(b));
-  // Short keys: each paragraph or line of a changed instructor file under 12 words, found whole (Publish's own word rule; audit r3 M3-2).
-  const flat = ` ${words(old).join(" ")} `;
-  const short = texts.some((t) => t.split(/\n/).some((line) => { const w = words(line); return w.length >= 2 && w.length < 12 && w.join(" ").length >= 8 && flat.includes(` ${w.join(" ")} `); }));
-  // One joined entry: one pass over the old text, and a run can't be missed (audit r3 M3-1).
-  const joined = texts.join("\n\n");
-  if (short || (joined.trim() && checkAnswerKeys(path, old, [{ path: "private", text: joined }]).length)) back(to, "That version repeats instructor-only material, so it can't come back to a public place.");
 }
 
 /** Name the course as it is now (history-v3 §5): a tag on the working repo plus a row. */
