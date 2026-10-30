@@ -357,7 +357,10 @@ export async function processRow(row: QueueRow, store: QueueStore, repo: Working
       }
 
       // One line, no control characters: user text can't forge trailer lines (G2 r3 LOW).
-      const summary = (row.payload.summary ?? `${row.kind} ${row.payload.files.length} file(s)`).replace(/[\u0000-\u001f\u007f]+/g, " ").slice(0, 200);
+      // History shows this line to teachers: plain words, never the queue's own terms.
+      const names = row.payload.files.map((f) => f.path.split("/").pop()).slice(0, 3).join(", ") + (row.payload.files.length > 3 ? ` and ${row.payload.files.length - 3} more` : "");
+      const plain = row.kind === "sync" ? `Saved ${names}` : row.kind === "restore" ? `Restored ${names}` : row.kind === "changeset" ? `Changes by the assistant: ${names}` : row.kind === "outside" ? `Changes made on GitHub: ${names}` : `Updated ${names}`;
+      const summary = (row.payload.summary ?? plain).replace(/[\u0000-\u001f\u007f]+/g, " ").slice(0, 200);
       const fileLines = files
         .filter((f) => f.outcome !== "refused")
         .map((f) => `Alembic-File: ${f.outcome}${f.reason ? ` ${f.reason}` : ""} ${f.path}`)
