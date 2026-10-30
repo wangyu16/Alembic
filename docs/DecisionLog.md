@@ -35,6 +35,11 @@ Guiding principle (owner): **easy authoring over strict rules.**
    check against sources either; it runs no content checks at all. It keeps
    platform safety (safe figures, raw HTML cleaned), the profile's structure
    rules and privacy by place. Family FD-09 is clarified to match.
+4. **The person publishes, and is responsible** (owner, same day): "Alembic
+   does not need to see the verdict for publication. The human user clicks
+   'publish', the platform publishes it. It is the user's responsibility for
+   published contents." Alembic asks the type package (Coursewerk) nothing at
+   Publish. Interface draft: family `docs/SITE-TYPE-CONTRACT.md`.
 
 ## 2026-10-29 (evening) — Owner rulings for the overnight foundations run
 
