@@ -22,3 +22,5 @@ alter table public.shared_elements enable row level security;
 drop policy if exists shared_elements_members_read on public.shared_elements;
 create policy shared_elements_members_read on public.shared_elements for select to authenticated
   using (public.course_role(package_id) is not null);
+-- Server-only writes: no write grant for the API roles (besides RLS having no write policy).
+revoke insert, update, delete, truncate on public.shared_elements from anon, authenticated;

@@ -263,3 +263,19 @@ oracle = "conformance"
 bound_to = [
   "packages/package-ops/src/course-create-v3.test.ts :: a new course starts from its site type: the README from its starter, the licence's own text, and a citation that is valid CFF",
 ]
+
+[[claim]]
+id = "K1.28"
+claim = "A shared element (element-sharing-v3) can be seen at its address only while its figure or page is on the course website, and a section only while its block id is in the published text; stopped sharing is never shown again; a page's shareables are its course figures and its sections with a block id (never inside code)."
+oracle = "conformance"
+bound_to = [
+  "packages/package-ops/src/shared-elements.test.ts :: a page's shareables are its course figures and its sections that have a block id (never one inside code)",
+  "packages/package-ops/src/shared-elements.test.ts :: a section runs from its heading to the next heading of the same level, sub-headings included",
+  "packages/package-ops/src/shared-elements.test.ts :: an element is available only while it is on the course website; stopped sharing never is",
+]
+
+[[claim]]
+id = "K1.29"
+claim = "Sharing and stopping need the right to edit the page (re-checked in the server action); shared-element rows are written only by the server (no API-role write grant); the element page always carries the course, its authors, the licence and the source page, and shows a section in a frame where no script runs."
+oracle = "human"
+note = "Server-side checks in apps/web share-actions.ts and the 0068 grants (covered by P5.S.15's write inventory); the element page checked live."
