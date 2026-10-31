@@ -78,3 +78,14 @@ describe("the cleaner and orz-markdown's own constructs (overnight round 3)", ()
     expect(clean(t)).toEqual({ ok: true, text: t, escaped: 0 });
   });
 });
+
+describe("the render backstop (overnight round 3)", () => {
+  const cleanR = (t: string) => cleanRawHtml(t, parse, (src) => md.render(src));
+  it("[K1.20] whatever the cleaner misses, a page whose rendering holds a tag that can run script is refused; ordinary pages pass", () => {
+    const missed = "x"; // simulate a construct the token walk doesn't know: a renderer that adds a handler
+    expect(cleanRawHtml(missed, parse, () => '<p onclick="x()">x</p>')).toMatchObject({ ok: false });
+    expect(cleanRawHtml(missed, parse, () => '<a href="java&#x3a;script:alert(1)">x</a>'.replace("java&#x3a;script:", "javascript:"))).toMatchObject({ ok: false });
+    const page = "## 16.1 Buffers{{attrs[#blk-ch16sec01]}}\n\n| x | y |\n|---|---|\n| 1 | 2 |\n\n::: spoil Answer\n42\n:::\n\n[link](https://example.org) ![f](fig.png)\n";
+    expect(cleanR(page)).toEqual({ ok: true, text: page, escaped: 0 });
+  });
+});

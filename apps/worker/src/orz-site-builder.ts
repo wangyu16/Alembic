@@ -15,7 +15,7 @@ import { md } from "orz-markdown";
 
 /** The generated front page as Publish would write any page: raw HTML outside the safe list turned into text (round 2 H-A). */
 const cleanIndex = (text: string): string | null => {
-  const r = cleanRawHtml(text, (src) => md.parse(src, {}) as unknown as MdToken[]);
+  const r = cleanRawHtml(text, (src) => md.parse(src, {}) as unknown as MdToken[], (src) => md.render(src));
   return r.ok ? r.text : null;
 };
 

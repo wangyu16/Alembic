@@ -78,9 +78,30 @@ export type CleanText = { ok: true; text: string; escaped: number } | { ok: fals
  * The text as Publish writes it: every raw HTML piece outside the list turned
  * into text (its "<" written as "&lt;"). `parse` is orz-markdown's `md.parse`.
  */
-export function cleanRawHtml(text: string, parse: (src: string) => MdToken[]): CleanText {
+/**
+ * Tags in rendered HTML that can run script: an attribute named `on…`, `srcdoc` or `formaction`, or a `javascript:`
+ * address (quoted values compared, never text between tags). The backstop for constructs the token walk doesn't know.
+ */
+export function liveMarkup(html: string): string | null {
+  for (const m of html.matchAll(/<([a-z][a-z0-9-]*)\b((?:\s+[^\s=>\/]+(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]*))?)*)\s*\/?>/gi)) {
+    for (const a of m[2]!.matchAll(/\s+([^\s=>\/]+)(?:\s*=\s*("[^"]*"|'[^']*'|[^\s>]*))?/g)) {
+      const name = a[1]!.toLowerCase();
+      const value = (a[2] ?? "").replace(/^["']|["']$/g, "").replace(/&#x?0*(58|3a);?/gi, ":").replace(/[\s\u0000-\u001f]+/g, "").toLowerCase();
+      if (/^on/.test(name) || name === "srcdoc" || name === "formaction") return `<${m[1]} ${name}=…>`;
+      if (/^(href|src|action|xlink:href|data)$/.test(name) && /^(javascript|vbscript):/.test(value)) return `<${m[1]} ${name}="${value.slice(0, 20)}">`;
+    }
+  }
+  return null;
+}
+
+export function cleanRawHtml(text: string, parse: (src: string) => MdToken[], render?: (src: string) => string): CleanText {
   const found = unsafePieces(parse(text));
-  if (!found.length) return { ok: true, text, escaped: 0 };
+  // The backstop (overnight round 3): what the renderer makes of the result must hold no tag that can run script.
+  const backstop = (t: string, escaped: number): CleanText => {
+    const live = render ? liveMarkup(render(t)) : null;
+    return live ? { ok: false, reason: `it contains markup that could run on the website (${live})` } : { ok: true, text: t, escaped };
+  };
+  if (!found.length) return backstop(text, 0);
   const lines = text.split("\n");
   const cursor = new Map<number, number>(); // per first line: where the next inline search starts
   for (const p of found) {
@@ -110,5 +131,5 @@ export function cleanRawHtml(text: string, parse: (src: string) => MdToken[]): C
   // Fail closed: the cleaned text, read again, must hold nothing outside the list.
   const left = unsafePieces(parse(cleaned));
   if (left.length) return { ok: false, reason: `it contains raw HTML that can't be published safely (${left[0]!.html.trim().slice(0, 60)})` };
-  return { ok: true, text: cleaned, escaped: found.length };
+  return backstop(cleaned, found.length);
 }
