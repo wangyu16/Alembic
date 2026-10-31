@@ -271,3 +271,24 @@ content profile).
   - The owner's "closed-loop stop rule" applies: trust boundaries plus per-construct limits, not endless hardening.
 
 **Stop rule met:** round 3 found no HIGH. **Live (`8f7b06c`):** the restore landed, and older entries read "Saved".
+
+## Overnight 2026-10-30/31: page status, Publish by file, website, sharing, add-on — round 1
+
+Scope: Alembic `1e3dfa1..cb18772` (page status, Publish by file, the website build, Door C for statuses, element
+sharing step 1, the course-website add-on, course creation from the definition). **1 HIGH, 3 MEDIUM, 5 LOW.**
+Fixed in `73bbf71` except L4 and L5.
+
+- **H1:** the generated front page wrote titles and file names in raw, so script could reach the course website through
+  a term title or a file name. **Now:** escaped, and link targets encoded.
+- **M1:** files deleted on GitHub kept their status unless they were chapter parts. **Now:** every deleted file is looked at.
+- **M2:** one stale status undid every later owner settings push. **Now:** only changed statuses are checked; stale ones are dropped quietly.
+- **M3:** a copied term had broken figures, duplicate document ids, and withdrawn files came back. **Now:** figures are
+  copied by blob, pages get new ids, and withdrawn stays.
+- **L1:** a home page that fails would take the front page with it; now it falls back without the home page and term.
+  **L2:** at most 4 build rounds. **L3:** only the course's own term folders belong to the add-on (older `current/` files are ordinary).
+- **Open, with reasons:**
+  - **L4:** sharing a figure doesn't check that it is shown on that page. No privacy effect: only published files are ever served.
+  - **L5:** an edit made on GitHub doesn't apply "an edit returns a completed page to draft". It comes with the next Door C pass.
+
+**Agent spec (G7 round 4, agent-runtime §14):** 3 HIGH (cost hold, whose sources, records fast path), all resolved
+in the text (`5283c1d`); a short round 5 before C4 code.
