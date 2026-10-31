@@ -46,9 +46,12 @@ export function termOfPath(path: string): string | null {
  * Does the add-on let this file go to the website (K1.30)? Files outside the add-on's places: yes (decided by status
  * as usual). The home page: only with the add-on on. Term files: only with it on and only in the current term.
  */
-export function addonAllowsPublish(path: string, m: { addons?: readonly string[]; currentTerm?: string | undefined }): boolean {
+export function addonAllowsPublish(path: string, m: { addons?: readonly string[]; terms?: ReadonlyArray<{ slug: string }> | undefined; currentTerm?: string | undefined }): boolean {
   const on = m.addons?.includes(COURSE_WEBSITE) === true;
   if (path === HOME_PAGE) return on;
-  if (path === TERM_ROOT || path.startsWith(`${TERM_ROOT}/`)) return on && !!m.currentTerm && termOfPath(path) === m.currentTerm;
-  return true;
+  // Only the folders of the course's own terms are the add-on's; anything else under current/ (a course's older
+  // files) is an ordinary file (round 1 audit L3).
+  const term = termOfPath(path);
+  if (!term || !(m.terms ?? []).some((t) => t.slug === term)) return true;
+  return on && term === m.currentTerm;
 }

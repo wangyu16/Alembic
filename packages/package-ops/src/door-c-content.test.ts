@@ -51,3 +51,18 @@ describe("Door C and page statuses (SITE-TYPE-CONTRACT §6, §7)", () => {
     expect(v.dropStatus).toEqual(["study-guide/extra.md"]);
   });
 });
+
+describe("Door C status follow-ups (round 1 audit M1, M2)", () => {
+  it("[K1.25] an old status naming a gone file never undoes the owner's later settings push; it is dropped quietly", () => {
+    const before = M({ status: { "study-guide/gone.md": "completed" } });
+    const after = M({ title: "New title", status: { "study-guide/gone.md": "completed" } });
+    const v = classifyPushedContent({ files: [{ path: "alembic.json", status: "modified" }], manifestBefore: before, manifestAfter: after, pathsAfter: paths, pusherIsOwner: true });
+    expect(v.undo).toEqual([]);
+    expect(v.dropStatus).toEqual(["study-guide/gone.md"]);
+  });
+  it("[K1.25] any file deleted on GitHub loses its status, a figure or a term page too", () => {
+    const m = M({ status: { "assets/gases/f.png": "withdrawn", "current/fall-2026/syllabus.md": "completed" } });
+    const v = classifyPushedContent({ files: [{ path: "assets/gases/f.png", status: "removed" }, { path: "current/fall-2026/syllabus.md", status: "removed" }], manifestBefore: m, manifestAfter: m, pathsAfter: paths, pusherIsOwner: false });
+    expect(v.dropStatus?.sort()).toEqual(["assets/gases/f.png", "current/fall-2026/syllabus.md"]);
+  });
+});

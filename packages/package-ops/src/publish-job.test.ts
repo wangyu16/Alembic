@@ -60,7 +60,7 @@ describe("the course-website add-on at Publish (K1.30)", () => {
     expect(pub.file("current/fall-2026/syllabus.md")).toBe("fall syllabus");
     expect(pub.file("current/spring-2026/syllabus.md")).toBeUndefined();
     const pub2 = new FakePublic();
-    await runPublish(input(), working(files({})), pub2, new FakeStore());
+    await runPublish(input(), working(files({ terms: [{ slug: "spring-2026", title: "Spring 2026" }, { slug: "fall-2026", title: "Fall 2026" }], currentTerm: "fall-2026" })), pub2, new FakeStore());
     expect(pub2.file("home.md")).toBeUndefined();
     expect(pub2.file("current/fall-2026/syllabus.md")).toBeUndefined();
   });

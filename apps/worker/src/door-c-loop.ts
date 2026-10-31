@@ -99,8 +99,8 @@ async function handlePush(cfg: DoorCConfig, ev: Ev): Promise<void> {
   const sizeOf = new Map(entries.map((e) => [e.path, (e as { size?: number }).size ?? 0]));
   const relevant = changed.filter((c) => verdict.edits.includes(c.path) && (
     c.path === "alembic.json" || c.path === "LICENSE" || c.path === "CITATION.cff" || activeProfile.serverOnlyFiles.includes(c.path) ||
-    (c.status === "removed" && unitPartForPath(c.path) !== null) ||
-    (c.status !== "removed" && (isSvgPath(c.path) || fileKind(c.path) !== "text"))));
+    c.status === "removed" || // any deleted file: a chapter part is restored, a status is dropped (round 1 audit M1)
+    isSvgPath(c.path) || fileKind(c.path) !== "text"));
   if (relevant.length) {
     const needManifest = relevant.some((c) => c.path === "alembic.json" || c.status === "removed");
     const [mBefore, mAfter] = needManifest

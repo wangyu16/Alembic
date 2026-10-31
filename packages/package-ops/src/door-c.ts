@@ -155,7 +155,9 @@ export function classifyPushedContent(i: {
     if (!after) undo("alembic.json", "the course settings aren't valid");
     else if (!activeProfile.licences.allowed.includes(after.license)) undo("alembic.json", "that licence isn't allowed");
     else if (MECHANICS_FIELDS.some((k) => JSON.stringify(rb[k]) !== JSON.stringify(ra[k]))) undo("alembic.json", "Alembic's own settings can only change in Alembic");
-    else if (Object.entries(after.status ?? {}).some(([p, st]) => !i.pathsAfter.has(p) || !takesStatus(p) || (st === "completed" && !isPage(p)))) undo("alembic.json", "a status names a file that isn't a public page or file of the course");
+    // Only the statuses this push changed are checked (round 1 audit M2): an older entry naming a gone file never
+    // undoes an owner's later settings push (it is dropped quietly instead).
+    else if (Object.entries(after.status ?? {}).some(([p, st]) => before?.status?.[p] !== st && (!i.pathsAfter.has(p) || !takesStatus(p) || (st === "completed" && !isPage(p))))) undo("alembic.json", "a status names a file that isn't a public page or file of the course");
     else {
       // Compared under the new titles (a renamed chapter that already lacked a part isn't a new problem).
       const hadSlug = new Set(before ? before.chapters.map((c) => c.slug) : []);
@@ -171,6 +173,9 @@ export function classifyPushedContent(i: {
     }
   }
   const listed = new Set((parse(i.manifestAfter) ?? before)?.chapters.map((c) => c.slug) ?? []);
+  // Statuses naming files that are gone (deleted earlier, or in this push) are dropped quietly.
+  const statusNow = (parse(i.manifestAfter) ?? before)?.status ?? {};
+  for (const p of Object.keys(statusNow)) if (!i.pathsAfter.has(p) && !i.files.some((f) => f.path === p)) (v.dropStatus ??= []).push(p);
   for (const f of i.files) {
     if (f.path === "LICENSE" || f.path === "CITATION.cff") { undo(f.path, "the licence files are written by Alembic"); continue; }
     if (activeProfile.serverOnlyFiles.includes(f.path)) { undo(f.path, "Alembic's own note"); continue; }

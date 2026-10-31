@@ -14,8 +14,8 @@ function run(text: string, paths: Set<string>, ops: CourseOp[]) {
     const r = applyCourseOp(text, paths, op, uid);
     results.push(r);
     if (!r.ok) continue;
-    for (const w of r.writes) (w.content === null ? paths.delete(w.path) : paths.add(w.path));
-    text = r.writes.find((w) => w.path === "alembic.json")!.content!;
+    for (const w of r.writes) (("content" in w && w.content === null) ? paths.delete(w.path) : paths.add(w.path));
+    text = (r.writes.find((w) => w.path === "alembic.json")! as { content: string }).content;
   }
   return { text, paths, results, chapters: JSON.parse(text).chapters as Array<{ slug: string; title: string; mode: string }> };
 }
@@ -43,7 +43,7 @@ describe("course operations applied at the head (K1.15)", () => {
   });
   it("[K1.16] removing a chapter removes it and its part files in one change", () => {
     const r = applyCourseOp(manifest([{ slug: "gases", title: "Gases" }, { slug: "atoms", title: "Atoms" }]), new Set([...parts("gases"), ...parts("atoms"), "assets/gases/x.png"]), { op: "removeChapter", slug: "gases" }, uid);
-    expect(r.ok && r.writes.filter((w) => w.content === null).map((w) => w.path).sort()).toEqual(parts("gases").sort());
+    expect(r.ok && r.writes.filter((w) => ("content" in w && w.content === null)).map((w) => w.path).sort()).toEqual(parts("gases").sort());
     expect(r.ok && r.summary).toBe("Removed chapter “Gases”");
   });
   it("[K1.15] adding chapters starts the parts the profile requires (concept map, study guide, assessment guide), or all five; never a chapter without them", () => {
@@ -67,7 +67,7 @@ describe("course operations applied at the head (K1.15)", () => {
     expect(parseCourseOp({ op: "removeChapter", slug: "../x" })).toBeNull();
     expect(parseCourseOp({ op: "setCourseDetails" })).toBeNull();
     const d = applyCourseOp(manifest([]), new Set(), parseCourseOp({ op: "setCourseDetails", description: "An open course." })!, uid);
-    expect(d.ok && JSON.parse(d.writes[0]!.content!).description).toBe("An open course.");
+    expect(d.ok && JSON.parse((d.writes[0] as { content: string }).content).description).toBe("An open course.");
   });
   it("[K1.15] renaming a chapter that already lacks a required part isn't a new problem (problems compare under the new title)", () => {
     const r = applyCourseOp(manifest([{ slug: "gases", title: "Gases" }]), new Set(["study-guide/gases.md"]), { op: "renameChapter", slug: "gases", title: "The Gas Laws" }, uid);
@@ -137,5 +137,21 @@ describe("the course-website add-on (course-website-addon)", () => {
     expect(r.ok && r.writes.map((w) => w.path)).toEqual(["alembic.json", "current/spring-2027/schedule.md"]); // the syllabus was already there
     const bad = applyCourseOp(on, new Set(["alembic.json"]), { op: "setCurrentTerm", slug: "winter-2030" }, uid);
     expect(bad.ok).toBe(false);
+  });
+});
+
+describe("copying a term (round 1 audit M3)", () => {
+  it("[K1.31] a copied term gets the figures too, new document ids, and keeps files taken off the website off", () => {
+    const m0 = JSON.stringify({ schemaVersion: 3, packageId: "pkg-a", title: "Chem", license: "CC-BY-4.0", createdAt: "2026-10-30T00:00:00Z", chapters: [],
+      addons: ["course-website"], terms: [{ slug: "fall-2026", title: "Fall 2026" }], currentTerm: "fall-2026", status: { "current/fall-2026/old.csv": "withdrawn" } });
+    const r = applyCourseOp(m0, new Set(["alembic.json"]), { op: "addTerm", title: "Spring 2027", copyFrom: "fall-2026" }, () => "doc-new",
+      { termFiles: [{ path: "current/fall-2026/syllabus.md", content: "{{nyml\nkind: document\nuid: doc-old\n}}\n# S\n![f](fig.png)\n" },
+        { path: "current/fall-2026/fig.png", blobSha: "b".repeat(40) }, { path: "current/fall-2026/old.csv", content: "a,b\n" }] });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    const w = new Map(r.writes.map((x) => [x.path, x]));
+    expect((w.get("current/spring-2027/syllabus.md") as { content: string }).content).toContain("uid: doc-new");
+    expect(w.get("current/spring-2027/fig.png")).toEqual({ path: "current/spring-2027/fig.png", blobSha: "b".repeat(40) });
+    expect(r.manifest.status?.["current/spring-2027/old.csv"]).toBe("withdrawn");
   });
 });

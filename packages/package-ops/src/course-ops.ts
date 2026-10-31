@@ -41,8 +41,11 @@ export interface ChapterSnapshot {
 
 export const COURSE_OPS = ["addChapters", "renameChapter", "moveChapter", "removeChapter", "setChapterMode", "setCourseDetails", "setLicense", "restoreChapter"] as const;
 
+/** A file a course operation writes: text (null deletes it), or an existing blob reused (a copied figure). */
+export type CourseOpWrite = { path: string; content: string | null } | { path: string; blobSha: string; mode?: "100644" | "100755" };
+
 export type CourseOpResult =
-  | { ok: true; manifest: WorkingManifestV3; writes: Array<{ path: string; content: string | null }>; summary: string }
+  | { ok: true; manifest: WorkingManifestV3; writes: CourseOpWrite[]; summary: string }
   | { ok: false; reason: string };
 
 const oneLine = (t: unknown, max: number) => (typeof t === "string" ? t.replace(/\s+/g, " ").trim().slice(0, max) : "");
@@ -132,7 +135,7 @@ function describe(op: CourseOp, m: WorkingManifestV3): string {
  * mints document ids for started parts. Refuses (nothing written) when the
  * operation no longer applies or the result isn't valid under the profile.
  */
-export function applyCourseOp(manifestText: string | null, paths: ReadonlySet<string>, op: CourseOp, newUid: () => string, ctx: { snapshot?: ChapterSnapshot; citation?: string | null; termFiles?: Array<{ path: string; content: string }> } = {}): CourseOpResult {
+export function applyCourseOp(manifestText: string | null, paths: ReadonlySet<string>, op: CourseOp, newUid: () => string, ctx: { snapshot?: ChapterSnapshot; citation?: string | null; termFiles?: Array<{ path: string; content: string } | { path: string; blobSha: string }> } = {}): CourseOpResult {
   let m: WorkingManifestV3;
   try {
     m = WorkingManifestV3Schema.parse(JSON.parse(manifestText ?? "null"));
@@ -141,7 +144,7 @@ export function applyCourseOp(manifestText: string | null, paths: ReadonlySet<st
   }
   const summary = describe(op, m);
   const has = (slug: string) => m.chapters.some((c) => c.slug === slug);
-  const writes: Array<{ path: string; content: string | null }> = [];
+  const writes: CourseOpWrite[] = [];
   let next: WorkingManifestV3;
   switch (op.op) {
     case "addChapters": {
@@ -223,11 +226,18 @@ export function applyCourseOp(manifestText: string | null, paths: ReadonlySet<st
       const slug = termSlug(op.title);
       if (m.terms?.some((t) => t.slug === slug)) return { ok: false, reason: `there is already a term called “${op.title}”` };
       next = { ...m, terms: [...(m.terms ?? []), { slug, title: op.title }], ...(op.makeCurrent || !m.currentTerm ? { currentTerm: slug } : {}) };
-      // The last term's pages, copied as drafts (never over a file that is there).
+      // The last term's files, copied (never over a file that is there; round 1 audit M3): pages as drafts with a
+      // new document id, figures and data files reused as they are, and anything taken off the website stays off.
+      const copiedStatus: Record<string, "withdrawn"> = {};
       for (const f of ctx.termFiles ?? []) {
-        const path = `${termFolder(slug)}${f.path.slice(termFolder(op.copyFrom ?? "").length)}`;
-        if (op.copyFrom && f.path.startsWith(termFolder(op.copyFrom)) && !paths.has(path)) writes.push({ path, content: f.content });
+        if (!op.copyFrom || !f.path.startsWith(termFolder(op.copyFrom))) continue;
+        const path = `${termFolder(slug)}${f.path.slice(termFolder(op.copyFrom).length)}`;
+        if (paths.has(path)) continue;
+        if ("blobSha" in f) writes.push({ path, blobSha: f.blobSha });
+        else writes.push({ path, content: f.content.replace(/^(\{\{nyml\n[\s\S]*?^uid:)[ \t]*\S+/m, `$1 ${newUid()}`) });
+        if (m.status?.[f.path] === "withdrawn") copiedStatus[path] = "withdrawn";
       }
+      if (Object.keys(copiedStatus).length) next = { ...next, status: { ...(next.status ?? {}), ...copiedStatus } };
       break;
     }
     case "setCurrentTerm": {
@@ -284,7 +294,7 @@ export function applyCourseOp(manifestText: string | null, paths: ReadonlySet<st
   if (!parsed.success) return { ok: false, reason: "the result isn't a valid course" };
   if (!activeProfile.licences.allowed.includes(parsed.data.license)) return { ok: false, reason: "the course's licence isn't allowed" };
   const after = new Set(paths);
-  for (const w of writes) (w.content === null ? after.delete(w.path) : after.add(w.path));
+  for (const w of writes) (("content" in w && w.content === null) ? after.delete(w.path) : after.add(w.path));
   // Only problems this operation would introduce: a course that already breaks a rule can still be changed (and mended).
   // Problems are compared under the new titles, so renaming a chapter that already lacks a part isn't a new problem.
   const hadSlug = new Set(m.chapters.map((c) => c.slug));

@@ -97,3 +97,20 @@ describe("the course-website add-on's front page (course-website-addon §3)", ()
     expect(at("Gases")).toBeGreaterThan(at("This semester"));
   }, 60_000);
 });
+
+describe("the generated front page never carries markup from names (round 1 audit H1)", () => {
+  it("[K1.30] a term title or a file name with HTML in it shows as text on the front page", async () => {
+    const site = await inProcessBuilder();
+    const doc = (t: string) => enc(`{{nyml\nkind: document\nformat: 1\ntitle: ${t}\n}}\n\n# ${t}\n`);
+    const manifest = { title: "Chem <b>x</b>", chapters: [{ slug: "gases", title: "Gases <img src=z onerror=alert(3)>" }], terms: [{ slug: "fall-2026", title: "Fall <img src=y onerror=alert(2)>" }], currentTerm: "fall-2026" };
+    const files = new Map<string, Uint8Array>([
+      ["alembic.json", enc(JSON.stringify(manifest))], ["study-guide/gases.md", doc("Gases")],
+      ["current/fall-2026/<img src=x onerror=alert(1)>.md", doc("Odd")],
+    ]);
+    const input = siteInputFiles(files);
+    const built = await site.build(input.files, { ownConfig: input.ownConfig, title: input.title, baseUrl: "https://x.github.io/y/", courseIndex: !input.ownIndex });
+    const index = new TextDecoder().decode(input.files.get("index.md")!);
+    expect(index).not.toMatch(/<img/);
+    expect(built.ok).toBe(true);
+  }, 60_000);
+});

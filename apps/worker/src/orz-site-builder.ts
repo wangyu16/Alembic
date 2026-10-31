@@ -16,7 +16,7 @@ export const SITE_OUT = { maxFiles: 4000, maxFileBytes: 15 * 1024 * 1024, maxTot
 const CHILD_HEAP_MB = 256;
 const CHILD_TIMEOUT_MS = 120_000;
 /** Rebuilds after leaving out failing pages (each round leaves out at least one page or the settings). */
-const MAX_BUILD_ROUNDS = 12;
+const MAX_BUILD_ROUNDS = 4; // each round is a whole build inside the child's time limit (round 1 audit L2)
 
 /**
  * The config a course's website is built with: the course's own
@@ -40,7 +40,7 @@ export function siteConfig(own: unknown, title: string | null, defaults: Record<
  * own files that aren't pages (the public manifest, the site settings), which
  * are read here for the title and the course's own settings.
  */
-export function siteInputFiles(files: Map<string, Uint8Array>): { files: Map<string, Uint8Array>; ownConfig: unknown; title: string | null; ownIndex: boolean; settingsIgnored?: true } {
+export function siteInputFiles(files: Map<string, Uint8Array>): { files: Map<string, Uint8Array>; ownConfig: unknown; title: string | null; ownIndex: boolean; indexFallback?: string; settingsIgnored?: true } {
   const decode = (b: Uint8Array | undefined) => (b ? (JSON.parse(new TextDecoder().decode(b)) as unknown) : null);
   // The course's own site settings: invalid ones are ignored and Alembic's defaults used (SITE-TYPE-CONTRACT §5).
   let ownConfig: unknown = null;
@@ -58,7 +58,9 @@ export function siteInputFiles(files: Map<string, Uint8Array>): { files: Map<str
     out.set("index.md", new TextEncoder().encode(courseIndexText(manifest, [...out.keys()], home ? new TextDecoder().decode(home) : null)));
     out.set("index.html", new TextEncoder().encode('<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0; url=index.md.html"><title>Course</title><a href="index.md.html">Open the course</a>\n'));
   }
-  return { files: out, ownConfig, title, ownIndex, ...(settingsIgnored ? { settingsIgnored: true as const } : {}) };
+  // A plain front page to fall back on if the home page's content can't be built (round 1 audit L1).
+  const indexFallback = !ownIndex && manifest ? courseIndexText({ ...manifest, terms: undefined, currentTerm: undefined }, [...out.keys()], null) : undefined;
+  return { files: out, ownConfig, title, ownIndex, ...(indexFallback ? { indexFallback } : {}), ...(settingsIgnored ? { settingsIgnored: true as const } : {}) };
 }
 
 const PART_LINKS: ReadonlyArray<[string, (s: string) => string]> = [
@@ -69,7 +71,11 @@ const PART_LINKS: ReadonlyArray<[string, (s: string) => string]> = [
 /** The course website's front page: title, description, then each chapter in order with its parts (only those published). */
 export function courseIndexText(m: { title?: unknown; description?: unknown; chapters?: unknown; terms?: unknown; currentTerm?: unknown }, paths: readonly string[], home: string | null = null): string {
   const has = new Set(paths);
-  const clean = (t: string) => t.replace(/[\r\n]+/g, " ").replace(/\}\}/g, "} }").trim();
+  // Every value written into the generated page is text, never markup (round 1 audit H1: the page is made after
+  // Publish's raw-HTML cleaning, so titles and file names must be escaped here).
+  const clean = (t: string) => t.replace(/[\r\n]+/g, " ").replace(/\}\}/g, "} }").trim()
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/([\[\]\\`*_])/g, "\\$1");
+  const target = (p: string) => `<${p.split("/").map(encodeURIComponent).join("/")}>`;
   const title = typeof m.title === "string" && m.title.trim() ? clean(m.title) : "Course";
   const lines = ["{{nyml", "kind: document", "format: 1", `title: ${title}`, "}}", "", `# ${title}`, ""];
   if (typeof m.description === "string" && m.description.trim()) lines.push(clean(m.description), "");
@@ -86,7 +92,7 @@ export function courseIndexText(m: { title?: unknown; description?: unknown; cha
     lines.push(`## This semester${typeof title === "string" ? `: ${clean(title)}` : ""}`, "");
     for (const p of termPages) {
       const name = (p.split("/").pop() ?? p).replace(/\.(slides|paged)?\.?md$/i, "").replace(/[-_]+/g, " ").replace(/^\w/, (c) => c.toUpperCase());
-      lines.push(`- [${clean(name)}](${p})`);
+      lines.push(`- [${clean(name)}](${target(p)})`);
     }
     lines.push("");
   }
@@ -95,7 +101,7 @@ export function courseIndexText(m: { title?: unknown; description?: unknown; cha
   if (listed.length) {
     lines.push("## Chapters", "");
     listed.forEach((c, k) => {
-      const links = PART_LINKS.filter(([, p]) => has.has(p(c.slug as string))).map(([label, p]) => `[${label}](${p(c.slug as string)})`);
+      const links = PART_LINKS.filter(([, p]) => has.has(p(c.slug as string))).map(([label, p]) => `[${label}](${target(p(c.slug as string))})`);
       lines.push(`${k + 1}. **${clean(typeof c.title === "string" ? c.title : (c.slug as string))}** — ${links.join(" · ")}`);
     });
     lines.push("");
@@ -126,6 +132,11 @@ export async function inProcessBuilder(): Promise<SiteBuilder> {
         const r = await site.buildSite(input, config, { carriers, baseUrl: o.baseUrl, offline: true });
         if (r.ok) return { ok: true, files: r.files, errors: [], warnings: r.report.warnings.length, leftOut, settingsIgnored };
         const atFault = [...new Set(r.report.errors.map((f) => f.path).filter((p): p is string => !!p && input.has(p)))];
+        // The generated front page at fault: fall back to the plain one (without the home page and term), never none.
+        if (atFault.includes("index.md") && o.indexFallback && new TextDecoder().decode(input.get("index.md")) !== o.indexFallback) {
+          input.set("index.md", new TextEncoder().encode(o.indexFallback));
+          continue;
+        }
         if (atFault.length) { for (const p of atFault) { input.delete(p); leftOut.push(p); } continue; }
         if (own && !settingsIgnored) { own = null; settingsIgnored = true; continue; }
         return { ok: false, files: new Map(), errors: r.report.errors.map(describe), warnings: r.report.warnings.length, leftOut, settingsIgnored };

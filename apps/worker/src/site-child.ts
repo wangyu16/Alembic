@@ -19,7 +19,7 @@ async function listFiles(root: string, prefix = ""): Promise<string[]> {
 }
 
 async function main(dir: string) {
-  const job = JSON.parse(await readFile(join(dir, "job.json"), "utf8")) as { ownConfig: unknown; title: string | null; baseUrl: string; courseIndex?: boolean };
+  const job = JSON.parse(await readFile(join(dir, "job.json"), "utf8")) as { ownConfig: unknown; title: string | null; baseUrl: string; courseIndex?: boolean; indexFallback?: string };
   const files = new Map<string, Uint8Array>();
   for (const rel of await listFiles(join(dir, "in"))) files.set(rel, await readFile(join(dir, "in", rel)));
   const r = await (await inProcessBuilder()).build(files, job);

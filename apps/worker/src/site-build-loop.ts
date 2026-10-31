@@ -33,7 +33,7 @@ export interface SiteBuildConfig {
 export interface SiteBuilder {
   build(
     files: Map<string, Uint8Array>,
-    o: { ownConfig: unknown; title: string | null; baseUrl: string; courseIndex?: boolean },
+    o: { ownConfig: unknown; title: string | null; baseUrl: string; courseIndex?: boolean; indexFallback?: string },
   ): Promise<{ ok: boolean; files: Map<string, Uint8Array>; errors: string[]; warnings: number; leftOut?: string[]; settingsIgnored?: boolean }>;
 }
 
@@ -134,7 +134,7 @@ async function buildOne(cfg: SiteBuildConfig, run: { id: string; package_id: str
     return "bad JSON";
   }
   const url = pagesUrl(coords);
-  const built = await cfg.site.build(input.files, { ownConfig: input.ownConfig, title: input.title, baseUrl: url, courseIndex: !input.ownIndex });
+  const built = await cfg.site.build(input.files, { ownConfig: input.ownConfig, title: input.title, baseUrl: url, courseIndex: !input.ownIndex, ...(input.indexFallback ? { indexFallback: input.indexFallback } : {}) });
   if (!built.ok) {
     await mark(cfg.sql, run.id, "site-failed", { error: "The website build found problems; the previous one stays up.", problems: built.errors.slice(0, 20) });
     return `build failed (${built.errors.length} problems)`;
