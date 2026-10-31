@@ -343,3 +343,27 @@ every one resolved in agent-runtime §15. HIGH: records weren't one definition-d
 lead-editable, the private one fixed by path), and the committer's old "bounce" contradicted §11.6. Adopted all three proposed
 simplifications (no records fast-path class, `append` for `.jsonl` records, one open digest per invoker). Code fixes are C4 entry
 conditions, each landing with a claim.
+
+### C4 attack round 1 (2026-10-31): the agent runtime
+
+Two independent reviewers (server side; orchestrator and pages), local code and PGlite only. **Server: 0 HIGH, 3 MEDIUM, 7 LOW.
+Orchestrator and pages: 3 HIGH, 4 MEDIUM, 8 LOW.** All fixed in `bcfa5a7` except where noted; claims K1.42–K1.44.
+- HIGH: one course's leftover process could act for the next course's job (shared placeholder + job ids visible in process
+  lists) → a per-job secret names the job (hash only, in a mode-600 file only that course user reads), every finish and launch
+  ends the user's processes and crontab, the task goes on stdin. Root followed a course user's symlinks → job files removed and
+  recreated by root, written as the user, no `chown -R`. A crash mid-start wedged the shared sandbox → orphaned claims fail
+  after 5 minutes.
+- MEDIUM: the run-time re-check (pause, read-only) was optional and unimplemented → required and implemented; no per-job
+  budgets → hand-ins, proposals, records hand-ins/bytes per hour and public records ≤ 1 MB; time limit counted the queue wait;
+  a task starting with "-" became a CLI option; DNS open to any resolver; stopping mid-call turned the call into debt →
+  settlement 11 minutes after the end.
+- LOW fixed: unknown paths threw; the 20-question cap never fired (digest ≤ 20); `dependsOn` across jobs; `max_jobs`
+  not enforced at the endpoint; members read keys' columns (0072); no-credential AI calls forwarded; two workers could
+  both claim (lease); a removed member's job kept spending; Approve/Decline race and addressee; technical failure text;
+  paused courses started jobs; half-read checks ended jobs.
+- Accepted (recorded): an agent can write its own `exit.code` to finish early (its processes then end, H1); the addressee's
+  digest answers are validated in the page action, not in SQL (their own input, never an approval); the 443 allow-list is
+  the host's Cloudflare anycast addresses (the Secret is scoped to the host by the proxy; content could still reach another
+  Cloudflare site — production: per-course sandbox with the provider's egress policy).
+Verified live after deploy: a job whose task begins with "-" ran by itself, its plain summary reads for a teacher, no
+process of the course user survived, and a request naming the job id without its secret is refused.
