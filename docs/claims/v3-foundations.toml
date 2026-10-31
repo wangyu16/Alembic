@@ -226,3 +226,13 @@ bound_to = [
   "packages/package-ops/src/publish-job.test.ts :: a second drift while the brought-in changes are being published stops the run",
 ]
 
+[[claim]]
+id = "K1.24"
+claim = "The website never fails because of one page (family SITE-TYPE-CONTRACT §8): a missing link or include is a note whatever the course's own settings say; a page orz-site can't build is left out and the rest is built; settings that aren't valid JSON or that orz-site refuses are ignored for Alembic's defaults; the Publish page names what was left out."
+oracle = "scenario"
+bound_to = [
+  "apps/worker/src/site-build.real.test.ts :: settings that aren't valid JSON, or that orz-site refuses, are ignored and the site builds with Alembic's defaults",
+  "apps/worker/src/site-build.real.test.ts :: a link to a page that isn't published is a note, never a stop, even if the course's settings say error",
+  "apps/worker/src/publish-loop.test.ts :: defaults are titled with the course, never fetch the network, and a missing link or include is a note, not a stop",
+]
+

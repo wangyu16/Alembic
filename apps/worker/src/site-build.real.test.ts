@@ -11,7 +11,7 @@ const legacyDeck = "<!-- deck\ntitle: Chapter 5: Gases\nratio: 16:9\n-->\n\n<!--
 const guide = "{{nyml\nkind: document\nformat: 1\ntitle: Gases\n}}\n\n# Gases\n\nSee the [slides](../slides/gases.slides.md).\n";
 
 describe("website build, real orz-site", () => {
-  it("[RC.1] a 0.x deck with only a header added is refused; the same deck after orz-slides' upgrade builds", async () => {
+  it("[RC.1] a 0.x deck with only a header added is left out of the website (the rest builds, the link to it doesn't stop it); the same deck after orz-slides' upgrade builds", async () => {
     const site = await inProcessBuilder();
     const base = { "study-guide/gases.md": guide, "alembic.json": JSON.stringify({ title: "General Chemistry" }) };
     const headerOnly = `{{nyml\nkind: document\nformat: 1\ntitle: Gases\n}}\n\n${legacyDeck}`;
@@ -19,9 +19,10 @@ describe("website build, real orz-site", () => {
       const input = siteInputFiles(new Map(Object.entries({ ...base, "slides/gases.slides.md": deck }).map(([p, t]) => [p, enc(t)])));
       return site.build(input.files, { ownConfig: input.ownConfig, title: input.title, baseUrl: "https://x.github.io/y/" });
     };
-    const refused = await build(headerOnly);
-    expect(refused.ok).toBe(false);
-    expect(refused.errors.join("\n")).toMatch(/deck-block/);
+    const partial = await build(headerOnly);
+    expect(partial.ok).toBe(true); // family SITE-TYPE-CONTRACT §8: one page never stops the website
+    expect(partial.leftOut).toEqual(["slides/gases.slides.md"]);
+    expect([...partial.files.keys()]).toContain("study-guide/gases.md.html");
     const built = await build(upgradeText(legacyDeck).text);
     expect(built.errors).toEqual([]);
     expect(built.ok).toBe(true);
@@ -53,3 +54,26 @@ describe("the course website's front page (RC.16)", () => {
     expect(new TextDecoder().decode(built.files.get("index.html")!)).toMatch(/url=index\.md\.html/);
   }, 60_000);
 });
+
+describe("the course's own site settings (SITE-TYPE-CONTRACT §5, §8)", () => {
+  const doc = (t: string) => enc(`{{nyml\nkind: document\nformat: 1\ntitle: ${t}\n}}\n\n# ${t}\n`);
+  it("[K1.24] settings that aren't valid JSON, or that orz-site refuses, are ignored and the site builds with Alembic's defaults", async () => {
+    const site = await inProcessBuilder();
+    for (const settings of ["{not json", JSON.stringify({ format: 1, notAKey: true })]) {
+      const input = siteInputFiles(new Map([["alembic.json", enc(JSON.stringify({ title: "Chem" }))], ["orz-site.json", enc(settings)], ["study-guide/a.md", doc("A")]]));
+      const built = await site.build(input.files, { ownConfig: input.ownConfig, title: input.title, baseUrl: "https://x.github.io/y/", courseIndex: !input.ownIndex });
+      expect(built.ok, settings).toBe(true);
+      expect(input.settingsIgnored === true || built.settingsIgnored === true, settings).toBe(true);
+      expect([...built.files.keys()]).toContain("study-guide/a.md.html");
+    }
+  }, 60_000);
+  it("[K1.24] a link to a page that isn't published is a note, never a stop, even if the course's settings say error", async () => {
+    const site = await inProcessBuilder();
+    const page = enc("{{nyml\nkind: document\nformat: 1\ntitle: A\n}}\n\n# A\n\nSee [B](b.md).\n");
+    const input = siteInputFiles(new Map([["alembic.json", enc(JSON.stringify({ title: "Chem" }))], ["orz-site.json", enc(JSON.stringify({ format: 1, links: { missing: "error" } }))], ["study-guide/a.md", page]]));
+    const built = await site.build(input.files, { ownConfig: input.ownConfig, title: input.title, baseUrl: "https://x.github.io/y/" });
+    expect(built.ok).toBe(true);
+    expect(built.leftOut ?? []).toEqual([]);
+  }, 60_000);
+});
+

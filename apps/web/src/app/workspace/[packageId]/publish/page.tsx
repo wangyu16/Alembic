@@ -148,7 +148,10 @@ async function PublishPageInner({ params, searchParams }: { params: Promise<{ pa
       {message ? <p className="notice mt-3" role="status">{message}</p> : null}
       {site.kind !== "none" ? (
         <div className="mt-3 text-sm">
-          Website: {site.kind === "live" ? <><a className="underline" href={site.url}>{site.url}</a>{site.note ? <> ({site.note})</> : null}</>
+          Website: {site.kind === "live" ? <><a className="underline" href={site.url}>{site.url}</a>{site.note ? <> ({site.note})</> : null}
+            {site.leftOut.length ? <details className="mt-1"><summary className="cursor-pointer text-muted">{site.leftOut.length} page{site.leftOut.length === 1 ? "" : "s"} couldn&apos;t be built and {site.leftOut.length === 1 ? "is" : "are"} not on the website; open {site.leftOut.length === 1 ? "it" : "them"} to fix</summary>
+              <ul className="mt-1 list-disc pl-5">{site.leftOut.map((p) => <li key={p}><Link prefetch={false} className="underline" href={docHref(packageId, p)}>{p}</Link></li>)}</ul></details> : null}
+            {site.settingsIgnored ? <p className="mt-1 text-muted">The course&apos;s own website settings (orz-site.json) couldn&apos;t be used, so the website was built with the standard settings.</p> : null}</>
             : site.kind === "failed" ? <>not updated — {site.error}{site.problems.length ? (
               <ul className="mt-1 list-disc pl-5" data-testid="site-problems">{site.problems.map((x) => <li key={x}>{x}</li>)}</ul>
             ) : null}</>

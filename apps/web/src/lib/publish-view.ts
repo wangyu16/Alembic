@@ -5,7 +5,7 @@
 export type SiteView =
   | { kind: "none" }
   | { kind: "building" }
-  | { kind: "live"; url: string; note: string | null }
+  | { kind: "live"; url: string; note: string | null; leftOut: string[]; settingsIgnored: boolean }
   | { kind: "updated" }
   | { kind: "failed"; error: string; problems: string[] };
 
@@ -19,6 +19,8 @@ export function siteView(run: { status: string; results: unknown } | undefined):
   }
   // Only a GitHub Pages address is shown as a link (the worker writes it; never a value from elsewhere).
   const url = typeof site["url"] === "string" && /^https:\/\/[a-z0-9-]+\.github\.io\//i.test(site["url"]) ? site["url"] : null;
-  if (run.status === "site-built" && url) return { kind: "live", url, note: typeof site["pagesNote"] === "string" ? site["pagesNote"] : null };
+  // Pages the website couldn't build are left out (family SITE-TYPE-CONTRACT §8): said as a plain fact.
+  const leftOut = Array.isArray(site["leftOut"]) ? site["leftOut"].filter((x): x is string => typeof x === "string").slice(0, 50) : [];
+  if (run.status === "site-built" && url) return { kind: "live", url, note: typeof site["pagesNote"] === "string" ? site["pagesNote"] : null, leftOut, settingsIgnored: site["settingsIgnored"] === true };
   return { kind: "updated" };
 }

@@ -43,7 +43,7 @@ async function main(dir: string) {
       await writeFile(at, bytes);
     }
   }
-  await writeFile(join(dir, "result.json"), JSON.stringify({ ok, errors: errors.slice(0, 50), warnings: r.warnings }));
+  await writeFile(join(dir, "result.json"), JSON.stringify({ ok, errors: errors.slice(0, 50), warnings: r.warnings, leftOut: (r.leftOut ?? []).slice(0, 200), settingsIgnored: r.settingsIgnored === true }));
 }
 
 main(process.argv[2]!).catch(async (e) => {

@@ -34,7 +34,7 @@ export interface SiteBuilder {
   build(
     files: Map<string, Uint8Array>,
     o: { ownConfig: unknown; title: string | null; baseUrl: string; courseIndex?: boolean },
-  ): Promise<{ ok: boolean; files: Map<string, Uint8Array>; errors: string[]; warnings: number }>;
+  ): Promise<{ ok: boolean; files: Map<string, Uint8Array>; errors: string[]; warnings: number; leftOut?: string[]; settingsIgnored?: boolean }>;
 }
 
 const parse = <T>(v: unknown): T => (typeof v === "string" ? (JSON.parse(v) as T) : (v as T));
@@ -130,7 +130,7 @@ async function buildOne(cfg: SiteBuildConfig, run: { id: string; package_id: str
   try {
     input = siteInputFiles(files);
   } catch {
-    await mark(cfg.sql, run.id, "site-failed", { error: "orz-site.json (or the course manifest) isn't valid JSON" });
+    await mark(cfg.sql, run.id, "site-failed", { error: "The course's settings file in the public copy isn't valid JSON" });
     return "bad JSON";
   }
   const url = pagesUrl(coords);
@@ -181,6 +181,7 @@ async function buildOne(cfg: SiteBuildConfig, run: { id: string; package_id: str
   }
   await mark(cfg.sql, run.id, "site-built", {
     url: pagesUrl(coords), commit: pushed.commitSha, unchanged: pushed.unchanged, warnings: built.warnings,
+    ...(built.leftOut?.length ? { leftOut: built.leftOut } : {}), ...(built.settingsIgnored || input.settingsIgnored ? { settingsIgnored: true } : {}),
     ...(pagesNote ? { pagesNote } : {}),
   });
   return `built (${built.files.size} files, ${uploads} uploads${pushed.unchanged ? ", unchanged" : ""}) → ${pages?.url ?? url}${pagesNote ? ` [${pagesNote}]` : ""}`;

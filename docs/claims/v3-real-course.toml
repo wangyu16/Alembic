@@ -16,7 +16,7 @@ claim = "Moving a 0.x course leaves no 0.x deck block in any slides file: a 0.x 
 oracle = "scenario"
 bound_to = [
   "apps/web/src/lib/course-move.test.ts :: a 0.x deck is recognised, and orz-slides' upgrade leaves no deck block, keeps every slide and moves the settings into the header",
-  "apps/worker/src/site-build.real.test.ts :: a 0.x deck with only a header added is refused; the same deck after orz-slides' upgrade builds",
+  "apps/worker/src/site-build.real.test.ts :: a 0.x deck with only a header added is left out of the website (the rest builds, the link to it doesn't stop it); the same deck after orz-slides' upgrade builds",
 ]
 note = "Found live: all 19 GenChem decks broke the website build after a clean Publish. The carrier's readDocument does not lint the block; orz-site does (family discrepancy, reported)."
 

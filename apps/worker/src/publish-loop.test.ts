@@ -22,9 +22,9 @@ import { siteConfig } from "./orz-site-builder";
 
 describe("the website config (review r2 H-A)", () => {
   const defaults = { format: 1, delivery: "cdn", inline: [], includes: { allowedHosts: [], network: true, missing: "error" }, index: { mode: "auto", title: null } };
-  it("defaults are titled with the course and never fetch the network", () => {
+  it("[K1.24] defaults are titled with the course, never fetch the network, and a missing link or include is a note, not a stop", () => {
     const c = siteConfig(null, "Gen Chem", defaults);
-    expect(c).toMatchObject({ delivery: "cdn", inline: [], includes: { network: false, missing: "error" }, index: { mode: "auto", title: "Gen Chem" } });
+    expect(c).toMatchObject({ delivery: "cdn", inline: [], includes: { network: false, missing: "warn" }, links: { missing: "warn" }, index: { mode: "auto", title: "Gen Chem" } });
   });
   it("a course's own orz-site.json is honoured except inline delivery and network includes", () => {
     const c = siteConfig({ format: 1, delivery: "inline", inline: ["**"], includes: { network: true, allowedHosts: ["example.org"] }, naming: "family" }, "T", defaults);

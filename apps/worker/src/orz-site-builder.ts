@@ -15,6 +15,8 @@ import type { SiteBuilder } from "./site-build-loop";
 export const SITE_OUT = { maxFiles: 4000, maxFileBytes: 15 * 1024 * 1024, maxTotalBytes: 60 * 1024 * 1024 };
 const CHILD_HEAP_MB = 256;
 const CHILD_TIMEOUT_MS = 120_000;
+/** Rebuilds after leaving out failing pages (each round leaves out at least one page or the settings). */
+const MAX_BUILD_ROUNDS = 12;
 
 /**
  * The config a course's website is built with: the course's own
@@ -28,7 +30,9 @@ export function siteConfig(own: unknown, title: string | null, defaults: Record<
   // Alembic wrote the course's own front page (index.md + index.html): orz-site's generated index stays off.
   if (!own && o.courseIndex) base["index"] = { ...((base["index"] as Record<string, unknown> | undefined) ?? {}), mode: "off" };
   const includes = base["includes"] && typeof base["includes"] === "object" ? (base["includes"] as Record<string, unknown>) : {};
-  return { ...base, delivery: "cdn", inline: [], includes: { ...includes, network: false } };
+  const links = base["links"] && typeof base["links"] === "object" ? (base["links"] as Record<string, unknown>) : {};
+  // A link or include to a page that isn't published never stops the website (family SITE-TYPE-CONTRACT §8).
+  return { ...base, delivery: "cdn", inline: [], links: { ...links, missing: "warn" }, includes: { ...includes, network: false, missing: "warn" } };
 }
 
 /**
@@ -36,9 +40,12 @@ export function siteConfig(own: unknown, title: string | null, defaults: Record<
  * own files that aren't pages (the public manifest, the site settings), which
  * are read here for the title and the course's own settings.
  */
-export function siteInputFiles(files: Map<string, Uint8Array>): { files: Map<string, Uint8Array>; ownConfig: unknown; title: string | null; ownIndex: boolean } {
+export function siteInputFiles(files: Map<string, Uint8Array>): { files: Map<string, Uint8Array>; ownConfig: unknown; title: string | null; ownIndex: boolean; settingsIgnored?: true } {
   const decode = (b: Uint8Array | undefined) => (b ? (JSON.parse(new TextDecoder().decode(b)) as unknown) : null);
-  const ownConfig = decode(files.get("orz-site.json")); // throws on invalid JSON: the caller reports it
+  // The course's own site settings: invalid ones are ignored and Alembic's defaults used (SITE-TYPE-CONTRACT §5).
+  let ownConfig: unknown = null;
+  let settingsIgnored = false;
+  try { ownConfig = decode(files.get("orz-site.json")); } catch { settingsIgnored = true; }
   const manifest = decode(files.get("alembic.json")) as { title?: unknown; description?: unknown; chapters?: unknown } | null;
   const title = typeof manifest?.title === "string" && manifest.title.trim() ? manifest.title.trim() : null;
   const out = new Map(files);
@@ -50,7 +57,7 @@ export function siteInputFiles(files: Map<string, Uint8Array>): { files: Map<str
     out.set("index.md", new TextEncoder().encode(courseIndexText(manifest, [...out.keys()])));
     out.set("index.html", new TextEncoder().encode('<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0; url=index.md.html"><title>Course</title><a href="index.md.html">Open the course</a>\n'));
   }
-  return { files: out, ownConfig, title, ownIndex };
+  return { files: out, ownConfig, title, ownIndex, ...(settingsIgnored ? { settingsIgnored: true as const } : {}) };
 }
 
 const PART_LINKS: ReadonlyArray<[string, (s: string) => string]> = [
@@ -85,15 +92,26 @@ export async function inProcessBuilder(): Promise<SiteBuilder> {
   const { carriers } = await site.loadCarriers();
   const versions = await site.installedVersions();
   return {
+    // The website never fails because of one page (family SITE-TYPE-CONTRACT §8): a page with errors is left out and
+    // the site built again; an error tied to no page (the course's own site settings) means building with Alembic's
+    // defaults instead. Only what no page explains stops the build.
     async build(files, o) {
-      const config = siteConfig(o.ownConfig, o.title, { ...site.defaultConfig(), carriers: versions } as unknown as Record<string, unknown>, { courseIndex: o.courseIndex === true });
-      const r = await site.buildSite(files, config, { carriers, baseUrl: o.baseUrl, offline: true });
-      return {
-        ok: r.ok,
-        files: r.files,
-        errors: r.report.errors.map((f) => `${f.path ? `${f.path}${f.line ? `:${f.line}` : ""}: ` : ""}${f.message}`),
-        warnings: r.report.warnings.length,
-      };
+      const defaults = { ...site.defaultConfig(), carriers: versions } as unknown as Record<string, unknown>;
+      const input = new Map(files);
+      const leftOut: string[] = [];
+      let own = o.ownConfig;
+      let settingsIgnored = false;
+      const describe = (f: { path?: string; line?: number; message: string }) => `${f.path ? `${f.path}${f.line ? `:${f.line}` : ""}: ` : ""}${f.message}`;
+      for (let round = 0; round < MAX_BUILD_ROUNDS; round++) {
+        const config = siteConfig(own, o.title, defaults, { courseIndex: o.courseIndex === true });
+        const r = await site.buildSite(input, config, { carriers, baseUrl: o.baseUrl, offline: true });
+        if (r.ok) return { ok: true, files: r.files, errors: [], warnings: r.report.warnings.length, leftOut, settingsIgnored };
+        const atFault = [...new Set(r.report.errors.map((f) => f.path).filter((p): p is string => !!p && input.has(p)))];
+        if (atFault.length) { for (const p of atFault) { input.delete(p); leftOut.push(p); } continue; }
+        if (own && !settingsIgnored) { own = null; settingsIgnored = true; continue; }
+        return { ok: false, files: new Map(), errors: r.report.errors.map(describe), warnings: r.report.warnings.length, leftOut, settingsIgnored };
+      }
+      return { ok: false, files: new Map(), errors: ["Too many pages couldn't be built"], warnings: 0, leftOut, settingsIgnored };
     },
   };
 }
@@ -124,7 +142,7 @@ export function childProcessBuilder(script: string): SiteBuilder {
           child.on("close", (c) => { clearTimeout(t); if (c !== 0 && err) console.error(`[alembic-worker] site child: ${err.slice(0, 500)}`); resolve(c); });
         });
         // The child explains a failure it caught in result.json; no result means it was stopped (time, memory) (r3 L4).
-        const result = await readFile(join(dir, "result.json"), "utf8").then((t) => JSON.parse(t) as { ok: boolean; errors: string[]; warnings: number }).catch(() => null);
+        const result = await readFile(join(dir, "result.json"), "utf8").then((t) => JSON.parse(t) as { ok: boolean; errors: string[]; warnings: number; leftOut?: string[]; settingsIgnored?: boolean }).catch(() => null);
         if (!result || (code !== 0 && result.ok)) return { ok: false, files: new Map(), errors: ["The website build ran out of time or memory"], warnings: 0 };
         const out = new Map<string, Uint8Array>();
         if (result.ok) {
