@@ -86,6 +86,13 @@ Guiding principle (owner): **easy authoring over strict rules.**
     page is an editable page the instructor (or the assistant, on their
     instructions) arranges. AI spending as needed within the owner's 5-hour
     usage window.
+13. **Morning 2026-10-31** (owner, "both agreed"): (a) orz-markdown's option to
+    turn raw HTML off for shared authoring (D-127) becomes the next
+    orz-markdown change; Alembic will use it for every course page, with the
+    cleaner and render backstop kept as a second layer. (b) The type package's
+    public records (Coursewerk's attribution page and CHECKED.json) are
+    published as they are, without "completed", limited to 1 MB and the kinds
+    the type package declares; the person can still take them off the website.
 
 ## 2026-10-29 (evening) — Owner rulings for the overnight foundations run
 
