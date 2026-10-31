@@ -370,3 +370,29 @@ bound_to = [
   "packages/package-ops/src/agent-token.test.ts :: a token signed with the agent key verifies, carries the job's ids, and lives at most 15 minutes",
   "packages/package-ops/src/agent-token.test.ts :: refused: another key, another algorithm or type, another audience, a forged or tampered body, a long lifetime, bad ids",
 ]
+
+[[claim]]
+id = "K1.40"
+claim = "A hand-in is read as the agent's writes: paths in plain form that its capped asker may write (records only through the hand-in, never deleted or moved; appends only to .jsonl records), every list bounded (50 content files, records counted apart, 4 MB of record text, 20 operations, 50 questions), questions plain one-line text with unique ids and a recommendation among the choices; events a closed list without questions or approvals, at most 64 KiB."
+oracle = "conformance"
+bound_to = [
+  "packages/package-ops/src/agent-api.test.ts :: a hand-in of edits, records, appends, proposals and questions is read as the agent's writes",
+  "packages/package-ops/src/agent-api.test.ts :: refused: files the agent may not write, records deleted or moved, appends outside .jsonl records, unclean paths, repeats, bad ids",
+  "packages/package-ops/src/agent-api.test.ts :: every list is bounded: content files, records, record bytes, operations, questions",
+  "packages/package-ops/src/agent-api.test.ts :: questions are plain one-line text with unique ids and a recommendation among the choices",
+  "packages/package-ops/src/agent-api.test.ts :: events: a closed list of kinds (no questions, no approvals), payloads at most 64 KiB",
+  "packages/package-ops/src/agent-api.test.ts :: an append lands only on the log version it was read at",
+]
+
+[[claim]]
+id = "K1.41"
+claim = "The agent endpoints accept only the running job's own token for an asker who is still an editor; a hand-in becomes one changeset row for the asker (a repeat answers the same); course operations become approve items for the owner and deputies (the licence: the owner); one open digest per asker, replaced by the next, with answers returned in catch-up; a stale log append refuses the hand-in; a paused session takes none; events are rate-limited."
+oracle = "conformance"
+bound_to = [
+  "apps/web/src/lib/agent-endpoint.sql.test.ts :: only the running job's own token gets in, for an asker who is still an editor",
+  "apps/web/src/lib/agent-endpoint.sql.test.ts :: a hand-in is queued as a changeset for the asker; a repeat answers the same; another job can't reuse its id",
+  "apps/web/src/lib/agent-endpoint.sql.test.ts :: the agent can't write what its asker couldn't; course operations become approve items for the leads (the licence: the owner only)",
+  "apps/web/src/lib/agent-endpoint.sql.test.ts :: one digest per asker: a new one replaces the unanswered questions; answers come back in catch-up",
+  "apps/web/src/lib/agent-endpoint.sql.test.ts :: a log append lands on the version read; a stale one refuses the hand-in",
+  "apps/web/src/lib/agent-endpoint.sql.test.ts :: events: no questions or approvals, at most 120 a minute; a paused session takes no hand-in",
+]

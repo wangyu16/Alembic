@@ -54,3 +54,4 @@ export * from "./history";
 export * from "./shared-elements";
 export * from "./course-import";
 export * from "./agent-token";
+export * from "./agent-api";
