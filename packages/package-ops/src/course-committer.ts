@@ -542,11 +542,16 @@ async function followStatus(row: QueueRow, repo: WorkingRepo, head: string, top:
   const moved = new Set(moves.map((m) => m.from));
   const deletes = top.filter((e) => "content" in e && e.content === null && !moved.has(e.path)).map((e) => e.path);
   const restoring = row.kind === "restore" ? row.payload.files.filter((f) => f.restoreOf) : [];
-  if (!moves.length && !deletes.length && !restoring.length) return null;
+  // Edited pages (the course option "an edit returns a completed page to draft": owner's ruling 2026-10-30, default off).
+  const edited = row.kind === "sync" || row.kind === "changeset" || row.kind === "restore"
+    ? top.filter((e) => "content" in e && e.content !== null && !moves.some((m) => m.to === e.path)).map((e) => e.path) : [];
+  if (!moves.length && !deletes.length && !restoring.length && !edited.length) return null;
   const text = await repo.readFile(head, "alembic.json");
   if (text === null) return null;
   let manifest: Record<string, unknown>;
   try { manifest = JSON.parse(text) as Record<string, unknown>; } catch { return null; }
+  const draftAgain = (manifest.options as { editReturnsToDraft?: boolean } | undefined)?.editReturnsToDraft === true
+    ? edited.filter((p) => (manifest.status as StatusMap | undefined)?.[p] === "completed") : [];
   const restored: Array<{ path: string; status: "completed" | "withdrawn" | undefined }> = [];
   for (const f of restoring) {
     if ((await repo.readFile(head, f.path)) !== null) continue; // an existing file keeps its status; only a file that comes back gets its old one
@@ -554,7 +559,7 @@ async function followStatus(row: QueueRow, repo: WorkingRepo, head: string, top:
     try { then = (JSON.parse((await repo.readFile(f.restoreOf!, "alembic.json")) ?? "{}") as { status?: StatusMap }).status; } catch { then = undefined; }
     restored.push({ path: f.path, status: then?.[f.path] });
   }
-  const next = followFiles(manifest.status as StatusMap | undefined, { moves, deletes, restored });
+  const next = followFiles(manifest.status as StatusMap | undefined, { moves, deletes: [...deletes, ...draftAgain], restored });
   if (!next) return null;
   const out = { ...manifest, status: next };
   if (Object.keys(next).length === 0) delete (out as { status?: unknown }).status;

@@ -104,3 +104,13 @@ describe("setStatus (SITE-TYPE-CONTRACT §7)", () => {
     expect(parseCourseOp({ op: "setStatus", paths: ["a.md", "a.md"], status: "draft" })).toEqual({ op: "setStatus", paths: ["a.md"], status: "draft" });
   });
 });
+
+describe("course options", () => {
+  it("[K1.26] the owner or deputy turns 'an edit returns a completed page to draft' on or off; it never goes public", () => {
+    const m = `${JSON.stringify({ schemaVersion: 3, packageId: "pkg-a", title: "Chem", license: "CC-BY-4.0", createdAt: "2026-10-30T00:00:00Z", chapters: [] })}\n`;
+    const r = applyCourseOp(m, new Set(["alembic.json"]), { op: "setOption", option: "editReturnsToDraft", value: true }, () => "doc-x");
+    expect(r.ok && r.manifest.options).toEqual({ editReturnsToDraft: true });
+    expect(parseCourseOp({ op: "setOption", option: "other", value: true })).toBeNull();
+  });
+});
+

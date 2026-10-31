@@ -8,8 +8,8 @@ import { setDocStatusAction } from "./status-actions";
  * A page's status in its own header: Draft or Completed in one click, and for the owner or deputy, take it
  * off the website or bring it back. Shown at once; saved in the background (no reload of the editor).
  */
-export function StatusControl({ packageId, path, status: initial, published, canEdit, lead }: {
-  packageId: string; path: string; status: FileStatus; published: boolean; canEdit: boolean; lead: boolean;
+export function StatusControl({ packageId, path, status: initial, published, canEdit, lead, editReturnsToDraft = false }: {
+  packageId: string; path: string; status: FileStatus; published: boolean; canEdit: boolean; lead: boolean; editReturnsToDraft?: boolean;
 }) {
   const [status, setStatus] = useState(initial);
   const [note, setNote] = useState<string | null>(null);
@@ -34,6 +34,7 @@ export function StatusControl({ packageId, path, status: initial, published, can
       {lead && published && status !== "withdrawn" ? (
         <button type="button" className="btn btn-ghost btn-sm" disabled={pending} title="It leaves the website at the next Publish" onClick={() => change("withdrawn")}>Take off the website</button>
       ) : null}
+      {editReturnsToDraft && status === "completed" ? <span className="text-xs text-muted" title="A course option the owner or deputy set">an edit makes it a draft again</span> : null}
       {note ? <span className="text-xs text-danger" role="status">{note}</span> : null}
     </span>
   );

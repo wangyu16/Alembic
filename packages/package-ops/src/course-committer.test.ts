@@ -532,6 +532,18 @@ describe("files that aren't text, deletes and moves (contract v3 §11)", () => {
     const moveCommit = repo.commits.find((c) => c.files.get("assets/gases/moved.png") === `blob:${SHA(1)}` && c.files.has("alembic.json"));
     expect(moveCommit, "the status moved in the same commit as the file").toBeTruthy();
   });
+  it("[K1.26] with the course option on, a saved edit to a completed page makes it a draft again, in the same commit; with it off, the status stays", async () => {
+    for (const on of [true, false]) {
+      const { repo, q } = files();
+      const m = JSON.parse(repo.file("alembic.json")!);
+      repo.push({ "alembic.json": `${JSON.stringify({ ...m, status: { "study-guide/gases.md": "completed" }, ...(on ? { options: { editReturnsToDraft: true } } : {}) }, null, 2)}\n` });
+      q.remember(base);
+      q.add(row(`e-${on}`, "co", { path: "study-guide/gases.md", baseVersion: h(base), text: sg("edited", "two", "three") }));
+      await drainCourse(P, "w", q, repo);
+      expect(q.status(`e-${on}`)).toBe("done");
+      expect(JSON.parse(repo.file("alembic.json")!).status, String(on)).toEqual(on ? undefined : { "study-guide/gases.md": "completed" });
+    }
+  });
   it("[K1.22] marking pages draft or completed is for anyone who may edit them; taking files off the website is the owner's or deputy's, and a withdrawn page stays theirs", async () => {
     const { repo, q } = files();
     const op = (id: string, actor: string, o: unknown): Omit<QueueRow, "attempts"> => ({ id, packageId: P, kind: "courseop", actorId: actor, invokerId: null, payload: { files: [], op: o } });

@@ -246,3 +246,12 @@ bound_to = [
   "packages/package-ops/src/door-c-content.test.ts :: a file deleted on GitHub that had a status gets it dropped (a follow-up change), so a file added later at that path starts as a draft",
   "packages/package-ops/src/door-c.test.ts :: pushes to either records folder are undone (only Coursewerk's tools write them, through Alembic)",
 ]
+
+[[claim]]
+id = "K1.26"
+claim = "The course option 'an edit returns a completed page to draft' (owner's ruling 2026-10-30, default off) is set by the owner or deputy and never goes public; when on, a saved edit to a completed page drops its completed status in the same commit, so an edit goes public only after someone marks it completed again; when off, the status stays."
+oracle = "conformance"
+bound_to = [
+  "packages/package-ops/src/course-committer.test.ts :: with the course option on, a saved edit to a completed page makes it a draft again, in the same commit; with it off, the status stays",
+  "packages/package-ops/src/course-ops.test.ts :: the owner or deputy turns 'an edit returns a completed page to draft' on or off; it never goes public",
+]

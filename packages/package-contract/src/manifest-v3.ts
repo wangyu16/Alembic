@@ -38,6 +38,8 @@ const v3Fields = {
   coursewerk: z.object({ version: z.string().min(1) }).optional(),
   /** Each file's status (family SITE-TYPE-CONTRACT §7): path → completed | withdrawn; a page not listed is a draft. Never public. */
   status: z.record(z.string().min(1).max(300), z.enum(["completed", "withdrawn"])).optional(),
+  /** Alembic's per-course options (owner/deputy). `editReturnsToDraft`: a saved edit to a completed page makes it a draft again. Never public. */
+  options: z.object({ editReturnsToDraft: z.boolean().optional() }).strict().optional(),
 };
 
 function uniqueSlugs(m: { chapters: Array<{ slug: string }> }, ctx: z.RefinementCtx): void {
@@ -60,7 +62,7 @@ export type WorkingManifestV3 = z.infer<typeof WorkingManifestV3Schema>;
 export const PublicManifestV3Schema = base
   .omit({ privateRepo: true, publicRepo: true })
   .extend(v3Fields)
-  .omit({ status: true })
+  .omit({ status: true, options: true })
   .strict()
   .superRefine(uniqueSlugs);
 export type PublicManifestV3 = z.infer<typeof PublicManifestV3Schema>;
@@ -71,7 +73,7 @@ export type PublicManifestV3 = z.infer<typeof PublicManifestV3Schema>;
  * working manifest, filtered to `publishedSlugs`.
  */
 export function toPublicManifest(working: WorkingManifestV3, publishedSlugs: ReadonlySet<string>): PublicManifestV3 {
-  const { privateRepo: _priv, publicRepo: _pub, status: _status, ...rest } = working;
+  const { privateRepo: _priv, publicRepo: _pub, status: _status, options: _options, ...rest } = working;
   return PublicManifestV3Schema.parse({
     ...rest,
     chapters: working.chapters.filter((c) => publishedSlugs.has(c.slug)),

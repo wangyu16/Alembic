@@ -11,7 +11,7 @@ import { activeProfile, can, isPage, isServerOnlyPath, statusOf, type Role, type
 import { CHAPTER_PARTS } from "@alembic/package-ops";
 import { SubmitButton } from "../../submit-button";
 import { RefreshWhile } from "../publish/refresh-while";
-import { addChaptersAction, startPartsAction } from "./actions";
+import { addChaptersAction, setEditReturnsToDraftAction, startPartsAction } from "./actions";
 import { createSnapshotAction } from "../history/actions";
 import { LocalTime } from "@/lib/local-time";
 
@@ -49,10 +49,12 @@ async function CourseHomeV3Inner({ params, searchParams }: { params: Promise<{ p
   const docs = paths.filter((p) => kindOfPath(p) && !p.startsWith(".") && !isServerOnlyPath(p)); // e.g. the template's private/README.md (contract v3 §12.1)
   let chapters: Array<{ slug: string; title: string; mode?: string }> = [];
   let status: StatusMap | undefined;
+  let editReturnsToDraft = false;
   try {
     const m = JSON.parse((await c.client.getFileAtRef(coords, "alembic.json", head)) ?? "{}") as { chapters?: typeof chapters; status?: StatusMap };
     chapters = m.chapters ?? [];
     status = m.status;
+    editReturnsToDraft = (m as { options?: { editReturnsToDraft?: boolean } }).options?.editReturnsToDraft === true;
   } catch (e) {
     if (githubBusy(e)) throw e; // the busy page, not a course with no chapters (RC.12)
     /* an unreadable manifest: everything shows under course files */
@@ -135,6 +137,17 @@ async function CourseHomeV3Inner({ params, searchParams }: { params: Promise<{ p
               <input type="checkbox" name="start" defaultChecked /> Start all {CHAPTER_PARTS.length} parts of each chapter ({CHAPTER_PARTS.map((x) => x.label.toLowerCase()).join(", ")}); without this, each starts with {activeProfile.unitParts.filter((p) => activeProfile.requiredParts.includes(p.id)).map((p) => p.label.toLowerCase()).join(", ")}
             </label>
             <SubmitButton className="btn btn-primary" pending="Adding…">Add</SubmitButton>
+          </form>
+        </details>
+      ) : null}
+      {mayAddChapters ? (
+        <details className="panel p-4" data-testid="course-options">
+          <summary className="cursor-pointer font-medium">Course options</summary>
+          <form action={setEditReturnsToDraftAction.bind(null, packageId, !editReturnsToDraft)} className="mt-3 text-sm">
+            <p>{editReturnsToDraft
+              ? "On: editing a completed page makes it a draft again, so an edit goes public only after someone marks it completed."
+              : "Off: an edit to a completed page goes public at the next Publish."}</p>
+            <SubmitButton className="btn btn-ghost btn-sm mt-2" pending="Saving…">{editReturnsToDraft ? "Turn off" : "Make an edit return a completed page to draft"}</SubmitButton>
           </form>
         </details>
       ) : null}

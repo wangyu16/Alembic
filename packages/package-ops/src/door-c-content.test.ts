@@ -40,7 +40,7 @@ describe("Door C and page statuses (SITE-TYPE-CONTRACT §6, §7)", () => {
     const st = (status: Record<string, string>) => M({ status });
     expect(run([{ path: "alembic.json", status: "modified" }], st({ "study-guide/gases.md": "completed" }), true).undo).toEqual([]);
     expect(run([{ path: "alembic.json", status: "modified" }], st({ "study-guide/gases.md": "completed" })).undo[0]!.why).toMatch(/make this change in Alembic/);
-    for (const bad of [{ "study-guide/atoms.md": "completed" }, { "private/instructor/key.md": "withdrawn" }]) {
+    for (const bad of [{ "study-guide/atoms.md": "completed" }, { "private/instructor/key.md": "withdrawn" }] as Array<Record<string, string>>) {
       expect(run([{ path: "alembic.json", status: "modified" }], st(bad), true).undo[0]!.why, JSON.stringify(bad)).toMatch(/isn't a public page or file/);
     }
   });

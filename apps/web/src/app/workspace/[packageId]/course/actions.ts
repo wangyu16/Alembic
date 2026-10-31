@@ -78,3 +78,11 @@ export async function startPartsAction(packageId: string, slug: string, which: C
     back(packageId, `${files.length === 1 ? "It is" : "They are"} being started; ${files.length === 1 ? "it appears" : "they appear"} here in a few seconds (up to a minute when the course is busy).`);
   });
 }
+
+/** A course option (owner or deputy): "an edit returns a completed page to draft" (owner's ruling 2026-10-30, default off). */
+export async function setEditReturnsToDraftAction(packageId: string, value: boolean): Promise<void> {
+  const { user, role } = await member(packageId);
+  if (!can(role, "edit.course-files")) back(packageId, "Only the owner or deputy changes the course's options.");
+  if (!(await queueCourseOp(packageId, user.id, { op: "setOption", option: "editReturnsToDraft", value }, "option"))) back(packageId, "That can't be changed right now; try again.");
+  back(packageId, value ? "From now on, an edit returns a completed page to draft." : "Edits no longer change a page's status.");
+}

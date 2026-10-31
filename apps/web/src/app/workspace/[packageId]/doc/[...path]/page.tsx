@@ -44,7 +44,12 @@ async function DocPageInner({ params }: { params: Promise<{ packageId: string; p
   });
   // The page's status (family SITE-TYPE-CONTRACT §7) and whether it is on the website.
   let statusMap: StatusMap | undefined;
-  try { statusMap = (JSON.parse((await c.repo.readFile(head, "alembic.json")) ?? "{}") as { status?: StatusMap }).status; } catch { statusMap = undefined; }
+  let editReturnsToDraft = false;
+  try {
+    const m = JSON.parse((await c.repo.readFile(head, "alembic.json")) ?? "{}") as { status?: StatusMap; options?: { editReturnsToDraft?: boolean } };
+    statusMap = m.status;
+    editReturnsToDraft = m.options?.editReturnsToDraft === true;
+  } catch { statusMap = undefined; }
   const { data: pubRow } = await supabase.from("published_files").select("path").eq("package_id", packageId).eq("path", path).maybeSingle();
   const secret = assetSecret();
   const assets = secret ? assetUrlMap(packageId, tree.entries.filter((e) => e.type === "blob"), can(role as Role, "edit.private"), secret) : new Map<string, string>();
@@ -58,7 +63,7 @@ async function DocPageInner({ params }: { params: Promise<{ packageId: string; p
         {docTitle(text) ? <span className="text-xs text-muted">{path}</span> : null}
         {isPage(path) ? (
           <StatusControl packageId={packageId} path={path} status={statusOf(statusMap, path)} published={!!pubRow}
-            canEdit={canWritePath(role as Role, path)} lead={can(role as Role, "edit.course-files")} />
+            canEdit={canWritePath(role as Role, path)} lead={can(role as Role, "edit.course-files")} editReturnsToDraft={editReturnsToDraft} />
         ) : null}
       </div>
       <div className="min-h-0 flex-1">

@@ -22,7 +22,9 @@ export type CourseOp =
   | { op: "setLicense"; license: string }
   | { op: "restoreChapter"; slug: string; fromCommit: string }
   /** Files' status (family SITE-TYPE-CONTRACT §7), many at once: mark pages draft or completed; take files off the website or bring them back. */
-  | { op: "setStatus"; paths: string[]; status: StatusChange };
+  | { op: "setStatus"; paths: string[]; status: StatusChange }
+  /** A course option (owner/deputy): `editReturnsToDraft` — a saved edit to a completed page makes it a draft again. */
+  | { op: "setOption"; option: "editReturnsToDraft"; value: boolean };
 
 /** The most files one status change may name (a whole course at once). */
 export const MAX_STATUS_PATHS = 1000;
@@ -79,6 +81,8 @@ export function parseCourseOp(raw: unknown): CourseOp | null {
       }
       return { op: "setStatus", paths: [...new Set(paths)], status: r.status };
     }
+    case "setOption":
+      return r.option === "editReturnsToDraft" && typeof r.value === "boolean" ? { op: "setOption", option: r.option, value: r.value } : null;
     case "restoreChapter":
       return slugOk(r.slug) && typeof r.fromCommit === "string" && /^[0-9a-f]{40}$/.test(r.fromCommit) ? { op: "restoreChapter", slug: r.slug, fromCommit: r.fromCommit } : null;
     default:
@@ -98,6 +102,7 @@ function describe(op: CourseOp, m: WorkingManifestV3): string {
     case "setCourseDetails": return "Changed the course details";
     case "setLicense": return `Changed the licence to ${op.license}`;
     case "restoreChapter": return `Restored chapter “${op.slug}”`;
+    case "setOption": return op.value ? "An edit now returns a completed page to draft" : "An edit no longer changes a page's status";
     case "setStatus": {
       const what = op.paths.length === 1 ? (op.paths[0]!.split("/").pop() ?? op.paths[0]!) : `${op.paths.length} files`;
       return op.status === "completed" ? `Marked ${what} completed` : op.status === "draft" ? `Marked ${what} draft` : op.status === "withdrawn" ? `Took ${what} off the website` : `Brought ${what} back to the website`;
@@ -180,6 +185,10 @@ export function applyCourseOp(manifestText: string | null, paths: ReadonlySet<st
         if (activeProfile.licences.open.includes(op.license)) lines.splice(Math.max(1, lines.findIndex((l) => /^title:/.test(l)) + 1), 0, `license: ${op.license}`);
         writes.push({ path: "CITATION.cff", content: lines.join("\n") });
       }
+      break;
+    }
+    case "setOption": {
+      next = { ...m, options: { ...(m.options ?? {}), [op.option]: op.value } };
       break;
     }
     case "setStatus": {
