@@ -96,4 +96,16 @@ describe("the agent orchestrator (agent-runtime §16–§18)", () => {
     expect([j["status"], j["summary"]]).toEqual(["failed", "Not enough credit for this job."]);
     expect((await db.query<{ state: string }>(`select state from public.agent_sessions where package_id = $1`, [pkg])).rows[0]!.state).toBe("idle");
   });
+
+  it("[K1.43] a job a person stopped: its process is ended, its key revoked and its hold released", async () => {
+    await job("aj-000000000004", pkg, co);
+    await orchestratorPass(cfg());
+    expect((await row("aj-000000000004"))["status"]).toBe("running");
+    await db.query(`update public.agent_jobs set status = 'cancelled', summary = 'Stopped by a person.' where id = 'aj-000000000004'`);
+    await orchestratorPass(cfg());
+    const j = await row("aj-000000000004");
+    expect([j["status"], j["gateway_key_sealed"], j["ended_at"] !== null]).toEqual(["cancelled", null, true]);
+    expect((await db.query<{ status: string }>(`select status from public.holds where job_id = $1`, [j["ai_job_id"]])).rows[0]!.status).toBe("released");
+    expect(ran.some((c) => c.includes(`pkill -u ${courseUser(pkg)}`))).toBe(true);
+  });
 });

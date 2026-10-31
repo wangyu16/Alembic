@@ -4,6 +4,8 @@ import { NEEDS_YOU_LABEL, NEEDS_YOU_RANK, type NeedsYouKind } from "@alembic/not
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { answerItemAction, restoreChapterFromItemAction } from "./actions";
 import { restoreVersionAction } from "../history/actions";
+import { parseCourseOp } from "@alembic/package-ops";
+import { DigestItem, ProposalItem } from "./assistant-items";
 
 export const dynamic = "force-dynamic";
 
@@ -12,7 +14,7 @@ const OWNER_KINDS = new Set(["approve", "to-confirm", "suggestion", "update", "m
 /** Kinds this page answers itself; the rest open where they are decided. */
 const HERE = new Set(["question", "to-confirm", "update", "suggestion", "both-changed"]);
 
-interface Item { id: string; kind: NeedsYouKind; chapter: string | null; payload: { title?: string; detail?: string; action?: { op?: string }; path?: string; keptCommit?: string | null; topVersion?: string | null } | null; created_at: string; addressed_to: string[] }
+interface Item { id: string; kind: NeedsYouKind; chapter: string | null; payload: { title?: string; detail?: string; action?: { op?: string }; path?: string; keptCommit?: string | null; topVersion?: string | null; from?: string; digest?: boolean; questions?: Array<{ id: string; text: string; choices?: string[]; recommended?: string }> } | null; created_at: string; addressed_to: string[] }
 
 export default async function NeedsYouPage({ params }: { params: Promise<{ packageId: string }> }) {
   const { packageId } = await params;
@@ -53,7 +55,11 @@ export default async function NeedsYouPage({ params }: { params: Promise<{ packa
                 <li key={i.id} className="p-3 text-sm">
                   <p><span className="font-medium">{NEEDS_YOU_LABEL[i.kind]}</span>{title ? `: ${title}` : ""}</p>
                   {i.payload?.detail ? <p className="mt-1 text-muted">{i.payload.detail}</p> : null}
-                  {!canAct ? (
+                  {i.kind === "question" && i.payload?.digest && i.payload.questions ? (
+                    <DigestItem packageId={packageId} id={i.id} questions={i.payload.questions} />
+                  ) : i.kind === "approve" && i.payload?.from === "assistant" && parseCourseOp(i.payload.action) ? (
+                    <ProposalItem packageId={packageId} id={i.id} op={parseCourseOp(i.payload.action)!} mayDecide={decides && (parseCourseOp(i.payload.action)!.op !== "setLicense" || role === "owner")} />
+                  ) : !canAct ? (
                     <p className="mt-1 text-muted">Waiting for the course owner.</p>
                   ) : HERE.has(i.kind) ? (
                     <form action={answerItemAction} className="mt-2 flex flex-wrap items-center gap-2">

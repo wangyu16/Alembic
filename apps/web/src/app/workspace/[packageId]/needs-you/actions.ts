@@ -57,3 +57,57 @@ export async function restoreChapterFromItemAction(packageId: string, id: string
   await supabase.rpc("needs_you_answer", { p_id: id, p_answer: { decision: "restored" } });
   revalidatePath(`/workspace/${packageId}/needs-you`);
 }
+
+/**
+ * Answers to the assistant's question digest (agent-runtime §14.1): only the person it is addressed to answers;
+ * answers to the listed questions only, a chosen answer one of its choices; "accept all recommended" takes each
+ * recommendation (questions without one stay unanswered). The assistant reads the answers when it catches up.
+ * An answer is never an approval of anything.
+ */
+export async function answerDigestAction(formData: FormData): Promise<void> {
+  const supabase = await createSupabaseServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return;
+  const packageId = String(formData.get("packageId") ?? "");
+  const id = String(formData.get("id") ?? "");
+  const { data: item } = await supabase.from("needs_you").select("kind, origin, payload, addressed_to").eq("id", id).eq("package_id", packageId).in("state", ["waiting", "shown"]).maybeSingle();
+  const payload = item?.payload as { digest?: boolean; questions?: Array<{ id: string; choices?: string[]; recommended?: string }> } | null;
+  if (item?.kind !== "question" || item.origin !== "agent" || !payload?.digest || !(item.addressed_to as string[]).includes(user.id)) return;
+  const acceptAll = formData.get("acceptAll") === "1";
+  const answers: Record<string, string> = {};
+  for (const q of payload.questions ?? []) {
+    const v = acceptAll ? q.recommended : String(formData.get(`q:${q.id}`) ?? "").trim().slice(0, 1000);
+    if (!v) continue;
+    if (q.choices && !q.choices.includes(v)) continue;
+    answers[q.id] = v;
+  }
+  if (!Object.keys(answers).length) return;
+  await supabase.rpc("needs_you_answer", { p_id: id, p_answer: { answers, ...(acceptAll ? { via: "accept-all" } : {}) } });
+  revalidatePath(`/workspace/${packageId}/needs-you`);
+}
+
+/**
+ * The assistant's proposed course change (§11.2): approving queues it as the approver's own operation, so the usual
+ * check runs again when it is applied; the licence is the owner's only. Declining closes the item.
+ */
+export async function decideProposalAction(packageId: string, id: string, approve: boolean): Promise<void> {
+  const supabase = await createSupabaseServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return;
+  const { data: role } = await supabase.rpc("course_role", { p: packageId });
+  const { data: item } = await supabase.from("needs_you").select("kind, payload").eq("id", id).eq("package_id", packageId).in("state", ["waiting", "shown"]).maybeSingle();
+  const payload = item?.payload as { from?: string; action?: unknown } | null;
+  const op = item?.kind === "approve" && payload?.from === "assistant" ? parseCourseOp(payload.action) : null;
+  if (!op) return;
+  const may = op.op === "setLicense" ? can((role ?? "none") as Role, "license.change") : can((role ?? "none") as Role, "edit.course-files");
+  if (!may) return;
+  if (approve) {
+    try {
+      if (!(await queueCourseOp(packageId, user.id, op, op.op, `item-${id}`))) return;
+    } catch {
+      return; // the same proposal queued by the other decider: theirs stands
+    }
+  }
+  await supabase.rpc("needs_you_answer", { p_id: id, p_answer: { decision: approve ? "approved" : "declined" } });
+  revalidatePath(`/workspace/${packageId}/needs-you`);
+}

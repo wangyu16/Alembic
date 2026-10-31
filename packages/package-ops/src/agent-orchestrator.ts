@@ -190,14 +190,22 @@ async function startOne(c: OrchestratorConfig): Promise<string | null> {
 /** Look at the jobs running in this sandbox: record finished ones, stop overdue ones. */
 async function checkRunning(c: OrchestratorConfig): Promise<number> {
   const { sql, sandbox } = c;
-  const running = await sql.query<JobRow & { minutes: number }>(
-    `select j.id, j.session_id, j.package_id, j.ai_job_id::text, j.course_user, extract(epoch from now() - j.started_at) / 60 as minutes
+  const running = await sql.query<JobRow & { minutes: number; status: string }>(
+    `select j.id, j.session_id, j.package_id, j.ai_job_id::text, j.course_user, j.status, extract(epoch from now() - j.started_at) / 60 as minutes
        from public.agent_jobs j join public.agent_sessions s on s.id = j.session_id
-      where j.status = 'running' and s.sandbox_ref = $1 and j.course_user is not null`,
+      where s.sandbox_ref = $1 and j.course_user is not null
+        and (j.status = 'running' or (j.status = 'cancelled' and j.ended_at is null))`,
     [sandbox.ref],
   );
   let finished = 0;
   for (const j of running.rows) {
+    if (j.status === "cancelled") {
+      // Stopped by a person: every endpoint already refuses it; end its process and settle its credit.
+      await sandbox.exec({ cmd: `sudo pkill -u ${j.course_user} || true`, timeoutSeconds: 30 });
+      await finishJob(c, j, "cancelled", "Stopped by a person.");
+      finished++;
+      continue;
+    }
     const dir = `/home/${j.course_user}/jobs/${j.id}`;
     const look = await sandbox.exec({ cmd: `sudo cat ${dir}/exit.code 2>/dev/null || echo running; echo ---; sudo head -c 200000 ${dir}/result.json 2>/dev/null; echo; echo ---; sudo tail -c 2000 ${dir}/harness.err 2>/dev/null`, timeoutSeconds: 60 });
     const [code, result, err] = look.stdout.split("\n---\n");

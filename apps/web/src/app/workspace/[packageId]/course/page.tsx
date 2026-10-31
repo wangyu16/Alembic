@@ -89,6 +89,7 @@ async function CourseHomeV3Inner({ params, searchParams }: { params: Promise<{ p
           <p className="mt-1 text-sm text-muted" data-testid="role">{ROLE_LINE[role as string] ?? ""}</p>
         </div>
         <nav className="flex flex-wrap gap-2 text-sm" aria-label="This course">
+          <Link className="btn btn-ghost btn-sm" href={`/workspace/${packageId}/assistant`} data-testid="assistant-link">Assistant</Link>
           <Link className="btn btn-ghost btn-sm" href={`/workspace/${packageId}/needs-you`}>Needs you</Link>
           <Link className="btn btn-ghost btn-sm" href={`/workspace/${packageId}/people`}>People</Link>
           <Link prefetch={false} className="btn btn-primary btn-sm" href={`/workspace/${packageId}/publish`}>Publish</Link>

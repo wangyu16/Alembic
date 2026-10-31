@@ -416,4 +416,5 @@ bound_to = [
   "apps/web/src/lib/agent-orchestrator.sql.test.ts :: a finished job: its result is the hand-over note, the key is revoked, the hold released; the next job starts",
   "apps/web/src/lib/agent-orchestrator.sql.test.ts :: a job past its time limit is stopped and failed",
   "apps/web/src/lib/agent-orchestrator.sql.test.ts :: without enough credit a job fails to start, holding nothing; the session is free again",
+  "apps/web/src/lib/agent-orchestrator.sql.test.ts :: a job a person stopped: its process is ended, its key revoked and its hold released",
 ]
