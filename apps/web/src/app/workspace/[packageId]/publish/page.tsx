@@ -116,7 +116,15 @@ async function PublishPageInner({ params, searchParams }: { params: Promise<{ pa
       <tr key={key} className="align-top" data-testid={`chapter-${key}`}>
         <td className="py-2 pr-3 font-medium">{title}</td>
         <td className="py-2">
-          {rows.length ? (
+          {rows.length && rows.every((r) => r.fate === "live") ? (
+            // Nothing will change here: one quiet line; the pages are a click away.
+            <details>
+              <summary className="cursor-pointer text-sm text-muted">✓ all {rows.length} pages on the website</summary>
+              <ul className="mt-1 flex flex-wrap gap-1.5">
+                {rows.map((r) => <li key={r.path}><Link prefetch={false} href={docHref(packageId, r.path)} className="part">{r.label}</Link></li>)}
+              </ul>
+            </details>
+          ) : rows.length ? (
             <ul className="flex flex-col gap-1">
               {rows.map((r) => (
                 <li key={r.path} className="flex flex-wrap items-center gap-2">
