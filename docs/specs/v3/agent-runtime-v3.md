@@ -344,36 +344,21 @@ The owner's rulings of 2026-10-30 and the site type contract (family
   are undone. A package made outside Alembic is brought in once.
 
 
-## 14. What the type package's assistant needs (Coursewerk's review, 2026-10-30)
+## 14. What the type package's assistant needs (Coursewerk's review, 2026-10-30; G7 round 4 resolved)
 
 From Coursewerk's GenChem re-evaluation (its report §4). Each is mechanism, the
-same for any type package; none lets Alembic judge content.
+same for any type package; none lets Alembic judge, gate or warn. Claims R.23–R.27.
 
-1. **Questions in one item.** A hand-in may carry a **digest**: up to 50
-   questions, each `{ id, text, choices?, recommended? }`, plus an
-   "accept all recommended" answer. Alembic raises **one** Needs-you item for
-   the digest (addressed to the invoker), shows the questions together, and
-   returns the person's answers (each with the answering person and the event
-   seq) through catch-up. One item per question is never raised for a digest.
-2. **Who changed what.** Catch-up gives, for each file changed since a version
-   the assistant names: the commits, and for each the person (or "the
-   assistant, for <name>", or "changed on GitHub"), as History shows them,
-   including after combined section edits (the commit that combined them,
-   listing both people). Bounded: at most 300 files and 50 commits per file;
-   over that, "too much changed: read the files".
-3. **Cost shown first.** A job states an estimate (calls and credits) before it
-   runs; Alembic shows it to the person with Start / Not now, and holds the
-   job's credits as for any metered job (C1). The job may run on its own after
-   one "always for jobs under N credits" choice the person makes in settings.
-4. **Reference texts.** A person's uploaded sources (B4, `private/sources/`
-   pointers) are readable by the assistant when the source allows AI use, as
-   text (PDF converted to text on upload; a text file as is). Web pages that
-   need a browser (OpenStax) are uploaded by the person as PDF or text; the
-   fetch proxy does not run a browser.
-5. **Records in bulk.** A hand-in of record files only (`records` folders, up
-   to 200 files, §13) is committed at once, ordered as handed in, without the
-   30-minute deferral that applies to content while a person is typing; records
-   are never combined (§13).
+1. **Questions in one item (R.23).**
+   - **Transport:** a hand-in may carry `digest: { questions: [{ id, text ≤ 500 chars, choices? ≤ 6 of ≤ 120 chars, recommended? }] }`, at most 50 questions. It raises **one** Needs-you item of kind `question` (with `digest: true`), addressed to the invoker; §4.4's event kinds are unchanged.
+   - **Answers:** only the addressee answers. Partial answers are kept. "Accept all recommended" records, for each question that has a recommendation, that choice with `via: "accept-all"`; questions without one stay open. An answer is never an approval of anything in Alembic. The answers (with the person and the event seq) reach the assistant through catch-up for the same session.
+   - **Bounds:** one open digest per job; at most 20 open question items per invoker (further ones wait); an open digest is withdrawn after 7 days or when the invoker leaves the course.
+2. **Who changed what (R.24).** Catch-up takes a commit that must be an ancestor of the head, and returns, for each file changed since **that the invoker may read**, the commits and their people as History shows them (combined section edits name both). At most 300 files and 50 commits per file, and 1 MB per answer; over that, "too much changed: read the files".
+3. **Cost shown first (R.25).** A job states an estimate; the person sees it with Start / Not now. **The hold is the estimate:** a job that reaches it pauses (`paused:budget`), and going on needs the person again. An "always for jobs under N credits" setting is the invoker's own, compared with the hold, and spends the invoker's allowance.
+4. **Reference texts (R.26).** The assistant may read an uploaded source only when the **invoker could open it themselves** (their own upload, or shared with the course), it allows AI use, and it isn't removed. This is checked again on every read, served through the existing short-lived signed link. A PDF's text is made on upload in a separate process with time, page and size limits; a scanned or failing PDF has "no text". The text copy follows the source's flags and never enters the repository. Web pages that need a browser are uploaded by the person as PDF or text.
+5. **Records in bulk (R.27).** A **records-only** hand-in (every entry a text write under a `records` folder, no course operations, deletes, moves or figures) skips only the 30-minute wait for a typing person. It still goes through the queue and the committer's re-check (rights cap, read-only course, paused states). A mixed hand-in waits as a whole. Records are never combined (§13). Rate: at most 30 records commits and 20 MB of records per job per hour. Order: first in, first out across the job's records hand-ins, `dependsOn` honoured.
+
+**Public records and "only completed pages are published"** (G7 round 4, item 10): the public records folder is published as it is (contract §5, G0 round 3). To keep that carve-out small, the type definition's public records are limited to 1 MB in total and to the kinds the type package declares (Coursewerk: `ATTRIBUTION.md`, `CHECKED.json`). Taking the folder off the website remains the person's ("withdrawn"). Recorded for the owner to confirm (family contract §13).
 
 Coursewerk's two notes for the owner were answered: the optional course setting
 "an edit returns a completed page to draft" is built (claim K1.26); a page set
