@@ -183,10 +183,12 @@ export function applyCourseOp(manifestText: string | null, paths: ReadonlySet<st
       break;
     }
     case "setStatus": {
-      // A page deleted since the person looked is skipped, not a reason to refuse the rest (many pages at once).
-      const present = op.paths.filter((p) => paths.has(p));
+      // Clearing a status (draft, bring back) may name a file that is gone (Door C drops the status of a file deleted on
+      // GitHub). Otherwise a page deleted since the person looked is skipped, not a reason to refuse the rest.
+      const clearing = op.status === "draft" || op.status === "public";
+      const present = clearing ? op.paths.filter((p) => paths.has(p) || m.status?.[p] !== undefined) : op.paths.filter((p) => paths.has(p));
       if (!present.length) return { ok: false, reason: op.paths.length === 1 ? `${op.paths[0]!.split("/").pop()} is no longer in the course` : "those pages are no longer in the course" };
-      for (const p of present) {
+      for (const p of present.filter((x) => paths.has(x))) {
         if (!takesStatus(p)) return { ok: false, reason: `${p.split("/").pop()} is instructor-only and never published` };
         if ((op.status === "draft" || op.status === "completed") && !isPage(p)) return { ok: false, reason: `${p.split("/").pop()} isn't a page; take it off the website instead` };
       }

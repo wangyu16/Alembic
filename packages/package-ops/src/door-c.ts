@@ -5,7 +5,7 @@
  * the payload's own file lists are never trusted).
  */
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { REGULAR_FILE_MODES, activeProfile, fileKind, isHarnessPath, isSvgPath, isTextBytes, mediaProblems, normalizePath, spaceForPathV3, svgProblems, unitPartForPath, WorkingManifestV3Schema } from "@alembic/package-contract";
+import { REGULAR_FILE_MODES, activeProfile, fileKind, isHarnessPath, isPage, isSvgPath, isTextBytes, mediaProblems, normalizePath, spaceForPathV3, svgProblems, takesStatus, unitPartForPath, WorkingManifestV3Schema } from "@alembic/package-contract";
 
 /** `X-Hub-Signature-256: sha256=<hex>` over the raw body. */
 export function verifyGithubWebhook(rawBody: string, header: string | null, secret: string): boolean {
@@ -89,7 +89,7 @@ export function classifyOutside(changes: readonly ChangedEntry[]): OutsideVerdic
     if (p.startsWith(".github/")) { v.inform.push(p); continue; }
     if (p.startsWith(".alembic/") || p === ".gitignore") { v.undo.push({ path: p, why: "Alembic's own files" }); continue; }
     if (p.startsWith("private/sources/")) { v.undo.push({ path: p, why: "source records are kept by Alembic" }); continue; }
-    if (isHarnessPath(p)) { v.undo.push({ path: p, why: "Coursewerk records arrive only through Coursewerk" }); continue; }
+    if (isHarnessPath(p) || p.startsWith("provenance/coursewerk/")) { v.undo.push({ path: p, why: "Coursewerk records arrive only through Coursewerk" }); continue; }
     try {
       spaceForPathV3(p);
     } catch {
@@ -123,6 +123,8 @@ export interface ContentVerdict {
   undo: Array<{ path: string; why: string }>;
   /** The owner changed the licence on GitHub: accepted, and the licence files are regenerated. */
   regenerateLicense?: string;
+  /** Files deleted by the push that still have a status: it is dropped (a follow-up status change). */
+  dropStatus?: string[];
 }
 
 /**
@@ -153,6 +155,7 @@ export function classifyPushedContent(i: {
     if (!after) undo("alembic.json", "the course settings aren't valid");
     else if (!activeProfile.licences.allowed.includes(after.license)) undo("alembic.json", "that licence isn't allowed");
     else if (MECHANICS_FIELDS.some((k) => JSON.stringify(rb[k]) !== JSON.stringify(ra[k]))) undo("alembic.json", "Alembic's own settings can only change in Alembic");
+    else if (Object.entries(after.status ?? {}).some(([p, st]) => !i.pathsAfter.has(p) || !takesStatus(p) || (st === "completed" && !isPage(p)))) undo("alembic.json", "a status names a file that isn't a public page or file of the course");
     else {
       // Compared under the new titles (a renamed chapter that already lacked a part isn't a new problem).
       const hadSlug = new Set(before ? before.chapters.map((c) => c.slug) : []);
@@ -163,6 +166,8 @@ export function classifyPushedContent(i: {
         if (i.pusherIsOwner) v.regenerateLicense = after.license;
         else undo("alembic.json", "only the owner changes the licence");
       }
+      // Settings (chapters, details, statuses) are taken from GitHub only from the recognised owner (SITE-TYPE-CONTRACT §6).
+      else if (!i.pusherIsOwner && JSON.stringify(rb) !== JSON.stringify(ra)) undo("alembic.json", "only the owner's changes to the course settings are taken from GitHub; make this change in Alembic");
     }
   }
   const listed = new Set((parse(i.manifestAfter) ?? before)?.chapters.map((c) => c.slug) ?? []);
@@ -172,6 +177,7 @@ export function classifyPushedContent(i: {
     if (f.status === "removed") {
       const part = unitPartForPath(f.path);
       if (part && listed.has(part.slug)) undo(f.path, "a chapter's parts are removed with the chapter");
+      else if ((parse(i.manifestAfter) ?? before)?.status?.[f.path] !== undefined) (v.dropStatus ??= []).push(f.path);
       continue;
     }
     const kind = fileKind(f.path);

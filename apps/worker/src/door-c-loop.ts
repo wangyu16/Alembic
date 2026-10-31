@@ -93,6 +93,7 @@ async function handlePush(cfg: DoorCConfig, ev: Ev): Promise<void> {
   const who = ev.pusher_login ?? "someone";
 
   let regenerate: { license: string; owner: string } | null = null;
+  let dropStatus: { paths: string[]; owner: string } | null = null;
   // Second stage, by content (contract v3 §13.6): fetch only what the rules look at.
   const shaOf = new Map(entries.map((e) => [e.path, e.sha]));
   const sizeOf = new Map(entries.map((e) => [e.path, (e as { size?: number }).size ?? 0]));
@@ -128,6 +129,7 @@ async function handlePush(cfg: DoorCConfig, ev: Ev): Promise<void> {
       verdict.edits = verdict.edits.filter((p) => p !== u.path);
     }
     if (content.regenerateLicense && owner0) regenerate = { license: content.regenerateLicense, owner: owner0.id };
+    if (content.dropStatus?.length && owner0) dropStatus = { paths: content.dropStatus, owner: owner0.id };
   }
 
   if (verdict.undo.length) {
@@ -162,6 +164,11 @@ async function handlePush(cfg: DoorCConfig, ev: Ev): Promise<void> {
   // After the undo row (round 1 audit L3): the owner's licence change on GitHub is kept and the licence files regenerated.
   if (regenerate) {
     await new SqlQueueStore(sql).insert({ packageId: course.id, kind: "courseop", idem: `license:${ev.after_sha}`, actorId: regenerate.owner, payload: { files: [], op: { op: "setLicense", license: regenerate.license } } });
+  }
+  // Files deleted on GitHub lose their status (SITE-TYPE-CONTRACT §7): a file added there later starts as a draft.
+  if (dropStatus) {
+    await new SqlQueueStore(sql).insert({ packageId: course.id, kind: "courseop", idem: `status:drop:${ev.after_sha}`, actorId: dropStatus.owner,
+      payload: { files: [], op: { op: "setStatus", paths: dropStatus.paths.slice(0, 1000), status: "draft" }, summary: "Statuses of files deleted on GitHub dropped" } });
   }
   async function raiseUndone() {
     await raise(sql, course!.id, `undo:${ev.after_sha}`, {

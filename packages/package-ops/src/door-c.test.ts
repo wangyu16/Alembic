@@ -60,3 +60,11 @@ describe("classifyOutside", () => {
     expect(undoKey(S("f"))).toBe(`undo:${S("f")}`);
   });
 });
+
+describe("Door C and the type package's records", () => {
+  it("[K1.25] pushes to either records folder are undone (only Coursewerk's tools write them, through Alembic)", () => {
+    const v = classifyOutside([{ path: "provenance/coursewerk/ATTRIBUTION.md", mode: "100644" }, { path: "private/coursewerk/LOG.jsonl", mode: "100644" }]);
+    expect(v.undo.map((u) => u.path).sort()).toEqual(["private/coursewerk/LOG.jsonl", "provenance/coursewerk/ATTRIBUTION.md"]);
+  });
+});
+

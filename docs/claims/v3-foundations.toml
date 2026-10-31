@@ -77,7 +77,7 @@ bound_to = [
   "packages/package-ops/src/course-committer.test.ts :: a sync queued before an operation lands first (no queue jumping), and the operation applies on top of it",
   "packages/package-ops/src/course-committer.test.ts :: a head that moves under an operation (a push on GitHub) makes it decide again on the new head",
   "apps/web/src/lib/course-ops.sql.test.ts :: a courseop row needs an actor, and Publish waits while one is on its way",
-  "packages/package-ops/src/door-c-content.test.ts :: pushed course settings that are invalid, change Alembic's own fields, or list a chapter with no study guide are undone; a title change is taken",
+  "packages/package-ops/src/door-c-content.test.ts :: pushed course settings that are invalid, change Alembic's own fields, or list a chapter with no study guide are undone; the owner's title change is taken, anyone else's is undone",
 ]
 note = "Built: addChapters, renameChapter, moveChapter, removeChapter, setChapterMode, setCourseDetails. Also built: setLicense (K1.18), restoreChapter (K1.16)."
 
@@ -236,3 +236,13 @@ bound_to = [
   "apps/worker/src/publish-loop.test.ts :: defaults are titled with the course, never fetch the network, and a missing link or include is a note, not a stop",
 ]
 
+
+[[claim]]
+id = "K1.25"
+claim = "Door C keeps statuses and the type package's records honest (family SITE-TYPE-CONTRACT §6, §7): course settings pushed on GitHub, statuses included, are taken only from the recognised owner and only when each status names a public page or file of the course; pushes to either records folder are undone; a file deleted on GitHub loses its status in a follow-up change."
+oracle = "conformance"
+bound_to = [
+  "packages/package-ops/src/door-c-content.test.ts :: the owner's pushed statuses are taken when each names a public page or file of the course; anyone else's are undone",
+  "packages/package-ops/src/door-c-content.test.ts :: a file deleted on GitHub that had a status gets it dropped (a follow-up change), so a file added later at that path starts as a draft",
+  "packages/package-ops/src/door-c.test.ts :: pushes to either records folder are undone (only Coursewerk's tools write them, through Alembic)",
+]

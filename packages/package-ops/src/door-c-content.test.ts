@@ -12,11 +12,13 @@ describe("Door C: what a push may not change by content (contract v3 §13.6)", (
     expect(run([{ path: "alembic.json", status: "modified" }], M({ license: "CC0-1.0" }), true)).toEqual({ undo: [], regenerateLicense: "CC0-1.0" });
     expect(run([{ path: "LICENSE", status: "modified", bytes: enc("mine") }]).undo[0]!.path).toBe("LICENSE");
   });
-  it("[K1.15] pushed course settings that are invalid, change Alembic's own fields, or list a chapter with no study guide are undone; a title change is taken", () => {
+  it("[K1.15] pushed course settings that are invalid, change Alembic's own fields, or list a chapter with no study guide are undone; the owner's title change is taken, anyone else's is undone", () => {
     expect(run([{ path: "alembic.json", status: "modified" }], "{not json").undo[0]!.why).toMatch(/aren't valid/);
     expect(run([{ path: "alembic.json", status: "modified" }], M({ publicRepo: { owner: "evil", name: "x" } })).undo[0]!.why).toMatch(/Alembic's own settings/);
     expect(run([{ path: "alembic.json", status: "modified" }], M({ chapters: [{ slug: "gases", title: "Gases", mode: "package" }, { slug: "atoms", title: "Atoms", mode: "package" }] })).undo[0]!.why).toMatch(/has no (concept map|study guide)/);
-    expect(run([{ path: "alembic.json", status: "modified" }], M({ title: "General Chemistry" })).undo).toEqual([]);
+    expect(run([{ path: "alembic.json", status: "modified" }], M({ title: "General Chemistry" }), true).undo).toEqual([]);
+    // Anyone else's settings change on GitHub is undone, with the way forward (SITE-TYPE-CONTRACT §6).
+    expect(run([{ path: "alembic.json", status: "modified" }], M({ title: "General Chemistry" })).undo[0]!.why).toMatch(/make this change in Alembic/);
   });
   it("[K1.13] removing a listed chapter's part on GitHub is undone; removing another file is taken", () => {
     expect(run([{ path: "study-guide/gases.md", status: "removed" }]).undo[0]!.why).toMatch(/removed with the chapter/);
@@ -30,5 +32,22 @@ describe("Door C: what a push may not change by content (contract v3 §13.6)", (
     // Round 3 audit HIGH-1: a kind of file a course can't hold, pushed on GitHub, is undone.
     expect(run([{ path: "metadata/evidence/page.html", status: "added" }]).undo[0]!.why).toMatch(/can't hold/);
     expect(run([{ path: "assets/run.js", status: "modified" }]).undo[0]!.why).toMatch(/can't hold/);
+  });
+});
+
+describe("Door C and page statuses (SITE-TYPE-CONTRACT §6, §7)", () => {
+  it("[K1.25] the owner's pushed statuses are taken when each names a public page or file of the course; anyone else's are undone", () => {
+    const st = (status: Record<string, string>) => M({ status });
+    expect(run([{ path: "alembic.json", status: "modified" }], st({ "study-guide/gases.md": "completed" }), true).undo).toEqual([]);
+    expect(run([{ path: "alembic.json", status: "modified" }], st({ "study-guide/gases.md": "completed" })).undo[0]!.why).toMatch(/make this change in Alembic/);
+    for (const bad of [{ "study-guide/atoms.md": "completed" }, { "private/instructor/key.md": "withdrawn" }]) {
+      expect(run([{ path: "alembic.json", status: "modified" }], st(bad), true).undo[0]!.why, JSON.stringify(bad)).toMatch(/isn't a public page or file/);
+    }
+  });
+  it("[K1.25] a file deleted on GitHub that had a status gets it dropped (a follow-up change), so a file added later at that path starts as a draft", () => {
+    const after = M({ status: { "study-guide/extra.md": "completed" } });
+    const v = classifyPushedContent({ files: [{ path: "study-guide/extra.md", status: "removed" }], manifestBefore: after, manifestAfter: after, pathsAfter: paths, pusherIsOwner: false });
+    expect(v.undo).toEqual([]);
+    expect(v.dropStatus).toEqual(["study-guide/extra.md"]);
   });
 });
