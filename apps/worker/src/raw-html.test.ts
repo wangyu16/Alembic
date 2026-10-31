@@ -51,3 +51,30 @@ describe("raw HTML in published course text (foundations round 5 H1)", () => {
     expect(changed).toBe(0);
   });
 });
+
+describe("the cleaner and orz-markdown's own constructs (overnight round 3)", () => {
+  // A live handler: an attribute NAME starting with "on" inside a tag (quoted values and text don't count).
+  const live = (t: string) => [...md.render(t).matchAll(/<[a-z][a-z0-9-]*\b((?:\s+[^\s=>]+(?:=(?:"[^"]*"|'[^']*'|[^\s>]*))?)*)\s*\/?>/gi)]
+    .some((m) => /\s+on[a-z]+(?:=|\s|$)/i.test(m[1]!.replace(/"[^"]*"|'[^']*'/g, '""')));
+  it("[K1.20] attributes set with {{attrs[...]}} that can run script become text; ids and classes stay", () => {
+    const r = clean("## Hi {{attrs[onmouseover=\"alert(1)\" style=\"position:fixed\"]}}\n\n## Ok{{attrs[#blk-a .c]}}\n");
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(live(r.text)).toBe(false);
+    expect(md.render(r.text)).toMatch(/id="blk-a"/);
+  });
+  it("[K1.20] raw HTML in a table cell is cleaned like any other", () => {
+    const r = clean("| a | b |\n|---|---|\n| <img src=x onerror=alert(3)> | ok |\n");
+    expect(r.ok && live(r.text)).toBe(false);
+    expect(r.ok && r.escaped).toBeGreaterThan(0);
+  });
+  it("[K1.20] a container's title can't carry markup", () => {
+    const r = clean("::: spoil <img src=x onerror=alert(2)>\nbody\n:::\n");
+    expect(r.ok && live(r.text)).toBe(false);
+    expect(r.ok && md.render(r.text)).toMatch(/body/);
+  });
+  it("[K1.20] ordinary pages are untouched (GenChem headings with block ids, tables)", () => {
+    const t = "## 16.1 Buffers{{attrs[#blk-ch16sec01]}}\n\n| x | y |\n|---|---|\n| 1 | 2 |\n\n::: spoil Answer\n42\n:::\n";
+    expect(clean(t)).toEqual({ ok: true, text: t, escaped: 0 });
+  });
+});

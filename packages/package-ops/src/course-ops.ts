@@ -234,7 +234,7 @@ export function applyCourseOp(manifestText: string | null, paths: ReadonlySet<st
         const path = `${termFolder(slug)}${f.path.slice(termFolder(op.copyFrom).length)}`;
         if (paths.has(path)) continue;
         if ("blobSha" in f) writes.push({ path, blobSha: f.blobSha });
-        else writes.push({ path, content: f.content.replace(/^\{\{nyml\n[\s\S]*?\n\}\}/, (header) => header.replace(/^uid:[ \t]*\S+/m, `uid: ${newUid()}`)) });
+        else writes.push({ path, content: f.content.replace(/^\uFEFF?\{\{nyml\r?\n[\s\S]*?\r?\n\}\}/, (header) => header.replace(/^uid:[ \t]*[^\s\r]+/m, `uid: ${newUid()}`)) });
         if (m.status?.[f.path] === "withdrawn") copiedStatus[path] = "withdrawn";
       }
       if (Object.keys(copiedStatus).length) next = { ...next, status: { ...(next.status ?? {}), ...copiedStatus } };

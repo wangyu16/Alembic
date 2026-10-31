@@ -24,7 +24,13 @@ export interface MdToken {
   content: string;
   map: [number, number] | null;
   children: MdToken[] | null;
+  info?: string;
+  attrs?: Array<[string, string]> | null;
 }
+
+/** An attribute that can run script or load a page (set through orz-markdown's `{{attrs[...]}}`; round 3 audit). */
+const unsafeAttr = ([k, v]: [string, string]) =>
+  /^on/i.test(k) || /^(srcdoc|formaction|xlink:href)$/i.test(k) || (/^(href|src|action|data)$/i.test(k) && /^\s*(javascript|vbscript|data):/i.test(v));
 
 /** Is this piece of raw HTML (one or more tags and comments) all on the list? */
 function safeHtml(html: string): boolean {
@@ -39,13 +45,28 @@ function safeHtml(html: string): boolean {
   }) && !/<!--/.test(html.replace(/<!--(?!-?>)[^<>]*?-->/g, ""));
 }
 
-/** Raw HTML pieces outside the list, in document order, with the lines they sit on. */
-function unsafePieces(tokens: readonly MdToken[]): Array<{ lines: [number, number]; html: string; block: boolean }> {
-  const out: Array<{ lines: [number, number]; html: string; block: boolean }> = [];
+/**
+ * Pieces outside the list, in document order, with the lines they sit on:
+ * - raw HTML blocks and inline HTML (table cells included: their inline tokens carry no lines of their own, so the
+ *   enclosing block's are used; round 3 audit);
+ * - `{{attrs[...]}}` that set an attribute able to run script (`attrs`);
+ * - a container's title holding markup (`::: spoil <img …>` renders its title raw: `title`).
+ */
+type Piece = { lines: [number, number]; html: string; block: boolean; kind?: "attrs" | "title" };
+function unsafePieces(tokens: readonly MdToken[]): Piece[] {
+  const out: Piece[] = [];
+  let around: [number, number] | null = null;
   for (const t of tokens) {
+    if (t.map) around = t.map; // the nearest earlier token with lines (a table row for its cells)
+    const lines = t.map ?? around;
     if (t.type === "html_block" && t.map && !safeHtml(t.content)) out.push({ lines: t.map, html: t.content, block: true });
-    if (t.type === "inline" && t.map && t.children) {
-      for (const c of t.children) if (c.type === "html_inline" && !safeHtml(c.content)) out.push({ lines: t.map, html: c.content, block: false });
+    if (t.attrs?.some(unsafeAttr) && lines) out.push({ lines, html: "{{attrs[", block: false, kind: "attrs" });
+    if (/^container_.*_open$/.test(t.type) && /[<>]/.test(t.info ?? "") && t.map) out.push({ lines: [t.map[0], t.map[0] + 1], html: "", block: false, kind: "title" });
+    if (t.type === "inline" && lines && t.children) {
+      for (const c of t.children) {
+        if (c.type === "html_inline" && !safeHtml(c.content)) out.push({ lines, html: c.content, block: false });
+        if (c.attrs?.some(unsafeAttr)) out.push({ lines, html: "{{attrs[", block: false, kind: "attrs" });
+      }
     }
   }
   return out;
@@ -63,6 +84,15 @@ export function cleanRawHtml(text: string, parse: (src: string) => MdToken[]): C
   const lines = text.split("\n");
   const cursor = new Map<number, number>(); // per first line: where the next inline search starts
   for (const p of found) {
+    if (p.kind === "attrs") {
+      // Every attribute block on those lines becomes text (`{{` written as entities).
+      for (let k = p.lines[0]; k < p.lines[1]; k++) lines[k] = lines[k]!.split("{{attrs[").join("&#123;&#123;attrs[");
+      continue;
+    }
+    if (p.kind === "title") {
+      lines[p.lines[0]] = lines[p.lines[0]]!.replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/^(\s*:{3,})\s*&gt;/, "$1 >");
+      continue;
+    }
     if (p.block) {
       for (let k = p.lines[0]; k < p.lines[1]; k++) lines[k] = lines[k]!.replace(/</g, "&lt;");
       continue;

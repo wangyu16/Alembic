@@ -53,5 +53,7 @@ export function addonAllowsPublish(path: string, m: { addons?: readonly string[]
   // early stays hidden); only loose files directly under current/ (a course's older files) are ordinary (L3).
   const term = termOfPath(path);
   if (!term) return true;
+  // A course that never used the add-on (no terms) keeps its own current/ subfolders as ordinary files (round 3 M).
+  if (!on && !(m.terms ?? []).length) return true;
   return on && term === m.currentTerm;
 }
