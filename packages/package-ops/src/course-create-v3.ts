@@ -8,6 +8,9 @@
  */
 import {
   activeProfile,
+  DEFAULT_SITE_TYPE,
+  siteStartFiles,
+  siteType,
   assertPathAllowedInWorkingRepo,
   newDocId,
   newPackageId,
@@ -33,8 +36,10 @@ export interface NewCourse {
   license: WorkingManifestV3["license"];
   /** Chapter titles in order (blank ones skipped); none gives one "Introduction" chapter. */
   chapters?: string[];
-  /** Start every chapter's five parts at once (otherwise only its study guide). */
+  /** Start every chapter's parts at once (otherwise only the required ones). */
   startParts?: boolean;
+  /** The owner's name, credited in the citation (falls back to the GitHub account). */
+  authorName?: string;
 }
 
 export function repoNameFor(title: string, packageId: string): string {
@@ -46,7 +51,7 @@ export async function createCourseRepoV3(n: NewCourse, deps: CourseRepoDeps): Pr
   packageId: string; manifest: WorkingManifestV3; repo: { owner: string; name: string }; head: string; files: string[];
 }> {
   const packageId = newPackageId(n.title);
-  const empty = WorkingManifestV3Schema.parse({ schemaVersion: 3, packageId, title: n.title, license: n.license, createdAt: new Date().toISOString(), chapters: [] });
+  const empty = WorkingManifestV3Schema.parse({ schemaVersion: 3, packageId, title: n.title, license: n.license, createdAt: new Date().toISOString(), chapters: [], type: DEFAULT_SITE_TYPE });
   const titles = (n.chapters ?? []).filter((t) => t.trim());
   const { manifest, added } = addChapters(empty, titles.length ? titles : ["Introduction"]);
   const files = [{ path: "alembic.json", content: `${JSON.stringify(manifest, null, 2)}\n` }];
@@ -55,6 +60,11 @@ export async function createCourseRepoV3(n: NewCourse, deps: CourseRepoDeps): Pr
       if (n.startParts || activeProfile.requiredParts.includes(part)) files.push({ path: chapterPartPath(part, ch.slug), content: chapterPartText(part, ch.title, newDocId()) });
     }
   }
+  // The site type's own starting files (family SITE-TYPE-CONTRACT §5): template files, required site documents,
+  // the licence's files and the citation.
+  const t = siteType(DEFAULT_SITE_TYPE);
+  const start = siteStartFiles(t.definition, t.files, { title: n.title, licence: n.license, authors: n.authorName?.trim() || n.owner, year: new Date().getFullYear(), newUid: newDocId });
+  for (const [path, content] of start) if (!files.some((f) => f.path === path)) files.push({ path, content });
   for (const f of files) assertPathAllowedInWorkingRepo(f.path);
 
   const coords = await deps.generateFromTemplate({

@@ -109,7 +109,7 @@ export const undoKey = (head: string) => `undo:${head}`;
  * -------------------------------------------------------------------------- */
 
 /** The manifest fields that are Alembic's (contract v3 §13.5): never taken from a push. */
-export const MECHANICS_FIELDS = ["packageId", "privateRepo", "publicRepo", "createdAt", "coursewerk", "upstream"] as const;
+export const MECHANICS_FIELDS = ["packageId", "privateRepo", "publicRepo", "createdAt", "coursewerk", "upstream", "type"] as const;
 
 export interface PushedFile {
   path: string;

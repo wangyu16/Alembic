@@ -8,6 +8,7 @@ import { parseSiteType, type SiteType } from "./schema";
 
 export { ALEMBIC_PATHS, parseSiteType, SITE_TYPE_SCHEMA, SiteTypeSchema, siteTypeProblems, type DocumentDefinition, type SiteType } from "./schema";
 export { docKey, fillStarter, profileFromDefinition } from "./profile-bridge";
+export { fillCitation, siteStartFiles, type SiteStart } from "./start";
 export { followFiles, isPage, setStatuses, statusOf, takesStatus, type FileStatus, type StatusChange, type StatusMap } from "./status";
 
 export interface LoadedSiteType {

@@ -34,6 +34,8 @@ const v3Fields = {
   chapters: z.array(ChapterRefV3Schema).default([]),
   /** Who the course is for ("first-year undergraduates"). */
   audience: z.string().max(500).optional(),
+  /** The site type and major version this course follows (family SITE-TYPE-CONTRACT §3), e.g. "oer-course@1"; Alembic's. */
+  type: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*@\d+$/).optional(),
   /** The Coursewerk version this course runs (FC-16 v1); absent = no Coursewerk yet. */
   coursewerk: z.object({ version: z.string().min(1) }).optional(),
   /** Each file's status (family SITE-TYPE-CONTRACT §7): path → completed | withdrawn; a page not listed is a draft. Never public. */

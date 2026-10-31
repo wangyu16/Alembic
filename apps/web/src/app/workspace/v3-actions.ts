@@ -39,7 +39,7 @@ export async function createCourseV3Action(formData: FormData): Promise<void> {
   const { data: recent } = await admin.from("packages").select("id").eq("owner_id", user.id).eq("title", title)
     .gte("created_at", new Date(Date.now() - 2 * 60_000).toISOString()).order("created_at", { ascending: false }).limit(1);
   if (recent?.[0]) redirect(`/workspace/${recent[0].id as string}/course`);
-  const { data: profile } = await admin.from("profiles").select("github_installation_id, github_username").eq("id", user.id).maybeSingle();
+  const { data: profile } = await admin.from("profiles").select("github_installation_id, github_username, display_name").eq("id", user.id).maybeSingle();
   const installationId = profile?.github_installation_id as number | null;
   const owner = profile?.github_username as string | null;
   if (!installationId || !owner) redirect("/workspace?v3=connect");
@@ -48,7 +48,7 @@ export async function createCourseV3Action(formData: FormData): Promise<void> {
   try {
     const client = await clientForInstallation(cfg, installationId);
     created = await createCourseRepoV3(
-      { title, owner, templateOwner: cfg.templateOwner, privateTemplate: cfg.privateTemplate, license: license.data, chapters, startParts },
+      { title, owner, templateOwner: cfg.templateOwner, privateTemplate: cfg.privateTemplate, license: license.data, chapters, startParts, authorName: (profile?.display_name as string | null) ?? undefined },
       {
         generateFromTemplate: (i) => client.generateFromTemplate(i),
         waitForHead: async (coords) => {
