@@ -446,3 +446,24 @@ gateway's Sonnet 5 rates against the invoice). Rules for the orchestrator (step 
 6. **Settings that keep the harness quiet:** `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC`, `DISABLE_TELEMETRY`,
    `DISABLE_ERROR_REPORTING`, `CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS`; the tools allowed are the `alembic` helper,
    `jq`, `cat`, Read and Write (no network tools).
+
+## 18. A sandbox acts for its running job (2026-10-31, C4 step 3b): amends §2 for sandboxes
+
+instabox's API lets only a workspace's own admin key set a Secret's value, so a worker can't rotate per-job
+credentials in a personal-org sandbox. The same guarantees hold without rotating anything:
+- **The sandbox's own key** is a long-lived proxy Secret scoped to the Alembic host; the agent holds only its
+  placeholder; Alembic stores its sha256 (`agent_sandboxes`, 0071) and the sandbox it belongs to.
+- **The request names its job** (`x-alembic-job`, not a secret). It is accepted only when the sandbox key matches and
+  that job is `running` with its session in that sandbox; a retired sandbox, another key or another job is refused.
+- **The job's gateway key never enters the sandbox:** minted per job, stored sealed (AES-256-GCM, HKDF from the agent
+  signing key, the job id as associated data), put into the call by the AI pass-through, revoked when the job ends.
+- The agent token of §2 stays for callers that hold one (tests, a future sidecar).
+- **Testing limit (O22):** on the one shared free-plan VM every course user can send the placeholder; the orchestrator
+  runs one job at a time there (`agent_sandboxes.max_jobs = 1`), so a job can't act for another course's running
+  job. Production gives each course its own sandbox and key.
+
+The orchestrator (worker, `agent-orchestrator.ts`): a stateless pass every 15 s. It starts one waiting job when the
+sandbox has room (hold, sealed key, the course's own user with its egress rule, the harness in the background under a
+time limit), and for each running job reads its exit file: finished → the result is the hand-over note, the key is
+revoked, the hold released; past the limit → stopped. Verified live 2026-10-31: job `aj-fec123a01873` ran by itself,
+its change landed (`d5494cd`), 28 credits, hold released, no live key left.
