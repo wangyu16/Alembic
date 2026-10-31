@@ -319,3 +319,19 @@ Round 2's fixes verified (front page, term folders, statuses). **1 HIGH, 1 MEDIU
 - **MEDIUM:** a course that never used the add-on keeps its own `current/` subfolders as ordinary files.
 - **LOW:** a new document id is also written for headers with a BOM or Windows line endings. `onlyIfGone` is covered by
   the round-2 review's runs; a unit test is left as a gap.
+
+### Round 4 (overnight) and where the loop stops
+
+**1 HIGH, 1 more HIGH (on click), 1 MEDIUM**, all fixed in `cca12ff`:
+- `{{span …}}` / `{{sp …}}` bodies are rendered by orz-markdown on their own path with raw HTML on, so the token
+  walk never saw them. **Now:** any `<` in such a body is text.
+- The backstop is browser-faithful. It splits attributes on spaces or "/", decodes every character reference, and
+  refuses `data:` addresses. It also refuses outright `<?`, CDATA and `--!>`, and script, iframe, object, embed, base,
+  meta, link and form (except YouTube's player and JSON data blocks).
+- General Chemistry: 99 pages, 0 changed, 0 refused; a live Publish changed nothing.
+
+**Stop rule applied (owner's closed-loop rule: trust boundaries over endless rounds).** Each round found a new
+orz-markdown path that renders raw HTML, because rendering an author's HTML is orz-markdown's design (FC-07/FC-19,
+D-127). The cleaner plus the render backstop is the interim boundary. **The structural fix is D-127's orz-markdown
+option** (raw HTML off for shared authoring, everywhere it renders: blocks, inline, spans, containers, attrs). It is
+raised with the owner to bring forward. Once it ships, the cleaner becomes a second layer.
