@@ -49,9 +49,9 @@ export function termOfPath(path: string): string | null {
 export function addonAllowsPublish(path: string, m: { addons?: readonly string[]; terms?: ReadonlyArray<{ slug: string }> | undefined; currentTerm?: string | undefined }): boolean {
   const on = m.addons?.includes(COURSE_WEBSITE) === true;
   if (path === HOME_PAGE) return on;
-  // Only the folders of the course's own terms are the add-on's; anything else under current/ (a course's older
-  // files) is an ordinary file (round 1 audit L3).
+  // Every term-shaped folder (current/<slug>/) is the add-on's, declared or not yet (round 2 M-A: next term prepared
+  // early stays hidden); only loose files directly under current/ (a course's older files) are ordinary (L3).
   const term = termOfPath(path);
-  if (!term || !(m.terms ?? []).some((t) => t.slug === term)) return true;
+  if (!term) return true;
   return on && term === m.currentTerm;
 }

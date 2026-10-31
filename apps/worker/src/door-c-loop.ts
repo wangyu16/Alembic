@@ -87,7 +87,7 @@ async function handlePush(cfg: DoorCConfig, ev: Ev): Promise<void> {
   if (ev.forced && (await restoreAfterForcePush(cfg, course.id, client, coords, ev))) return;
   const changed = await changedBetween(client, coords, ev.before_sha, ev.after_sha);
   if (changed.length === 0) return;
-  const { entries } = await client.listTreeEntries(coords, ev.after_sha);
+  const { entries, truncated: afterTruncated } = await client.listTreeEntries(coords, ev.after_sha);
   const modeOf = new Map(entries.map((e) => [e.path, e.type === "commit" ? "160000" : e.mode]));
   const verdict = classifyOutside(changed.map((c) => ({ path: c.path, mode: c.status === "removed" ? null : (modeOf.get(c.path) ?? "100644") })));
   const who = ev.pusher_login ?? "someone";
@@ -129,7 +129,8 @@ async function handlePush(cfg: DoorCConfig, ev: Ev): Promise<void> {
       verdict.edits = verdict.edits.filter((p) => p !== u.path);
     }
     if (content.regenerateLicense && owner0) regenerate = { license: content.regenerateLicense, owner: owner0.id };
-    if (content.dropStatus?.length && owner0) dropStatus = { paths: content.dropStatus, owner: owner0.id };
+    // Never from a cut-short file list (round 2 L4): everything would look gone.
+    if (content.dropStatus?.length && owner0 && !afterTruncated) dropStatus = { paths: content.dropStatus, owner: owner0.id };
   }
 
   if (verdict.undo.length) {
@@ -168,7 +169,7 @@ async function handlePush(cfg: DoorCConfig, ev: Ev): Promise<void> {
   // Files deleted on GitHub lose their status (SITE-TYPE-CONTRACT §7): a file added there later starts as a draft.
   if (dropStatus) {
     await new SqlQueueStore(sql).insert({ packageId: course.id, kind: "courseop", idem: `status:drop:${ev.after_sha}`, actorId: dropStatus.owner,
-      payload: { files: [], op: { op: "setStatus", paths: dropStatus.paths.slice(0, 1000), status: "draft" }, summary: "Statuses of files deleted on GitHub dropped" } });
+      payload: { files: [], op: { op: "setStatus", paths: dropStatus.paths.slice(0, 1000), status: "draft", onlyIfGone: true }, summary: "Statuses of files deleted on GitHub dropped" } });
   }
   async function raiseUndone() {
     await raise(sql, course!.id, `undo:${ev.after_sha}`, {

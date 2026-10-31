@@ -114,3 +114,16 @@ describe("the generated front page never carries markup from names (round 1 audi
     expect(built.ok).toBe(true);
   }, 60_000);
 });
+
+describe("the home page on the front page is cleaned like any page (round 2 H-A)", () => {
+  it("[K1.30] raw HTML hidden in the home page (an indented line, an empty heading before a fence) never becomes markup on the front page", async () => {
+    for (const body of ["# Home\n    <img src=x onerror=alert(1)>\n", "#\n```\n<img src=x onerror=alert(1)>\n```\n", "    <img src=x onerror=alert(1)>\n"]) {
+      const files = new Map<string, Uint8Array>([["alembic.json", enc(JSON.stringify({ title: "R&D 101_intro", chapters: [] }))], ["home.md", enc(`{{nyml\nkind: document\nformat: 1\ntitle: H\n}}\n${body}`)]]);
+      const input = siteInputFiles(files);
+      const index = new TextDecoder().decode(input.files.get("index.md")!);
+      const { md } = await import("orz-markdown");
+      expect(md.render(index), JSON.stringify(body)).not.toMatch(/<img[^>]*onerror/);
+      expect(index).toContain("title: R&D 101_intro"); // the browser tab shows the title as written (round 2 L1)
+    }
+  }, 60_000);
+});

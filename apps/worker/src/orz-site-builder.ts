@@ -10,6 +10,14 @@ import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promis
 import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
 import type { SiteBuilder } from "./site-build-loop";
+import { cleanRawHtml, type MdToken } from "@alembic/package-ops";
+import { md } from "orz-markdown";
+
+/** The generated front page as Publish would write any page: raw HTML outside the safe list turned into text (round 2 H-A). */
+const cleanIndex = (text: string): string | null => {
+  const r = cleanRawHtml(text, (src) => md.parse(src, {}) as unknown as MdToken[]);
+  return r.ok ? r.text : null;
+};
 
 /** Output limits (checked in the child before anything is written). */
 export const SITE_OUT = { maxFiles: 4000, maxFileBytes: 15 * 1024 * 1024, maxTotalBytes: 60 * 1024 * 1024 };
@@ -55,11 +63,13 @@ export function siteInputFiles(files: Map<string, Uint8Array>): { files: Map<str
   const ownIndex = ownConfig !== null || out.has("index.md") || out.has("index.html");
   if (!ownIndex && manifest) {
     const home = files.get("home.md");
-    out.set("index.md", new TextEncoder().encode(courseIndexText(manifest, [...out.keys()], home ? new TextDecoder().decode(home) : null)));
+    const full = cleanIndex(courseIndexText(manifest, [...out.keys()], home ? new TextDecoder().decode(home) : null));
+    const plain = cleanIndex(courseIndexText({ ...manifest, terms: undefined, currentTerm: undefined }, [...out.keys()], null));
+    out.set("index.md", new TextEncoder().encode(full ?? plain ?? `# ${title ?? "Course"}\n`));
     out.set("index.html", new TextEncoder().encode('<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0; url=index.md.html"><title>Course</title><a href="index.md.html">Open the course</a>\n'));
   }
   // A plain front page to fall back on if the home page's content can't be built (round 1 audit L1).
-  const indexFallback = !ownIndex && manifest ? courseIndexText({ ...manifest, terms: undefined, currentTerm: undefined }, [...out.keys()], null) : undefined;
+  const indexFallback = !ownIndex && manifest ? (cleanIndex(courseIndexText({ ...manifest, terms: undefined, currentTerm: undefined }, [...out.keys()], null)) ?? undefined) : undefined;
   return { files: out, ownConfig, title, ownIndex, ...(indexFallback ? { indexFallback } : {}), ...(settingsIgnored ? { settingsIgnored: true as const } : {}) };
 }
 
@@ -77,11 +87,12 @@ export function courseIndexText(m: { title?: unknown; description?: unknown; cha
     .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/([\[\]\\`*_])/g, "\\$1");
   const target = (p: string) => `<${p.split("/").map(encodeURIComponent).join("/")}>`;
   const title = typeof m.title === "string" && m.title.trim() ? clean(m.title) : "Course";
-  const lines = ["{{nyml", "kind: document", "format: 1", `title: ${title}`, "}}", "", `# ${title}`, ""];
+  const headerTitle = typeof m.title === "string" && m.title.trim() ? m.title.replace(/[\r\n]+/g, " ").replace(/\}\}/g, "} }").trim() : "Course";
+  const lines = ["{{nyml", "kind: document", "format: 1", `title: ${headerTitle}`, "}}", "", `# ${title}`, ""];
   if (typeof m.description === "string" && m.description.trim()) lines.push(clean(m.description), "");
   // The course-website add-on (course-website-addon §3): the home page's own content first, then this term's pages.
   if (home) {
-    const body = home.replace(/^\{\{nyml[\s\S]*?\n\}\}\n?/, "").replace(/^\s*#\s+[^\n]*\n/, "").trim();
+    const body = home.replace(/^\{\{nyml[\s\S]*?\n\}\}\n?/, "").replace(/^(?:[ \t]*\n)*#[ \t]+[^\n]*\n/, "").replace(/^(?:[ \t]*\n)+/, "").trimEnd();
     if (body) lines.push(body, "");
   }
   const term = typeof m.currentTerm === "string" ? m.currentTerm : null;
@@ -135,6 +146,7 @@ export async function inProcessBuilder(): Promise<SiteBuilder> {
         // The generated front page at fault: fall back to the plain one (without the home page and term), never none.
         if (atFault.includes("index.md") && o.indexFallback && new TextDecoder().decode(input.get("index.md")) !== o.indexFallback) {
           input.set("index.md", new TextEncoder().encode(o.indexFallback));
+          for (const p of atFault) if (p !== "index.md") { input.delete(p); leftOut.push(p); }
           continue;
         }
         if (atFault.length) { for (const p of atFault) { input.delete(p); leftOut.push(p); } continue; }

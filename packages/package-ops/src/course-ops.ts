@@ -22,7 +22,7 @@ export type CourseOp =
   | { op: "setLicense"; license: string }
   | { op: "restoreChapter"; slug: string; fromCommit: string }
   /** Files' status (family SITE-TYPE-CONTRACT §7), many at once: mark pages draft or completed; take files off the website or bring them back. */
-  | { op: "setStatus"; paths: string[]; status: StatusChange }
+  | { op: "setStatus"; paths: string[]; status: StatusChange; onlyIfGone?: boolean }
   /** A course option (owner/deputy): `editReturnsToDraft` — a saved edit to a completed page makes it a draft again. */
   | { op: "setOption"; option: "editReturnsToDraft"; value: boolean }
   /** The course-website add-on (course-website-addon): on/off, terms, the current term. */
@@ -86,7 +86,7 @@ export function parseCourseOp(raw: unknown): CourseOp | null {
         if (typeof p !== "string") return null;
         try { paths.push(normalizePath(p)); } catch { return null; }
       }
-      return { op: "setStatus", paths: [...new Set(paths)], status: r.status };
+      return { op: "setStatus", paths: [...new Set(paths)], status: r.status, ...(r.onlyIfGone === true ? { onlyIfGone: true } : {}) };
     }
     case "setAddon":
       return r.addon === COURSE_WEBSITE && typeof r.on === "boolean" ? { op: "setAddon", addon: COURSE_WEBSITE, on: r.on } : null;
@@ -234,7 +234,7 @@ export function applyCourseOp(manifestText: string | null, paths: ReadonlySet<st
         const path = `${termFolder(slug)}${f.path.slice(termFolder(op.copyFrom).length)}`;
         if (paths.has(path)) continue;
         if ("blobSha" in f) writes.push({ path, blobSha: f.blobSha });
-        else writes.push({ path, content: f.content.replace(/^(\{\{nyml\n[\s\S]*?^uid:)[ \t]*\S+/m, `$1 ${newUid()}`) });
+        else writes.push({ path, content: f.content.replace(/^\{\{nyml\n[\s\S]*?\n\}\}/, (header) => header.replace(/^uid:[ \t]*\S+/m, `uid: ${newUid()}`)) });
         if (m.status?.[f.path] === "withdrawn") copiedStatus[path] = "withdrawn";
       }
       if (Object.keys(copiedStatus).length) next = { ...next, status: { ...(next.status ?? {}), ...copiedStatus } };
@@ -253,7 +253,10 @@ export function applyCourseOp(manifestText: string | null, paths: ReadonlySet<st
       // Clearing a status (draft, bring back) may name a file that is gone (Door C drops the status of a file deleted on
       // GitHub). Otherwise a page deleted since the person looked is skipped, not a reason to refuse the rest.
       const clearing = op.status === "draft" || op.status === "public";
-      const present = clearing ? op.paths.filter((p) => paths.has(p) || m.status?.[p] !== undefined) : op.paths.filter((p) => paths.has(p));
+      // Door C's drop of statuses for files deleted on GitHub applies only to files still gone when it runs (round 2 L3).
+      const named = op.onlyIfGone ? op.paths.filter((p) => !paths.has(p)) : op.paths;
+      if (op.onlyIfGone && !named.length) return { ok: false, reason: "those files are back; their statuses stay" };
+      const present = clearing ? named.filter((p) => paths.has(p) || m.status?.[p] !== undefined) : named.filter((p) => paths.has(p));
       if (!present.length) return { ok: false, reason: op.paths.length === 1 ? `${op.paths[0]!.split("/").pop()} is no longer in the course` : "those pages are no longer in the course" };
       for (const p of present.filter((x) => paths.has(x))) {
         if (!takesStatus(p)) return { ok: false, reason: `${p.split("/").pop()} is instructor-only and never published` };
