@@ -292,3 +292,16 @@ Fixed in `73bbf71` except L4 and L5.
 
 **Agent spec (G7 round 4, agent-runtime §14):** 3 HIGH (cost hold, whose sources, records fast path), all resolved
 in the text (`5283c1d`); a short round 5 before C4 code.
+
+### Round 2 (overnight)
+
+Verified H1, M1–M3 and L1–L3 as fixed. **1 HIGH, 1 MEDIUM, 6 LOW**; fixed in `1f9d6b4` except L6.
+
+- **H-A:** the home page body was pasted into the generated front page after trimming. An indented line, or an empty
+  heading swallowing a code fence, became live HTML on the course website. **Now:** the whole generated front page passes
+  Publish's raw-HTML cleaner; if that fails, the plain front page is used.
+- **M-A:** a term folder made before its term was added would publish early. **Now:** every term-shaped folder is the add-on's.
+- **L1–L5:** title shown as written in the browser tab; new document id only inside the header; dropped statuses only
+  for files still gone; no status sweep from a cut-short listing; the fallback round also drops other failing pages.
+- **Dismissed, L6:** drafts kept at their published version aren't cleaned again. Only someone who can write the public
+  repository could exploit it, and they already control its site.
