@@ -396,3 +396,24 @@ bound_to = [
   "apps/web/src/lib/agent-endpoint.sql.test.ts :: a log append lands on the version read; a stale one refuses the hand-in",
   "apps/web/src/lib/agent-endpoint.sql.test.ts :: events: no questions or approvals, at most 120 a minute; a paused session takes no hand-in",
 ]
+
+[[claim]]
+id = "K1.42"
+claim = "A sandbox acts for a job only with its own key (held by its provider's outbound proxy; the agent sees a placeholder) and a job running in that sandbox; a retired sandbox, another key or another job is refused. The job's gateway key is stored sealed (AES-256-GCM, bound to the job) and put into AI calls by the server, never handed to the agent."
+oracle = "conformance"
+bound_to = [
+  "packages/package-ops/src/agent-seal.test.ts :: opens only for its own job, under the key that sealed it; a tampered or foreign value opens to nothing",
+  "apps/web/src/lib/agent-endpoint.sql.test.ts :: the sandbox's key and a job running in that sandbox get in, and the AI call gets the job's own gateway key; anything else is refused",
+]
+
+[[claim]]
+id = "K1.43"
+claim = "The orchestrator starts a waiting job only when its sandbox has room: the hold, a sealed gateway key, the course's own user with its egress rule, the harness in the background (no key reaches the sandbox); a finished job's result becomes its hand-over note, its key is revoked and its hold released; a job past its time limit is stopped; without enough credit a job fails to start, holding nothing."
+oracle = "conformance"
+bound_to = [
+  "apps/web/src/lib/agent-orchestrator.sql.test.ts :: a waiting job starts: its hold, a gateway key sealed for the server, the course's own user, the harness launched",
+  "apps/web/src/lib/agent-orchestrator.sql.test.ts :: the testing sandbox runs one job at a time: the next waits",
+  "apps/web/src/lib/agent-orchestrator.sql.test.ts :: a finished job: its result is the hand-over note, the key is revoked, the hold released; the next job starts",
+  "apps/web/src/lib/agent-orchestrator.sql.test.ts :: a job past its time limit is stopped and failed",
+  "apps/web/src/lib/agent-orchestrator.sql.test.ts :: without enough credit a job fails to start, holding nothing; the session is free again",
+]

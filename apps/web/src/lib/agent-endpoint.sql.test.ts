@@ -6,7 +6,7 @@
 import { createHash } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { PGlite } from "@electric-sql/pglite";
-import { signAgentToken } from "@alembic/package-ops";
+import { sandboxKeyHash, sealForJob, signAgentToken } from "@alembic/package-ops";
 import { freshDatabase, seedPackage, seedUser } from "./discovery-pglite";
 
 vi.mock("server-only", () => ({}));
@@ -25,7 +25,7 @@ vi.mock("@/lib/course-v3", () => ({
 
 const KEY = { kid: "t1", secret: new Uint8Array(32).fill(3) };
 process.env["ALEMBIC_AGENT_KEYS"] = `t1:${Buffer.from(KEY.secret).toString("base64")}`;
-const { agentAuth, handIn, changesetStatus, postEvent, catchUp } = await import("./agent-endpoint");
+const { agentAuth, handIn, changesetStatus, postEvent, catchUp, sandboxGatewayKey } = await import("./agent-endpoint");
 
 const sha = (t: string) => createHash("sha256").update(t, "utf8").digest("hex");
 let owner: string, deputy: string, co: string, pkg: string;
@@ -50,6 +50,25 @@ beforeAll(async () => {
   await db.query(`insert into public.agent_jobs (id, session_id, package_id, invoker_id, payer, task, status, budget_credits) values ($1, $2, $3, $4, 'invoker', 'Check chapter 6', 'running', 5)`, [JOB, SESSION, pkg, co]);
 }, 240_000);
 afterAll(async () => { await db?.close(); });
+
+describe("a sandbox acting for its running job (agent-runtime §18)", () => {
+  const SB_KEY = "sbk_" + "x".repeat(40);
+  const sreq = (key: string, job: string) => new Request("https://x/api/agent/file", { headers: { "x-alembic-sandbox": key, "x-alembic-job": job } });
+  it("[K1.42] the sandbox's key and a job running in that sandbox get in, and the AI call gets the job's own gateway key; anything else is refused", async () => {
+    await db.query(`insert into public.agent_sandboxes (ref, key_hash) values ('instabox:m_test', $1) on conflict do nothing`, [sandboxKeyHash(SB_KEY)]);
+    await db.query(`update public.agent_sessions set sandbox_ref = 'instabox:m_test', state = 'running' where id = $1`, [SESSION]);
+    await db.query(`update public.agent_jobs set gateway_key_sealed = $2 where id = $1`, [JOB, sealForJob("agk_job_key_value_0123456789abcdef", JOB, KEY)]);
+    const a = await agentAuth(sreq(SB_KEY, JOB));
+    expect(a.ok && a.ctx.claims).toEqual({ package_id: pkg, session_id: SESSION, job_id: JOB, invoker_id: co });
+    expect(await sandboxGatewayKey(sreq(SB_KEY, JOB))).toBe("agk_job_key_value_0123456789abcdef");
+    expect((await agentAuth(sreq("sbk_" + "y".repeat(40), JOB))).ok).toBe(false); // another key
+    expect((await agentAuth(sreq(SB_KEY, "aj-bbbbbbbbbbbb"))).ok).toBe(false); // a job that isn't running here
+    expect(await sandboxGatewayKey(sreq("sbk_" + "y".repeat(40), JOB))).toBeNull();
+    await db.query(`update public.agent_sandboxes set retired_at = now() where ref = 'instabox:m_test'`);
+    expect((await agentAuth(sreq(SB_KEY, JOB))).ok).toBe(false); // a retired sandbox
+    await db.query(`update public.agent_sandboxes set retired_at = null where ref = 'instabox:m_test'`);
+  });
+});
 
 describe("the agent endpoints (agent-runtime §2, §4, §14, §15)", () => {
   it("[K1.41] only the running job's own token gets in, for an asker who is still an editor", async () => {

@@ -15,6 +15,7 @@ import { committerPass } from "./committer-loop";
 import { doorCPass } from "./door-c-loop";
 import { publishPass } from "./publish-loop";
 import { siteBuildPass } from "./site-build-loop";
+import { agentKeysFromEnv, agentPass, instaboxSandbox } from "./agent-loop";
 import { childProcessBuilder } from "./orz-site-builder";
 import { fileURLToPath } from "node:url";
 
@@ -54,6 +55,11 @@ if (databaseUrl && appId && appKey) {
   const publicTemplate = process.env["GITHUB_PUBLIC_TEMPLATE"]?.trim();
   const site = childProcessBuilder(fileURLToPath(new URL("./site-child.mjs", import.meta.url)));
   const holder = `worker-${hostname()}-${process.pid}`;
+  const ibKey = process.env["INSTABOX_API_KEY"]?.trim();
+  const ibMachine = process.env["INSTABOX_SANDBOX_ID"]?.trim();
+  const agentSandbox = ibKey && ibMachine ? instaboxSandbox(ibKey, ibMachine) : null;
+  const agentKeys = agentKeysFromEnv(process.env["ALEMBIC_AGENT_KEYS"]);
+  const agentHost = process.env["ALEMBIC_AGENT_HOST"]?.trim();
   startSchedules(async () => null, {
     schedules: [
       { name: "committer", everyMs: 3000, run: () => committerPass({ sql, appId, privateKey: appKey, holder, log }) },
@@ -63,10 +69,14 @@ if (databaseUrl && appId && appKey) {
         : []),
       // Each website build runs in its own child process (bundled next to this file as site-child.mjs).
       { name: "site-build", everyMs: 10_000, run: () => siteBuildPass({ sql, appId, privateKey: appKey, log, site }) },
+      // The course assistant (C4): on only where a sandbox, the agent keys and the public host are set.
+      ...(agentSandbox && agentKeys.length && agentHost
+        ? [{ name: "agent", everyMs: 15_000, run: () => agentPass({ sql, sandbox: agentSandbox, keys: agentKeys, host: agentHost, log }) }]
+        : []),
     ],
     log,
   });
-  log(`committer, door C${templateOwner && publicTemplate ? " and publish" : ""} on (${holder})`);
+  log(`committer, door C${templateOwner && publicTemplate ? " and publish" : ""}${agentSandbox && agentKeys.length && agentHost ? ", agent" : ""} on (${holder})`);
 } else {
   log("committer off (DATABASE_URL / GITHUB_APP_ID / GITHUB_APP_PRIVATE_KEY not set)");
 }

@@ -3,6 +3,8 @@
  * assistant reaches. This route only passes the call through to the gateway inside the VM; the gateway does every
  * check (the per-job key, the hold, the allowed fields and models) and the charging. Nothing is logged or stored.
  */
+import { sandboxGatewayKey } from "@/lib/agent-endpoint";
+
 export const dynamic = "force-dynamic";
 
 const PASS = ["x-api-key", "anthropic-version", "anthropic-beta", "content-type", "accept"];
@@ -14,6 +16,12 @@ export async function POST(req: Request) {
   if (Number(req.headers.get("content-length") ?? "0") > MAX) return Response.json({ type: "error", error: { type: "gateway_error", message: "too large" } }, { status: 413 });
   const headers: Record<string, string> = {};
   for (const h of PASS) { const v = req.headers.get(h); if (v) headers[h] = v; }
+  // From a sandbox (§18): the job's own gateway key, opened here; the agent sends only its sandbox key and job id.
+  if (req.headers.get("x-alembic-sandbox")) {
+    const key = await sandboxGatewayKey(req);
+    if (!key) return Response.json({ type: "error", error: { type: "authentication_error", message: "this sandbox has no such running job" } }, { status: 401 });
+    headers["x-api-key"] = key;
+  }
   const up = await fetch(`${gateway.replace(/\/$/, "")}/v1/messages`, { method: "POST", headers, body: req.body, duplex: "half", signal: req.signal } as RequestInit);
   const out = new Headers({ "cache-control": "no-store" });
   for (const h of ["content-type", "request-id"]) { const v = up.headers.get(h); if (v) out.set(h, v); }

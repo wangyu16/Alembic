@@ -8,7 +8,7 @@ import "server-only";
  */
 import { createHash } from "node:crypto";
 import {
-  appliedAppend, parseEvent, parseHandIn, SqlQueueStore, verifyAgentToken, HANDIN_LIMITS,
+  appliedAppend, openForJob, parseEvent, parseHandIn, sandboxKeyHash, SqlQueueStore, verifyAgentToken, HANDIN_LIMITS,
   type AgentClaims, type AgentKey, type HandIn, type RowFile, type SqlClient,
 } from "@alembic/package-ops";
 import { fileKind, isServerOnlyPath, normalizePath, type Role } from "@alembic/package-contract";
@@ -31,16 +31,48 @@ export function agentKeys(): AgentKey[] {
   });
 }
 
-/** Token → the job's context, or a refusal. A Supabase login token is never accepted here (other key and audience). */
+/**
+ * The job a sandbox acts for (agent-runtime §18): the sandbox's own key (put in by its provider's outbound proxy; the
+ * agent holds only a placeholder) and the job it names, which must be running in that sandbox. Returns the job's
+ * claims and its sealed gateway key, or null.
+ */
+export async function sandboxJob(req: Request, sql: SqlClient): Promise<{ claims: AgentClaims; sealed: string | null } | null> {
+  const key = req.headers.get("x-alembic-sandbox") ?? "";
+  const job = req.headers.get("x-alembic-job") ?? "";
+  if (!/^[A-Za-z0-9_-]{32,200}$/.test(key) || !/^aj-[a-z0-9]{12}$/.test(job)) return null;
+  const { rows } = await sql.query<{ package_id: string; session_id: string; invoker_id: string | null; sealed: string | null }>(
+    `select j.package_id, j.session_id, j.invoker_id::text as invoker_id, j.gateway_key_sealed as sealed
+       from public.agent_jobs j
+       join public.agent_sessions s on s.id = j.session_id and s.package_id = j.package_id
+       join public.agent_sandboxes b on b.ref = s.sandbox_ref and b.retired_at is null
+      where j.id = $1 and j.status = 'running' and b.key_hash = $2`,
+    [job, sandboxKeyHash(key)],
+  );
+  const r = rows[0];
+  if (!r || !r.invoker_id) return null;
+  return { claims: { package_id: r.package_id, session_id: r.session_id, job_id: job, invoker_id: r.invoker_id }, sealed: r.sealed };
+}
+
+/**
+ * The job's context, or a refusal: from a sandbox (its key and a running job of its own, §18), or from an agent
+ * token (§2). A Supabase login token is never accepted here (other key and audience).
+ */
 export async function agentAuth(req: Request): Promise<{ ok: true; ctx: AgentCtx } | { ok: false; reply: Reply }> {
   const sql = directDb();
   const keys = agentKeys();
   if (!sql || !keys.length) return { ok: false, reply: fail(503, "the assistant isn't available here") };
-  const m = /^Bearer ([A-Za-z0-9_.-]+)$/.exec(req.headers.get("authorization") ?? "");
-  if (!m) return { ok: false, reply: fail(401, "no agent token") };
-  const v = verifyAgentToken(m[1]!, keys);
-  if (!v.ok) return { ok: false, reply: fail(401, `agent token: ${v.reason}`) };
-  const c = v.claims;
+  let c: AgentClaims;
+  if (req.headers.get("x-alembic-sandbox")) {
+    const sb = await sandboxJob(req, sql);
+    if (!sb) return { ok: false, reply: fail(401, "this sandbox has no such running job") };
+    c = sb.claims;
+  } else {
+    const m = /^Bearer ([A-Za-z0-9_.-]+)$/.exec(req.headers.get("authorization") ?? "");
+    if (!m) return { ok: false, reply: fail(401, "no agent token") };
+    const v = verifyAgentToken(m[1]!, keys);
+    if (!v.ok) return { ok: false, reply: fail(401, `agent token: ${v.reason}`) };
+    c = v.claims;
+  }
   const { rows } = await sql.query<{ status: string; rights_cap: string | null; invoker_id: string | null; state: string }>(
     `select j.status, j.rights_cap, j.invoker_id::text as invoker_id, s.state
        from public.agent_jobs j join public.agent_sessions s on s.id = j.session_id
@@ -245,4 +277,12 @@ export async function catchUp(ctx: AgentCtx, since: string | null): Promise<Repl
       answers: answers.rows.map((a) => ({ item: a.id, changesetId: a.payload["changesetId"] ?? null, answer: a.answer, at: a.answered_at })),
     },
   };
+}
+
+/** The gateway key for an AI call from a sandbox (§18): opened from the job's sealed copy; never handed to the agent. */
+export async function sandboxGatewayKey(req: Request): Promise<string | null> {
+  const sql = directDb();
+  if (!sql) return null;
+  const sb = await sandboxJob(req, sql);
+  return sb?.sealed ? openForJob(sb.sealed, sb.claims.job_id, agentKeys()) : null;
 }
