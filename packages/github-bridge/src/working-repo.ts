@@ -20,6 +20,8 @@ export interface WorkingRepoAdapter {
   treeAt(ref: string): Promise<Map<string, { sha: string; mode: string }>>;
   /** A blob's bytes. */
   readBlob(sha: string): Promise<Uint8Array>;
+  /** Is `commit` the head or an ancestor of it? */
+  isAncestor(commit: string, head: string): Promise<boolean>;
   recentCommits(limit: number): Promise<Array<{ sha: string; message: string }>>;
   commitChain(input: {
     expectedHead: string;
@@ -49,6 +51,9 @@ export function workingRepo(client: GitHubClient, coords: RepoCoords, branch = "
       const t = await client.listTreeEntries(coords, ref);
       if (t.truncated) throw new Error("the course has too many files to list");
       return new Map(t.entries.filter((e) => e.type === "blob").map((e) => [e.path, { sha: e.sha, mode: e.mode }]));
+    },
+    isAncestor(commit, head) {
+      return client.isAncestor(coords, commit, head);
     },
     async recentCommits(limit) {
       const list = await client.listCommits(coords, { perPage: Math.min(limit, 100), sha: branch });

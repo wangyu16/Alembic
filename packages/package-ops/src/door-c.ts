@@ -5,7 +5,7 @@
  * the payload's own file lists are never trusted).
  */
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { REGULAR_FILE_MODES, activeProfile, fileKind, isHarnessPath, isPage, isSvgPath, isTextBytes, mediaProblems, normalizePath, spaceForPathV3, svgProblems, takesStatus, unitPartForPath, WorkingManifestV3Schema } from "@alembic/package-contract";
+import { REGULAR_FILE_MODES, activeProfile, fileKind, isRecordsPath, isPage, isSvgPath, isTextBytes, mediaProblems, normalizePath, spaceForPathV3, svgProblems, takesStatus, unitPartForPath, WorkingManifestV3Schema } from "@alembic/package-contract";
 
 /** `X-Hub-Signature-256: sha256=<hex>` over the raw body. */
 export function verifyGithubWebhook(rawBody: string, header: string | null, secret: string): boolean {
@@ -89,7 +89,7 @@ export function classifyOutside(changes: readonly ChangedEntry[]): OutsideVerdic
     if (p.startsWith(".github/")) { v.inform.push(p); continue; }
     if (p.startsWith(".alembic/") || p === ".gitignore") { v.undo.push({ path: p, why: "Alembic's own files" }); continue; }
     if (p.startsWith("private/sources/")) { v.undo.push({ path: p, why: "source records are kept by Alembic" }); continue; }
-    if (isHarnessPath(p) || p.startsWith("provenance/coursewerk/")) { v.undo.push({ path: p, why: "Coursewerk records arrive only through Coursewerk" }); continue; }
+    if (isRecordsPath(p)) { v.undo.push({ path: p, why: "the type package's records arrive only through its own tools" }); continue; }
     try {
       spaceForPathV3(p);
     } catch {

@@ -24,6 +24,7 @@ import {
   isSvgPath,
   statusOf,
   svgProblems,
+  isRecordsPath,
 } from "@alembic/package-contract";
 import type { CleanText } from "./raw-html";
 import { assembleByFile, unitKey, unitOf, type Finding, type TreeFile, type Unit } from "./publisher";
@@ -216,7 +217,7 @@ async function holds(pub: PublicSide, sha: string, intended: PublishedRecord[]):
 
 // Not brought in from the public copy: Publish's own files, and the type package's records (only its tools write them).
 const generatedOrSecret = (p: string) =>
-  p === "alembic.json" || p === ".gitignore" || p.startsWith(".alembic/") || p.startsWith(".github/") || p.startsWith("provenance/coursewerk/");
+  p === "alembic.json" || p === ".gitignore" || p.startsWith(".alembic/") || p.startsWith(".github/") || isRecordsPath(p);
 
 /* -------------------------------------------------------------------------- *
  * The job

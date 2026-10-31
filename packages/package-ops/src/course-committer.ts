@@ -8,7 +8,7 @@
  * so it is tested with fakes and runs unchanged on the worker.
  */
 
-import { activeProfile, can, canWritePath, fileKind, isHarnessPath, isServerOnlyPath, isSvgPath, mediaProblems, newDocId, normalizePath, svgProblems, unitPartForPath, sha256Hex, followFiles, WorkingManifestV3Schema, type Role, type StatusMap } from "@alembic/package-contract";
+import { activeProfile, can, canWritePath, fileKind, isRecordsPath, isServerOnlyPath, isSvgPath, mediaProblems, newDocId, normalizePath, svgProblems, unitPartForPath, sha256Hex, followFiles, WorkingManifestV3Schema, type Role, type StatusMap } from "@alembic/package-contract";
 import { applyCourseOp, parseCourseOp, type ChapterSnapshot } from "./course-ops";
 import { decideFile, type FileDecision, type FileKind } from "./version-rule";
 
@@ -60,6 +60,8 @@ export interface RowPayload {
   summary?: string;
   /** `courseop` rows: the operation and its arguments (contract v3 §13), applied at the head. */
   op?: unknown;
+  /** `changeset` rows of automatic jobs: the agent's rights never exceed a co-author's (agent-runtime §10.4). */
+  rightsCap?: "co-author";
 }
 
 export interface QueueStore {
@@ -74,6 +76,11 @@ export interface QueueStore {
   claimCurrent?(rowId: string, holder: string, fence: string, attempts: number): Promise<boolean>;
   /** Is this blob in the course's upload ledger, recorded for this kind of file? (contract v3 §11.2, K1.10) */
   blobKnown?(packageId: string, sha: string, kind: string): Promise<boolean>;
+  /**
+   * Why an agent changeset may not run now (the course is read-only, the session is paused by the owner or for a
+   * handout), or null. Asked at execution, with the other re-checks (agent-runtime §15, M4).
+   */
+  changesetBlocked?(row: QueueRow): Promise<string | null>;
   /** Record the commits built for this attempt, before the ref moves. */
   recordPlanned?(rowId: string, holder: string, fence: string, attempts: number, shas: string[]): Promise<void>;
 }
@@ -95,6 +102,8 @@ export interface WorkingRepo {
     /** Aborted at the attempt's deadline: the ref must not move (checked again right before the update). */
     signal?: AbortSignal;
   }): Promise<{ commitShas: string[]; head: string }>;
+  /** Is `commit` the head or one of its ancestors? (A restore reads only the course's own history.) */
+  isAncestor?(commit: string, head: string): Promise<boolean>;
   /** Newest first. `byAlembic` must be true only for commits Alembic itself wrote (its App identity). */
   recentCommits(limit: number): Promise<Array<{ sha: string; message: string; byAlembic?: boolean }>>;
 }
@@ -203,19 +212,32 @@ export interface FileOutcome {
 export type RowResult =
   | { status: "done"; result: { head: string; commits: string[]; files: FileOutcome[]; recovered?: boolean; base?: string } }
   | { status: "refused"; reason: string }
-  | { status: "bounced"; reason: string; records: string[] }
   | { status: "retry"; error: string; retryAfterSeconds: number; access?: boolean }
   | { status: "failed"; error: string };
 
-/** Permission re-check at execution (queue-and-jobs §2.5). */
+const RANK: Record<Role, number> = { owner: 3, deputy: 2, "co-author": 1, agent: 0, operator: 0, none: 0 };
+
+/** The role an agent changeset acts under: the invoker's now, capped at `rightsCap` (agent-runtime §10.4, §12 L7). */
+async function cappedInvoker(row: QueueRow, store: QueueStore): Promise<Role> {
+  if (!row.invokerId) return "none";
+  const invoker = await store.roleOf(row.packageId, row.invokerId);
+  const cap = row.payload.rightsCap;
+  return cap && RANK[invoker] > RANK[cap] ? cap : invoker;
+}
+
+/** Permission re-check at execution (queue-and-jobs §2.5; agent-runtime §15 M4). */
 async function permitted(row: QueueRow, store: QueueStore): Promise<string | null> {
   if (row.kind === "outside" || row.kind === "system") return null;
   if (row.kind === "changeset") {
     if (!row.invokerId) return "no invoker";
-    const invoker = await store.roleOf(row.packageId, row.invokerId);
+    const invoker = await cappedInvoker(row, store);
     if (invoker === "none") return "the person who asked is no longer a member";
+    // Records have no edit action: they need an editor who asked, as any changeset does (the check below for content).
+    if (!["owner", "deputy", "co-author"].includes(invoker)) return "the person who asked can't edit this course";
+    const blocked = store.changesetBlocked ? await store.changesetBlocked(row) : null;
+    if (blocked) return blocked;
     for (const f of row.payload.files) {
-      if (f.path.startsWith("private/coursewerk/")) continue; // harness records: FC-16, checked by the hand-over
+      if (isRecordsPath(f.path)) continue; // the type package's records: only its tools write them, never combined
       if (!canWritePath("agent", f.path, { invoker })) return `not allowed to change ${f.path}`;
     }
     return null;
@@ -313,18 +335,12 @@ export async function processRow(row: QueueRow, store: QueueStore, repo: Working
           allowRecords: row.kind === "changeset" || row.kind === "system",
           ...(opts.validate ? { validate: (t: string) => opts.validate!(file.path, t) } : {}),
         });
-        if (d.outcome === "refused") return { status: "refused", reason: `${file.path}: ${d.reason}` };
+        if (d.outcome === "refused") return { status: "refused", reason: `${file.path}: ${d.reason === "records-stale" ? "the record changed since it was read; read it again and send the change again" : d.reason}` };
         decisions.push({ file, d });
       }
 
-      // Harness records land only if every content file landed or was combined (spec §6).
-      if (row.kind === "changeset") {
-        const records = decisions.filter(({ file }) => file.path.startsWith("private/coursewerk/"));
-        const contentOk = decisions.every(({ file, d }) => file.path.startsWith("private/coursewerk/") || d.outcome === "landed" || d.outcome === "combined");
-        if (records.length && !contentOk) {
-          return { status: "bounced", reason: "some changes need a person first; the records come back to the agent", records: records.map(({ file }) => file.path) };
-        }
-      }
+      // Records and content in one changeset: content lands by the version rule (a both-changed file raises the
+      // usual item); a stale record has already refused the whole changeset above (agent-runtime §15: no bounce).
 
       // 3. Build the chain: kept versions first (only those not already in history), then the top.
       const kept: ChainEntry[] = [...special.kept];
@@ -471,12 +487,12 @@ async function decideFilesOnTree(row: QueueRow, store: QueueStore, repo: Working
   };
   const role = row.actorId ? await store.roleOf(row.packageId, row.actorId) : null;
   // An agent changeset has no actor: its rights are the agent's, capped by the invoker's (G7 r3 H1).
-  const invoker = row.kind === "changeset" && row.invokerId ? await store.roleOf(row.packageId, row.invokerId) : null;
+  const invoker = row.kind === "changeset" && row.invokerId ? await cappedInvoker(row, store) : null;
   const mayWrite = (p: string) => (row.kind === "changeset" ? !!invoker && canWritePath("agent", p, { invoker }) : !!role && canWritePath(role, p));
   const mayDelete = async (path: string): Promise<string | null> => {
     // Never through file entries, whoever asks (G7 r3 H1): the settings, the licence files, server-only and
     // harness files have their own ways (course operations, setLicense, the server, the harness).
-    if (path === "alembic.json" || path === "LICENSE" || path === "CITATION.cff" || isServerOnlyPath(path) || isHarnessPath(path)) return `${path}: this file can't be deleted or moved`;
+    if (path === "alembic.json" || path === "LICENSE" || path === "CITATION.cff" || isServerOnlyPath(path) || isRecordsPath(path)) return `${path}: this file can't be deleted or moved`;
     if (await isListedPart(path)) return `${path}: a chapter's parts are removed with the chapter`;
     if (path.startsWith("private/") && !(role && can(role, "delete.private"))) return `${path}: only the owner or deputy deletes private files`;
     return null;
@@ -624,7 +640,11 @@ async function processCourseOp(row: QueueRow, store: QueueStore, repo: WorkingRe
       const [manifestText, paths] = await Promise.all([repo.readFile(head, "alembic.json"), repo.listPaths(head)]);
       // What some operations need from the repo: the removed chapter as it was, the current citation file.
       const ctx: Parameters<typeof applyCourseOp>[4] = {};
-      if (op.op === "restoreChapter") ctx.snapshot = await chapterAt(repo, op.fromCommit, op.slug);
+      if (op.op === "restoreChapter") {
+        // Only from this course's own history (agent-runtime §12 M7, history-v3 H.8).
+        if (repo.isAncestor && !(await repo.isAncestor(op.fromCommit, head))) return { status: "refused", reason: "that version isn't in this course's history" };
+        ctx.snapshot = await chapterAt(repo, op.fromCommit, op.slug);
+      }
       if (op.op === "setLicense") ctx.citation = await repo.readFile(head, "CITATION.cff");
       // A new term from the last term's pages: their text files (figures stay where they are, still linked).
       if (op.op === "addTerm" && op.copyFrom) {
@@ -749,7 +769,6 @@ export async function drainCourse(packageId: string, holder: string, store: Queu
     ]).finally(() => clearTimeout(timer));
     if (r.status === "done") await store.finish({ id: row.id, holder, fence, status: "done", result: r.result });
     else if (r.status === "refused") await store.finish({ id: row.id, holder, fence, status: "refused", result: { reason: r.reason } });
-    else if (r.status === "bounced") await store.finish({ id: row.id, holder, fence, status: "bounced", result: { reason: r.reason, records: r.records } });
     else if (r.status === "failed") await store.finish({ id: row.id, holder, fence, status: "failed", error: r.error });
     else {
       await store.finish({ id: row.id, holder, fence, status: "retry", error: r.error, retryAfterSeconds: r.retryAfterSeconds, ...(r.access ? { result: { needsReconnect: true } } : {}) });

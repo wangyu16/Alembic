@@ -155,6 +155,7 @@ export const coursewerkOerProfile: ContentProfile = {
   serverOnlyFiles: ["private/README.md"],
   // INTERIM (D-126 item 3): Coursewerk's `private/` is free-form.
   privateSubfolders: ["instructor", "sources", "coursewerk", "legacy"],
+  recordsFolders: ["private/coursewerk", "provenance/coursewerk"],
   // `concepts/course.md` is the course-wide concept map.
   reservedUnitSlugs: ["course"],
   unitParts: PARTS,
@@ -175,6 +176,7 @@ export const coursewerkOerProfile: ContentProfile = {
   },
   pathClass(path: string, space: PackageSpace): PathClass {
     if (path === "alembic.json") return "settings";
+    if (path.startsWith("private/coursewerk/") || path.startsWith("provenance/coursewerk/")) return "records";
     if (path === "concepts/course.md") return "plan";
     if (!path.includes("/")) return "project-file";
     switch (space) {

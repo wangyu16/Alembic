@@ -5,12 +5,18 @@
  * (path → "completed" | "withdrawn"); a page not listed is a draft, any
  * other file not listed is published as it is. Pure.
  */
+import { DEFAULT_SITE_TYPE, siteType } from "./index";
 
 export type FileStatus = "draft" | "completed" | "withdrawn" | "public";
 export type StatusMap = Readonly<Record<string, "completed" | "withdrawn">>;
 
-/** Folders whose files take no status (the type package's records, published as they are). */
-const NO_STATUS = ["provenance/coursewerk/"];
+/** Folders whose files take no status: the default site type's public records, published as they are. Read lazily (index imports this file). */
+let noStatus: string[] | undefined;
+const NO_STATUS = { some: (f: (p: string) => boolean) => (noStatus ??= recordsPublic()).some(f) };
+function recordsPublic(): string[] {
+  const def = siteType(DEFAULT_SITE_TYPE).definition;
+  return def.records ? [`${def.records.public.replace(/\/$/, "")}/`] : [];
+}
 
 /** A page: a file Alembic renders (`.md`, `.slides.md`, `.paged.md`) outside private/ and the records. */
 export function isPage(path: string): boolean {

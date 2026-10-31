@@ -133,6 +133,7 @@ export function profileFromDefinition(def: SiteType, files: Readonly<Record<stri
     folders,
     serverOnlyFiles: fixedPrivateFiles,
     privateSubfolders: [...privateSubfolders],
+    recordsFolders: def.records ? [def.records.private, def.records.public].map((f) => f.replace(/\/$/, "")) : [],
     reservedUnitSlugs: [...reserved],
     unitParts: parts,
     requiredParts: unitDocs.filter((d) => d.required).map((d) => d.id),
@@ -151,8 +152,8 @@ export function profileFromDefinition(def: SiteType, files: Readonly<Record<stri
       // The course-website add-on's places: editors write them (course-website-addon §1).
       if (path === HOME_PAGE || path.startsWith(`${TERM_ROOT}/`)) return "material";
       if (path.startsWith(`${EXAMS_FOLDER}/`)) return "private-editable";
-      if (def.records && under(path, def.records.private)) return "private-protected";
-      if (def.records && under(path, def.records.public)) return "project-file";
+      // Both records folders: only the type package's tools write them, through the hand-in (agent-runtime §15).
+      if (def.records && (under(path, def.records.private) || under(path, def.records.public))) return "records";
       const doc = docClass(path);
       if (doc) return doc;
       if (!path.includes("/")) return "project-file";

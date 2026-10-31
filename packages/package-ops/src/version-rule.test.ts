@@ -1,6 +1,7 @@
 /** Claims A4.0–A4.4, A4.9, A4.10 (pure parts) of docs/specs/v3/write-path-v3.md. */
 import { describe, expect, it } from "vitest";
 import { decideFile, mergeBlocks, splitBlocks, type FileChangeInput } from "./version-rule";
+import { sha256Hex } from "@alembic/package-contract";
 
 const sg = (...sections: string[]) => "# Gases\n\nIntro.\n\n" + sections.map((s, i) => `## S${i + 1}\n\n${s}\n\n`).join("");
 import { createHash } from "node:crypto";
@@ -103,8 +104,18 @@ describe("decideFile", () => {
     expect(await decideFile({ ...input({ currentText: "theirs", incomingText: "mine" }), baseVersion: null })).toMatchObject({ reason: "create-exists" });
   });
 
+  it("[K1.35] records are never combined: a record lands only on the version it was made from; a stale one is refused", async () => {
+    for (const path of ["private/coursewerk/LOG.jsonl", "provenance/coursewerk/ATTRIBUTION.md"]) {
+      const r = { ...input({ currentText: sg("one", "two"), incomingText: sg("one", "TWO") }), path, allowRecords: true };
+      expect(await decideFile({ ...r, baseVersion: await sha256Hex(sg("one", "two")) })).toMatchObject({ outcome: "landed" });
+      expect(await decideFile({ ...r, baseVersion: await sha256Hex(sg("ONE", "two")), baseText: sg("ONE", "two") })).toMatchObject({ outcome: "refused", reason: "records-stale" });
+      expect(await decideFile({ ...r, allowRecords: false })).toMatchObject({ outcome: "refused", reason: "records-not-editable" });
+    }
+  });
+
   it("records and the manifest are refused", async () => {
     expect(await decideFile({ ...input({ currentText: "a", incomingText: "b" }), path: "private/coursewerk/LOG.jsonl" })).toMatchObject({ outcome: "refused", reason: "records-not-editable" });
+    expect(await decideFile({ ...input({ currentText: "a", incomingText: "b" }), path: "provenance/coursewerk/CHECKED.json" })).toMatchObject({ outcome: "refused", reason: "records-not-editable" });
     expect(await decideFile({ ...input({ currentText: "a", incomingText: "b" }), path: "alembic.json" })).toMatchObject({ outcome: "refused", reason: "manifest-not-editable" });
   });
 

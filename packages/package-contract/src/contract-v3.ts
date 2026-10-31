@@ -99,8 +99,8 @@ export function assertPathAllowedInPublicRepo(path: string): void {
 /**
  * Paths no user, editor or agent write may touch (rule 2, permissions §3):
  * dot-folders the server generates, and source pointers (a server-written
- * mirror of the `sources` table). `private/coursewerk/` is the harness's
- * and is checked separately (`isHarnessPath`).
+ * mirror of the `sources` table). The type package's records are checked
+ * separately (`isRecordsPath`).
  */
 export function isServerOnlyPath(path: string): boolean {
   const p = normalizePath(path);
@@ -113,10 +113,17 @@ export function isServerOnlyPath(path: string): boolean {
   );
 }
 
-/** Coursewerk records: written only by the harness through the hand-over (FC-16). */
-export function isHarnessPath(path: string): boolean {
-  return normalizePath(path).startsWith("private/coursewerk/");
+/**
+ * The type package's records, private and public (the definition's `records`, contract §5): written only by its tools
+ * through the hand-in; no person edits them; never combined (agent-runtime §15).
+ */
+export function isRecordsPath(path: string): boolean {
+  const p = normalizePath(path);
+  return activeProfile.recordsFolders.some((f) => p.startsWith(`${f}/`));
 }
+
+/** @deprecated the old name of `isRecordsPath` (it now covers both records folders). */
+export const isHarnessPath = isRecordsPath;
 
 /**
  * Files only Publish itself writes in the public repo — never copied from the

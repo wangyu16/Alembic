@@ -99,7 +99,7 @@ export function planCourseImport(i: ImportInput): ImportResult {
   }
   const parsed = WorkingManifestV3Schema.safeParse({
     schemaVersion: 3, packageId: i.packageId, createdAt: new Date().toISOString(), type: DEFAULT_SITE_TYPE,
-    title: i.title ?? given.title ?? "Imported course", license: i.license ?? given.license ?? "CC-BY-4.0",
+    title: i.title ?? given.title ?? "Imported course", license: i.license ?? given.license ?? activeProfile.licences.open[0] ?? activeProfile.licences.allowed[0],
     chapters,
     ...(given.description ? { description: given.description } : {}),
     ...(given.audience ? { audience: given.audience } : {}),

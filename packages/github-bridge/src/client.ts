@@ -793,6 +793,23 @@ export class GitHubClient {
    * rather than return a list that may miss changes; reconcile then falls back
    * to comparing the whole tree (apps/web lib/repo-reader.ts).
    */
+  /**
+   * Is `commit` the head or one of its ancestors? GitHub's compare of `commit...head` says "ahead" or
+   * "identical" exactly then; an unknown commit (404/422) is not an ancestor.
+   */
+  async isAncestor(coords: RepoCoords, commit: string, head: string): Promise<boolean> {
+    if (!/^[0-9a-f]{40}$/.test(commit) || !/^[0-9a-f]{40}$/.test(head)) return false;
+    if (commit === head) return true;
+    try {
+      const data = await this.request<{ status?: string }>("GET", `/repos/${coords.owner}/${coords.repo}/compare/${commit}...${head}`);
+      return data.status === "ahead" || data.status === "identical";
+    } catch (e) {
+      const status = (e as { status?: unknown })?.status;
+      if (status === 404 || status === 422) return false;
+      throw e;
+    }
+  }
+
   async compareCommits(
     coords: RepoCoords,
     base: string | null,

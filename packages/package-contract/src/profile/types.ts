@@ -20,6 +20,7 @@ export type PathClass =
   | "project-file"      // project-wide files the owner/deputy maintain (README, records, site config)
   | "private-editable"  // instructor-only documents members may write
   | "private-protected" // private files only the server or a harness writes
+  | "records"           // the type package's records (private and public): only its tools write them, through the hand-in
   | "settings";         // the manifest: only through course operations
 
 export interface UnitPart {
@@ -50,6 +51,8 @@ export interface ContentProfile {
   readonly serverOnlyFiles: readonly string[];
   /** Private subfolders allowed (fail closed on any other). */
   readonly privateSubfolders: readonly string[];
+  /** The type package's records folders (private and public, no trailing slash): only its tools write them (contract §5). */
+  readonly recordsFolders: readonly string[];
   /** Unit slugs that may not be used (they collide with a project file). */
   readonly reservedUnitSlugs: readonly string[];
   /** The unit's parts, in order; the first `required` ones must exist for every listed unit. */

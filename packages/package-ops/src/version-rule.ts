@@ -10,7 +10,7 @@
  * kind is one block, so any concurrent change to it becomes "both changed".
  */
 
-import { sha256Hex } from "@alembic/package-contract";
+import { isRecordsPath, sha256Hex } from "@alembic/package-contract";
 
 /* -------------------------------------------------------------------------- *
  * Blocks
@@ -162,7 +162,7 @@ export type FileDecision =
   | { outcome: "combined"; write: string }
   /** Both kept: `top` is written as the head version, `kept` is committed before it. */
   | { outcome: "both-changed"; top: string | null; kept: string | null; reason: BothReason }
-  | { outcome: "refused"; reason: "records-not-editable" | "manifest-not-editable" };
+  | { outcome: "refused"; reason: "records-not-editable" | "records-stale" | "manifest-not-editable" };
 
 export type BothReason =
   | "same-block"
@@ -181,11 +181,20 @@ const v = async (t: string | null): Promise<string | null> => (t === null ? null
 
 /** Apply the version rule to one file. */
 export async function decideFile(c: FileChangeInput): Promise<FileDecision> {
-  if (c.path.startsWith("private/coursewerk/") && !c.allowRecords) return { outcome: "refused", reason: "records-not-editable" };
+  const records = isRecordsPath(c.path);
+  if (records && !c.allowRecords) return { outcome: "refused", reason: "records-not-editable" };
   if (c.path === "alembic.json") return { outcome: "refused", reason: "manifest-not-editable" };
 
   const current = await v(c.currentText);
   const incoming = await v(c.incomingText);
+
+  // The type package's records are never combined (agent-runtime §15): a record lands only on the version it was
+  // made from; a stale one refuses the whole changeset, and the tool reads it again.
+  if (records) {
+    if (incoming === current) return { outcome: "landed", write: c.incomingText, noop: true };
+    if (c.baseVersion === current) return { outcome: "landed", write: c.incomingText, noop: false };
+    return { outcome: "refused", reason: "records-stale" };
+  }
 
   // Rule 0: the head already holds exactly the incoming content (a replay).
   if (incoming === current) return { outcome: "landed", write: c.incomingText, noop: true };

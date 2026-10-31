@@ -23,6 +23,8 @@ export function fileKind(path: string): "text" | MediaKind | null {
   if (/\.(ketcher|plot)\.svg$/i.test(name)) return "text";
   const ext = name.includes(".") ? name.split(".").pop()!.toLowerCase() : name.toLowerCase();
   if (TEXT_EXTENSIONS.has(ext) || name === "LICENSE") return "text";
+  // `.jsonl` only under the type package's records (SITE-TYPE-CONTRACT §8): its tools' logs.
+  if (ext === "jsonl" && activeProfile.recordsFolders.some((f) => path.startsWith(`${f}/`))) return "text";
   return activeProfile.media[ext] ?? null;
 }
 

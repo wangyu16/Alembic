@@ -316,3 +316,38 @@ claim = "A new course's first commit (made by course creation or an import, outs
 oracle = "human"
 bound_to = []
 note = "Found 2026-10-31: since the owner-only settings rule (overnight), creation's first commit was undone by Door C. Fixed by SqlQueueStore.recordOwnCommit in v3-actions and the import tool; live-checked with an import of the General Chemistry files (no undo; 19 chapters)."
+
+[[claim]]
+id = "K1.34"
+claim = "The type package's records are one class read from its definition (both the private and the public folder): no person, of any role, writes them through any path; only its tools do, through the hand-in; `.jsonl` is a text kind only there."
+oracle = "conformance"
+bound_to = [
+  "packages/package-ops/src/course-committer.test.ts :: both records folders come from the site type definition; no person may edit them, by any role",
+]
+
+[[claim]]
+id = "K1.35"
+claim = "Records are never combined: a record lands only on the version it was made from. In a changeset with content, the content lands by the version rule (both versions kept when both changed) and the records land; a stale record refuses the whole changeset with nothing written. Nothing is sent back (no bounce)."
+oracle = "conformance"
+bound_to = [
+  "packages/package-ops/src/version-rule.test.ts :: records are never combined: a record lands only on the version it was made from; a stale one is refused",
+  "packages/package-ops/src/course-committer.test.ts :: records with content: the content lands by the version rule (both versions kept when both changed) and the records land; nothing is sent back",
+  "packages/package-ops/src/course-committer.test.ts :: a stale record refuses the whole changeset: nothing is written",
+]
+
+[[claim]]
+id = "K1.36"
+claim = "At execution an agent changeset needs the person who asked to still be an editor of the course and the course or session not blocked (read-only, paused); an automatic job's rights are capped at co-author."
+oracle = "conformance"
+bound_to = [
+  "packages/package-ops/src/course-committer.test.ts :: at execution the asker must still be an editor and the course or session not blocked; automatic jobs are capped at co-author",
+]
+
+[[claim]]
+id = "K1.37"
+claim = "A chapter is restored only from a version in the course's own history (ancestor of the head)."
+oracle = "conformance"
+bound_to = [
+  "packages/package-ops/src/course-committer.test.ts :: a chapter is restored only from a version in the course's own history",
+]
+

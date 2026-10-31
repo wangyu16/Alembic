@@ -4,7 +4,7 @@
  * §2.2, "the only authority"). Pure: the server resolves the role, then asks.
  */
 
-import { isHarnessPath, isServerOnlyPath, normalizePath, spaceForPathV3 } from "./contract-v3";
+import { isRecordsPath, isServerOnlyPath, normalizePath, spaceForPathV3 } from "./contract-v3";
 import { activeProfile, type PathClass } from "./profile";
 
 export const ROLES = ["owner", "deputy", "co-author", "agent", "operator", "none"] as const;
@@ -156,7 +156,7 @@ export function canAgent(invoker: Role, action: Action, ctx: AccessContext = {})
 export function editActionForPath(path: string): "edit.materials" | "edit.plan" | "edit.private" | "edit.course-files" | null {
   const p = normalizePath(path);
   // The core's own mechanics files (Alembic's, FD-09): server-generated, harness records, the licence files.
-  if (isServerOnlyPath(p) || isHarnessPath(p)) return null;
+  if (isServerOnlyPath(p) || isRecordsPath(p)) return null;
   if (p === "LICENSE" || p === "CITATION.cff") return null;
   // Everything else is classified by the content profile (FD-10), then mapped to a permission here.
   return ACTION_FOR_CLASS[activeProfile.pathClass(p, spaceForPathV3(p))];
@@ -169,6 +169,7 @@ const ACTION_FOR_CLASS: Record<PathClass, "edit.materials" | "edit.plan" | "edit
   "project-file": "edit.course-files",
   "private-editable": "edit.private",
   "private-protected": null,
+  records: null, // only the type package's tools, through the hand-in
   settings: null, // only through course operations (contract v3 §13)
 };
 

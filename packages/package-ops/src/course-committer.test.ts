@@ -633,3 +633,81 @@ describe("restores (history-v3 §3)", () => {
   });
 });
 
+
+describe("the agent's changesets: C4 entry conditions (agent-runtime §15)", () => {
+  const REC = "provenance/coursewerk/CHECKED.json";
+  const LOG = "private/coursewerk/LOG.jsonl";
+  const cs = (id: string, files: RowFile[], extra: Partial<QueueRow["payload"]> = {}): Omit<QueueRow, "attempts"> =>
+    ({ id, packageId: P, kind: "changeset", actorId: null, invokerId: "owner", payload: { files, ...extra } });
+
+  it("[K1.34] both records folders come from the site type definition; no person may edit them, by any role", async () => {
+    const { isRecordsPath, canWritePath, editActionForPath } = await import("@alembic/package-contract");
+    for (const p of [REC, LOG]) {
+      expect(isRecordsPath(p)).toBe(true);
+      expect(editActionForPath(p)).toBeNull();
+      for (const r of ["owner", "deputy", "co-author"] as const) expect(canWritePath(r, p)).toBe(false);
+    }
+    expect(isRecordsPath("provenance/other.md")).toBe(false);
+    const { fileKind } = await import("@alembic/package-contract");
+    expect([fileKind(LOG), fileKind("assets/gases/x.jsonl")]).toEqual(["text", null]); // .jsonl only under records
+    const { repo, q } = setup();
+    q.add(sync("s1", "owner", REC, null, "{}", false));
+    await drainCourse(P, "w", q, repo);
+    expect(q.status("s1")).toBe("refused");
+    expect(repo.file(REC)).toBeNull();
+  });
+
+  it("[K1.35] records with content: the content lands by the version rule (both versions kept when both changed) and the records land; nothing is sent back", async () => {
+    const { repo, q } = setup();
+    repo.push({ "study-guide/gases.md": sg("one", "TWO-theirs", "three") });
+    q.add(cs("c1", [
+      { path: "study-guide/gases.md", baseVersion: h(base), text: sg("one", "TWO-agent", "three") },
+      { path: REC, baseVersion: null, text: "{\"checked\":true}" },
+    ]));
+    await drainCourse(P, "w", q, repo);
+    expect(q.status("c1")).toBe("done");
+    expect(repo.file(REC)).toBe("{\"checked\":true}");
+    expect(repo.file("study-guide/gases.md")).toBe(sg("one", "TWO-theirs", "three")); // current on top, the agent's kept in history
+  });
+
+  it("[K1.35] a stale record refuses the whole changeset: nothing is written", async () => {
+    const { repo, q } = setup();
+    repo.push({ [LOG]: "a\n" });
+    repo.push({ [LOG]: "a\nb\n" });
+    q.add(cs("c1", [
+      { path: "study-guide/gases.md", baseVersion: h(base), text: sg("one", "two", "THREE") },
+      { path: LOG, baseVersion: h("a\n"), text: "a\nc\n" },
+    ]));
+    await drainCourse(P, "w", q, repo);
+    expect(q.status("c1")).toBe("refused");
+    expect(repo.file("study-guide/gases.md")).toBe(base);
+    expect(repo.file(LOG)).toBe("a\nb\n");
+  });
+
+  it("[K1.36] at execution the asker must still be an editor and the course or session not blocked; automatic jobs are capped at co-author", async () => {
+    const { repo, q } = setup();
+    const blocked = new Set<string>(["c2"]);
+    (q as unknown as { changesetBlocked: (r: QueueRow) => Promise<string | null> }).changesetBlocked = async (r) => (blocked.has(r.id) ? "the course is read-only" : null);
+    q.roles.set("gone", "none");
+    q.add({ ...cs("c1", [{ path: LOG, baseVersion: null, text: "x\n" }]), invokerId: "gone" });
+    q.add(cs("c2", [{ path: LOG, baseVersion: null, text: "x\n" }]));
+    q.add(cs("c3", [{ path: LOG, baseVersion: null, text: "x\n" }], { rightsCap: "co-author" }));
+    await drainCourse(P, "w", q, repo);
+    expect([q.status("c1"), q.status("c2"), q.status("c3")]).toEqual(["refused", "refused", "done"]);
+    expect(q.rows.find((r) => r.id === "c2")!.result).toEqual({ reason: "the course is read-only" });
+  });
+
+  it("[K1.37] a chapter is restored only from a version in the course's own history", async () => {
+    const M = `${JSON.stringify({ schemaVersion: 3, packageId: P, title: "Chem", license: "CC-BY-4.0", createdAt: "2026-10-29T00:00:00Z", chapters: [{ slug: "atoms", title: "Atoms", mode: "package" }] }, null, 2)}\n`;
+    const repo = new FakeRepo({ "alembic.json": M, "study-guide/atoms.md": base });
+    const asked: string[] = [];
+    (repo as unknown as { isAncestor: (c: string, h: string) => Promise<boolean> }).isAncestor = async (c) => { asked.push(c); return false; };
+    const q = new MemQueue();
+    q.roles.set("owner", "owner");
+    q.add({ id: "o1", packageId: P, kind: "courseop", actorId: "owner", invokerId: null, payload: { files: [], op: { op: "restoreChapter", slug: "gases", fromCommit: "f".repeat(40) } } });
+    await drainCourse(P, "w", q, repo);
+    expect(q.status("o1")).toBe("refused");
+    expect(q.rows[0]!.result).toEqual({ reason: "that version isn't in this course's history" });
+    expect(asked).toEqual(["f".repeat(40)]);
+  });
+});
