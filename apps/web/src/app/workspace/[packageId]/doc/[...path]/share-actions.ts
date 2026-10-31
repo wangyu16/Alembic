@@ -2,6 +2,7 @@
 
 import { canWritePath, normalizePath, type Role } from "@alembic/package-contract";
 import { newElementId } from "@alembic/package-ops";
+import { revalidatePath } from "next/cache";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { directDb } from "@/lib/db";
 
@@ -42,5 +43,8 @@ export async function stopSharingAction(packageId: string, id: string): Promise<
   const { data: roleRaw } = await supabase.rpc("course_role", { p: packageId });
   if (!canWritePath((roleRaw ?? "none") as Role, rows[0].page)) return { ok: false, message: "Only people who may edit this page stop sharing from it." };
   await sql.query(`update public.shared_elements set stopped_at = now() where id = $1`, [id]);
+  // Gone at once on Alembic's own server (other caches follow within TAKEDOWN_BOUND_SECONDS).
+  revalidatePath(`/e/${id}`);
+  revalidatePath(`/e/${id}/file`);
   return { ok: true };
 }
