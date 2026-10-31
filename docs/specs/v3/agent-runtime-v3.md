@@ -420,3 +420,29 @@ back through the hand-in; every question through the digest (§14, §15). The fi
 Coursewerk's skills; Coursewerk's own `coursewerk-agent` (on pi) replaces it once complete and once an evaluation on real
 course tasks favours it (DecisionLog 2026-10-31). Production sandboxes: Fly Sprites; instabox stays a working second
 provider.
+
+## 17. Step 3a spike (2026-10-31): what the first live run taught
+
+Claude Code 2.1.288 ran headless in the instabox sandbox as the course's own Linux user (mode-700 home, nftables:
+DNS and the testing host's addresses on 443 only; no sudo; other hosts, api.anthropic.com and the metadata address
+refused), read `study-guide/atoms.md` through `/api/agent/file`, handed in `spike-atoms-0001`, and the committer
+landed it (`e2e9e1a`). 9 turns, 12 gateway calls, 33 credits ($0.33; Claude Code's own estimate $0.19: check the
+gateway's Sonnet 5 rates against the invoice). Rules for the orchestrator (step 3b):
+
+1. **One public host.** The sandbox reaches the AI through `/api/agent/ai/v1/messages`, a pass-through to the VM's
+   gateway (which keeps every check). Cloudflare's Bot Fight Mode challenged the sandbox (owner turned it off for
+   orz.how; a WAF skip rule covers `/api/agent/`). Production will need the same for its host.
+2. **Betas.** The gateway passes exactly the four billing-neutral betas the harness sends (claude-code,
+   interleaved-thinking, effort, mid-conversation-system); any other is refused. A new Claude Code release may add
+   one: the orchestrator pins the harness version, and the gateway's refusal names the beta.
+3. **Output cap.** The harness runs with `CLAUDE_CODE_MAX_OUTPUT_TOKENS` ≤ the gateway's cap (8000 in the spike).
+4. **Hold size.** The gateway's worst case counts each request byte as a token, so one Claude Code call (≈ 170 KB of
+   tools and prompt) is bounded at ≈ 50–75 credits while actually costing ≈ 1–12. A job's hold must exceed one call's
+   bound (≥ 100 credits for Claude Code); the estimate shown to the person (R.25) should be the realistic one.
+   Open: a tighter bound (count_tokens before the call, or a measured bytes-per-token ratio for the harness's prompt).
+5. **Secrets per course user.** instabox's placeholder file is readable only by the sandbox's own user; the
+   orchestrator copies the two placeholders into the course user's mode-600 env file. On the shared free-plan VM
+   the proxy swaps a placeholder for any local user (accepted for testing, O22; production: one sandbox per course).
+6. **Settings that keep the harness quiet:** `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC`, `DISABLE_TELEMETRY`,
+   `DISABLE_ERROR_REPORTING`, `CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS`; the tools allowed are the `alembic` helper,
+   `jq`, `cat`, Read and Write (no network tools).
