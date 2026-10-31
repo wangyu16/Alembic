@@ -1,26 +1,21 @@
 {{nyml
 kind: document
 format: 1
-title: Assessment Guide: {{title}}
+title: {{title}}
 uid: {{uid}}
 }}
 
-# Assessment Guide: {{title}}
+# Assessment Guide — {{title}}
 
-## Source and Format
+*One `##` section per objective of the concept map, ending with `[objective: <objective anchor>]`. Under it, the cognitive level, then one `###` question guide per kind of question.*
 
-Which concept map this follows, and the kinds of questions used (multiple choice, short answer, workout).
+## First objective, in words [objective: first-objective]
 
-## General Assessment Priorities
+**Cognitive level:** understand
 
-- What every question set for this chapter should check.
+### First question guide [anchor: first-guide]
 
-## Objective 1a: What students will be able to do
+- **Type:** short answer
+- **Count:** 2
 
-### Target understanding
-
-What a student who has met this objective understands.
-
-### Question guides
-
-- A question that checks it, and what a good answer shows.
+*How to design the question: what to vary, what a correct answer shows.*

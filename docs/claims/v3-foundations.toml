@@ -187,7 +187,7 @@ bound_to = [
   "packages/package-contract/src/site-type/site-type.test.ts :: load, pass the schema and the cross-field rules, and carry every file they name",
   "packages/package-contract/src/site-type/site-type.test.ts :: the bundle and the JSON Schema are up to date with the vendored folders",
   "packages/package-contract/src/site-type/site-type.test.ts :: classifies every kind of path the same way",
-  "packages/package-contract/src/site-type/site-type.test.ts :: has the same parts at the same paths, with the same starters; ids and one label follow the contract",
+  "packages/package-contract/src/site-type/site-type.test.ts :: has the same parts at the same paths; ids and one label follow the contract; every starter (Coursewerk's own) is filled and keeps its header",
   "packages/package-contract/src/site-type/site-type.test.ts :: refuses Alembic's own paths and the front page files",
   "packages/package-contract/src/site-type/site-type.test.ts :: allows a site type without units (a one-page site)",
 ]

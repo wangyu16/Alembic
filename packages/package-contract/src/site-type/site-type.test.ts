@@ -12,7 +12,8 @@ describe("the vendored site types", () => {
   it("[K1.21] load, pass the schema and the cross-field rules, and carry every file they name", () => {
     expect([...SITE_TYPES.keys()]).toEqual(["oer-course@1"]);
     expect(course.definition.schema).toBe("alembic.site-type/1");
-    expect(course.vendor.source).toBe("alembic-stand-in"); // until Coursewerk's site-type-1.0.0-dev.1 is vendored over it
+    // Coursewerk's tagged release, copied by scripts/type-packages.ts (family SITE-TYPE-CONTRACT §3, FD-11).
+    expect(course.vendor).toMatchObject({ source: "type-package", repo: "orz-coursewerk", tag: "site-type-1.0.0-dev.1" });
   });
 
   it("[K1.21] the bundle and the JSON Schema are up to date with the vendored folders", () => {
@@ -76,13 +77,18 @@ describe("the bridge reproduces today's Coursewerk profile (only the intended ch
     expect(activeProfile.media).toEqual(oracle.media);
     expect(activeProfile.licences).toEqual(oracle.licences);
   });
-  it("[K1.21] has the same parts at the same paths, with the same starters; ids and one label follow the contract", () => {
+  it("[K1.21] has the same parts at the same paths; ids and one label follow the contract; every starter (Coursewerk's own) is filled and keeps its header", () => {
     const ids = { concepts: "concept-map", "study-guide": "study-guide", slides: "slides", "assessment-support": "assessment-guide", practice: "practice" } as const;
     expect(activeProfile.unitParts.map((p) => p.id)).toEqual(oracle.unitParts.map((p) => ids[p.id as keyof typeof ids]));
     for (const [i, p] of activeProfile.unitParts.entries()) {
       const o = oracle.unitParts[i]!;
       expect(p.path("gases")).toBe(o.path("gases"));
-      for (const title of ["Gases", "Acids }} and {{bases}}", "Two\nlines", ""]) expect(p.starter(title, "u-123")).toBe(o.starter(title, "u-123"));
+      for (const title of ["Gases", "Acids }} and {{bases}}", "Two\nlines", ""]) {
+        const text = p.starter(title, "u-123");
+        expect(text, `${p.id}: ${title}`).not.toMatch(/\{\{(title|uid)\}\}/);
+        expect(text, p.id).toMatch(/^\{\{nyml\n[\s\S]*?uid: u-123\n[\s\S]*?\}\}/);
+        expect(text.split("\n").filter((l) => l === "}}").length, `${p.id}: the header stays closed once`).toBeGreaterThanOrEqual(1);
+      }
     }
     expect(activeProfile.unitParts.map((p) => p.label)).toEqual(["Concept map", "Study guide", "Slides", "Assessment guide", "Practice questions"]);
   });

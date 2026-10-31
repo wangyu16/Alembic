@@ -1,17 +1,31 @@
 {
   "schema": "alembic.site-type/1",
   "type": "oer-course",
-  "version": "1.0.0-dev.0",
+  "version": "1.0.0-dev.1",
   "names": { "site": "course", "unit": "chapter", "units": "chapters" },
   "units": { "first": "Introduction" },
   "documents": [
-    { "id": "concept-map", "scope": "unit", "label": "Concept map", "path": "concepts/{unit}.md", "format": "md", "required": true, "starter": "starters/concept-map.md", "group": "plan", "edits": "keep-both" },
-    { "id": "study-guide", "scope": "unit", "label": "Study guide", "path": "study-guide/{unit}.md", "format": "md", "required": true, "starter": "starters/study-guide.md", "group": "material", "edits": "sections" },
-    { "id": "slides", "scope": "unit", "label": "Slides", "path": "slides/{unit}.slides.md", "format": "slides", "starter": "starters/slides.slides.md", "group": "material" },
-    { "id": "assessment-guide", "scope": "unit", "label": "Assessment guide", "path": "assessment-support/{unit}.md", "format": "md", "required": true, "starter": "starters/assessment-guide.md", "group": "plan", "edits": "keep-both" },
-    { "id": "practice", "scope": "unit", "label": "Practice questions", "path": "practice/{unit}.md", "format": "md", "starter": "starters/practice.md", "group": "material", "edits": "sections" },
-    { "id": "course-map", "scope": "site", "label": "Course map", "path": "concepts/course.md", "format": "md", "starter": "starters/course-map.md", "group": "course", "edits": "keep-both" },
-    { "id": "readme", "scope": "site", "label": "About this course", "path": "README.md", "format": "md", "required": true, "starter": "starters/README.md", "group": "course", "who": "lead" }
+    { "id": "concept-map", "scope": "unit", "label": "Concept map",
+      "path": "concepts/{unit}.md", "format": "md", "required": true,
+      "starter": "starters/concept-map.md", "group": "plan", "edits": "keep-both" },
+    { "id": "study-guide", "scope": "unit", "label": "Study guide",
+      "path": "study-guide/{unit}.md", "format": "md", "required": true,
+      "starter": "starters/study-guide.md", "group": "material", "edits": "sections" },
+    { "id": "slides", "scope": "unit", "label": "Slides",
+      "path": "slides/{unit}.slides.md", "format": "slides",
+      "starter": "starters/slides.slides.md", "group": "material" },
+    { "id": "assessment-guide", "scope": "unit", "label": "Assessment guide",
+      "path": "assessment-support/{unit}.md", "format": "md", "required": true,
+      "starter": "starters/assessment-guide.md", "group": "plan", "edits": "keep-both" },
+    { "id": "practice", "scope": "unit", "label": "Practice questions",
+      "path": "practice/{unit}.md", "format": "md",
+      "starter": "starters/practice.md", "group": "material", "edits": "sections" },
+    { "id": "course-map", "scope": "site", "label": "Course map",
+      "path": "concepts/course.md", "format": "md", "group": "course", "edits": "keep-both",
+      "starter": "starters/course-map.md" },
+    { "id": "readme", "scope": "site", "label": "About this course",
+      "path": "README.md", "format": "md", "group": "course", "who": "lead",
+      "required": true, "starter": "starters/README.md" }
   ],
   "unitFolders": [
     { "path": "study-guide/chapters/{unit}/", "group": "material", "edits": "sections" },
@@ -29,7 +43,9 @@
     { "from": "study-guide", "to": "slides", "kind": "pairs" }
   ],
   "rootFiles": [ { "name": "orz-site.json", "who": "lead" } ],
-  "folders": [ { "path": "assets", "who": "editor" } ],
+  "folders": [
+    { "path": "assets", "who": "editor" }
+  ],
   "figures": { "public": "assets/{doc}", "private": "private/instructor/figures/{doc}" },
   "private": [
     { "path": "private/instructor", "who": "editor" },
@@ -45,12 +61,18 @@
   ],
   "licences": {
     "choices": [
-      { "id": "CC-BY-4.0", "label": "Creative Commons Attribution 4.0", "open": true, "files": { "LICENSE": "licences/CC-BY-4.0.txt" } },
-      { "id": "CC-BY-SA-4.0", "label": "Creative Commons Attribution-ShareAlike 4.0", "open": true, "files": { "LICENSE": "licences/CC-BY-SA-4.0.txt" } },
-      { "id": "CC-BY-NC-4.0", "label": "Creative Commons Attribution-NonCommercial 4.0", "open": true, "files": { "LICENSE": "licences/CC-BY-NC-4.0.txt" } },
-      { "id": "CC-BY-NC-SA-4.0", "label": "Creative Commons Attribution-NonCommercial-ShareAlike 4.0", "open": true, "files": { "LICENSE": "licences/CC-BY-NC-SA-4.0.txt" } },
-      { "id": "CC0-1.0", "label": "Public domain (CC0 1.0)", "open": true, "files": { "LICENSE": "licences/CC0-1.0.txt" } },
-      { "id": "ALL-RIGHTS-RESERVED", "label": "All rights reserved", "open": false, "files": { "LICENSE": "licences/ALL-RIGHTS-RESERVED.txt" } }
+      { "id": "CC-BY-4.0", "label": "Creative Commons Attribution 4.0", "open": true,
+        "files": { "LICENSE": "licences/CC-BY-4.0.txt" } },
+      { "id": "CC-BY-SA-4.0", "label": "Creative Commons Attribution-ShareAlike 4.0", "open": true,
+        "files": { "LICENSE": "licences/CC-BY-SA-4.0.txt" } },
+      { "id": "CC-BY-NC-4.0", "label": "Creative Commons Attribution-NonCommercial 4.0", "open": true,
+        "files": { "LICENSE": "licences/CC-BY-NC-4.0.txt" } },
+      { "id": "CC-BY-NC-SA-4.0", "label": "Creative Commons Attribution-NonCommercial-ShareAlike 4.0", "open": true,
+        "files": { "LICENSE": "licences/CC-BY-NC-SA-4.0.txt" } },
+      { "id": "CC0-1.0", "label": "Public domain (CC0 1.0)", "open": true,
+        "files": { "LICENSE": "licences/CC0-1.0.txt" } },
+      { "id": "ALL-RIGHTS-RESERVED", "label": "All rights reserved", "open": false,
+        "files": { "LICENSE": "licences/all-rights-reserved.txt" } }
     ],
     "default": "CC-BY-4.0",
     "citation": { "file": "CITATION.cff", "template": "templates/CITATION.cff" }

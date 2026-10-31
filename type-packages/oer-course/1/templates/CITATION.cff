@@ -1,5 +1,6 @@
 cff-version: 1.2.0
-message: "If you use these materials, please cite them as below."
+message: "If you use this open educational resource, please cite it."
+type: dataset
 title: "{{title}}"
 authors:
   - name: "{{authors}}"

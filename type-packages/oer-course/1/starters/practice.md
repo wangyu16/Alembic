@@ -1,22 +1,19 @@
 {{nyml
 kind: document
 format: 1
-title: Practice: {{title}}
+title: {{title}}
 uid: {{uid}}
 }}
 
-# Practice: {{title}}
+# Practice — {{title}}
+
+## Questions
 
 :::: tabs
 ::: tab Q 1
-*multiple-choice* Write the question here.
-
-A. First option\
-B. Second option\
-C. Third option\
-D. Fourth option
+Write the question here.
 :::
-::: tab Answer
-**A.** Why this is the answer.
+::: tab Answer 1
+The worked answer.
 :::
 ::::

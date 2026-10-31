@@ -1,8 +1,9 @@
 {{nyml
 kind: document
+format: 1
 carrier: slides
-uid: {{uid}}
 title: {{title}}
+uid: {{uid}}
 ratio: 16:9
 theme: paper
 }}
@@ -11,7 +12,13 @@ theme: paper
 # {{title}}
 
 <!-- slide -->
-## What we'll cover
+## Learning objectives
+1. First objective
 
+<!-- slide template=outline -->
+## What we will cover
 - First point
-- Second point
+
+<!-- slide template=closing -->
+## Summary
+- Key point

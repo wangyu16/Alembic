@@ -1,30 +1,36 @@
 {{nyml
 kind: document
 format: 1
-title: Concept Map: {{title}}
+title: {{title}}
 uid: {{uid}}
 }}
 
-# Concept Map: {{title}}
+# Concept Map — {{title}}
 
-## Source and Scope
+## Source and scope
 
-What this chapter is based on (your notes, a textbook chapter), who it is for, and what it covers.
+*What this chapter is based on, who it is for, and what it covers.*
 
-## Chapter Summary
+## Summary
 
-The chapter's story in a paragraph: what students learn, and in what order.
+*The chapter's story in a short paragraph.*
 
-## Prerequisites and Later Payoff
+## Prerequisites
 
-What students need first, and where this chapter is used later.
+*What students need to know first, one item per line.*
 
-## Section-Level Concept Map and Objectives
+## Objectives
 
-### 1. First section
+*Numbered: what a student can do after this chapter. Each item ends with `[anchor: <slug>]`.*
 
-- **Objective 1a:** what students will be able to do.
+## Concept sequence
 
-## Common Student Bottlenecks
+*Numbered claims, written as sentences, in teaching order. Each ends with `[anchor: <slug>]`; add `[prereq: concept.<chapter>.<anchor>]` for what it builds on.*
 
-Where students usually get stuck, and why.
+## Key terms
+
+*`- **term** (aliases: …) — one-line gloss [concept.<chapter>.<anchor>]`*
+
+## Misconceptions to surface
+
+*The wrong beliefs, stated as a student would hold them. Each ends with `[anchor: <slug>]`.*

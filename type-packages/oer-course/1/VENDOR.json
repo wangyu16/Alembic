@@ -1,6 +1,9 @@
 {
-  "source": "alembic-stand-in",
-  "note": "Written by Alembic from the site type contract §5 (draft 11) as a stand-in; owned by Coursewerk. Replaced by Coursewerk's site-type-1.0.0-dev.1.",
-  "version": "1.0.0-dev.0",
-  "checksum": "b8ec7a204c9ad3899bcbd41735b6d6736f12d572a8e99c18ea6de9b6406750b5"
+  "source": "type-package",
+  "repo": "orz-coursewerk",
+  "tag": "site-type-1.0.0-dev.1",
+  "commit": "409fa083dcde41ebc30f782ace9ebc93abcd062d",
+  "version": "1.0.0-dev.1",
+  "copiedAt": "2026-10-31T00:26:35.908Z",
+  "checksum": "2359814472121154d2fdbdd445c76a834c1147554b5032c4c11b176b2e22c755"
 }
