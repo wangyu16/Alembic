@@ -1,6 +1,6 @@
 # Agent runtime (sessions, hand-over, catch-up, deferral) — mini-spec
 
-**Status:** draft 3 for gate G7, 2026-10-27 (two review rounds; resolutions
+**Status:** draft 4, 2026-10-30 (§11–§14 added; G7 rounds 3–4 resolved in the text; a short G7 round 5 on §14 is due before C4 code). Earlier: draft 3 for gate G7, 2026-10-27 (two review rounds; resolutions
 §9 and §10). Module C4 (with C3 sandbox provider, C5 harness adapter). Design
 source: `ALEMBIC-WORKSPACE-DESIGN.md` §5; FC-16 v1 draft Part A; write-path
 and queue specs.
