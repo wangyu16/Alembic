@@ -335,3 +335,11 @@ orz-markdown path that renders raw HTML, because rendering an author's HTML is o
 D-127). The cleaner plus the render backstop is the interim boundary. **The structural fix is D-127's orz-markdown
 option** (raw HTML off for shared authoring, everywhere it renders: blocks, inline, spans, containers, attrs). It is
 raised with the owner to bring forward. Once it ships, the cleaner becomes a second layer.
+
+### G7 round 5 (2026-10-31): agent-runtime §14 before C4
+
+Independent spec review against §11–§13, the site type contract and the shipped code. **Pass with fixes: 2 HIGH, 7 MEDIUM, 6 LOW**,
+every one resolved in agent-runtime §15. HIGH: records weren't one definition-driven class in code (the public folder was
+lead-editable, the private one fixed by path), and the committer's old "bounce" contradicted §11.6. Adopted all three proposed
+simplifications (no records fast-path class, `append` for `.jsonl` records, one open digest per invoker). Code fixes are C4 entry
+conditions, each landing with a claim.

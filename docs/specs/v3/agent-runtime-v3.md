@@ -1,6 +1,6 @@
 # Agent runtime (sessions, hand-over, catch-up, deferral) — mini-spec
 
-**Status:** draft 4, 2026-10-30 (§11–§14 added; G7 rounds 3–4 resolved in the text; a short G7 round 5 on §14 is due before C4 code). Earlier: draft 3 for gate G7, 2026-10-27 (two review rounds; resolutions
+**Status:** draft 5, 2026-10-31 (§15: G7 round 5 resolved, pass with fixes; C4 may start with its entry conditions). Draft 4, 2026-10-30: §11–§14, G7 rounds 3–4. Earlier: draft 3 for gate G7, 2026-10-27 (two review rounds; resolutions
 §9 and §10). Module C4 (with C3 sandbox provider, C5 harness adapter). Design
 source: `ALEMBIC-WORKSPACE-DESIGN.md` §5; FC-16 v1 draft Part A; write-path
 and queue specs.
@@ -364,3 +364,50 @@ Coursewerk's two notes for the owner were answered: the optional course setting
 "an edit returns a completed page to draft" is built (claim K1.26); a page set
 back to draft keeps its last published version by the owner's ruling (A), and
 "take it off the website" is the complete retraction.
+
+## 15. Round 5 resolutions (G7 round 5, 2026-10-31): these take precedence over §11–§14
+
+Verdict: pass with fixes. Each fix below is either text (it holds now) or a **C4 entry condition** (code that C4 lands
+first, with a claim). Nothing here adds a content check (FD-09/FD-10).
+
+**Records (H1, H2, L6, M2, M3, simplifications 1–2).**
+- One predicate, `isRecordsPath(def, path)`, covers both of the definition's `records` folders (private and public);
+  nothing hard-codes `private/coursewerk/`. People have no edit action on either (the contract's "people never edit
+  either"); only the type package's tools write them, through the hand-in, as text. *C4 entry condition* (today the public
+  folder is a lead-editable course file and the private one is checked by a fixed path).
+- Records are never combined. A record whose `baseVersion` is stale refuses the whole changeset (the tool reads and sends
+  again). Content in the same changeset otherwise lands by the version rule (§11.6). **`bounced` is retired**: a
+  both-changed content file raises the usual "both versions kept" item and lands; it never sends records back.
+- No "records-only fast path" class. The wait of §4.1 applies only to files open in an editor, and records are never
+  open in one, so a records changeset simply runs in queue order with the stale-base refusal.
+- `.jsonl` records may be sent as `{path, baseVersion, append}` (text appended, never combined, refused if stale), so a
+  log is never rewritten whole. One hand-in body carries at most 4 MB of record text; the hourly rate of R.27 counts the
+  bytes sent, so appends cost what they add. The site-wide 50 MB records total stays.
+- The public records limit (1 MB in total) is checked at hand-in only, never at Publish. Kinds are the ordinary text
+  kinds unless the schema later gains `records.publicFiles` (open point added to contract §13).
+
+**Limits (M1).** §12 M6's limits are per changeset (50 files, 40 MB of blobs); records do not count toward the 50.
+
+**Re-check at execution (M4, L5).** A changeset with records needs, when it runs, the invoker still to be an editor
+(rights capped as in L7), the course not read-only, and the session not `paused:owner` or `paused:handout`. *C4 entry
+conditions:* these in `permitted()`, the rights cap (L7), and the `restoreChapter` ancestor check (M7).
+
+**The digest (M5, simplification 3).** One rule: a digest is raised when the changeset is received (independent of
+whether its files land or wait), deduplicated by `changesetId`, and there is at most one open digest per invoker per
+course: a new one replaces the questions still unanswered in the old one. The 20-item cap counts §4.4's single
+questions too; over it, new questions are refused (the tool is told), never queued. Question ids are unique, ≤ 64
+characters; a `recommended` answer must be one of the `choices`.
+
+**History (M6).** Each commit names its own row's person. A combined edit names the other person too once History reads
+the `Alembic-Kept` pair (later). A version the tool sends that History can't place → "too much changed: read the
+files". R.24 replaces §4.3's `since=<path→version>`.
+
+**Cost (M7).** Automatic jobs hold their estimate on the course allowance; the "always under N" setting doesn't apply to
+them; a paused automatic job waits for the owner. Automatic starts are at most N credits a day per invoker (N in the
+course's AI settings).
+
+**Smaller (L1–L4).** Sources: R.26 replaces `canAgent(invoker,'source.use-ai')` (the uploader, or shared with the course
+and AI allowed, not removed); PDF text is at most 2 MB per source and 20 sources per job. `agent_changesets.status` is
+`proposed | queued | done | refused | failed`. When a job ends normally its pending content changesets stay queued and
+are offered again in the session's next job (fail closed only when the token was revoked). A `setStatus` draft ⇄
+completed proposal goes to the invoker (an editor action, contract §6); `withdrawn` and back stay with the lead.
