@@ -22,7 +22,7 @@ const oneLine = (t: string) => t.replace(/\}\}/g, "} }").replace(/[\r\n]+/g, " "
 const page = (title: string, uid: string, body: string) => `{{nyml\nkind: document\nformat: 1\ntitle: ${oneLine(title)}\nuid: ${uid}\n}}\n\n# ${oneLine(title)}\n\n${body}`;
 
 export function homePageStarter(courseTitle: string, uid: string): string {
-  return page(courseTitle || "Welcome", uid, "Welcome to the course. Say who it is for, how to use these materials, and where to start.\n\n## This semester\n\nThe syllabus, schedule and announcements are listed below.\n");
+  return page(courseTitle || "Welcome", uid, "Welcome to the course. Say who it is for, how to use these materials, and where to start.\n\nThis semester's syllabus, schedule and announcements are listed below.\n");
 }
 export function termPageStarter(label: string, termTitle: string, uid: string, body = ""): string {
   return page(`${label} — ${termTitle}`, uid, body);
