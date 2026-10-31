@@ -343,3 +343,39 @@ The owner's rulings of 2026-10-30 and the site type contract (family
   only through this hand-in; pushes to the `records` folders made on GitHub
   are undone. A package made outside Alembic is brought in once.
 
+
+## 14. What the type package's assistant needs (Coursewerk's review, 2026-10-30)
+
+From Coursewerk's GenChem re-evaluation (its report §4). Each is mechanism, the
+same for any type package; none lets Alembic judge content.
+
+1. **Questions in one item.** A hand-in may carry a **digest**: up to 50
+   questions, each `{ id, text, choices?, recommended? }`, plus an
+   "accept all recommended" answer. Alembic raises **one** Needs-you item for
+   the digest (addressed to the invoker), shows the questions together, and
+   returns the person's answers (each with the answering person and the event
+   seq) through catch-up. One item per question is never raised for a digest.
+2. **Who changed what.** Catch-up gives, for each file changed since a version
+   the assistant names: the commits, and for each the person (or "the
+   assistant, for <name>", or "changed on GitHub"), as History shows them,
+   including after combined section edits (the commit that combined them,
+   listing both people). Bounded: at most 300 files and 50 commits per file;
+   over that, "too much changed: read the files".
+3. **Cost shown first.** A job states an estimate (calls and credits) before it
+   runs; Alembic shows it to the person with Start / Not now, and holds the
+   job's credits as for any metered job (C1). The job may run on its own after
+   one "always for jobs under N credits" choice the person makes in settings.
+4. **Reference texts.** A person's uploaded sources (B4, `private/sources/`
+   pointers) are readable by the assistant when the source allows AI use, as
+   text (PDF converted to text on upload; a text file as is). Web pages that
+   need a browser (OpenStax) are uploaded by the person as PDF or text; the
+   fetch proxy does not run a browser.
+5. **Records in bulk.** A hand-in of record files only (`records` folders, up
+   to 200 files, §13) is committed at once, ordered as handed in, without the
+   30-minute deferral that applies to content while a person is typing; records
+   are never combined (§13).
+
+Coursewerk's two notes for the owner were answered: the optional course setting
+"an edit returns a completed page to draft" is built (claim K1.26); a page set
+back to draft keeps its last published version by the owner's ruling (A), and
+"take it off the website" is the complete retraction.
