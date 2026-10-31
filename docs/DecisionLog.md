@@ -76,6 +76,16 @@ Guiding principle (owner): **easy authoring over strict rules.**
     Coursewerk release). Answered: the vendored copy. And (family FD-11):
     Alembic, Coursewerk and the orz-markdown series are sibling projects,
     designed together, each with a clear boundary and usable on its own.
+12. **Overnight 2026-10-30/31** (owner): Coursewerk is bringing the whole
+    General Chemistry package up to its new version and delivers it once as a
+    new testing course (Alembic doesn't touch the testing copy's content
+    meanwhile). An optional course setting "an edit returns a completed page
+    to draft" (default off). Element sharing defaults as proposed. The
+    current-semester area is flexible: a per-term place where the instructor
+    adds any files, with recommended ones offered as starters; the course home
+    page is an editable page the instructor (or the assistant, on their
+    instructions) arranges. AI spending as needed within the owner's 5-hour
+    usage window.
 
 ## 2026-10-29 (evening) — Owner rulings for the overnight foundations run
 
