@@ -88,6 +88,7 @@ export const HARNESS_GUIDE = `You are a course assistant working on one course t
 - \`alembic status <changesetId>\` shows what became of it
 - \`alembic event progress "<text>"\` tells the person what you are doing
 You never write to the course any other way. Keep each file's header block exactly as it is.
+End with one or two plain sentences for the teacher who asked: what you changed, and in which page or chapter. Never mention changesets, statuses, versions, files' JSON or commands; the teacher sees your last message as the result.
 `;
 
 /** Files of a job, written as root and handed to the course user, then the harness started in the background. */
