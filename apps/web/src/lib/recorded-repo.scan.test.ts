@@ -52,6 +52,7 @@ const ALLOWED: Record<string, string> = {
   // Adaptation STRIPS the source's repo pair from the copy's manifest
   // (destructured only to be dropped; the copy is a new trial course).
   "packages/package-ops/src/adaptation.ts": "destructures publicRepo/privateRepo out of the copy to drop them",
+  "packages/package-contract/src/manifest-v3.ts": "toPublicManifest destructures publicRepo/privateRepo out to drop them from the public manifest (v3, R16)",
 };
 
 const READ_PATTERNS: RegExp[] = [

@@ -63,10 +63,20 @@ grant create on schema extensions to ${OWNER_ROLE};
 alter schema public owner to ${OWNER_ROLE};
 create table auth.users (
   id uuid primary key,
+  email text,
   raw_user_meta_data jsonb default '{}',
   banned_until timestamptz
 );
 grant all on auth.users to ${OWNER_ROLE};
+create table auth.identities (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users (id) on delete cascade,
+  provider text not null,
+  provider_id text not null,
+  identity_data jsonb default '{}',
+  unique (provider, provider_id)
+);
+grant all on auth.identities to ${OWNER_ROLE};
 create function auth.uid() returns uuid language sql stable as
   $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
 grant execute on function auth.uid() to anon, authenticated, service_role, ${OWNER_ROLE};
@@ -249,11 +259,22 @@ export async function applyMigrationsFrom(db: PGlite, from: string): Promise<PGl
 let seq = 0;
 const next = () => (++seq).toString(36).padStart(4, "0");
 
+/** The GitHub numeric id seedUser gives a user (deterministic, from its uuid). */
+export function githubIdFor(userId: string): string {
+  return String(1_000_000 + parseInt(userId.slice(-12), 16));
+}
+
 export async function seedUser(db: PGlite, handle = "educator"): Promise<string> {
   const id = `00000000-0000-4000-8000-${(++seq).toString(16).padStart(12, "0")}`;
   await db.query(`insert into auth.users (id, raw_user_meta_data) values ($1, $2)`, [
     id,
     JSON.stringify({ user_name: handle }),
+  ]);
+  // The GitHub sign-in identity: GitHub's numeric user id (immutable, unlike the login).
+  await db.query(`insert into auth.identities (user_id, provider, provider_id, identity_data) values ($1, 'github', $2, $3)`, [
+    id,
+    githubIdFor(id),
+    JSON.stringify({ sub: githubIdFor(id), user_name: handle }),
   ]);
   return id;
 }

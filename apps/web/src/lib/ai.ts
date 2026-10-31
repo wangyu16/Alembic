@@ -1,10 +1,8 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
-  GeminiProvider,
-  GatewayProvider,
-  DEFAULT_ROUTING,
   modelForTask,
+  providerFromEnv,
   type AIProvider,
   type GenerateOptions,
   type GenerateResult,
@@ -58,76 +56,11 @@ export class AINotApprovedError extends Error {
 
 /**
  * Choose the AI provider from env — provider-swappable (CLAUDE.md rule 6).
- * Prefer an OpenAI-compatible gateway (Portkey/OpenRouter/…) when configured;
- * otherwise the dev-phase Gemini provider. Returns null if neither is set.
+ * The choice lives in `@alembic/ai-assist` (`providerFromEnv`), shared with
+ * the worker. Returns null if neither a gateway nor Gemini is configured.
  */
 function selectProvider(): { provider: AIProvider; routing: ModelRouting } | null {
-  const gwUrl = process.env["AI_GATEWAY_URL"];
-  const gwKey = process.env["AI_GATEWAY_API_KEY"];
-  const routing = buildRouting();
-  if (gwUrl && gwKey) {
-    return {
-      provider: new GatewayProvider({
-        baseUrl: gwUrl,
-        apiKey: gwKey,
-        model: routing.default,
-        name: "gateway",
-        // Portkey routes to the underlying provider via a virtual-key header;
-        // OpenRouter accepts HTTP-Referer/X-Title. Both arrive via this JSON env.
-        headers: gatewayHeaders(),
-      }),
-      routing,
-    };
-  }
-  if (process.env["GEMINI_API_KEY"]) {
-    return { provider: new GeminiProvider(), routing };
-  }
-  return null;
-}
-
-/**
- * Build the task→model routing from env, falling back to DEFAULT_ROUTING's
- * placeholders. The cheap/strong split (the point of routing) is overridable
- * without code: AI_MODEL_FAST covers high-frequency low-stakes tasks, while
- * AI_MODEL_STRONG covers content generation + the Tier-B coherence agent. This
- * also lets a deployment collapse to a single model (set all three the same) —
- * useful for light gateway testing where only one provider model is wired.
- */
-function buildRouting(): ModelRouting {
-  const def = process.env["AI_MODEL_DEFAULT"] ?? DEFAULT_ROUTING.default;
-  const fast = process.env["AI_MODEL_FAST"];
-  const strong = process.env["AI_MODEL_STRONG"];
-  const byTask: Record<string, string> = { ...DEFAULT_ROUTING.byTask };
-  if (fast) {
-    byTask["a11y-fix"] = fast;
-    byTask["formatting-tidy"] = fast;
-  }
-  if (strong) {
-    byTask["draft-section"] = strong;
-    byTask["worksheet"] = strong;
-    byTask["import-blocks"] = strong;
-    byTask["coherence-agent"] = strong;
-  }
-  return { default: def, byTask };
-}
-
-/** Optional extra gateway headers (JSON object in AI_GATEWAY_HEADERS). */
-function gatewayHeaders(): Record<string, string> | undefined {
-  const raw = process.env["AI_GATEWAY_HEADERS"];
-  if (!raw) return undefined;
-  try {
-    const parsed = JSON.parse(raw) as unknown;
-    if (parsed && typeof parsed === "object") {
-      const out: Record<string, string> = {};
-      for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
-        if (typeof v === "string") out[k] = v;
-      }
-      return Object.keys(out).length ? out : undefined;
-    }
-  } catch {
-    console.warn("[ai] AI_GATEWAY_HEADERS is not valid JSON; ignoring it.");
-  }
-  return undefined;
+  return providerFromEnv(process.env);
 }
 
 /** Per-user token budget (M16). Enforced only when AI_TOKEN_BUDGET is set. */
@@ -213,8 +146,9 @@ class GovernedProvider implements AIProvider {
       kind: this.ctx.kind,
       provider: this.inner.name,
       model: result.model,
-      prompt: routed.prompt,
-      output: result.text,
+      // No prompt or answer storage (design §11.1, C2): who, what kind, which model, how many tokens.
+      prompt: null,
+      output: null,
       input_tokens: result.usage?.inputTokens ?? null,
       output_tokens: result.usage?.outputTokens ?? null,
     });

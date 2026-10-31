@@ -1,0 +1,420 @@
+# Foundations, step 1: the course contract (package-contract-v3 draft 5,
+# §0, §11–§14; FD-09, FD-10). Claims K1.10–K1.19. Unbound claims are not yet
+# built and stay red until their tests exist.
+
+[[claim]]
+id = "K1.10"
+claim = "A non-text file reaches the course only through the upload route; the committer accepts a blob reference only from the course_blobs ledger with a matching kind; bytes never enter the database; over 4 MB is refused with a plain message."
+oracle = "conformance"
+bound_to = [
+  "packages/package-ops/src/course-committer.test.ts :: a picture lands only as a blob in this course's upload ledger with the path's kind; a sha queued directly, or a PNG blob at an SVG path, is refused",
+  "apps/web/src/lib/upload.test.ts :: a member who may write the path can add a picture of an allowed kind up to 4 MB; anything else gets a plain reason",
+  "apps/worker/src/committer-store.test.ts :: passes every SQL store method through to the committer (the ledger check reached the committer)",
+]
+
+[[claim]]
+id = "K1.11"
+claim = "Every course file Alembic serves carries nosniff and a sandbox CSP; bytes that don't match their kind are refused; an SVG with scripts, foreignObject, on* handlers, javascript:/data: links or external references is refused on every write and at Publish."
+oracle = "conformance"
+bound_to = [
+  "packages/package-contract/src/files.test.ts :: a path's kind comes from the profile's figure list; editor-made SVGs are text; anything else is refused",
+  "packages/package-contract/src/files.test.ts :: bytes must be what they claim: a renamed file is refused",
+  "packages/package-contract/src/files.test.ts :: an SVG with a script, an event handler, embedded content, a script link or an outside reference is refused; a plain one passes",
+  "packages/package-ops/src/course-committer.test.ts :: text with a script can't be saved to an SVG path, and text can't be saved to a picture's path",
+  "apps/web/src/lib/upload.test.ts :: the bytes must be what the name says, and an SVG must be safe",
+  "packages/package-ops/src/door-c-content.test.ts :: an unsafe SVG or a file whose bytes don't match its kind, pushed on GitHub, is undone",
+  "packages/package-ops/src/course-committer.test.ts :: Door C's undo puts back what the course had even if today's check would refuse it (the rest of the undo isn't lost)",
+  "packages/package-ops/src/publish-job.test.ts :: a file the website can't serve safely (.html, .js) is left out and said so; never reaches the public copy (audit r3 HIGH-1)",
+  "packages/package-contract/src/files.test.ts :: the SVG check runs in linear time: crafted input can't stall the worker (round 2 audit)",
+  "packages/package-ops/src/publish-job.test.ts :: a file published before the safety rule leaves even when a draft page kept at its published version still links to it (audit r4 MEDIUM-A)",
+  "packages/package-ops/src/publish-job.test.ts :: every SVG is published as the clean copy the check read: comments and declarations gone, values re-escaped",
+]
+note = "Built: checks on upload and on every committed text write; the asset route already serves nosniff + a sandbox CSP. Door C undoes unsafe pushed SVGs and mismatched bytes. Not yet: the check at Publish."
+
+[[claim]]
+id = "K1.12"
+claim = "A non-text file or SVG whose base isn't current is both-changed: a kept version, nothing lost, never combined."
+oracle = "conformance"
+bound_to = [
+  "packages/package-ops/src/course-committer.test.ts :: a picture replaced since the uploader's base keeps both: the incoming one as a kept version, the current one on top",
+  "packages/package-ops/src/both-changed-items.test.ts :: each file where two changes met raises one item everyone in the course sees, pointing at the kept version",
+]
+
+[[claim]]
+id = "K1.13"
+claim = "Deletes and moves check every path by role and space in one commit and keep the file mode; a listed chapter's part files, the manifest and server-only files can't be deleted or moved through them; deleting in private/ needs delete.private (owner, deputy)."
+oracle = "conformance"
+bound_to = [
+  "packages/package-contract/src/profile/profile.test.ts :: deleting in private/ is the owner's and deputy's only",
+  "packages/package-ops/src/course-committer.test.ts :: a move takes the file from the head and removes the source in one commit; a stale base, a kind change or an occupied target is refused",
+  "packages/package-ops/src/course-committer.test.ts :: a listed chapter's part can't be deleted or moved away; deleting in private/ needs the owner or deputy",
+  "packages/package-ops/src/door-c-content.test.ts :: removing a listed chapter's part on GitHub is undone; removing another file is taken",
+]
+note = "Built: delete.private, blob/move/delete rules in the committer."
+
+[[claim]]
+id = "K1.14"
+claim = "private/instructor/<name>.md can be created and edited by edit.private roles and is never projectable; private/README.md is neither listed nor writable."
+oracle = "conformance"
+bound_to = [
+  "packages/package-contract/src/profile/profile.test.ts :: instructor documents are writable by edit.private roles; the template's private/README.md and the licence files by nobody",
+  "apps/web/src/lib/upload.test.ts :: a figure added from an instructor-only document is stored privately, never in the published figures folder",
+]
+
+[[claim]]
+id = "K1.15"
+claim = "Course operations are courseop rows (operation and arguments, actor re-checked at execution) applied at the head in order; two made at once both land unless one no longer applies; Publish waits for open ones."
+oracle = "conformance"
+bound_to = [
+  "packages/package-ops/src/course-ops.test.ts :: two operations made from the same version both land, in order (no lost change, no browser re-apply)",
+  "packages/package-ops/src/course-ops.test.ts :: an operation that no longer applies is refused with a reason, and nothing is written",
+  "packages/package-ops/src/course-ops.test.ts :: adding chapters starts the parts the profile requires (concept map, study guide, assessment guide), or all five; never a chapter without them",
+  "packages/package-ops/src/course-ops.test.ts :: renaming a chapter that already lacks a required part isn't a new problem (problems compare under the new title)",
+  "packages/package-ops/src/course-ops.test.ts :: a course that already breaks a rule can still be changed; an operation can't introduce a new break",
+  "packages/package-ops/src/course-ops.test.ts :: operations from a client are shape-checked; unknown operations and bad slugs are refused",
+  "packages/package-ops/src/course-committer.test.ts :: two deputies' operations queued at the same moment both land, in order, each in its own commit",
+  "packages/package-ops/src/course-committer.test.ts :: the actor's right is re-checked when the operation runs: a co-author's, or a removed member's, is refused and nothing changes",
+  "packages/package-ops/src/course-committer.test.ts :: a sync queued before an operation lands first (no queue jumping), and the operation applies on top of it",
+  "packages/package-ops/src/course-committer.test.ts :: a head that moves under an operation (a push on GitHub) makes it decide again on the new head",
+  "apps/web/src/lib/course-ops.sql.test.ts :: a courseop row needs an actor, and Publish waits while one is on its way",
+  "packages/package-ops/src/door-c-content.test.ts :: pushed course settings that are invalid, change Alembic's own fields, or list a chapter with no study guide are undone; the owner's title change is taken, anyone else's is undone",
+]
+note = "Built: addChapters, renameChapter, moveChapter, removeChapter, setChapterMode, setCourseDetails. Also built: setLicense (K1.18), restoreChapter (K1.16)."
+
+[[claim]]
+id = "K1.16"
+claim = "removeChapter and restoreChapter are inverses; a sync arriving for a removed chapter's file is kept and offers Restore to the owner and deputy."
+oracle = "scenario"
+bound_to = [
+  "packages/package-ops/src/course-ops.test.ts :: removing a chapter removes it and its part files in one change",
+  "packages/package-ops/src/course-committer.test.ts :: removing a chapter removes its parts in the same commit; an operation on it afterwards is refused with a reason",
+  "packages/package-ops/src/course-committer.test.ts :: restoreChapter (from the removal's parent) brings the chapter and its parts back; a reused slug comes back under a free one, marked restored",
+  "packages/package-ops/src/both-changed-items.test.ts :: typing that arrives for a removed chapter: its author is told the text is kept, and the owner and deputy are offered Restore (once per removal)",
+]
+note = "Built: removal, restoreChapter, and the Needs-you items (author told; owner and deputy offered Restore on the Needs-you page)."
+
+[[claim]]
+id = "K1.17"
+claim = "Course content rules live in the active content profile (package-contract/src/profile/, Coursewerk's OER profile, versioned); core code reads them through activeProfile; no file outside the profile gains course paths or licence names (ratchet over today's legacy)."
+oracle = "conformance"
+bound_to = [
+  "packages/package-contract/src/profile/profile-boundary.scan.test.ts :: no file outside the profile gains course paths or licence names; legacy files only go down",
+  "packages/package-contract/src/profile/profile.test.ts :: the active profile is built from Coursewerk's site type definition, versioned, and every part path maps back to its part",
+  "packages/package-contract/src/profile/profile.test.ts :: a listed chapter without a required part is a problem the profile names (concept map, study guide, assessment guide: owner 2026-10-30)",
+]
+
+[[claim]]
+id = "K1.18"
+claim = "Only the owner changes the licence, and LICENSE/CITATION.cff follow in the same commit; Door C undoes a non-owner licence change and edits to the licence files."
+oracle = "conformance"
+bound_to = [
+  "packages/package-ops/src/course-committer.test.ts :: only the owner changes the licence, and LICENSE and the citation's licence line follow in the same commit",
+  "packages/package-ops/src/door-c-content.test.ts :: a licence change pushed by anyone but the owner is undone; the owner's is kept and the licence files regenerated; edits to LICENSE are undone",
+]
+note = "Built: setLicense. Door C undoes a non-owner licence change pushed on GitHub; the owner's is kept and regenerated."
+
+[[claim]]
+id = "K1.19"
+claim = "Upload quota and rate limits are counted from the ledger (created blobs, committed or not)."
+oracle = "conformance"
+bound_to = [
+  "apps/web/src/lib/upload.test.ts :: uploads are limited per person and per course each hour, and by the course's total, counted from the ledger",
+]
+
+[[claim]]
+id = "K1.20"
+claim = "Raw HTML in published course text never runs on the course site: Publish writes each Markdown text as its clean copy (tags outside a short safe list, and any attributes, become text a reader sees), found with the same orz-markdown parser the site renders with and re-checked fail closed; the working copy is untouched and the files changed are listed."
+oracle = "conformance"
+bound_to = [
+  "apps/worker/src/raw-html.test.ts :: raw HTML outside the safe list becomes text a reader sees; it never reaches the page as HTML",
+  "apps/worker/src/raw-html.test.ts :: the safe tags and slide markers are kept exactly; text without raw HTML is untouched",
+  "apps/worker/src/raw-html.test.ts :: every Markdown text of the real General Chemistry course passes unchanged (it uses only <br>)",
+  "packages/package-ops/src/publish-job.test.ts :: Publish writes each Markdown text as its clean copy, lists the files whose HTML became text, and leaves out one it can't clean",
+]
+note = "Owner, 2026-10-29: the Alembic-side clean copy instead of new family releases; an orz-markdown allowlist option for authors' own text rides along with orz-markdown's next planned release (family request)."
+
+# Foundations step 2: history and restore (docs/specs/v3/history-v3.md, draft 2).
+
+[[claim]]
+id = "H.1"
+claim = "A document's History lists its last 50 versions with when, who (from Alembic's trailers only on commits Alembic recorded; any other commit reads 'edited on GitHub', with no author name, which GitHub derives from a settable email), what, and kept and published marks; three GitHub calls per view (the version list, the head, the current text) — corrected by audit r1 M-3."
+oracle = "conformance"
+bound_to = [
+  "packages/package-ops/src/history.test.ts :: who comes from Alembic's trailers only on commits Alembic made; a forged trailer on a GitHub push reads 'edited on GitHub'",
+  "packages/package-ops/src/history.test.ts :: at most 50 entries; summaries are one plain line",
+]
+
+[[claim]]
+id = "H.2"
+claim = "Comparing two versions shows exactly the added and removed lines, unchanged runs folded; huge or wholly different inputs are refused quickly with bounded memory."
+oracle = "conformance"
+bound_to = [
+  "packages/package-ops/src/diff-lines.test.ts :: the diff is exact: same + added lines rebuild the new text, same + removed rebuild the old one",
+  "packages/package-ops/src/diff-lines.test.ts :: unchanged runs fold to context; a one-line edit in a long text is small",
+  "packages/package-ops/src/diff-lines.test.ts :: huge or wholly different inputs are refused quickly, not computed",
+]
+
+[[claim]]
+id = "H.3"
+claim = "A restore brings an old version back as the newest one through the write path; if the document changed since it was seen, both are kept (current on top), never combined; only people who may edit the path can restore it."
+oracle = "conformance"
+bound_to = [
+  "packages/package-ops/src/course-committer.test.ts :: a restore made from the current version lands as the newest version; one made from an older one keeps both, current on top, never combined",
+]
+
+[[claim]]
+id = "H.6"
+claim = "A snapshot is a tag on the working repo plus a row (the row's commit is the authority); names become safe slugs and never collide."
+oracle = "conformance"
+bound_to = [
+  "apps/web/src/lib/snapshot-slug.test.ts :: a name becomes a safe tag slug; a non-Latin or empty name falls back to the date",
+]
+
+[[claim]]
+id = "H.8"
+claim = "A restore references only commits in the course's own history (ancestors of the head); restored figures must be the path's own blob at that commit and pass the upload checks. (Amended 2026-10-30, owner ruling: a file is public or private by where it is, never by its text, so the private-move and answer-key refusals were removed.)"
+oracle = "conformance"
+bound_to = [
+  "packages/package-ops/src/course-committer.test.ts :: a restored figure must be this path's own blob at the commit named, and pass the upload checks",
+]
+note = "Ancestry is enforced in the server action (history/actions.ts); live-checked, no unit test yet."
+
+[[claim]]
+id = "K1.21"
+claim = "The course's content rules come from the vendored, schema-checked site type definition (family SITE-TYPE-CONTRACT): a definition that breaks the schema or its cross-field rules can't be loaded, the bundle matches the vendored folder's checksum, and the profile built from it classifies every path, places every part and starts every part exactly as the hand-written profile did, except the owner's changes (required concept map and assessment guide, the contract's ids, labels and figure-folder rule)."
+oracle = "conformance"
+bound_to = [
+  "packages/package-contract/src/site-type/site-type.test.ts :: load, pass the schema and the cross-field rules, and carry every file they name",
+  "packages/package-contract/src/site-type/site-type.test.ts :: the bundle and the JSON Schema are up to date with the vendored folders",
+  "packages/package-contract/src/site-type/site-type.test.ts :: classifies every kind of path the same way",
+  "packages/package-contract/src/site-type/site-type.test.ts :: has the same parts at the same paths; ids and one label follow the contract; every starter (Coursewerk's own) is filled and keeps its header",
+  "packages/package-contract/src/site-type/site-type.test.ts :: refuses Alembic's own paths and the front page files",
+  "packages/package-contract/src/site-type/site-type.test.ts :: allows a site type without units (a one-page site)",
+]
+
+
+[[claim]]
+id = "K1.22"
+claim = "Each file's status lives in alembic.json and never reaches the public copy: pages are draft until a person marks them completed, any public file can be withdrawn; many files change in one operation; draft/completed is for anyone who may edit the page, withdrawing and bringing back is the owner's or deputy's (and a withdrawn file stays theirs); a status follows its file in the same commit when it moves or is deleted."
+oracle = "conformance"
+bound_to = [
+  "packages/package-contract/src/site-type/status.test.ts :: pages are draft until marked completed; other public files are published as they are; any can be withdrawn",
+  "packages/package-contract/src/site-type/status.test.ts :: a status follows its file: a move carries it (not into private/), a delete drops it, a restored file gets its old one back",
+  "packages/package-contract/src/site-type/status.test.ts :: statuses never reach the public copy",
+  "packages/package-ops/src/course-ops.test.ts :: marks many pages completed at once, and takes any public file off the website",
+  "packages/package-ops/src/course-ops.test.ts :: refuses with a plain reason: a file that's gone, an instructor-only file, completing a non-page; in a bulk change a gone page is skipped",
+  "packages/package-ops/src/course-committer.test.ts :: a status follows its file in the same commit: a move carries it, a delete drops it",
+  "packages/package-ops/src/course-committer.test.ts :: marking pages draft or completed is for anyone who may edit them; taking files off the website is the owner's or deputy's, and a withdrawn page stays theirs",
+]
+
+[[claim]]
+id = "K1.23"
+claim = "Publish decides by file status only (family SITE-TYPE-CONTRACT §7): completed pages go out as they are now; a page set back to draft keeps its last published version (with the deleted figures it shows); other public files go out unless withdrawn; withdrawn files come off; the type package's public records go out as they are. Nothing about content is checked and nothing asks: an unsafe or uncleanable file is left out and named (a completed page keeps its last published version), changes made on GitHub are brought in and published in the same run, and files under an unlisted chapter stay unplaced."
+oracle = "conformance"
+bound_to = [
+  "packages/package-ops/src/publisher.test.ts :: completed pages go out as they are now; a draft never published stays off",
+  "packages/package-ops/src/publisher.test.ts :: a page set back to draft keeps its last published version, with the deleted figures that version shows",
+  "packages/package-ops/src/publisher.test.ts :: other public files go out as they are now unless withdrawn; withdrawing takes any file off",
+  "packages/package-ops/src/publisher.test.ts :: the type package's public records are published as they are, with no status",
+  "packages/package-ops/src/publisher.test.ts :: the public manifest lists the chapters with a page on the website, and never statuses",
+  "packages/package-ops/src/publish-job.test.ts :: an unsafe SVG and a text whose raw HTML can't be cleaned are left out; the rest publishes",
+  "packages/package-ops/src/publish-job.test.ts :: a completed page that can't be made safe keeps its last published version and is named as left out",
+  "packages/package-ops/src/publish-job.test.ts :: a withdrawn page published before is deleted from the public repo (and a withdrawn figure too)",
+  "packages/package-ops/src/publish-job.test.ts :: a draft page published before keeps its old bytes and is listed in kept; a draft never published stays off",
+  "packages/package-ops/src/publish-job.test.ts :: provenance/coursewerk/ files are published as they are, with no status",
+  "packages/package-ops/src/publish-job.test.ts :: drift is brought in and published in the same run (the outcome has broughtIn); files under an unknown chapter are brought in but stay unplaced and unpublished",
+  "packages/package-ops/src/publish-job.test.ts :: a second drift while the brought-in changes are being published stops the run",
+]
+
+[[claim]]
+id = "K1.24"
+claim = "The website never fails because of one page (family SITE-TYPE-CONTRACT §8): a missing link or include is a note whatever the course's own settings say; a page orz-site can't build is left out and the rest is built; settings that aren't valid JSON or that orz-site refuses are ignored for Alembic's defaults; the Publish page names what was left out."
+oracle = "scenario"
+bound_to = [
+  "apps/worker/src/site-build.real.test.ts :: settings that aren't valid JSON, or that orz-site refuses, are ignored and the site builds with Alembic's defaults",
+  "apps/worker/src/site-build.real.test.ts :: a link to a page that isn't published is a note, never a stop, even if the course's settings say error",
+  "apps/worker/src/publish-loop.test.ts :: defaults are titled with the course, never fetch the network, and a missing link or include is a note, not a stop",
+]
+
+
+[[claim]]
+id = "K1.25"
+claim = "Door C keeps statuses and the type package's records honest (family SITE-TYPE-CONTRACT §6, §7): course settings pushed on GitHub, statuses included, are taken only from the recognised owner and only when each status names a public page or file of the course; pushes to either records folder are undone; a file deleted on GitHub loses its status in a follow-up change."
+oracle = "conformance"
+bound_to = [
+  "packages/package-ops/src/door-c-content.test.ts :: the owner's pushed statuses are taken when each names a public page or file of the course; anyone else's are undone",
+  "packages/package-ops/src/door-c-content.test.ts :: a file deleted on GitHub that had a status gets it dropped (a follow-up change), so a file added later at that path starts as a draft",
+  "packages/package-ops/src/door-c.test.ts :: pushes to either records folder are undone (only Coursewerk's tools write them, through Alembic)",
+]
+
+[[claim]]
+id = "K1.26"
+claim = "The course option 'an edit returns a completed page to draft' (owner's ruling 2026-10-30, default off) is set by the owner or deputy and never goes public; when on, a saved edit to a completed page drops its completed status in the same commit, so an edit goes public only after someone marks it completed again; when off, the status stays."
+oracle = "conformance"
+bound_to = [
+  "packages/package-ops/src/course-committer.test.ts :: with the course option on, a saved edit to a completed page makes it a draft again, in the same commit; with it off, the status stays",
+  "packages/package-ops/src/course-ops.test.ts :: the owner or deputy turns 'an edit returns a completed page to draft' on or off; it never goes public",
+]
+
+[[claim]]
+id = "K1.27"
+claim = "A new course starts from its site type definition (family SITE-TYPE-CONTRACT §5): it records its type, gets the template's files, its required site documents from their starters, the chosen licence's own text, and a citation that is valid CFF (values escaped for YAML, a line whose value is empty left out)."
+oracle = "conformance"
+bound_to = [
+  "packages/package-ops/src/course-create-v3.test.ts :: a new course starts from its site type: the README from its starter, the licence's own text, and a citation that is valid CFF",
+]
+
+[[claim]]
+id = "K1.28"
+claim = "A shared element (element-sharing-v3) can be seen at its address only while its figure or page is on the course website, and a section only while its block id is in the published text; stopped sharing is never shown again; a page's shareables are its course figures and its sections with a block id (never inside code)."
+oracle = "conformance"
+bound_to = [
+  "packages/package-ops/src/shared-elements.test.ts :: a page's shareables are its course figures and its sections that have a block id (never one inside code)",
+  "packages/package-ops/src/shared-elements.test.ts :: a section runs from its heading to the next heading of the same level, sub-headings included",
+  "packages/package-ops/src/shared-elements.test.ts :: an element is available only while it is on the course website; stopped sharing never is",
+]
+
+[[claim]]
+id = "K1.29"
+claim = "Sharing and stopping need the right to edit the page (re-checked in the server action); shared-element rows are written only by the server (no API-role write grant); the element page always carries the course, its authors, the licence and the source page, and shows a section in a frame where no script runs."
+oracle = "human"
+bound_to = []
+note = "Server-side checks in apps/web share-actions.ts and the 0068 grants (covered by P5.S.15's write inventory); the element page checked live."
+
+[[claim]]
+id = "K1.30"
+claim = "The course-website add-on (course-website-addon): with it on, the home page goes out by its status and only the current term's term files go out; with it off, none of them; the website's front page shows the home page's content first, then this semester's pages, then the chapters."
+oracle = "conformance"
+bound_to = [
+  "packages/package-ops/src/publish-job.test.ts :: with the add-on on, the home page and only the current term's pages go out; with it off, none of them",
+  "apps/worker/src/site-build.real.test.ts :: the front page shows the home page's content first, then this semester's pages, then the chapters",
+]
+
+[[claim]]
+id = "K1.31"
+claim = "Switching the add-on on starts a home page (draft) and a first term, never overwriting; a term's slug comes from its title; a new term can start from the last term's pages (drafts), never over a file; the current term must be one of the course's; these are the owner's or deputy's (course settings)."
+oracle = "conformance"
+bound_to = [
+  "packages/package-ops/src/course-ops.test.ts :: switching it on starts a home page (a draft) and a first term; nothing is overwritten",
+  "packages/package-ops/src/course-ops.test.ts :: a term's slug comes from its title; a new term can start from the last term's pages, never over a file; the current term must exist",
+]
+
+[[claim]]
+id = "K1.32"
+claim = "A course package from a type package (e.g. Coursewerk's layout-3 delivery) comes in as a new course: a checksum mismatch, a listed file missing or an unlisted file refuses the whole package; Alembic's own files, unsafe or misnamed files and stray chapters are left out with a reason; Alembic rebuilds the settings (chapters from the study guides' own headers when the package lists none); every page starts as a draft and the package's ready list is only a suggestion."
+oracle = "conformance"
+bound_to = [
+  "packages/package-ops/src/course-import.test.ts :: a clean package becomes one first commit; Alembic rebuilds its settings; pages start as drafts with the ready list only suggested",
+  "packages/package-ops/src/course-import.test.ts :: a checksum that doesn't match, a listed file missing, or an unlisted file refuses the whole package",
+  "packages/package-ops/src/course-import.test.ts :: Alembic's own files, unsafe files and stray chapters are left out with a reason, never imported",
+  "packages/package-ops/src/course-import.test.ts :: the real General Chemistry files plan cleanly (only old evidence pages left out)",
+]
+
+[[claim]]
+id = "K1.33"
+claim = "A new course's first commit (made by course creation or an import, outside the queue) is recorded as Alembic's own, so Door C never undoes it as a change made on GitHub."
+oracle = "human"
+bound_to = []
+note = "Found 2026-10-31: since the owner-only settings rule (overnight), creation's first commit was undone by Door C. Fixed by SqlQueueStore.recordOwnCommit in v3-actions and the import tool; live-checked with an import of the General Chemistry files (no undo; 19 chapters)."
+
+[[claim]]
+id = "K1.34"
+claim = "The type package's records are one class read from its definition (both the private and the public folder): no person, of any role, writes them through any path; only its tools do, through the hand-in; `.jsonl` is a text kind only there."
+oracle = "conformance"
+bound_to = [
+  "packages/package-ops/src/course-committer.test.ts :: both records folders come from the site type definition; no person may edit them, by any role",
+]
+
+[[claim]]
+id = "K1.35"
+claim = "Records are never combined: a record lands only on the version it was made from. In a changeset with content, the content lands by the version rule (both versions kept when both changed) and the records land; a stale record refuses the whole changeset with nothing written. Nothing is sent back (no bounce)."
+oracle = "conformance"
+bound_to = [
+  "packages/package-ops/src/version-rule.test.ts :: records are never combined: a record lands only on the version it was made from; a stale one is refused",
+  "packages/package-ops/src/course-committer.test.ts :: records with content: the content lands by the version rule (both versions kept when both changed) and the records land; nothing is sent back",
+  "packages/package-ops/src/course-committer.test.ts :: a stale record refuses the whole changeset: nothing is written",
+]
+
+[[claim]]
+id = "K1.36"
+claim = "At execution an agent changeset needs the person who asked to still be an editor of the course and the course or session not blocked (read-only, paused); an automatic job's rights are capped at co-author."
+oracle = "conformance"
+bound_to = [
+  "packages/package-ops/src/course-committer.test.ts :: at execution the asker must still be an editor and the course or session not blocked; automatic jobs are capped at co-author",
+]
+
+[[claim]]
+id = "K1.37"
+claim = "A chapter is restored only from a version in the course's own history (ancestor of the head)."
+oracle = "conformance"
+bound_to = [
+  "packages/package-ops/src/course-committer.test.ts :: a chapter is restored only from a version in the course's own history",
+]
+
+
+[[claim]]
+id = "K1.38"
+claim = "The agent runtime's records (0069): one session per course and at most one live job per session; an automatic job is paid by the course and capped at co-author (a missing cap is refused); event kinds are a closed list with payloads ≤ 64 KiB; members read their course's records, others nothing; no API role writes any of them."
+oracle = "conformance"
+bound_to = [
+  "apps/web/src/lib/agent-runtime.sql.test.ts :: one session per course, at most one live job per session; automatic jobs are paid by the course and capped at co-author",
+  "apps/web/src/lib/agent-runtime.sql.test.ts :: event kinds are a closed list and a payload is at most 64 KiB",
+  "apps/web/src/lib/agent-runtime.sql.test.ts :: members read their course's agent records; others read nothing; no API role writes",
+]
+
+[[claim]]
+id = "K1.39"
+claim = "The agent token is HS256 on a dedicated agent key with `typ alembic-agent` and audience `alembic-agent-api`, carries the package, session, job and invoker, and lives at most 15 minutes; another key, algorithm, type or audience, a tampered body, a longer lifetime or malformed ids are refused."
+oracle = "conformance"
+bound_to = [
+  "packages/package-ops/src/agent-token.test.ts :: a token signed with the agent key verifies, carries the job's ids, and lives at most 15 minutes",
+  "packages/package-ops/src/agent-token.test.ts :: refused: another key, another algorithm or type, another audience, a forged or tampered body, a long lifetime, bad ids",
+]
+
+[[claim]]
+id = "K1.40"
+claim = "A hand-in is read as the agent's writes: paths in plain form that its capped asker may write (records only through the hand-in, never deleted or moved; appends only to .jsonl records), every list bounded (50 content files, records counted apart, 4 MB of record text, 20 operations, 50 questions), questions plain one-line text with unique ids and a recommendation among the choices; events a closed list without questions or approvals, at most 64 KiB."
+oracle = "conformance"
+bound_to = [
+  "packages/package-ops/src/agent-api.test.ts :: a hand-in of edits, records, appends, proposals and questions is read as the agent's writes",
+  "packages/package-ops/src/agent-api.test.ts :: refused: files the agent may not write, records deleted or moved, appends outside .jsonl records, unclean paths, repeats, bad ids",
+  "packages/package-ops/src/agent-api.test.ts :: every list is bounded: content files, records, record bytes, operations, questions",
+  "packages/package-ops/src/agent-api.test.ts :: questions are plain one-line text with unique ids and a recommendation among the choices",
+  "packages/package-ops/src/agent-api.test.ts :: events: a closed list of kinds (no questions, no approvals), payloads at most 64 KiB",
+  "packages/package-ops/src/agent-api.test.ts :: an append lands only on the log version it was read at",
+]
+
+[[claim]]
+id = "K1.41"
+claim = "The agent endpoints accept only the running job's own token for an asker who is still an editor; a hand-in becomes one changeset row for the asker (a repeat answers the same); course operations become approve items for the owner and deputies (the licence: the owner); one open digest per asker, replaced by the next, with answers returned in catch-up; a stale log append refuses the hand-in; a paused session takes none; events are rate-limited."
+oracle = "conformance"
+bound_to = [
+  "apps/web/src/lib/agent-endpoint.sql.test.ts :: only the running job's own token gets in, for an asker who is still an editor",
+  "apps/web/src/lib/agent-endpoint.sql.test.ts :: a hand-in is queued as a changeset for the asker; a repeat answers the same; another job can't reuse its id",
+  "apps/web/src/lib/agent-endpoint.sql.test.ts :: the agent can't write what its asker couldn't; course operations become approve items for the leads (the licence: the owner only)",
+  "apps/web/src/lib/agent-endpoint.sql.test.ts :: one digest per asker: a new one replaces the unanswered questions; answers come back in catch-up",
+  "apps/web/src/lib/agent-endpoint.sql.test.ts :: a log append lands on the version read; a stale one refuses the hand-in",
+  "apps/web/src/lib/agent-endpoint.sql.test.ts :: events: no questions or approvals, at most 120 a minute; a paused session takes no hand-in",
+]
+
+[[claim]]
+id = "K1.42"
+claim = "A sandbox acts for a job only with its own key (held by its provider's outbound proxy; the agent sees a placeholder) and a job running in that sandbox; a retired sandbox, another key or another job is refused. The job's gateway key is stored sealed (AES-256-GCM, bound to the job) and put into AI calls by the server, never handed to the agent."
+oracle = "conformance"
+bound_to = [
+  "packages/package-ops/src/agent-seal.test.ts :: opens only for its own job, under the key that sealed it; a tampered or foreign value opens to nothing",
+  "apps/web/src/lib/agent-endpoint.sql.test.ts :: the sandbox's key and a job running in that sandbox get in, and the AI call gets the job's own gateway key; anything else is refused",
+]
+
+[[claim]]
+id = "K1.43"
+claim = "The orchestrator starts a waiting job only when its sandbox has room: the hold, a sealed gateway key, the course's own user with its egress rule, the harness in the background (no key reaches the sandbox); a finished job's result becomes its hand-over note, its key is revoked and its hold released; a job past its time limit is stopped; without enough credit a job fails to start, holding nothing."
+oracle = "conformance"
+bound_to = [
+  "apps/web/src/lib/agent-orchestrator.sql.test.ts :: a waiting job starts: its hold, a gateway key sealed for the server, the course's own user, the harness launched",
+  "apps/web/src/lib/agent-orchestrator.sql.test.ts :: the testing sandbox runs one job at a time: the next waits",
+  "apps/web/src/lib/agent-orchestrator.sql.test.ts :: a finished job: its result is the hand-over note, the key is revoked, the hold released; the next job starts",
+  "apps/web/src/lib/agent-orchestrator.sql.test.ts :: a job past its time limit is stopped and failed",
+  "apps/web/src/lib/agent-orchestrator.sql.test.ts :: without enough credit a job fails to start, holding nothing; the session is free again",
+  "apps/web/src/lib/agent-orchestrator.sql.test.ts :: a job a person stopped: its process is ended, its key revoked and its hold released",
+]

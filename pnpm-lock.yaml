@@ -16,7 +16,13 @@ importers:
         version: 5.9.3
       vitest:
         specifier: ^4.1.8
-        version: 4.1.8(@types/node@22.19.21)(vite@8.0.16(@types/node@22.19.21)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.4))
+        version: 4.1.8(@opentelemetry/api@1.10.0)(@types/node@22.19.21)(vite@8.0.16(@types/node@22.19.21)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.4))
+
+  apps/gateway:
+    dependencies:
+      postgres:
+        specifier: ^3.4.9
+        version: 3.4.9
 
   apps/web:
     dependencies:
@@ -38,6 +44,9 @@ importers:
       '@alembic/github-bridge':
         specifier: workspace:*
         version: link:../../packages/github-bridge
+      '@alembic/notify':
+        specifier: workspace:*
+        version: link:../../packages/notify
       '@alembic/package-contract':
         specifier: workspace:*
         version: link:../../packages/package-contract
@@ -50,6 +59,9 @@ importers:
       '@alembic/research-events':
         specifier: workspace:*
         version: link:../../packages/research-events
+      '@anthropic-ai/sdk':
+        specifier: ^1.3.0
+        version: 1.3.0(zod@4.4.3)
       '@supabase/ssr':
         specifier: ^0.12.0
         version: 0.12.0(@supabase/supabase-js@2.108.1)
@@ -61,7 +73,16 @@ importers:
         version: 0.8.3
       next:
         specifier: 16.2.9
-        version: 16.2.9(@babel/core@7.29.7)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+        version: 16.2.9(@babel/core@7.29.7)(@opentelemetry/api@1.10.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+      orz-mdhtml-browser:
+        specifier: ^1.1.0
+        version: 1.1.0
+      orz-paged-browser:
+        specifier: ^1.1.0
+        version: 1.1.0
+      orz-slides-browser:
+        specifier: ^1.1.0
+        version: 1.1.0
       react:
         specifier: 19.2.4
         version: 19.2.4
@@ -90,6 +111,12 @@ importers:
       eslint-config-next:
         specifier: 16.2.9
         version: 16.2.9(@typescript-eslint/parser@8.61.0(eslint@9.39.4(jiti@2.7.0))(typescript@5.9.3))(eslint@9.39.4(jiti@2.7.0))(typescript@5.9.3)
+      orz-slides:
+        specifier: 1.1.0
+        version: 1.1.0
+      postgres:
+        specifier: ^3.4.9
+        version: 3.4.9
       tailwindcss:
         specifier: ^4
         version: 4.3.0
@@ -99,15 +126,45 @@ importers:
 
   apps/worker:
     dependencies:
+      '@alembic/ai-assist':
+        specifier: workspace:*
+        version: link:../../packages/ai-assist
       '@alembic/generators':
         specifier: workspace:*
         version: link:../../packages/generators
+      '@alembic/github-bridge':
+        specifier: workspace:*
+        version: link:../../packages/github-bridge
+      '@alembic/notify':
+        specifier: workspace:*
+        version: link:../../packages/notify
       '@alembic/package-contract':
         specifier: workspace:*
         version: link:../../packages/package-contract
+      '@alembic/package-ops':
+        specifier: workspace:*
+        version: link:../../packages/package-ops
       '@alembic/renderer':
         specifier: workspace:*
         version: link:../../packages/renderer
+      orz-markdown:
+        specifier: 2.5.0
+        version: 2.5.0
+      orz-mdhtml:
+        specifier: 1.1.0
+        version: 1.1.0
+      orz-paged:
+        specifier: 1.1.0
+        version: 1.1.0
+      orz-site:
+        specifier: 0.1.0
+        version: 0.1.0(orz-markdown@2.5.0)(orz-mdhtml@1.1.0)(orz-paged@1.1.0)(orz-slides@1.1.0)
+      orz-slides:
+        specifier: 1.1.0
+        version: 1.1.0
+      postgres:
+        specifier: ^3.4.9
+        version: 3.4.9
     devDependencies:
       tsx:
         specifier: ^4.22.4
@@ -123,6 +180,9 @@ importers:
       '@google/genai':
         specifier: ^2.8.0
         version: 2.8.0
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
 
   packages/ai-operations:
     dependencies:
@@ -167,6 +227,8 @@ importers:
       '@alembic/package-contract':
         specifier: workspace:*
         version: link:../package-contract
+
+  packages/notify: {}
 
   packages/package-contract:
     dependencies:
@@ -216,6 +278,15 @@ packages:
   '@alloc/quick-lru@5.2.0':
     resolution: {integrity: sha512-UrcABB+4bUrFABwbluTIBErXwvbsU/V7TZWfmbgJfbkwiBuziS9gxdODUyuiecfdGQ85jglMW6juS3+z5TsKLw==}
     engines: {node: '>=10'}
+
+  '@anthropic-ai/sdk@1.3.0':
+    resolution: {integrity: sha512-k7z9BlLLPxfZH+ov7dS6EnaN/wiZeV8YNT1LZfrpAHIy7oY7pHr4UzirF9f2OlHtFEnRBOX+AZQ91Y5fK+TPTw==}
+    hasBin: true
+    peerDependencies:
+      zod: ^3.25.0 || ^4.0.0
+    peerDependenciesMeta:
+      zod:
+        optional: true
 
   '@babel/code-frame@7.29.7':
     resolution: {integrity: sha512-Aup7aUOfpbAUg2ROOJN6Iw5f9DMBlzu0mIkm/malLQFN/YQgO48wCj0Kxa3sEHJvPVFg7siR+qRInwXd2qhQKw==}
@@ -785,6 +856,10 @@ packages:
     resolution: {integrity: sha512-nn5ozdjYQpUCZlWGuxcJY/KpxkWQs4DcbMCmKojjyrYDEAGy4Ce19NN4v5MduafTwJlbKc99UA8YhSVqq9yPZA==}
     engines: {node: '>=12.4.0'}
 
+  '@opentelemetry/api@1.10.0':
+    resolution: {integrity: sha512-lMkyes8iHrG+mk6WH7X70MdCLI2RS0FwNBY1PyQ8UemaijE2m5mv5A0Niy3HtbYTFrgkUEQjFMXmSAk2hQDuPQ==}
+    engines: {node: '>=8.0.0'}
+
   '@oxc-project/types@0.133.0':
     resolution: {integrity: sha512-KzkdCd6Uxqnf6l3HOw1xfatAlUURA0g14cvBYFyJ5SaNOQbOUvBr9PKArcPcrNIeRsBdgcUzOGrhKveVpvOIGA==}
 
@@ -1060,6 +1135,9 @@ packages:
   '@sindresorhus/is@4.6.0':
     resolution: {integrity: sha512-t09vSN3MdfsyCHoFcTRCH/iUtG7OJ0CsjzB8cjAmKc/va/kIgeDI/TxsigdncE/4be734m0cvIYwNaV4i2XqAw==}
     engines: {node: '>=10'}
+
+  '@stablelib/base64@1.0.1':
+    resolution: {integrity: sha512-1bnPQqSxSuc3Ii6MhBysoWCg58j97aUjuCSZrGSmDxNqtytIi0k8utUenAwTZN4V5mXXYGsVUI9zeBqy+jBOSQ==}
 
   '@standard-schema/spec@1.1.0':
     resolution: {integrity: sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w==}
@@ -1982,6 +2060,9 @@ packages:
   fast-levenshtein@2.0.6:
     resolution: {integrity: sha512-DCXu6Ifhqcks7TZKY3Hxp3y6qphY5SJZmrWMDrKcERSOXWQdMhU9Ig/PYrzyw/ul9jOIyh0N4M0tbC5hodg8dw==}
 
+  fast-sha256@1.3.0:
+    resolution: {integrity: sha512-n11RGP/lrWEFI/bWdygLxhI+pVeo1ZYIVwvvPkW7azl/rOy+F3HYRZ2K5zeE9mmkhQppyv9sQFx0JM9UabnpPQ==}
+
   fastq@1.20.1:
     resolution: {integrity: sha512-GGToxJ/w1x32s/D2EKND7kTil4n8OVk/9mycTc4VDza13lOvpUZTGX3mFSCtV9ksdGBVzvsyAVLM6mHFThxXxw==}
 
@@ -2311,6 +2392,10 @@ packages:
 
   json-buffer@3.0.1:
     resolution: {integrity: sha512-4bV5BfR2mqfQTJm+V5tPPdf+ZpuhiIvTuAB5g8kcrXOZpTT/QwwVRWBywX1ozr6lEuPdbHxwaJlm9G6mI2sfSQ==}
+
+  json-schema-to-ts@3.1.1:
+    resolution: {integrity: sha512-+DWg8jCJG2TEnpy7kOm/7/AxaYoaRbjVB4LFZLySZlWn8exGs3A4OLJR966cVvU26N7X9TWxl+Jsw7dzAqKT6g==}
+    engines: {node: '>=16'}
 
   json-schema-traverse@0.4.1:
     resolution: {integrity: sha512-xbbCH5dCYU5T8LcEhhuh7HJ88HXuW3qsI3Y0zOZFKfZEHcpWiHU/Jxzk629Brsab/mMiHQti9wMP+845RPe3Vg==}
@@ -2642,16 +2727,66 @@ packages:
       playwright-core:
         optional: true
 
+  orz-markdown@2.5.0:
+    resolution: {integrity: sha512-B/rd6oFnN0LeTlOIOxmcY/UXQGzicHCVispPwMjfJ1+u7i2BMQBjJ0cBHDyzf+mLYTbe2heWpkrZAVr13gxMsg==}
+    engines: {node: '>=20.16'}
+    peerDependencies:
+      playwright-core: '>=1.40.0'
+    peerDependenciesMeta:
+      playwright-core:
+        optional: true
+
+  orz-mdhtml-browser@1.1.0:
+    resolution: {integrity: sha512-+Ch7g0cgJCWFQxPnVOIvi7Uf7GYOnjEFr4XZsTQNgj7Vp/XrJUoP1YNymceuqvHDmijvTxB8p57m38M0pYtcZA==}
+
   orz-mdhtml@0.9.0:
     resolution: {integrity: sha512-nD7sUJ5Jq+B2giecS7Ix3J36fSprHptl3gzkIOfO6TYRllyq9khU5BDNH28KES+XJLx+NW2aMcR43R08FQRpYA==}
     hasBin: true
+
+  orz-mdhtml@1.1.0:
+    resolution: {integrity: sha512-gXxTbYyc++anNtddFewtvhnAOB9Ut9QK+jGKggZWVM6dthHfPDWaOuQvvCKdmzCspctNb+ENMUGDwW70uN0seQ==}
+    engines: {node: '>=20.16'}
+    hasBin: true
+
+  orz-paged-browser@1.1.0:
+    resolution: {integrity: sha512-YWBQggYaMVF9adfPjQTovXPumeTCwYiOfWhdPxa69HLG5b7Mtd52PqzaoYU5/jpm8L9CACJ2PQoQDV2nVxG3Ng==}
 
   orz-paged@0.7.0:
     resolution: {integrity: sha512-NGBGCv0EBpAD4z74FnnNCu82ehIMEUJmjVjNlG6alfRbwPk4TyKZkQ+PnEv/V1zWu0LgDPFzLU6In6BbHEf8dA==}
     hasBin: true
 
+  orz-paged@1.1.0:
+    resolution: {integrity: sha512-DtaLM+vkH6A7jjMcC9yh6TQ3MQOFbPcWdWR538v1yT6hyWC9Srso9PzdFQUBlc7ufWwkLLbXGNQyCeDjih3Qog==}
+    engines: {node: '>=20.16'}
+    hasBin: true
+
+  orz-site@0.1.0:
+    resolution: {integrity: sha512-K/jFyAaChS11jWhyJfDgt6BRbb3aXJZy5cW/CZOgU1u2Jn8n/aMmV0KrGOv5u+zL0VRLpbirQYmuy6AhvPz9dA==}
+    engines: {node: '>=20.16'}
+    hasBin: true
+    peerDependencies:
+      orz-markdown: ^2.5.0
+      orz-mdhtml: ^1.1.0
+      orz-paged: ^1.1.0
+      orz-slides: ^1.1.0
+    peerDependenciesMeta:
+      orz-mdhtml:
+        optional: true
+      orz-paged:
+        optional: true
+      orz-slides:
+        optional: true
+
+  orz-slides-browser@1.1.0:
+    resolution: {integrity: sha512-mHWHsDbjJ1FlFcOhoVEMWAlvPO4qgHdzTSbUo1PF/C6vrlPbFj/IZkitbHAgIZjCy8sDXG6Swd0XAYz/x6bv2Q==}
+
   orz-slides@0.8.2:
     resolution: {integrity: sha512-zG4pFlbNnxemZLDm50n6+Jq4zr5GpoU9Nb7nQTdIcp7NbLCvve47l6ycvZLB9zAqW4y96AwIi/CiSPGZJWf3Uw==}
+    hasBin: true
+
+  orz-slides@1.1.0:
+    resolution: {integrity: sha512-9TNZwvFG0YbyvezmaAi+5czZjq5D5m9GK+egXTLNGNmGL+sB5Co3Rc2bIdGrFCe/YD5JQBGav5AFSTd+ATVZXQ==}
+    engines: {node: '>=20.16'}
     hasBin: true
 
   own-keys@1.0.1:
@@ -2725,6 +2860,10 @@ packages:
   postcss@8.5.16:
     resolution: {integrity: sha512-vuwillviilfKZsg0VGj5R/YwwcHx4SLsIOI/7K6mQkWx+l5cUHTjj5g0AasTBcyXsbfTgrwsUNmVUb5xVwyPwg==}
     engines: {node: ^10 || ^12 || >=14}
+
+  postgres@3.4.9:
+    resolution: {integrity: sha512-GD3qdB0x1z9xgFI6cdRD6xu2Sp2WCOEoe3mtnyB5Ee0XrrL5Pe+e4CCnJrRMnL1zYtRDZmQQVbvOttLnKDLnaw==}
+    engines: {node: '>=12'}
 
   prelude-ls@1.2.1:
     resolution: {integrity: sha512-vkcDPrRZo1QZLbn5RLGPpg/WmIQ65qoWWhcGKf/b5eplkkarX0m9z8ppCat4mlOqUsWpyNuYgO3VRyrYHSzX5g==}
@@ -2900,6 +3039,9 @@ packages:
   stackback@0.0.2:
     resolution: {integrity: sha512-1XMJE5fQo1jGH6Y/7ebnwPOBEkIEnT4QF32d5R1+VXdXveM0IBMJt8zfaxX1P3QhVwrYe+576+jkANtSS2mBbw==}
 
+  standardwebhooks@1.1.1:
+    resolution: {integrity: sha512-bCbX9ZEyFkWPsRz7Bl3NuQUJohmwGSev/yhr7vhaGPlc4AfIrspIRa6cPTBuI1ItmrTDJ4d/S2hCsfe4+vQGnQ==}
+
   std-env@3.10.0:
     resolution: {integrity: sha512-5GS12FdOZNliM5mAOxFRg7Ir0pWz8MdpYm6AY6VPkGpbA7ZzmbzNcBJQ0GPvvyWgcY7QAhCgf9Uy89I03faLkg==}
 
@@ -3005,6 +3147,9 @@ packages:
   to-regex-range@5.0.1:
     resolution: {integrity: sha512-65P7iz6X5yEr1cwcgvQxbbIw7Uk3gOy5dIdtZ4rDveLqhrdJP+Li/Hx6tyK0NEb+2GCyneCMJiGqrADCSNk8sQ==}
     engines: {node: '>=8.0'}
+
+  ts-algebra@2.0.0:
+    resolution: {integrity: sha512-FPAhNPFMrkwz76P7cdjdmiShwMynZYN6SgOujD1urY4oNm80Ou9oMdmbR45LotcKOXoy7wSmHkRFE6Mxbrhefw==}
 
   ts-api-utils@2.5.0:
     resolution: {integrity: sha512-OJ/ibxhPlqrMM0UiNHJ/0CKQkoKF243/AEmplt3qpRgkW8VG7IfOS41h7V8TjITqdByHzrjcS/2si+y4lIh8NA==}
@@ -3306,6 +3451,14 @@ packages:
 snapshots:
 
   '@alloc/quick-lru@5.2.0': {}
+
+  '@anthropic-ai/sdk@1.3.0(zod@4.4.3)':
+    dependencies:
+      '@opentelemetry/api': 1.10.0
+      json-schema-to-ts: 3.1.1
+      standardwebhooks: 1.1.1
+    optionalDependencies:
+      zod: 4.4.3
 
   '@babel/code-frame@7.29.7':
     dependencies:
@@ -3762,6 +3915,8 @@ snapshots:
 
   '@nolyfill/is-core-module@1.0.39': {}
 
+  '@opentelemetry/api@1.10.0': {}
+
   '@oxc-project/types@0.133.0': {}
 
   '@protobufjs/aspromise@1.1.2': {}
@@ -3915,6 +4070,8 @@ snapshots:
   '@rtsao/scc@1.1.0': {}
 
   '@sindresorhus/is@4.6.0': {}
+
+  '@stablelib/base64@1.0.1': {}
 
   '@standard-schema/spec@1.1.0': {}
 
@@ -5013,6 +5170,8 @@ snapshots:
 
   fast-levenshtein@2.0.6: {}
 
+  fast-sha256@1.3.0: {}
+
   fastq@1.20.1:
     dependencies:
       reusify: 1.1.0
@@ -5353,6 +5512,11 @@ snapshots:
 
   json-buffer@3.0.1: {}
 
+  json-schema-to-ts@3.1.1:
+    dependencies:
+      '@babel/runtime': 7.29.7
+      ts-algebra: 2.0.0
+
   json-schema-traverse@0.4.1: {}
 
   json-stable-stringify-without-jsonify@1.0.1: {}
@@ -5558,7 +5722,7 @@ snapshots:
 
   next-tick@1.1.0: {}
 
-  next@16.2.9(@babel/core@7.29.7)(react-dom@19.2.4(react@19.2.4))(react@19.2.4):
+  next@16.2.9(@babel/core@7.29.7)(@opentelemetry/api@1.10.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4):
     dependencies:
       '@next/env': 16.2.9
       '@swc/helpers': 0.5.15
@@ -5577,6 +5741,7 @@ snapshots:
       '@next/swc-linux-x64-musl': 16.2.9
       '@next/swc-win32-arm64-msvc': 16.2.9
       '@next/swc-win32-x64-msvc': 16.2.9
+      '@opentelemetry/api': 1.10.0
       sharp: 0.34.5
     transitivePeerDependencies:
       - '@babel/core'
@@ -5696,11 +5861,39 @@ snapshots:
       node-emoji: 2.2.0
       qrcode-svg: 1.1.0
 
+  orz-markdown@2.5.0:
+    dependencies:
+      '@traptitech/markdown-it-katex': 3.6.0
+      '@types/markdown-it': 14.1.2
+      katex: 0.16.47
+      markdown-it: 14.3.3
+      markdown-it-anchor: 9.2.0(@types/markdown-it@14.1.2)(markdown-it@14.3.3)
+      markdown-it-cjk-breaks: 2.0.1
+      markdown-it-container: 4.0.0
+      markdown-it-footnote: 4.0.0
+      markdown-it-ins: 4.0.0
+      markdown-it-mark: 4.0.0
+      markdown-it-sub: 2.0.0
+      markdown-it-sup: 2.0.0
+      markdown-it-task-lists: 2.1.1
+      node-emoji: 2.2.0
+      qrcode-svg: 1.1.0
+
+  orz-mdhtml-browser@1.1.0: {}
+
   orz-mdhtml@0.9.0(@types/markdown-it@14.1.2):
     dependencies:
       orz-markdown: 1.6.0(@types/markdown-it@14.1.2)
     transitivePeerDependencies:
       - '@types/markdown-it'
+
+  orz-mdhtml@1.1.0:
+    dependencies:
+      orz-markdown: 2.5.0
+    transitivePeerDependencies:
+      - playwright-core
+
+  orz-paged-browser@1.1.0: {}
 
   orz-paged@0.7.0(@types/markdown-it@14.1.2):
     dependencies:
@@ -5709,12 +5902,35 @@ snapshots:
     transitivePeerDependencies:
       - '@types/markdown-it'
 
+  orz-paged@1.1.0:
+    dependencies:
+      orz-markdown: 2.5.0
+    transitivePeerDependencies:
+      - playwright-core
+
+  orz-site@0.1.0(orz-markdown@2.5.0)(orz-mdhtml@1.1.0)(orz-paged@1.1.0)(orz-slides@1.1.0):
+    dependencies:
+      orz-markdown: 2.5.0
+    optionalDependencies:
+      orz-mdhtml: 1.1.0
+      orz-paged: 1.1.0
+      orz-slides: 1.1.0
+
+  orz-slides-browser@1.1.0: {}
+
   orz-slides@0.8.2(@types/markdown-it@14.1.2):
     dependencies:
       orz-markdown: 1.6.0(@types/markdown-it@14.1.2)
       reveal.js: 5.2.1
     transitivePeerDependencies:
       - '@types/markdown-it'
+
+  orz-slides@1.1.0:
+    dependencies:
+      orz-markdown: 2.5.0
+      reveal.js: 5.2.1
+    transitivePeerDependencies:
+      - playwright-core
 
   own-keys@1.0.1:
     dependencies:
@@ -5784,6 +6000,8 @@ snapshots:
       nanoid: 3.3.15
       picocolors: 1.1.1
       source-map-js: 1.2.1
+
+  postgres@3.4.9: {}
 
   prelude-ls@1.2.1: {}
 
@@ -6051,6 +6269,11 @@ snapshots:
 
   stackback@0.0.2: {}
 
+  standardwebhooks@1.1.1:
+    dependencies:
+      '@stablelib/base64': 1.0.1
+      fast-sha256: 1.3.0
+
   std-env@3.10.0: {}
 
   std-env@4.1.0: {}
@@ -6158,6 +6381,8 @@ snapshots:
   to-regex-range@5.0.1:
     dependencies:
       is-number: 7.0.0
+
+  ts-algebra@2.0.0: {}
 
   ts-api-utils@2.5.0(typescript@5.9.3):
     dependencies:
@@ -6371,7 +6596,7 @@ snapshots:
       - tsx
       - yaml
 
-  vitest@4.1.8(@types/node@22.19.21)(vite@8.0.16(@types/node@22.19.21)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.4)):
+  vitest@4.1.8(@opentelemetry/api@1.10.0)(@types/node@22.19.21)(vite@8.0.16(@types/node@22.19.21)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.4)):
     dependencies:
       '@vitest/expect': 4.1.8
       '@vitest/mocker': 4.1.8(vite@8.0.16(@types/node@22.19.21)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.4))
@@ -6394,6 +6619,7 @@ snapshots:
       vite: 8.0.16(@types/node@22.19.21)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.4)
       why-is-node-running: 2.3.0
     optionalDependencies:
+      '@opentelemetry/api': 1.10.0
       '@types/node': 22.19.21
     transitivePeerDependencies:
       - msw

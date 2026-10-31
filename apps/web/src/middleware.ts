@@ -1,6 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { supabaseEnv } from "@/lib/supabase/env";
+import { docPageCsp, isDocPage, newNonce } from "@/lib/csp";
 import {
   PUBLIC_NOT_FOUND_REWRITE,
   isClientNavigation,
@@ -37,8 +38,19 @@ export async function middleware(request: NextRequest) {
   const publicAnswer = await publicNotFound(request);
   if (publicAnswer) return publicAnswer;
 
-  let response = NextResponse.next({ request });
   const { url, anonKey } = supabaseEnv();
+  // Course document pages get a per-request nonce and their CSP (K4 step 2). Next reads the
+  // policy from the request to put the nonce on its own scripts; the page hands it to the editor.
+  const csp = isDocPage(request.nextUrl.pathname) ? docPageCsp(newNonce(), url) : null;
+  if (csp) {
+    request.headers.set("x-nonce", /'nonce-([^']+)'/.exec(csp)![1]!);
+    request.headers.set("content-security-policy", csp);
+  }
+  const withCsp = (r: NextResponse) => {
+    if (csp) r.headers.set(process.env["ALEMBIC_CSP"] === "enforce" ? "Content-Security-Policy" : "Content-Security-Policy-Report-Only", csp);
+    return r;
+  };
+  let response = NextResponse.next({ request });
 
   const supabase = createServerClient(url, anonKey, {
     cookies: {
@@ -62,9 +74,14 @@ export async function middleware(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (!user && request.nextUrl.pathname.startsWith("/workspace")) {
+  // Course files: the route checks the session or the signed address itself (the editor's preview sends no session).
+  // The sync route also answers for itself: a request whose session ended gets "sign in again", not a page (RC.17).
+  const isAsset = /^\/workspace\/[^/]+\/(?:asset\/|sync$|upload$)/.test(request.nextUrl.pathname);
+  if (!user && request.nextUrl.pathname.startsWith("/workspace") && !isAsset) {
+    // Come back to the same page after signing in (a session that ended mid-work); /signin re-validates it.
     const signin = new URL("/signin", request.url);
-    return NextResponse.redirect(signin);
+    signin.searchParams.set("next", `${request.nextUrl.pathname}${request.nextUrl.search}`);
+    return withCsp(NextResponse.redirect(signin));
   }
 
   // Ban check (docs/specs/user-governance.md §2.4). A ban blocks new sign-ins
@@ -93,7 +110,7 @@ export async function middleware(request: NextRequest) {
     }
   }
 
-  return response;
+  return withCsp(response);
 }
 
 export const config = {

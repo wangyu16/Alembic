@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { safeNextPath } from "@/lib/safe-next";
+import { requestOrigin } from "@/lib/request-origin";
 
 /**
  * GitHub OAuth callback. Exchanges the code for a session.
@@ -21,7 +22,8 @@ import { safeNextPath } from "@/lib/safe-next";
  * with next="@evil.example" was an open redirect).
  */
 export async function GET(request: Request) {
-  const { searchParams, origin } = new URL(request.url);
+  const { searchParams } = new URL(request.url);
+  const origin = requestOrigin(request);
   const code = searchParams.get("code");
   const next = safeNextPath(searchParams.get("next"));
 

@@ -2,6 +2,9 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createPackageAction } from "./actions";
+import { connectGithubAction, createCourseV3Action } from "./v3-actions";
+import { SubmitButton } from "./submit-button";
+import { v3Enabled } from "@/lib/db";
 import { reconcileArchivedPackages } from "./lifecycle-actions";
 import { PackageActions } from "./_components/package-actions";
 import { PackageSnapshots } from "./_components/package-snapshots";
@@ -33,7 +36,22 @@ const LICENSE_OPTION_LABEL: Record<(typeof LICENSES)[number], string> = {
 const UNIT_TERMS = ["chapter", "module", "lesson", "unit", "week"] as const;
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
-export default async function WorkspacePage() {
+const V3_NOTICE: Record<string, string> = {
+  missing: "Give the course a title and choose a licence.",
+  connect: "Connect GitHub first, then create the course again.",
+  connected: "GitHub is connected. You can create the course now.",
+  "not-yours": "That GitHub installation belongs to another account. Sign in with the account the App is installed on.",
+  unconfigured: "GitHub isn't set up on this server.",
+  failed: "The course couldn't be created. Please try again.",
+  "too-many": "That's more than 30 chapters. Create the course with up to 30, then add the rest on the course page.",
+  "failed-connect": "GitHub couldn't be connected. Please try again.",
+};
+
+export default async function WorkspacePage({ searchParams }: { searchParams: Promise<{ v3?: string; connected?: string }> }) {
+  const sp = await searchParams;
+  // Back from installing the GitHub app (its callback says connected=1 / 0): the same notice as connecting here.
+  const v3 = sp.v3 ?? (sp.connected === "1" ? "connected" : sp.connected === "0" ? "failed-connect" : undefined);
+  const v3On = v3Enabled();
   const supabase = await createSupabaseServerClient();
   const {
     data: { user },
@@ -51,7 +69,7 @@ export default async function WorkspacePage() {
 
   const { data: allPackages } = await supabase
     .from("packages")
-    .select("id, title, storage, created_at, archived_at")
+    .select("id, title, storage, created_at, archived_at, schema:manifest->schemaVersion")
     .order("created_at", { ascending: false });
 
   const visible = (allPackages ?? []).filter((p) => !purged.includes(p.id));
@@ -77,8 +95,44 @@ export default async function WorkspacePage() {
         <p className="max-w-2xl text-lg leading-relaxed text-muted">
           Hi {name} — your course packages live here.
         </p>
+        <nav className="flex gap-4 text-sm" aria-label="Your account">
+          <Link href="/workspace/credit" className="underline">AI credit</Link>
+          <Link href="/workspace/settings" className="underline">Settings</Link>
+        </nav>
       </header>
 
+      {v3On ? (
+        <section className="panel p-6">
+          <h2 className="text-lg font-medium text-ink">New course</h2>
+          <p className="mt-1 text-sm text-muted">Keeps the course privately in your own GitHub account; its documents open in the editor and save to the course on their own.</p>
+          {v3 && V3_NOTICE[v3] ? <p className={`mt-2 text-sm ${v3 === "connected" ? "text-ok" : "text-danger"}`} role={v3 === "connected" ? "status" : "alert"}>{V3_NOTICE[v3]}</p> : null}
+          {v3 === "connect" || v3 === "not-yours" ? (
+            <form action={connectGithubAction} className="mt-2">
+              <SubmitButton className="btn btn-ghost btn-sm" pending="Connecting…">Connect GitHub</SubmitButton>
+              <span className="ml-2 text-sm text-muted">Finds the Alembic App on your own GitHub account, or takes you to install it.</span>
+            </form>
+          ) : null}
+          <form action={createCourseV3Action} className="mt-4 flex flex-col gap-3">
+            <div className="flex flex-col gap-3 sm:flex-row">
+              <input name="title" required placeholder="Course title" className="input flex-1" />
+              <select name="license" defaultValue="CC-BY-4.0" className="input">
+                {LICENSES.map((l) => <option key={l} value={l}>{LICENSE_OPTION_LABEL[l]}</option>)}
+              </select>
+            </div>
+            <label className="text-sm">
+              Chapters, one per line (optional; you can add more later)
+              <textarea name="chapters" rows={3} className="input mt-1 w-full" placeholder={"Introduction\nAtoms and Molecules"} />
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" name="start" /> Start all five parts of each chapter now (concept map, study guide, slides, assessment guide, practice); without this, each starts with its study guide
+            </label>
+            <div><SubmitButton className="btn btn-primary" pending="Creating… (about 15 seconds)">Create course</SubmitButton></div>
+          </form>
+        </section>
+      ) : null}
+
+      {/* The previous model's package box: hidden when the new workspace is on (newcomer review: two "create" boxes). */}
+      {!v3On ? (
       <section className="panel p-6">
         <h2 className="text-lg font-medium text-ink">Create a package</h2>
         <p className="mt-1 text-sm text-muted">
@@ -127,9 +181,10 @@ export default async function WorkspacePage() {
           it in — images and all.
         </p>
       </section>
+      ) : null}
 
       <section>
-        <h2 className="text-lg font-medium text-ink">Your packages</h2>
+        <h2 className="text-lg font-medium text-ink">{v3On ? "Your courses" : "Your packages"}</h2>
         {!packages?.length ? (
           <p className="mt-3 text-muted">
             Nothing here yet — create your first package above.
@@ -148,8 +203,14 @@ export default async function WorkspacePage() {
                   </div>
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
-                  <Link href={`/workspace/${pkg.id}/edit`} className="btn btn-ghost btn-sm">
-                    Open editor
+                  <Link href={(pkg as { schema?: unknown }).schema === 3 ? `/workspace/${pkg.id}/course` : `/workspace/${pkg.id}/edit`} className="btn btn-ghost btn-sm">
+                    {(pkg as { schema?: unknown }).schema === 3 ? "Open course" : "Open editor"}
+                  </Link>
+                  <Link href={`/workspace/${pkg.id}/needs-you`} className="btn btn-ghost btn-sm">
+                    Needs you
+                  </Link>
+                  <Link href={`/workspace/${pkg.id}/people`} className="btn btn-ghost btn-sm">
+                    People
                   </Link>
                   {pkg.storage === "github" && (
                     <PackageSnapshots packageId={pkg.id} />

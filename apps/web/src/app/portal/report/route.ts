@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { reportPackageAction } from "@/app/portal/actions";
 import { reportReturnPath } from "@/lib/report-return";
+import { requestOrigin } from "@/lib/request-origin";
 
 /**
  * `POST /portal/report` — the report form without JavaScript (P11). The form
@@ -14,7 +15,7 @@ import { reportReturnPath } from "@/lib/report-return";
  * itself.
  */
 export async function POST(request: Request) {
-  const self = new URL(request.url);
+  const self = { origin: requestOrigin(request) };
   const origin = request.headers.get("origin");
   if (origin && origin !== self.origin) {
     return new NextResponse("Forbidden", { status: 403 });

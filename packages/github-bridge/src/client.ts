@@ -1,9 +1,11 @@
 import { createHash } from "node:crypto";
+import { readTarGz } from "./tar";
 import { staticTokenSource, type TokenSource } from "./app-auth";
 import {
   defaultFetch,
   GitHubError,
   isRateLimitResponse,
+  retryAtOf,
   sendWithRetry,
   type FetchLike,
   type RetryPolicy,
@@ -90,6 +92,26 @@ export async function fetchPublicRepoBytes(
 }
 
 /**
+ * The file paths of a PUBLIC repository at a ref, without any token (for the
+ * public template: no installation's token is needed or used to read it).
+ * Null on 404; `truncated` as for the tree API.
+ */
+export async function fetchPublicTree(
+  coords: RepoCoords,
+  ref = "main",
+  fetchImpl: FetchLike = defaultFetch,
+): Promise<{ paths: string[]; truncated: boolean } | null> {
+  const res = await fetchImpl(`https://api.github.com/repos/${coords.owner}/${coords.repo}/git/trees/${encodeURIComponent(ref)}?recursive=1`, {
+    method: "GET",
+    headers: { accept: "application/vnd.github+json", "x-github-api-version": "2022-11-28" },
+  });
+  if (res.status === 404) return null;
+  if (!res.ok) throw new GitHubError("Public tree read failed", res.status, await res.text().catch(() => undefined));
+  const data = (await res.json()) as { tree: Array<{ path: string; type: string }>; truncated?: boolean };
+  return { paths: data.tree.filter((e) => e.type === "blob").map((e) => e.path), truncated: data.truncated === true };
+}
+
+/**
  * Requests that are safe to send twice, so a 5xx or a dropped connection may
  * be retried: reads, ref updates to a fixed sha (PATCH), and creation of
  * content-addressed git objects (a duplicate blob/tree is the same object; a
@@ -173,6 +195,27 @@ function isNotFastForward(err: unknown): boolean {
   );
 }
 
+/**
+ * The branch head is no longer the head the caller decided against
+ * (workspace v3, write-path spec §3.2 step 4). Nothing was moved; the
+ * caller re-reads the head and decides again.
+ */
+export class HeadMovedError extends Error {
+  constructor(
+    readonly expected: string,
+    readonly actual: string | null,
+  ) {
+    super(`branch head moved (expected ${expected}, found ${actual ?? "unknown"})`);
+    this.name = "HeadMovedError";
+  }
+}
+
+/** A file in a commit-chain step: new text/bytes, an existing blob, or a deletion. */
+export type ChainFile =
+  | { path: string; content: string; encoding?: "utf-8" | "base64" }
+  | { path: string; blobSha: string; mode?: "100644" | "100755" }
+  | { path: string; content: null };
+
 export class GitHubClient {
   private readonly tokens: TokenSource;
   private readonly retry: Partial<RetryPolicy> | undefined;
@@ -190,6 +233,7 @@ export class GitHubClient {
     method: string,
     path: string,
     body?: unknown,
+    signal?: AbortSignal,
   ): Promise<T> {
     const send = async (token: string) =>
       sendWithRetry(
@@ -204,6 +248,7 @@ export class GitHubClient {
             ...(body ? { "Content-Type": "application/json" } : {}),
           },
           ...(body ? { body: JSON.stringify(body) } : {}),
+          ...(signal ? { signal } : {}),
         },
         { replayable: isReplayable(method, path), policy: this.retry },
       );
@@ -217,8 +262,9 @@ export class GitHubClient {
     }
     if (!res.ok) {
       const text = await res.text().catch(() => "");
+      const rateLimited = isRateLimitResponse(res, text);
       throw new GitHubError(`GitHub ${method} ${path} failed`, res.status, text || undefined, {
-        rateLimited: isRateLimitResponse(res, text),
+        rateLimited, retryAt: rateLimited ? retryAtOf(res) : null,
       });
     }
     return (await res.json()) as T;
@@ -267,6 +313,15 @@ export class GitHubClient {
    * blob first and then referenced by sha in the tree — otherwise a PNG/PDF
    * lands on GitHub as its base64 *text*, not its bytes.
    */
+  /**
+   * Upload a file's bytes as a blob and return its sha (contract v3 §11.2: the
+   * upload route creates the blob first, then queues a reference to it). The
+   * bytes are sent base64-encoded, as GitHub's blob API requires.
+   */
+  async uploadBlob(coords: RepoCoords, bytes: Uint8Array): Promise<string> {
+    return this.createBlob(coords, Buffer.from(bytes).toString("base64"), "base64");
+  }
+
   private async createBlob(
     coords: RepoCoords,
     content: string,
@@ -292,9 +347,11 @@ export class GitHubClient {
    */
   private async buildTreeEntries(
     coords: RepoCoords,
-    files: Array<{ path: string; content: string | null; encoding?: "utf-8" | "base64" }>,
+    files: Array<{ path: string; content: string | null; encoding?: "utf-8" | "base64" } | { path: string; blobSha: string }>,
   ): Promise<Array<Record<string, unknown>>> {
     return mapWithConcurrency(files, BLOB_UPLOAD_CONCURRENCY, async (f) => {
+      // An existing blob of this repository, by id: nothing is uploaded.
+      if ("blobSha" in f) return { path: f.path, mode: "100644", type: "blob", sha: f.blobSha };
       if (f.content === null) {
         return { path: f.path, mode: "100644", type: "blob", sha: null };
       }
@@ -467,17 +524,89 @@ export class GitHubClient {
     return { commitSha: commit.sha, parentSha };
   }
 
+  /**
+   * Build one or more commits on top of `expectedHead`, each step's tree on
+   * the previous one, and move the branch ONCE to the last commit — only if
+   * the branch head is still `expectedHead` (workspace v3 write path §3.2,
+   * §5: kept versions are committed before the version on top, and the head
+   * never shows the kept one). The ref update is a non-force PATCH, so a
+   * concurrent push that moved the head forward makes it fail; the head is
+   * also re-read just before the PATCH so a rewind (force-push to an older
+   * commit) is caught too, instead of being fast-forwarded over.
+   * Throws `HeadMovedError`; nothing is moved in that case.
+   */
+  async commitChain(input: {
+    coords: RepoCoords;
+    branch?: string;
+    expectedHead: string;
+    steps: Array<{ message: string; files: ChainFile[] }>;
+    /** Runs after the commits exist and before the ref moves; throwing stops the move. */
+    beforeMove?: (shas: string[]) => Promise<void>;
+    /** Aborted: the ref is not moved (checked right before the PATCH, and the PATCH itself is cancelled). */
+    signal?: AbortSignal;
+    /** Hard limit for the ref update request (default 20 s), so an abandoned attempt can't move the ref late. */
+    moveTimeoutMs?: number;
+  }): Promise<{ commitShas: string[]; head: string }> {
+    const branch = input.branch ?? "main";
+    const { owner, repo } = input.coords;
+    if (input.steps.length === 0) return { commitShas: [], head: input.expectedHead };
+    const base = await this.request<{ tree: { sha: string } }>(
+      "GET",
+      `/repos/${owner}/${repo}/git/commits/${input.expectedHead}`,
+    );
+    let parent = input.expectedHead;
+    let tree = base.tree.sha;
+    const commitShas: string[] = [];
+    for (const step of input.steps) {
+      const entries = await mapWithConcurrency(step.files, BLOB_UPLOAD_CONCURRENCY, async (f) => {
+        if ("blobSha" in f) return { path: f.path, mode: f.mode ?? "100644", type: "blob", sha: f.blobSha };
+        if (f.content === null) return { path: f.path, mode: "100644", type: "blob", sha: null };
+        if (f.encoding === "base64") {
+          const sha = await this.createBlob(input.coords, f.content, "base64");
+          return { path: f.path, mode: "100644", type: "blob", sha };
+        }
+        return { path: f.path, mode: "100644", type: "blob", content: f.content };
+      });
+      const newTree = await this.request<{ sha: string }>("POST", `/repos/${owner}/${repo}/git/trees`, {
+        base_tree: tree,
+        tree: entries,
+      });
+      const commit = await this.request<{ sha: string }>("POST", `/repos/${owner}/${repo}/git/commits`, {
+        message: step.message,
+        tree: newTree.sha,
+        parents: [parent],
+      });
+      commitShas.push(commit.sha);
+      parent = commit.sha;
+      tree = newTree.sha;
+    }
+    if (input.beforeMove) await input.beforeMove(commitShas);
+    const now = await this.getRefSha(input.coords, `heads/${branch}`);
+    if (now !== input.expectedHead) throw new HeadMovedError(input.expectedHead, now);
+    if (input.signal?.aborted) throw new Error("commit attempt aborted before the ref move");
+    const timeout = AbortSignal.timeout(input.moveTimeoutMs ?? 20_000);
+    const signal = input.signal ? AbortSignal.any([input.signal, timeout]) : timeout;
+    try {
+      await this.request("PATCH", `/repos/${owner}/${repo}/git/refs/heads/${branch}`, { sha: parent }, signal);
+    } catch (e) {
+      if (isNotFastForward(e)) throw new HeadMovedError(input.expectedHead, null);
+      throw e;
+    }
+    return { commitShas, head: parent };
+  }
+
   async listCommits(
     coords: RepoCoords,
-    opts: { perPage?: number; path?: string } = {},
-  ): Promise<Array<{ sha: string; message: string; date: string }>> {
+    opts: { perPage?: number; path?: string; sha?: string } = {},
+  ): Promise<Array<{ sha: string; message: string; date: string; login: string | null }>> {
     // `path` scopes history to commits that touched one file (per-chapter
     // history): GitHub returns only commits changing that path, newest first.
-    const pathParam = opts.path
-      ? `&path=${encodeURIComponent(opts.path)}`
-      : "";
+    // `sha` starts the walk at a branch or commit: only commits reachable from it.
+    const pathParam =
+      (opts.path ? `&path=${encodeURIComponent(opts.path)}` : "") +
+      (opts.sha ? `&sha=${encodeURIComponent(opts.sha)}` : "");
     const data = await this.request<
-      Array<{ sha: string; commit: { message: string; author: { date: string } } }>
+      Array<{ sha: string; commit: { message: string; author: { date: string } }; author?: { login?: string } | null }>
     >(
       "GET",
       `/repos/${coords.owner}/${coords.repo}/commits?per_page=${opts.perPage ?? 20}${pathParam}`,
@@ -486,6 +615,7 @@ export class GitHubClient {
       sha: c.sha,
       message: c.commit.message,
       date: c.commit.author.date,
+      login: c.author?.login ?? null,
     }));
   }
 
@@ -517,7 +647,8 @@ export class GitHubClient {
     coords: RepoCoords;
     branch: string;
     message: string;
-    files: Array<{ path: string; content: string; encoding?: "utf-8" | "base64" }>;
+    /** New text or bytes, or an existing blob of this repository by id (nothing uploaded). */
+    files: Array<{ path: string; content: string; encoding?: "utf-8" | "base64" } | { path: string; blobSha: string }>;
   }): Promise<{ commitSha: string; unchanged: boolean }> {
     const { coords, branch } = input;
     const existing = await this.getRefSha(coords, `heads/${branch}`);
@@ -571,18 +702,19 @@ export class GitHubClient {
   async enablePages(
     coords: RepoCoords,
     branch: string,
-  ): Promise<{ url: string }> {
+  ): Promise<{ url: string; servesBranch?: string | null }> {
     const base = `/repos/${coords.owner}/${coords.repo}/pages`;
     try {
-      const existing = await this.request<{ html_url: string }>("GET", base);
-      return { url: existing.html_url };
+      const existing = await this.request<{ html_url: string; build_type?: string; source?: { branch?: string } | null }>("GET", base);
+      // Pages already on: say what it serves (the owner may have pointed it elsewhere).
+      return { url: existing.html_url, servesBranch: existing.build_type === "workflow" ? null : (existing.source?.branch ?? null) };
     } catch (e) {
       if (!(e instanceof GitHubError && e.status === 404)) throw e;
     }
     const created = await this.request<{ html_url: string }>("POST", base, {
       source: { branch, path: "/" },
     });
-    return { url: created.html_url };
+    return { url: created.html_url, servesBranch: branch };
   }
 
   /** The repository's default branch name (e.g. "main"). */
@@ -606,6 +738,18 @@ export class GitHubClient {
       return true;
     } catch (e) {
       if (e instanceof GitHubError && e.status === 404) return false;
+      throw e;
+    }
+  }
+
+  /** A repository's visibility and the template it was generated from (null on 404). */
+  async getRepo(coords: RepoCoords): Promise<{ private: boolean; template: string | null } | null> {
+    try {
+      const r = await this.request<{ private: boolean; template_repository?: { full_name?: string } | null }>(
+        "GET", `/repos/${coords.owner}/${coords.repo}`);
+      return { private: r.private, template: r.template_repository?.full_name ?? null };
+    } catch (e) {
+      if (e instanceof GitHubError && e.status === 404) return null;
       throw e;
     }
   }
@@ -649,6 +793,23 @@ export class GitHubClient {
    * rather than return a list that may miss changes; reconcile then falls back
    * to comparing the whole tree (apps/web lib/repo-reader.ts).
    */
+  /**
+   * Is `commit` the head or one of its ancestors? GitHub's compare of `commit...head` says "ahead" or
+   * "identical" exactly then; an unknown commit (404/422) is not an ancestor.
+   */
+  async isAncestor(coords: RepoCoords, commit: string, head: string): Promise<boolean> {
+    if (!/^[0-9a-f]{40}$/.test(commit) || !/^[0-9a-f]{40}$/.test(head)) return false;
+    if (commit === head) return true;
+    try {
+      const data = await this.request<{ status?: string }>("GET", `/repos/${coords.owner}/${coords.repo}/compare/${commit}...${head}`);
+      return data.status === "ahead" || data.status === "identical";
+    } catch (e) {
+      const status = (e as { status?: unknown })?.status;
+      if (status === 404 || status === 422) return false;
+      throw e;
+    }
+  }
+
   async compareCommits(
     coords: RepoCoords,
     base: string | null,
@@ -707,6 +868,19 @@ export class GitHubClient {
   }
 
   /**
+   * Every entry of the tree at a ref with its mode and type (Door C: a link is
+   * mode 120000, a submodule type "commit"); `truncated` as for listTree.
+   */
+  async listTreeEntries(
+    coords: RepoCoords,
+    ref: string,
+  ): Promise<{ entries: Array<{ path: string; mode: string; type: string; sha: string; size?: number }>; truncated: boolean }> {
+    const data = await this.request<{ tree: Array<{ path: string; mode: string; type: string; sha: string; size?: number }>; truncated?: boolean }>(
+      "GET", `/repos/${coords.owner}/${coords.repo}/git/trees/${ref}?recursive=1`);
+    return { entries: data.tree.map((e) => ({ path: e.path, mode: e.mode, type: e.type, sha: e.sha, ...(typeof e.size === "number" ? { size: e.size } : {}) })), truncated: data.truncated === true };
+  }
+
+  /**
    * List every file (blob) path in the repo tree at a ref, recursively. Used by
    * the leakage audit (M21) to scan the whole public repo — not just a diff —
    * for paths that violate the two-repo invariant. `truncated` is true when the
@@ -760,6 +934,25 @@ export class GitHubClient {
     return this.getBlob(coords, sha);
   }
 
+  /**
+   * Every file of the tree at `ref`, in ONE API request (GitHub's tarball,
+   * served from its download host): path → bytes. Throws past `maxBytes`
+   * unpacked. Counts as one request against the installation's hourly budget.
+   */
+  async getTreeArchive(coords: RepoCoords, ref: string, maxBytes = 200 * 1024 * 1024): Promise<Map<string, Uint8Array>> {
+    const get = async (token: string) => sendWithRetry(this.fetchImpl, `https://api.github.com/repos/${coords.owner}/${coords.repo}/tarball/${encodeURIComponent(ref)}`, {
+      method: "GET",
+      headers: { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" },
+    }, { replayable: true, policy: this.retry });
+    let res = await get(await this.tokens.token());
+    if (res.status === 401) { const fresh = await this.tokens.refresh(); if (fresh !== null) res = await get(fresh); }
+    if (!res.ok || !res.arrayBuffer) {
+      const text = await res.text().catch(() => "");
+      throw new GitHubError(`GitHub tarball ${coords.owner}/${coords.repo}@${ref} failed`, res.status, text, { rateLimited: isRateLimitResponse(res, text), retryAt: retryAtOf(res) });
+    }
+    return readTarGz(new Uint8Array(await res.arrayBuffer()), maxBytes);
+  }
+
   /** A blob's bytes by its id (git blobs API: up to 100 MB, always base64). */
   async getBlob(coords: RepoCoords, sha: string): Promise<Uint8Array> {
     const data = await this.request<{ content: string; encoding: string }>(
@@ -783,4 +976,52 @@ export class GitHubClient {
     const bytes = await this.getFileBytesAtRef(coords, path, ref);
     return bytes === null ? null : Buffer.from(bytes).toString("utf8");
   }
+}
+
+/**
+ * Many files of one tree, read the cheapest safe way (RC.11, RC.18): the tree
+ * is listed once; a tree up to `archiveMaxBytes` comes in ONE archive request,
+ * a bigger one blob by blob (bounded memory). Every archived file is checked
+ * against its blob id from the tree, and read by blob id when it differs
+ * (export-ignore / export-subst attributes, LFS). Absent from the tree: null.
+ */
+export function treeReader(
+  client: Pick<GitHubClient, "listTreeEntries" | "getTreeArchive" | "getBlob">,
+  coords: RepoCoords,
+  opts: { archiveMaxBytes?: number } = {},
+) {
+  const max = opts.archiveMaxBytes ?? 80 * 1024 * 1024;
+  const trees = new Map<string, Promise<{ entries: Map<string, { sha: string; size: number }>; archive: Promise<Map<string, Uint8Array> | null> | null }>>();
+  const load = (sha: string) => {
+    let t = trees.get(sha);
+    if (!t) {
+      t = (async () => {
+        const listing = await client.listTreeEntries(coords, sha);
+        const entries = new Map(listing.entries.filter((e) => e.type === "blob").map((e) => [e.path, { sha: e.sha, size: e.size ?? 0 }]));
+        const total = [...entries.values()].reduce((n, e) => n + e.size, 0);
+        // Unpacked, a tar adds a 512-byte header per entry (and folder) plus padding: allow for it (audit r3 MEDIUM-5).
+        const limit = total + (listing.entries.length + 1) * 1536 + 1024 * 1024;
+        // An archive that can't be had (too big unpacked, LFS, an outage) falls back to blob reads, once.
+        const archive = !listing.truncated && total <= max
+          ? client.getTreeArchive(coords, sha, limit).catch((e) => { if (e instanceof GitHubError && e.rateLimited) throw e; return null; }) // a rate limit isn't worked around file by file (audit r5)
+          : null;
+        archive?.catch(() => {}); // rethrown to each read that awaits it; never an unhandled rejection
+        return { entries, archive };
+      })();
+      t.catch(() => trees.delete(sha));
+      trees.set(sha, t);
+    }
+    return t;
+  };
+  return async (sha: string, path: string): Promise<Uint8Array | null> => {
+    const t = await load(sha);
+    const e = t.entries.get(path);
+    if (!e) return null;
+    const a = t.archive ? await t.archive : null;
+    if (a) {
+      const b = a.get(path);
+      if (b && gitBlobSha(b) === e.sha) return b;
+    }
+    return client.getBlob(coords, e.sha);
+  };
 }

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { v3Enabled } from "@/lib/db";
 
 /* Small copper stroke icons for the feature terms (16px grid, currentColor —
    same vocabulary as the publish-header icons). */
@@ -70,6 +71,11 @@ export default function Home() {
         <Link href="/portal" className="btn btn-primary">
           Browse courses
         </Link>
+        {v3Enabled() ? (
+          <Link href="/try" className="btn">
+            Try it: make a sample chapter
+          </Link>
+        ) : null}
         <Link href="/guide" className="link text-sm">
           Read the guide
         </Link>

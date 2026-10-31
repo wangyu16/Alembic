@@ -7,6 +7,11 @@
 
 import { rendererVersion } from "@alembic/renderer";
 import { createWorkerServer } from "./server";
+import { ResendMailer } from "@alembic/notify";
+import { SCHEDULES, postgrestRpc, startSchedules, type Schedule } from "./schedules";
+import { runDigests } from "./digest-job";
+import { providerFromEnv } from "@alembic/ai-assist";
+import { TRIAGE_EVERY_MS, dailyCapFromEnv, runContactTriage } from "./contact-triage-job";
 
 const port = Number(process.env["WORKER_PORT"] ?? process.env["PORT"] ?? 8787);
 
@@ -19,3 +24,28 @@ createWorkerServer().listen(port, () => {
   console.log(`[alembic-worker] listening on :${port} (renderer: ${rendererVersion()})`);
   console.log("[alembic-worker] POST /generate · GET /health");
 });
+
+// Periodic ledger jobs (A15): only when the worker is given database access.
+const dbUrl = process.env["SUPABASE_URL"]?.trim();
+const dbKey = process.env["SUPABASE_SECRET_KEY"]?.trim();
+if (dbUrl && dbKey) {
+  const schedules: Schedule[] = [...SCHEDULES];
+  // The Needs-you email (C8): only with an email service and the app's address.
+  const resendKey = process.env["RESEND_API_KEY"]?.trim();
+  const from = process.env["EMAIL_FROM"]?.trim();
+  const appUrl = process.env["APP_URL"]?.trim();
+  if (resendKey && from && appUrl) {
+    const mailer = new ResendMailer(resendKey, from);
+    schedules.push({ name: "needs-you-email", everyMs: 60 * 60_000, run: (rpc) => runDigests(rpc, { mailer, appUrl, actionSecret: process.env["ACTION_LINK_SECRET"]?.trim() || undefined }) });
+  }
+  // Sorting contact-form messages: only with an AI provider configured; without one they stay unsorted (still shown).
+  const ai = providerFromEnv(process.env);
+  if (ai) {
+    const dailyCap = dailyCapFromEnv(process.env["CONTACT_TRIAGE_DAILY_CAP"]);
+    schedules.push({ name: "contact-triage", everyMs: TRIAGE_EVERY_MS, run: (rpc) => runContactTriage(rpc, { ...ai, dailyCap }) });
+  }
+  startSchedules(postgrestRpc(dbUrl, dbKey), { schedules });
+  console.log(`[alembic-worker] schedules on: ${schedules.map((s) => s.name).join(", ")}`);
+} else {
+  console.log("[alembic-worker] schedules off (SUPABASE_URL / SUPABASE_SECRET_KEY not set)");
+}

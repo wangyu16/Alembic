@@ -1,0 +1,8 @@
+cff-version: 1.2.0
+message: "If you use this open educational resource, please cite it."
+type: dataset
+title: "{{title}}"
+authors:
+  - name: "{{authors}}"
+license: {{licence}}
+url: "{{url}}"

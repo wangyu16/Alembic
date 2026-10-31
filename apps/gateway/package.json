@@ -1,0 +1,14 @@
+{
+  "name": "@alembic/gateway",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AI gateway (C2): per-job keys, Anthropic pass-through with streaming, metering charged to the ledger, no prompt storage.",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "postgres": "^3.4.9"
+  }
+}

@@ -14,6 +14,8 @@
  * | `reconcile` | 10 per 10 minutes and 60 per day per USER ("Check for outside changes") | Postgres, in-process fallback |
  * | `a11yAuto`  | 30 per hour and 200 per day per COURSE (the automatic accessibility check) | Postgres, in-process fallback |
  * | `a11yCheck` | 10 per 10 minutes and 60 per day per USER ("Check now" on a published course) | Postgres, in-process fallback |
+ * | `contact`   | 5 per hour and 20 per day per client network (the contact form) | Postgres, in-process fallback |
+ * | `contactEmail` | 3 per hour and 10 per day per sender EMAIL (the contact form) | Postgres, in-process fallback |
  *
  * Why these numbers: a class behind one NAT opening a document with dozens of
  * embedded figures makes hundreds of `/d` requests a minute, most of them
@@ -69,6 +71,20 @@ export const RATE_LIMITS = {
   a11yCheck: [
     { limit: 10, windowMs: 10 * 60_000 },
     { limit: 60, windowMs: 24 * 60 * 60_000 },
+  ],
+  // The contact form (migration 0062): per client network, and per sender
+  // email (a person writes a few times; these bound a script). The database
+  // adds its own backstop (30 per network per day, 300 per hour overall).
+  contact: [
+    { limit: 5, windowMs: 60 * 60_000 },
+    { limit: 20, windowMs: 24 * 60 * 60_000 },
+  ],
+  // Figure uploads (contract v3 §11.3): every attempt counts, per person and per course (each is a GitHub call).
+  upload: [{ limit: 60, windowMs: 60 * 60_000 }],
+  uploadCourse: [{ limit: 200, windowMs: 60 * 60_000 }],
+  contactEmail: [
+    { limit: 3, windowMs: 60 * 60_000 },
+    { limit: 10, windowMs: 24 * 60 * 60_000 },
   ],
 } as const satisfies Record<string, readonly RateRule[]>;
 
