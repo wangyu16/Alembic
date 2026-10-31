@@ -108,6 +108,7 @@ class FakeRepo implements WorkingRepo {
 }
 
 class MemQueue implements QueueStore {
+  async changesetBlocked(): Promise<string | null> { return null; }
   rows: Array<QueueRow & { status: string; seq: number; nextAt: number; result?: unknown; error?: string }> = [];
   roles = new Map<string, Role>();
   versions = new Map<string, string>(); // sha256 → text (what Alembic can still find)

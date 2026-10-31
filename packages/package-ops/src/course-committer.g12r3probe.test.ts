@@ -75,6 +75,7 @@ class FakeRepo implements WorkingRepo {
 
 /** Mirrors migration 0037: claim = processing at this attempt; planned_shas; last_retry_at as a seq mark. */
 class MemQueue implements QueueStore {
+  async changesetBlocked(): Promise<string | null> { return null; }
   rows: Array<QueueRow & { status: string; seq: number; result?: unknown; plannedShas: string[] }> = [];
   roles = new Map<string, Role>();
   versions = new Map<string, string>();

@@ -53,7 +53,7 @@ describe("committer over the real queue SQL", () => {
     const pkg = await seedPackage(db, { owner });
     const store = new SqlQueueStore(sql);
     const base = "# A\n\n## S1\n\nx\n\n## S2\n\ny\n";
-    const full: QueueStore = { ...store, acquire: store.acquire.bind(store), next: store.next.bind(store), finish: store.finish.bind(store), roleOf: store.roleOf.bind(store), baseText: async (_p, _path, v) => (v === h(base) ? base : undefined) };
+    const full: QueueStore = { ...store, acquire: store.acquire.bind(store), next: store.next.bind(store), finish: store.finish.bind(store), roleOf: store.roleOf.bind(store), changesetBlocked: store.changesetBlocked.bind(store), baseText: async (_p, _path, v) => (v === h(base) ? base : undefined) };
     const repo = fakeRepo({ "study-guide/a.md": base });
     const a = await store.insert({ packageId: pkg, kind: "sync", idem: "a", actorId: owner, payload: { files: [{ path: "study-guide/a.md", baseVersion: h(base), text: base.replace("x", "X") }], fromOpenEditor: true } });
     const b = await store.insert({ packageId: pkg, kind: "sync", idem: "b", actorId: owner, payload: { files: [{ path: "study-guide/a.md", baseVersion: h(base), text: base.replace("y", "Y") }], fromOpenEditor: true } });
@@ -72,7 +72,7 @@ describe("committer over the real queue SQL", () => {
     const repo = fakeRepo({ "study-guide/a.md": "x" });
     await store.insert({ packageId: pkg, kind: "sync", idem: "c", actorId: co, payload: { files: [{ path: "study-guide/a.md", baseVersion: h("x"), text: "y" }] } });
     await db.query(`delete from public.course_members where package_id = $1 and user_id = $2`, [pkg, co]);
-    const full: QueueStore = { acquire: store.acquire.bind(store), next: store.next.bind(store), finish: store.finish.bind(store), roleOf: store.roleOf.bind(store), baseText: async () => undefined };
+    const full: QueueStore = { acquire: store.acquire.bind(store), next: store.next.bind(store), finish: store.finish.bind(store), roleOf: store.roleOf.bind(store), changesetBlocked: store.changesetBlocked.bind(store), baseText: async () => undefined };
     await drainCourse(pkg, "w1", full, repo);
     const { rows } = await db.query<{ status: string }>(`select status from public.write_queue where package_id = $1`, [pkg]);
     expect(rows[0]!.status).toBe("refused");
@@ -93,7 +93,7 @@ describe("committer over the real queue SQL", () => {
     const store = new SqlQueueStore(sql);
     expect(await store.acquire(pkg, "w1")).not.toBeNull();
     const repo = fakeRepo({});
-    const full: QueueStore = { acquire: store.acquire.bind(store), next: store.next.bind(store), finish: store.finish.bind(store), roleOf: store.roleOf.bind(store), baseText: async () => undefined };
+    const full: QueueStore = { acquire: store.acquire.bind(store), next: store.next.bind(store), finish: store.finish.bind(store), roleOf: store.roleOf.bind(store), changesetBlocked: store.changesetBlocked.bind(store), baseText: async () => undefined };
     expect(await drainCourse(pkg, "w2", full, repo)).toBe(0);
   });
 });
@@ -102,7 +102,7 @@ describe("Door C undo (system rows with force)", () => {
   it("restores exactly the last accepted state, ahead of other rows; the flag does nothing on a sync row", async () => {
     const pkg = await seedPackage(db, { owner });
     const store = new SqlQueueStore(sql);
-    const full: QueueStore = { acquire: store.acquire.bind(store), next: store.next.bind(store), finish: store.finish.bind(store), roleOf: store.roleOf.bind(store), baseText: async () => undefined };
+    const full: QueueStore = { acquire: store.acquire.bind(store), next: store.next.bind(store), finish: store.finish.bind(store), roleOf: store.roleOf.bind(store), changesetBlocked: store.changesetBlocked.bind(store), baseText: async () => undefined };
     const repo = fakeRepo({ "study-guide/a.md": "kept\n", ".alembic/state.json": "{\"pushed\":true}", "random/x.txt": "pushed" });
     // A member's sync claiming force is just a sync (a different base → both changed, not forced).
     await store.insert({ packageId: pkg, kind: "sync", idem: "s1", actorId: owner, payload: { files: [{ path: "study-guide/a.md", baseVersion: h("old\n"), text: "mine\n" }], force: true } });

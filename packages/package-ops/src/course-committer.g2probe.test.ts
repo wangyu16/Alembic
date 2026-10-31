@@ -77,6 +77,7 @@ class FakeRepo implements WorkingRepo {
 }
 
 class MemQueue implements QueueStore {
+  async changesetBlocked(): Promise<string | null> { return null; }
   rows: Array<QueueRow & { status: string; seq: number; result?: unknown }> = [];
   roles = new Map<string, Role>();
   versions = new Map<string, string>();

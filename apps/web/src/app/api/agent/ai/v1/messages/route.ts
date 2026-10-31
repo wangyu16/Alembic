@@ -14,6 +14,8 @@ export async function POST(req: Request) {
   const gateway = process.env["TRY_GATEWAY_URL"];
   if (!gateway) return Response.json({ type: "error", error: { type: "gateway_error", message: "the assistant isn't available here" } }, { status: 503 });
   if (Number(req.headers.get("content-length") ?? "0") > MAX) return Response.json({ type: "error", error: { type: "gateway_error", message: "too large" } }, { status: 413 });
+  // A call with no credential at all never reaches the gateway (C4 attack round L6).
+  if (!req.headers.get("x-alembic-sandbox") && !req.headers.get("x-api-key")) return Response.json({ type: "error", error: { type: "authentication_error", message: "no credential" } }, { status: 401 });
   const headers: Record<string, string> = {};
   for (const h of PASS) { const v = req.headers.get(h); if (v) headers[h] = v; }
   // From a sandbox (§18): the job's own gateway key, opened here; the agent sends only its sandbox key and job id.

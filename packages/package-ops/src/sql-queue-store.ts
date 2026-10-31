@@ -82,6 +82,19 @@ export class SqlQueueStore implements Omit<QueueStore, "baseText"> {
     await this.sql.query(`select public.committer_record_planned($1, $2, $3, $4, $5::text[])`, [rowId, holder, fence, attempts, shas]);
   }
 
+  /** An agent changeset may not run on an archived (read-only) course or while the assistant is paused (agent-runtime §15 M4). */
+  async changesetBlocked(row: QueueRow): Promise<string | null> {
+    const { rows } = await this.sql.query<{ archived: boolean; state: string | null }>(
+      `select p.archived_at is not null as archived, s.state from public.packages p left join public.agent_sessions s on s.package_id = p.id where p.id = $1`,
+      [row.packageId],
+    );
+    const r = rows[0];
+    if (!r) return "the course no longer exists";
+    if (r.archived) return "the course is read-only";
+    if (r.state === "paused:owner" || r.state === "paused:handout") return "the assistant is paused for this course";
+    return null;
+  }
+
   async roleOf(packageId: string, userId: string): Promise<Role> {
     const { rows } = await this.sql.query<{ r: string | null }>(`select public.course_role_of($1, $2) as r`, [packageId, userId]);
     const r = rows[0]?.r;

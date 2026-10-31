@@ -52,5 +52,10 @@ describe("agent runtime records (0069)", () => {
     expect(await attempt(() => asRole(db, "authenticated", () => db.query(`update public.agent_changesets set status = 'done'`), owner))).toBe("refused");
     expect(await attempt(() => asRole(db, "authenticated", () => db.query(`update public.agent_jobs set budget_credits = 1000`), owner))).toBe("refused");
     expect(await attempt(() => asRole(db, "anon", () => db.query(`select 1 from public.agent_jobs`)))).toBe("refused");
+    // Members never read a job's keys or sandbox details (0072; C4 attack round L5).
+    for (const col of ["gateway_key_sealed", "gateway_key_id", "signing_kid", "ai_job_id", "course_user"]) {
+      expect(await attempt(() => asRole(db, "authenticated", () => db.query(`select ${col} from public.agent_jobs`), owner)), col).toBe("refused");
+    }
+    expect(await attempt(() => asRole(db, "authenticated", () => db.query(`select id, task, status, summary, spent_credits from public.agent_jobs`), owner))).toBe("ok");
   });
 });

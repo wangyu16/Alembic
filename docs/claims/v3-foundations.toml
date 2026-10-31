@@ -404,6 +404,7 @@ oracle = "conformance"
 bound_to = [
   "packages/package-ops/src/agent-seal.test.ts :: opens only for its own job, under the key that sealed it; a tampered or foreign value opens to nothing",
   "apps/web/src/lib/agent-endpoint.sql.test.ts :: the sandbox's key and a job running in that sandbox get in, and the AI call gets the job's own gateway key; anything else is refused",
+  "apps/web/src/lib/agent-orchestrator.sql.test.ts :: the job's secret is stored only as a hash",
 ]
 
 [[claim]]
@@ -412,9 +413,24 @@ claim = "The orchestrator starts a waiting job only when its sandbox has room: t
 oracle = "conformance"
 bound_to = [
   "apps/web/src/lib/agent-orchestrator.sql.test.ts :: a waiting job starts: its hold, a gateway key sealed for the server, the course's own user, the harness launched",
-  "apps/web/src/lib/agent-orchestrator.sql.test.ts :: the testing sandbox runs one job at a time: the next waits",
-  "apps/web/src/lib/agent-orchestrator.sql.test.ts :: a finished job: its result is the hand-over note, the key is revoked, the hold released; the next job starts",
-  "apps/web/src/lib/agent-orchestrator.sql.test.ts :: a job past its time limit is stopped and failed",
-  "apps/web/src/lib/agent-orchestrator.sql.test.ts :: without enough credit a job fails to start, holding nothing; the session is free again",
-  "apps/web/src/lib/agent-orchestrator.sql.test.ts :: a job a person stopped: its process is ended, its key revoked and its hold released",
+  "apps/web/src/lib/agent-orchestrator.sql.test.ts :: the testing sandbox runs one job at a time, and one worker acts on it at a time",
+  "apps/web/src/lib/agent-orchestrator.sql.test.ts :: a check that didn't come back whole ends nothing",
+  "apps/web/src/lib/agent-orchestrator.sql.test.ts :: a finished job: its result is the hand-over note, the course user's processes end, the key is revoked; the hold settles after any call in flight",
+  "apps/web/src/lib/agent-orchestrator.sql.test.ts :: a job past its time limit is stopped and failed, in plain words",
+  "apps/web/src/lib/agent-orchestrator.sql.test.ts :: without enough credit a job fails to start, holding nothing; a start that fails says so plainly",
+  "apps/web/src/lib/agent-orchestrator.sql.test.ts :: a job a person stopped: its process is ended and its key revoked; its credit settles later",
+  "apps/web/src/lib/agent-orchestrator.sql.test.ts :: a claim that never got started (a crash mid-start) is failed after five minutes and frees the sandbox",
+  "apps/web/src/lib/agent-orchestrator.sql.test.ts :: the job of someone who is no longer an editor ends",
 ]
+
+[[claim]]
+id = "K1.44"
+claim = "C4 attack round (2026-10-31): an agent changeset is re-checked when it runs (the course read-only or the assistant paused refuses it; the check is a required part of the queue store); hand-ins, records hand-ins and bytes per job per hour, open proposals per job and the public records' 1 MB are bounded; a dependency names only the job's own hand-ins; a sandbox running more jobs than it may hold acts for none; a job is named by its own secret, not its id alone."
+oracle = "conformance"
+bound_to = [
+  "apps/web/src/lib/agent-endpoint.sql.test.ts :: at run time an agent changeset is refused on a paused or read-only course; a read-only course takes no hand-in",
+  "apps/web/src/lib/agent-endpoint.sql.test.ts :: proposals waiting for the owner are capped per job; another job's hand-ins can't be named as a dependency",
+  "apps/web/src/lib/agent-endpoint.sql.test.ts :: public records stay within 1 MB in all",
+  "apps/web/src/lib/agent-endpoint.sql.test.ts :: a sandbox with more jobs running than it may hold acts for none of them",
+]
+

@@ -6,7 +6,7 @@
 import { createHash } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { PGlite } from "@electric-sql/pglite";
-import { sandboxKeyHash, sealForJob, signAgentToken } from "@alembic/package-ops";
+import { sandboxKeyHash, sealForJob, signAgentToken, SqlQueueStore } from "@alembic/package-ops";
 import { freshDatabase, seedPackage, seedUser } from "./discovery-pglite";
 
 vi.mock("server-only", () => ({}));
@@ -19,7 +19,7 @@ vi.mock("@/lib/course-v3", () => ({
   courseRepo: async () => ({
     owner: "o", name: "r",
     repo: { head: async () => "f".repeat(40), readFile: async (_ref: string, p: string) => files.get(p) ?? null },
-    client: { isAncestor: async (_coords: unknown, c: string) => c === "e".repeat(40), compareCommits: async () => [{ path: "study-guide/gases.md", status: "modified" }, { path: "private/sources/s1.json", status: "added" }] },
+    client: { listTreeEntries: async () => ({ truncated: false, entries: [...files].map(([path, t]) => ({ path, mode: "100644", type: "blob", sha: "x", size: Buffer.byteLength(t) })) }), isAncestor: async (_coords: unknown, c: string) => c === "e".repeat(40), compareCommits: async () => [{ path: "study-guide/gases.md", status: "modified" }, { path: "private/sources/s1.json", status: "added" }] },
   }),
 }));
 
@@ -53,16 +53,20 @@ afterAll(async () => { await db?.close(); });
 
 describe("a sandbox acting for its running job (agent-runtime §18)", () => {
   const SB_KEY = "sbk_" + "x".repeat(40);
-  const sreq = (key: string, job: string) => new Request("https://x/api/agent/file", { headers: { "x-alembic-sandbox": key, "x-alembic-job": job } });
+  const SECRET = "jsk_" + "s".repeat(40);
+  const sreq = (key: string, job: string, secret = SECRET) => new Request("https://x/api/agent/file", { headers: { "x-alembic-sandbox": key, "x-alembic-job": job, "x-alembic-job-secret": secret } });
   it("[K1.42] the sandbox's key and a job running in that sandbox get in, and the AI call gets the job's own gateway key; anything else is refused", async () => {
     await db.query(`insert into public.agent_sandboxes (ref, key_hash) values ('instabox:m_test', $1) on conflict do nothing`, [sandboxKeyHash(SB_KEY)]);
     await db.query(`update public.agent_sessions set sandbox_ref = 'instabox:m_test', state = 'running' where id = $1`, [SESSION]);
-    await db.query(`update public.agent_jobs set gateway_key_sealed = $2 where id = $1`, [JOB, sealForJob("agk_job_key_value_0123456789abcdef", JOB, KEY)]);
+    await db.query(`update public.agent_jobs set gateway_key_sealed = $2, job_secret_hash = $3 where id = $1`, [JOB, sealForJob("agk_job_key_value_0123456789abcdef", JOB, KEY), sandboxKeyHash(SECRET)]);
     const a = await agentAuth(sreq(SB_KEY, JOB));
     expect(a.ok && a.ctx.claims).toEqual({ package_id: pkg, session_id: SESSION, job_id: JOB, invoker_id: co });
     expect(await sandboxGatewayKey(sreq(SB_KEY, JOB))).toBe("agk_job_key_value_0123456789abcdef");
     expect((await agentAuth(sreq("sbk_" + "y".repeat(40), JOB))).ok).toBe(false); // another key
     expect((await agentAuth(sreq(SB_KEY, "aj-bbbbbbbbbbbb"))).ok).toBe(false); // a job that isn't running here
+    // Knowing the job id is not enough: the job's own secret is needed (attack round H1).
+    expect((await agentAuth(sreq(SB_KEY, JOB, "jsk_" + "t".repeat(40)))).ok).toBe(false);
+    expect(await sandboxGatewayKey(sreq(SB_KEY, JOB, "jsk_" + "t".repeat(40)))).toBeNull();
     expect(await sandboxGatewayKey(sreq("sbk_" + "y".repeat(40), JOB))).toBeNull();
     await db.query(`update public.agent_sandboxes set retired_at = now() where ref = 'instabox:m_test'`);
     expect((await agentAuth(sreq(SB_KEY, JOB))).ok).toBe(false); // a retired sandbox
@@ -135,3 +139,54 @@ describe("the agent endpoints (agent-runtime §2, §4, §14, §15)", () => {
     expect(await handIn(await ctx(), { changesetId: "cs-paused-01", files: [{ path: "practice/x.md", baseVersion: null, text: "x" }] })).toMatchObject({ status: 409, body: { status: "refused" } });
   });
 });
+
+describe("the C4 attack round's budgets and re-checks (agent-runtime §14–§15)", () => {
+  it("[K1.44] at run time an agent changeset is refused on a paused or read-only course; a read-only course takes no hand-in", async () => {
+    const store = new SqlQueueStore({ query: async (text: string, params?: unknown[]) => ({ rows: (await db.query(text, params ?? [])).rows as never[] }) });
+    const row = { id: "x", packageId: pkg, kind: "changeset" as const, actorId: null, invokerId: co, attempts: 1, payload: { files: [] } };
+    await db.query(`update public.agent_sessions set state = 'running' where id = $1`, [SESSION]);
+    expect(await store.changesetBlocked(row)).toBeNull();
+    await db.query(`update public.agent_sessions set state = 'paused:owner' where id = $1`, [SESSION]);
+    expect(await store.changesetBlocked(row)).toBe("the assistant is paused for this course");
+    await db.query(`update public.agent_sessions set state = 'running' where id = $1`, [SESSION]);
+    await db.query(`update public.packages set archived_at = now() where id = $1`, [pkg]);
+    expect(await store.changesetBlocked(row)).toBe("the course is read-only");
+    expect(await handIn(await ctx(), { changesetId: "cs-archived-1", files: [{ path: "practice/a.md", baseVersion: null, text: "a" }] })).toMatchObject({ status: 409, body: { reason: "the course is read-only" } });
+    await db.query(`update public.packages set archived_at = null where id = $1`, [pkg]);
+  });
+
+  it("[K1.44] proposals waiting for the owner are capped per job; another job's hand-ins can't be named as a dependency", async () => {
+    const c = await ctx();
+    const ops = (n: number) => Array.from({ length: n }, (_, k) => ({ op: "renameChapter", slug: "gases", title: `Gas ${k}` }));
+    expect((await handIn(c, { changesetId: "cs-props-01", courseOps: ops(10) })).status).toBe(202);
+    expect(await handIn(c, { changesetId: "cs-props-02", courseOps: ops(10) })).toMatchObject({ status: 409, body: { status: "refused" } }); // 1 + 10 + 10 > 20 open
+    await db.query(`insert into public.agent_jobs (id, session_id, package_id, invoker_id, payer, task, status, budget_credits) values ('aj-otherjob0001', $1, $2, $3, 'invoker', 't', 'done', 5)`, [SESSION, pkg, co]);
+    await db.query(`insert into public.agent_changesets (id, package_id, job_id, invoker_id, status) values ('cs-other-job1', $1, 'aj-otherjob0001', $2, 'done')`, [pkg, co]);
+    const r = await handIn(c, { changesetId: "cs-dep-00001", dependsOn: "cs-other-job1", files: [{ path: "practice/b.md", baseVersion: null, text: "b" }] });
+    expect(r.body["reason"]).toBe("hand in the change this one depends on first"); // the same answer as for an unknown id
+  });
+
+  it("[K1.44] public records stay within 1 MB in all", async () => {
+    const c = await ctx();
+    files.set("provenance/coursewerk/ATTRIBUTION.md", "x".repeat(900_000));
+    expect(await handIn(c, { changesetId: "cs-pubrec-01", files: [{ path: "provenance/coursewerk/CHECKED.json", baseVersion: null, text: "y".repeat(200_000) }] }))
+      .toMatchObject({ status: 409, body: { reason: "the public records would be larger than 1 MB in all" } });
+    files.delete("provenance/coursewerk/ATTRIBUTION.md");
+  });
+
+  it("[K1.44] a sandbox with more jobs running than it may hold acts for none of them", async () => {
+    const SB = "sbk_" + "z".repeat(40), SECRET = "jsk_" + "q".repeat(40);
+    await db.query(`insert into public.agent_sandboxes (ref, key_hash, max_jobs) values ('instabox:m_two', $1, 1)`, [sandboxKeyHash(SB)]);
+    const p2 = await seedPackage(db, { owner });
+    await db.query(`insert into public.course_members (package_id, user_id, role) values ($1, $2, 'co-author')`, [p2, co]);
+    await db.query(`insert into public.agent_sessions (id, package_id, state, sandbox_ref) values ('as-twotwotwotwo', $1, 'running', 'instabox:m_two')`, [p2]);
+    await db.query(`insert into public.agent_jobs (id, session_id, package_id, invoker_id, payer, task, status, budget_credits, job_secret_hash) values ('aj-twotwotwo001', 'as-twotwotwotwo', $1, $2, 'invoker', 't', 'running', 5, $3)`, [p2, co, sandboxKeyHash(SECRET)]);
+    const sreq = new Request("https://x/api/agent/file", { headers: { "x-alembic-sandbox": SB, "x-alembic-job": "aj-twotwotwo001", "x-alembic-job-secret": SECRET } });
+    expect((await agentAuth(sreq)).ok).toBe(true);
+    const p3 = await seedPackage(db, { owner });
+    await db.query(`insert into public.agent_sessions (id, package_id, state, sandbox_ref) values ('as-threethreeth', $1, 'running', 'instabox:m_two')`, [p3]);
+    await db.query(`insert into public.agent_jobs (id, session_id, package_id, invoker_id, payer, task, status, budget_credits) values ('aj-threethree01', 'as-threethreeth', $1, $2, 'invoker', 't', 'running', 5)`, [p3, owner]);
+    expect((await agentAuth(sreq)).ok).toBe(false);
+  });
+});
+

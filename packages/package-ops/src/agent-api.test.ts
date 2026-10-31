@@ -40,6 +40,8 @@ describe("reading the agent's hand-in (agent-runtime §11, §14, §15)", () => {
     expect(ok({ changesetId: "cs-0001-abc", files: [{ path: "practice/a.md", baseVersion: null, text: "a" }, { path: "practice/a.md", baseVersion: null, text: "b" }] }).ok).toBe(false);
     for (const id of ["short", "x".repeat(65), "has space!", 7]) expect(ok({ changesetId: id, files: [{ path: "practice/a.md", baseVersion: null, text: "a" }] }).ok).toBe(false);
     expect(ok({ changesetId: "cs-0001-abc" }).ok).toBe(false); // empty
+    // A path no place of the course holds is refused, never an exception (C4 attack round L1).
+    for (const p of ["weird/x.md", "evil.md"]) expect(ok({ changesetId: "cs-0001-abc", files: [{ path: p, baseVersion: null, text: "x" }] })).toMatchObject({ ok: false });
     expect(ok({ changesetId: "cs-0001-abc", courseOps: [{ op: "setLicense", license: "MIT; drop table" }] }).ok).toBe(false);
   });
 
@@ -52,8 +54,8 @@ describe("reading the agent's hand-in (agent-runtime §11, §14, §15)", () => {
     expect(ok({ changesetId: "cs-0001-abc", files: many(HANDIN_LIMITS.recordFiles + 1, "provenance/coursewerk") }).ok).toBe(false);
     const big = "x".repeat(1024 * 1024);
     expect(ok({ changesetId: "cs-0001-abc", files: Array.from({ length: 5 }, (_, k) => ({ path: `private/coursewerk/r${k}.json`, baseVersion: null, text: big })) }).ok).toBe(false);
-    expect(ok({ changesetId: "cs-0001-abc", courseOps: Array.from({ length: 21 }, () => ({ op: "renameChapter", slug: "gases", title: "G" })) }).ok).toBe(false);
-    expect(parseDigest({ questions: Array.from({ length: 51 }, (_, k) => ({ id: `q${k}`, text: "Why?" })) }).ok).toBe(false);
+    expect(ok({ changesetId: "cs-0001-abc", courseOps: Array.from({ length: 11 }, () => ({ op: "renameChapter", slug: "gases", title: "G" })) }).ok).toBe(false);
+    expect(parseDigest({ questions: Array.from({ length: 21 }, (_, k) => ({ id: `q${k}`, text: "Why?" })) }).ok).toBe(false);
   });
 
   it("[K1.40] questions are plain one-line text with unique ids and a recommendation among the choices", () => {

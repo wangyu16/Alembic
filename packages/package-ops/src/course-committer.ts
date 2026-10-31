@@ -80,7 +80,7 @@ export interface QueueStore {
    * Why an agent changeset may not run now (the course is read-only, the session is paused by the owner or for a
    * handout), or null. Asked at execution, with the other re-checks (agent-runtime §15, M4).
    */
-  changesetBlocked?(row: QueueRow): Promise<string | null>;
+  changesetBlocked(row: QueueRow): Promise<string | null>;
   /** Record the commits built for this attempt, before the ref moves. */
   recordPlanned?(rowId: string, holder: string, fence: string, attempts: number, shas: string[]): Promise<void>;
 }
@@ -234,7 +234,7 @@ async function permitted(row: QueueRow, store: QueueStore): Promise<string | nul
     if (invoker === "none") return "the person who asked is no longer a member";
     // Records have no edit action: they need an editor who asked, as any changeset does (the check below for content).
     if (!["owner", "deputy", "co-author"].includes(invoker)) return "the person who asked can't edit this course";
-    const blocked = store.changesetBlocked ? await store.changesetBlocked(row) : null;
+    const blocked = await store.changesetBlocked(row);
     if (blocked) return blocked;
     for (const f of row.payload.files) {
       if (isRecordsPath(f.path)) continue; // the type package's records: only its tools write them, never combined

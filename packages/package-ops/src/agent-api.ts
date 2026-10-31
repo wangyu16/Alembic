@@ -24,13 +24,24 @@ export const HANDIN_LIMITS = {
   fileBytes: 4 * 1024 * 1024,
   /** Record text in one hand-in (§15 M2). */
   recordBytes: 4 * 1024 * 1024,
-  courseOps: 20,
-  questions: 50,
+  courseOps: 10,
+  /** Questions in a digest; one open digest per person (§14.1, §15 M5), so this is also the open-question cap. */
+  questions: 20,
   questionText: 500,
   choices: 6,
   choiceText: 120,
   /** Open question items per invoker per course (§14.1, §15 M5). */
   openQuestions: 20,
+  /** Open proposals (course operations awaiting a lead) per job. */
+  openProposals: 20,
+  /** Hand-ins per job per hour. */
+  handInsPerHour: 120,
+  /** Records commits and bytes per job per hour (§14.5). */
+  recordHandInsPerHour: 30,
+  recordBytesPerHour: 20 * 1024 * 1024,
+  /** Public records in total (§14, "public records"), and all records of a site (§13). */
+  publicRecordBytes: 1024 * 1024,
+  siteRecordBytes: 50 * 1024 * 1024,
 } as const;
 
 export interface DigestQuestion { id: string; text: string; choices?: string[]; recommended?: string }
@@ -74,7 +85,8 @@ export function parseHandIn(body: unknown, invoker: Role): ParseResult<HandIn> {
     if (p !== raw) return { error: `${what}: write the path in its plain form (${p})` };
     return p;
   };
-  const writable = (p: string) => isRecordsPath(p) || canWritePath("agent", p, { invoker });
+  // A path no place of the course holds is simply not writable (never an exception: L1 of the C4 attack round).
+  const writable = (p: string) => { try { return isRecordsPath(p) || canWritePath("agent", p, { invoker }); } catch { return false; } };
 
   const files: RowFile[] = [];
   let content = 0, records = 0, recordBytes = 0;

@@ -11,7 +11,7 @@ import {
   appliedAppend, openForJob, parseEvent, parseHandIn, sandboxKeyHash, SqlQueueStore, verifyAgentToken, HANDIN_LIMITS,
   type AgentClaims, type AgentKey, type HandIn, type RowFile, type SqlClient,
 } from "@alembic/package-ops";
-import { fileKind, isServerOnlyPath, normalizePath, type Role } from "@alembic/package-contract";
+import { fileKind, isRecordsPath, isServerOnlyPath, normalizePath, type Role } from "@alembic/package-contract";
 import { directDb } from "@/lib/db";
 import { courseRepo } from "@/lib/course-v3";
 
@@ -39,14 +39,21 @@ export function agentKeys(): AgentKey[] {
 export async function sandboxJob(req: Request, sql: SqlClient): Promise<{ claims: AgentClaims; sealed: string | null } | null> {
   const key = req.headers.get("x-alembic-sandbox") ?? "";
   const job = req.headers.get("x-alembic-job") ?? "";
-  if (!/^[A-Za-z0-9_-]{32,200}$/.test(key) || !/^aj-[a-z0-9]{12}$/.test(job)) return null;
+  // The job's own secret (only its course user can read it), so knowing a job id is never enough (attack round H1).
+  const secret = req.headers.get("x-alembic-job-secret") ?? "";
+  if (!/^[A-Za-z0-9_-]{32,200}$/.test(key) || !/^aj-[a-z0-9]{12}$/.test(job) || !/^[A-Za-z0-9_-]{32,100}$/.test(secret)) return null;
   const { rows } = await sql.query<{ package_id: string; session_id: string; invoker_id: string | null; sealed: string | null }>(
     `select j.package_id, j.session_id, j.invoker_id::text as invoker_id, j.gateway_key_sealed as sealed
        from public.agent_jobs j
        join public.agent_sessions s on s.id = j.session_id and s.package_id = j.package_id
        join public.agent_sandboxes b on b.ref = s.sandbox_ref and b.retired_at is null
-      where j.id = $1 and j.status = 'running' and b.key_hash = $2`,
-    [job, sandboxKeyHash(key)],
+      where j.id = $1 and j.status = 'running' and b.key_hash = $2 and j.job_secret_hash = $3
+        -- The person who asked must still be an editor, for AI calls too (attack round B L2).
+        and public.course_role_of(j.package_id, j.invoker_id) in ('owner', 'deputy', 'co-author')
+        -- More jobs running in this sandbox than it may hold: no job can be told apart safely (C4 attack round L4).
+        and (select count(*) from public.agent_jobs j2 join public.agent_sessions s2 on s2.id = j2.session_id
+              where j2.status = 'running' and s2.sandbox_ref = b.ref) <= b.max_jobs`,
+    [job, sandboxKeyHash(key), sandboxKeyHash(secret)],
   );
   const r = rows[0];
   if (!r || !r.invoker_id) return null;
@@ -115,6 +122,25 @@ export async function handIn(ctx: AgentCtx, raw: unknown): Promise<Reply> {
   const refuse = async (reason: string): Promise<Reply> => { await setStatus(sql, h.changesetId, "refused", reason); return { status: 409, body: { changesetId: h.changesetId, status: "refused", reason } }; };
 
   if (ctx.sessionState === "paused:owner" || ctx.sessionState === "paused:handout") return refuse("the assistant is paused for this course");
+  const course = await sql.query<{ archived: boolean }>(`select archived_at is not null as archived from public.packages where id = $1`, [claims.package_id]);
+  if (course.rows[0]?.archived !== false) return refuse("the course is read-only");
+
+  // Budgets per job and hour (C4 attack round M2, M3; §14.5): hand-ins, records hand-ins and bytes, open proposals.
+  const hour = await sql.query<{ n: number; rec: number; bytes: string; proposals: number }>(
+    `select count(*)::int as n,
+            count(*) filter (where record_bytes > 0)::int as rec,
+            coalesce(sum(record_bytes), 0)::text as bytes,
+            (select count(*)::int from public.needs_you y where y.package_id = $2 and y.kind = 'approve' and y.state in ('waiting','shown')
+               and y.payload->>'from' = 'assistant' and y.payload->>'jobId' = $1) as proposals
+       from public.agent_changesets where job_id = $1 and created_at > now() - interval '1 hour' and id <> $3`,
+    [claims.job_id, claims.package_id, h.changesetId],
+  );
+  const used = hour.rows[0]!;
+  if (used.n >= HANDIN_LIMITS.handInsPerHour) return refuse("too many hand-ins this hour; try again later");
+  if (h.recordBytes > 0 && (used.rec >= HANDIN_LIMITS.recordHandInsPerHour || Number(used.bytes) + h.recordBytes > HANDIN_LIMITS.recordBytesPerHour)) {
+    return refuse("too many records this hour; try again later");
+  }
+  if (h.courseOps.length && used.proposals + h.courseOps.length > HANDIN_LIMITS.openProposals) return refuse("too many proposals are waiting for the owner; wait for them to be decided");
 
   // The question digest (§14.1, §15 M5): raised at receipt, deduped by changesetId; a new digest replaces the
   // unanswered questions of the old one; over 20 open question items the questions are refused, never queued.
@@ -147,7 +173,7 @@ export async function handIn(ctx: AgentCtx, raw: unknown): Promise<Reply> {
       const to = leads.rows.filter((l) => op.op !== "setLicense" || l.role === "owner").map((l) => l.user_id);
       await sql.query(
         `select public.needs_you_raise($1, 'approve', 'platform', $2, $3::text::jsonb, null, null, false, $4::uuid[], false)`,
-        [claims.package_id, `agent-op:${h.changesetId}:${k}`, JSON.stringify({ from: "assistant", action: op, changesetId: h.changesetId, invokerId: claims.invoker_id }), to],
+        [claims.package_id, `agent-op:${h.changesetId}:${k}`, JSON.stringify({ from: "assistant", action: op, changesetId: h.changesetId, jobId: claims.job_id, invokerId: claims.invoker_id }), to],
       );
     }
   }
@@ -165,6 +191,23 @@ export async function handIn(ctx: AgentCtx, raw: unknown): Promise<Reply> {
     }
   }
 
+  // Records' size budgets (§13, §14 "public records"; C4 attack round M3): public records at most 1 MB in all, a site's
+  // records at most 50 MB, measured on the course's tree with this hand-in's records at their new sizes.
+  const recordWrites = files.filter((f) => isRecordsPath(f.path) && typeof f.text === "string");
+  if (recordWrites.length) {
+    const course = await courseRepo(claims.package_id);
+    if (!course) return refuse("the course's files can't be reached now; try again");
+    const head = await course.repo.head();
+    const tree = await course.client.listTreeEntries({ owner: course.owner, repo: course.name }, head);
+    if (tree.truncated) return refuse("the course has too many files to check its records");
+    const size = new Map(tree.entries.filter((e) => e.type === "blob" && isRecordsPath(e.path)).map((e) => [e.path, e.size ?? 0]));
+    for (const f of recordWrites) size.set(f.path, Buffer.byteLength(f.text!, "utf8"));
+    let all = 0, pub = 0;
+    for (const [p, n] of size) { all += n; if (!p.startsWith("private/")) pub += n; }
+    if (pub > HANDIN_LIMITS.publicRecordBytes) return refuse("the public records would be larger than 1 MB in all");
+    if (all > HANDIN_LIMITS.siteRecordBytes) return refuse("the records would be larger than 50 MB in all");
+  }
+
   if (!files.length) {
     await setStatus(sql, h.changesetId, h.courseOps.length ? "proposed" : "done");
     return { status: 202, body: { changesetId: h.changesetId, status: h.courseOps.length ? "proposed" : "done" } };
@@ -172,7 +215,7 @@ export async function handIn(ctx: AgentCtx, raw: unknown): Promise<Reply> {
 
   let dependsOnRow: string | null = null;
   if (h.dependsOn) {
-    const { rows } = await sql.query<Registry>(`select id, package_id, job_id, status, queue_row_id::text, reason from public.agent_changesets where id = $1`, [h.dependsOn]);
+    const { rows } = await sql.query<Registry>(`select id, package_id, job_id, status, queue_row_id::text, reason from public.agent_changesets where id = $1 and job_id = $2`, [h.dependsOn, claims.job_id]);
     const d = rows[0];
     if (!d || d.package_id !== claims.package_id) return refuse("hand in the change this one depends on first");
     if (d.status === "refused" || d.status === "failed") return refuse("the change this one depends on didn't land");

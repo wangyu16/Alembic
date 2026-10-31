@@ -33,6 +33,8 @@ export async function startAssistantAction(formData: FormData): Promise<void> {
     `select public.ledger_balance(a.id)::text as b from public.ledger_accounts a where a.kind = 'user' and a.user_id = $1`, [user.id]);
   if (Number(bal.rows[0]?.b ?? 0) < size.hold) return back(packageId, `This needs up to ${size.hold} credits set aside, and you have ${Number(bal.rows[0]?.b ?? 0).toFixed(0)}. Choose a smaller size or add credit.`);
   await sql.query(`insert into public.agent_sessions (id, package_id) values ($1, $2) on conflict (package_id) do nothing`, [id("as"), packageId]);
+  const st = await sql.query<{ state: string }>(`select state from public.agent_sessions where package_id = $1`, [packageId]);
+  if (st.rows[0]?.state?.startsWith("paused")) return back(packageId, "The assistant is paused for this course. The owner can let it go on.");
   try {
     await sql.query(
       `insert into public.agent_jobs (id, session_id, package_id, invoker_id, payer, task, status, budget_credits)

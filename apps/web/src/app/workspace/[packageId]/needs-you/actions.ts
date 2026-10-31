@@ -95,19 +95,25 @@ export async function decideProposalAction(packageId: string, id: string, approv
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return;
   const { data: role } = await supabase.rpc("course_role", { p: packageId });
-  const { data: item } = await supabase.from("needs_you").select("kind, payload").eq("id", id).eq("package_id", packageId).in("state", ["waiting", "shown"]).maybeSingle();
+  const { data: item } = await supabase.from("needs_you").select("kind, payload, addressed_to").eq("id", id).eq("package_id", packageId).in("state", ["waiting", "shown"]).maybeSingle();
   const payload = item?.payload as { from?: string; action?: unknown } | null;
   const op = item?.kind === "approve" && payload?.from === "assistant" ? parseCourseOp(payload.action) : null;
   if (!op) return;
+  // Only the people it was addressed to decide it (C4 attack round A L7).
+  const to = (item?.addressed_to ?? []) as string[];
+  if (to.length && !to.includes(user.id)) return;
   const may = op.op === "setLicense" ? can((role ?? "none") as Role, "license.change") : can((role ?? "none") as Role, "edit.course-files");
   if (!may) return;
+  // Answer first: the item's own lock decides between an Approve and a Decline at the same moment (attack round B L3);
+  // only the answer that won queues the change.
+  const { error } = await supabase.rpc("needs_you_answer", { p_id: id, p_answer: { decision: approve ? "approved" : "declined" } });
+  if (error) return;
   if (approve) {
     try {
-      if (!(await queueCourseOp(packageId, user.id, op, op.op, `item-${id}`))) return;
-    } catch {
-      return; // the same proposal queued by the other decider: theirs stands
+      await queueCourseOp(packageId, user.id, op, op.op, `item-${id}`);
+    } catch (e) {
+      console.error("decideProposal: approved but not queued", (e as Error).message);
     }
   }
-  await supabase.rpc("needs_you_answer", { p_id: id, p_answer: { decision: approve ? "approved" : "declined" } });
   revalidatePath(`/workspace/${packageId}/needs-you`);
 }
