@@ -7,6 +7,24 @@ design, and what is deferred to the future. Complements [Status.md](Status.md)
 ---
 
 
+
+## 2026-10-31 — Agent harness: Claude Code first, then `coursewerk-agent` on pi; Alembic harness-neutral
+
+**Decision (owner).** The hosted assistant starts with Claude Code (headless, the Agent SDK form) running Coursewerk's
+skills. Coursewerk then builds `coursewerk-agent` on pi (minimal TypeScript harness, many providers) and Alembic switches to
+it once it is complete. Production sandboxes: Fly Sprites, with instabox kept as a working second provider behind
+`SandboxProvider`; a one-day comparison on the real C4 harness decides before production.
+
+| # | Ruling | Why |
+|---|---|---|
+| 1 | **Alembic is harness-neutral.** C4's contract with a harness: a command started in the sandbox with the gateway key, the job budget and the hand-in endpoint; results only through the hand-in; questions only through the digest. | Mechanism vs content (FD-09/FD-10): a harness tuned for course authoring is the type package's; switching harnesses never needs an Alembic release; future site types bring their own. |
+| 2 | **Coursewerk's skills stay harness-neutral** (instructions + command-line scripts; nothing that only one harness can run in the core). | The same skills run under Claude Code now, `coursewerk-agent` later, and locally. To raise with the Coursewerk project. |
+| 3 | **Switch by evaluation:** the same GenChem tasks under both harnesses, scored by Coursewerk's own checks, cost and time per task. | Choose by numbers, not taste. |
+
+Supersedes the "harness selection" open item of 2026-08-28.
+
+---
+
 ## 2026-10-30 — Owner rulings: whole-course restore; public or private by place, not by text
 
 Guiding principle (owner): **easy authoring over strict rules.**

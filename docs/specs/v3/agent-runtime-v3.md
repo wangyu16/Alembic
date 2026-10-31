@@ -411,3 +411,12 @@ and AI allowed, not removed); PDF text is at most 2 MB per source and 20 sources
 `proposed | queued | done | refused | failed`. When a job ends normally its pending content changesets stay queued and
 are offered again in the session's next job (fail closed only when the token was revoked). A `setStatus` draft ⇄
 completed proposal goes to the invoker (an editor action, contract §6); `withdrawn` and back stay with the lead.
+
+## 16. The harness (owner, 2026-10-31)
+
+Alembic runs no particular harness. C4 starts a type package's command in the sandbox with three things: the gateway key
+(a short-lived virtual key), the job budget, and the hand-in endpoint with the job token. Everything the job produces comes
+back through the hand-in; every question through the digest (§14, §15). The first harness is Claude Code headless running
+Coursewerk's skills; Coursewerk's own `coursewerk-agent` (on pi) replaces it once complete and once an evaluation on real
+course tasks favours it (DecisionLog 2026-10-31). Production sandboxes: Fly Sprites; instabox stays a working second
+provider.
