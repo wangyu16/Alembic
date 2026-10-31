@@ -114,3 +114,28 @@ describe("course options", () => {
   });
 });
 
+
+describe("the course-website add-on (course-website-addon)", () => {
+  const m = `${JSON.stringify({ schemaVersion: 3, packageId: "pkg-a", title: "Chem", license: "CC-BY-4.0", createdAt: "2026-10-30T00:00:00Z", chapters: [] })}\n`;
+  const uid = () => "doc-x";
+  it("[K1.31] switching it on starts a home page (a draft) and a first term; nothing is overwritten", () => {
+    const r = applyCourseOp(m, new Set(["alembic.json"]), { op: "setAddon", addon: "course-website", on: true }, uid);
+    expect(r.ok && r.manifest.addons).toEqual(["course-website"]);
+    expect(r.ok && r.manifest.terms?.length).toBe(1);
+    expect(r.ok && r.manifest.currentTerm).toBe(r.ok ? r.manifest.terms![0]!.slug : "");
+    expect(r.ok && r.writes.map((w) => w.path)).toEqual(["alembic.json", "home.md"]);
+    const again = applyCourseOp(m, new Set(["alembic.json", "home.md"]), { op: "setAddon", addon: "course-website", on: true }, uid);
+    expect(again.ok && again.writes.map((w) => w.path)).toEqual(["alembic.json"]);
+  });
+  it("[K1.31] a term's slug comes from its title; a new term can start from the last term's pages, never over a file; the current term must exist", () => {
+    const on = JSON.stringify({ ...JSON.parse(m), addons: ["course-website"], terms: [{ slug: "fall-2026", title: "Fall 2026" }], currentTerm: "fall-2026" });
+    const r = applyCourseOp(on, new Set(["alembic.json", "current/fall-2026/syllabus.md", "current/spring-2027/syllabus.md"]),
+      { op: "addTerm", title: "Spring 2027", copyFrom: "fall-2026", makeCurrent: true }, uid,
+      { termFiles: [{ path: "current/fall-2026/syllabus.md", content: "S" }, { path: "current/fall-2026/schedule.md", content: "T" }] });
+    expect(r.ok && r.manifest.terms?.map((t) => t.slug)).toEqual(["fall-2026", "spring-2027"]);
+    expect(r.ok && r.manifest.currentTerm).toBe("spring-2027");
+    expect(r.ok && r.writes.map((w) => w.path)).toEqual(["alembic.json", "current/spring-2027/schedule.md"]); // the syllabus was already there
+    const bad = applyCourseOp(on, new Set(["alembic.json"]), { op: "setCurrentTerm", slug: "winter-2030" }, uid);
+    expect(bad.ok).toBe(false);
+  });
+});

@@ -70,9 +70,10 @@ describe("the bridge reproduces today's Coursewerk profile (only the intended ch
   });
   it("keeps the folders, root files, server-only files, reserved slugs, media and licences", () => {
     expect(new Set(Object.keys(activeProfile.folders))).toEqual(new Set(Object.keys(oracle.folders)));
-    expect(new Set(activeProfile.rootFiles)).toEqual(new Set(oracle.rootFiles));
+    // The course-website add-on's places are accepted in every course (course-website-addon §5, interim).
+    expect(new Set(activeProfile.rootFiles)).toEqual(new Set([...oracle.rootFiles, "home.md"]));
     expect(activeProfile.serverOnlyFiles).toEqual(oracle.serverOnlyFiles);
-    expect(new Set(activeProfile.privateSubfolders)).toEqual(new Set(oracle.privateSubfolders));
+    expect(new Set(activeProfile.privateSubfolders)).toEqual(new Set([...oracle.privateSubfolders, "exams"]));
     expect(activeProfile.reservedUnitSlugs).toEqual(oracle.reservedUnitSlugs);
     expect(activeProfile.media).toEqual(oracle.media);
     expect(activeProfile.licences).toEqual(oracle.licences);

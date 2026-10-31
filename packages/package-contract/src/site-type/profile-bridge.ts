@@ -15,6 +15,7 @@
 import { PACKAGE_SPACES, type PackageSpace } from "../spaces";
 import type { ContentProfile, MediaKind, PathClass, UnitPart } from "../profile/types";
 import { type SiteType } from "./schema";
+import { EXAMS_FOLDER, HOME_PAGE, TERM_ROOT } from "./addon-course-website";
 
 /** The figure kinds Alembic accepts (contract §8: Alembic's list, not the type package's). */
 const MEDIA: Readonly<Record<string, MediaKind>> = { png: "png", jpg: "jpeg", jpeg: "jpeg", gif: "gif", webp: "webp", svg: "svg" };
@@ -94,6 +95,7 @@ export function profileFromDefinition(def: SiteType, files: Readonly<Record<stri
     ...siteDocs.filter((d) => !d.path.includes("/")).map((d) => d.path),
     ...licenceFiles,
     ...(def.rootFiles ?? []).map((r) => r.name),
+    HOME_PAGE, // the course-website add-on's home page (course-website-addon §5: accepted in every course, interim)
   ];
 
   const fixedPrivateFiles = (def.private ?? []).filter((p) => p.who === "fixed" && /\.[a-z0-9]+$/i.test(p.path)).map((p) => p.path);
@@ -101,6 +103,7 @@ export function profileFromDefinition(def: SiteType, files: Readonly<Record<stri
   for (const p of def.private ?? []) if (!fixedPrivateFiles.includes(p.path)) privateSubfolders.add(p.path.split("/")[1]!);
   if (def.records) privateSubfolders.add(def.records.private.split("/")[1]!);
   if (def.figures) privateSubfolders.add(def.figures.private.split("/")[1]!);
+  privateSubfolders.add(EXAMS_FOLDER.split("/")[1]!); // the add-on's private Exams folder
 
   // Reserved slugs: a slug equal to the unit part of a site document's path that matches a unit pattern.
   const reserved = new Set<string>();
@@ -145,6 +148,9 @@ export function profileFromDefinition(def: SiteType, files: Readonly<Record<stri
     },
     pathClass(path: string, space: PackageSpace): PathClass {
       if (path === "alembic.json") return "settings";
+      // The course-website add-on's places: editors write them (course-website-addon §1).
+      if (path === HOME_PAGE || path.startsWith(`${TERM_ROOT}/`)) return "material";
+      if (path.startsWith(`${EXAMS_FOLDER}/`)) return "private-editable";
       if (def.records && under(path, def.records.private)) return "private-protected";
       if (def.records && under(path, def.records.public)) return "project-file";
       const doc = docClass(path);

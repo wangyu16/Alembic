@@ -7,11 +7,11 @@ import { clientForCourse } from "@/lib/github";
 import { v3Enabled } from "@/lib/db";
 import { kindOfPath } from "@/lib/orz-editor/kit";
 import { courseOutline } from "@/lib/course-outline";
-import { activeProfile, can, isPage, isServerOnlyPath, statusOf, type Role, type StatusMap } from "@alembic/package-contract";
+import { activeProfile, can, COURSE_WEBSITE, EXAMS_FOLDER, HOME_PAGE, isPage, isServerOnlyPath, statusOf, TERM_STARTERS, termFolder, type Role, type StatusMap } from "@alembic/package-contract";
 import { CHAPTER_PARTS } from "@alembic/package-ops";
 import { SubmitButton } from "../../submit-button";
 import { RefreshWhile } from "../publish/refresh-while";
-import { addChaptersAction, setEditReturnsToDraftAction, startPartsAction } from "./actions";
+import { addChaptersAction, addTermAction, setCourseWebsiteAction, setCurrentTermAction, setEditReturnsToDraftAction, startPartsAction, startTermPageAction } from "./actions";
 import { createSnapshotAction } from "../history/actions";
 import { LocalTime } from "@/lib/local-time";
 
@@ -50,11 +50,14 @@ async function CourseHomeV3Inner({ params, searchParams }: { params: Promise<{ p
   let chapters: Array<{ slug: string; title: string; mode?: string }> = [];
   let status: StatusMap | undefined;
   let editReturnsToDraft = false;
+  let site: { on: boolean; terms: Array<{ slug: string; title: string }>; current: string | null } = { on: false, terms: [], current: null };
   try {
     const m = JSON.parse((await c.client.getFileAtRef(coords, "alembic.json", head)) ?? "{}") as { chapters?: typeof chapters; status?: StatusMap };
     chapters = m.chapters ?? [];
     status = m.status;
     editReturnsToDraft = (m as { options?: { editReturnsToDraft?: boolean } }).options?.editReturnsToDraft === true;
+    const mm = m as { addons?: string[]; terms?: Array<{ slug: string; title: string }>; currentTerm?: string };
+    site = { on: mm.addons?.includes(COURSE_WEBSITE) === true, terms: mm.terms ?? [], current: mm.currentTerm ?? null };
   } catch (e) {
     if (githubBusy(e)) throw e; // the busy page, not a course with no chapters (RC.12)
     /* an unreadable manifest: everything shows under course files */
@@ -63,7 +66,13 @@ async function CourseHomeV3Inner({ params, searchParams }: { params: Promise<{ p
   const partOf = new Map(CHAPTER_PARTS.map((x) => [x.label, x.part]));
   const { data: snapRows } = await supabase.from("course_snapshots").select("slug, name, created_at").eq("package_id", packageId).order("created_at", { ascending: false });
   const snaps = (snapRows ?? []) as Array<{ slug: string; name: string; created_at: string }>;
-  const o = courseOutline(Array.isArray(chapters) ? chapters : [], docs);
+  // The course-website add-on's pages are shown in their own panel, not among the course-wide files.
+  const termDocs = site.current ? docs.filter((d) => d.startsWith(termFolder(site.current!))).sort() : [];
+  const examDocs = docs.filter((d) => d.startsWith(`${EXAMS_FOLDER}/`)).sort();
+  const o = courseOutline(Array.isArray(chapters) ? chapters : [], site.on ? docs.filter((d) => d !== HOME_PAGE && !d.startsWith("current/") && !d.startsWith(`${EXAMS_FOLDER}/`)) : docs);
+  const currentTerm = site.terms.find((t) => t.slug === site.current) ?? null;
+  const missingStarters = TERM_STARTERS.filter((x) => !termDocs.includes(`${termFolder(site.current ?? "")}${x.file}`));
+  const pageName = (p: string) => (p.split("/").pop() ?? p).replace(/\.md$/i, "").replace(/[-_]+/g, " ").replace(/^\w/, (c) => c.toUpperCase());
   const href = (p: string) => `/workspace/${packageId}/doc/${p.split("/").map(encodeURIComponent).join("/")}`;
   const list = (items: Array<{ label: string; path: string }>) => (
     <ul className="mt-3 flex flex-wrap gap-1.5 text-sm">
@@ -140,6 +149,56 @@ async function CourseHomeV3Inner({ params, searchParams }: { params: Promise<{ p
           </form>
         </details>
       ) : null}
+      {site.on ? (
+        <section className="panel p-4 lg:col-span-2" data-testid="this-semester">
+          <div className="flex flex-wrap items-center gap-3">
+            <h2 className="font-medium">This semester{currentTerm ? `: ${currentTerm.title}` : ""}</h2>
+            {docs.includes(HOME_PAGE) ? <Link prefetch={false} className="part" href={href(HOME_PAGE)}>{statusOf(status, HOME_PAGE) === "completed" ? "✓ " : ""}Home page</Link> : null}
+            {mayAddChapters && site.terms.length > 1 ? (
+              <form action={setCurrentTermAction.bind(null, packageId)} className="ml-auto flex items-center gap-2 text-sm">
+                <select name="term" defaultValue={site.current ?? ""} className="input py-1">{site.terms.map((t) => <option key={t.slug} value={t.slug}>{t.title}</option>)}</select>
+                <SubmitButton className="btn btn-ghost btn-sm" pending="Saving…">Make current</SubmitButton>
+              </form>
+            ) : null}
+          </div>
+          <p className="mt-1 text-sm text-muted">Anything for this term only: add any page here. Only the current term&apos;s pages are on the website.</p>
+          <div className="mt-3 flex flex-wrap items-center gap-1.5 text-sm">
+            {termDocs.map((d) => <Link key={d} prefetch={false} className="part" href={href(d)}>{statusOf(status, d) === "completed" ? "✓ " : ""}{pageName(d)}</Link>)}
+            {currentTerm ? missingStarters.map((x) => (
+              <form key={x.id} action={startTermPageAction.bind(null, packageId, "term", x.id, null)}>
+                <SubmitButton className="part part-missing" pending={`Starting ${x.label}…`}>{`Start ${x.label.toLowerCase()}`}</SubmitButton>
+              </form>
+            )) : null}
+          </div>
+          {currentTerm ? (
+            <form action={startTermPageAction.bind(null, packageId, "term", null)} className="mt-3 flex gap-2 text-sm">
+              <input name="name" required maxLength={100} placeholder="Another page, e.g. Lab safety" className="input flex-1" />
+              <SubmitButton className="btn btn-ghost btn-sm" pending="Starting…">Add page</SubmitButton>
+            </form>
+          ) : null}
+          {mayAddChapters ? (
+            <details className="mt-3 text-sm">
+              <summary className="cursor-pointer text-muted">New term</summary>
+              <form action={addTermAction.bind(null, packageId, site.current)} className="mt-2 flex flex-wrap items-center gap-2">
+                <input name="title" required maxLength={100} placeholder="Spring 2027" className="input" />
+                {currentTerm ? <label className="flex items-center gap-1"><input type="checkbox" name="copy" defaultChecked /> start from {currentTerm.title}&apos;s pages</label> : null}
+                <label className="flex items-center gap-1"><input type="checkbox" name="current" defaultChecked /> make it current</label>
+                <SubmitButton className="btn btn-ghost btn-sm" pending="Adding…">Add term</SubmitButton>
+              </form>
+            </details>
+          ) : null}
+          <div className="mt-4 border-t border-edge-soft pt-3 text-sm">
+            <h3 className="font-medium">Exams <span className="text-xs font-normal text-muted">(instructor only, never published)</span></h3>
+            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+              {examDocs.map((d) => <Link key={d} prefetch={false} className="part" href={href(d)}>{pageName(d)}</Link>)}
+              <form action={startTermPageAction.bind(null, packageId, "exams", null)} className="flex gap-2">
+                <input name="name" required maxLength={100} placeholder="Midterm 1" className="input py-1" />
+                <SubmitButton className="btn btn-ghost btn-sm" pending="Starting…">Add exam page</SubmitButton>
+              </form>
+            </div>
+          </div>
+        </section>
+      ) : null}
       {mayAddChapters ? (
         <details className="panel p-4" data-testid="course-options">
           <summary className="cursor-pointer font-medium">Course options</summary>
@@ -148,6 +207,10 @@ async function CourseHomeV3Inner({ params, searchParams }: { params: Promise<{ p
               ? "On: editing a completed page makes it a draft again, so an edit goes public only after someone marks it completed."
               : "Off: an edit to a completed page goes public at the next Publish."}</p>
             <SubmitButton className="btn btn-ghost btn-sm mt-2" pending="Saving…">{editReturnsToDraft ? "Turn off" : "Make an edit return a completed page to draft"}</SubmitButton>
+          </form>
+          <form action={setCourseWebsiteAction.bind(null, packageId, !site.on)} className="mt-4 border-t border-edge-soft pt-3 text-sm">
+            <p>{site.on ? "Course website is on: a home page, this semester's pages and a private Exams folder." : "Use this course as a course website: a home page you arrange, a place for this semester's pages (syllabus, schedule, announcements …) and a private Exams folder."}</p>
+            <SubmitButton className="btn btn-ghost btn-sm mt-2" pending="Saving…">{site.on ? "Turn off the course website" : "Turn on the course website"}</SubmitButton>
           </form>
         </details>
       ) : null}

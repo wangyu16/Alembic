@@ -19,6 +19,7 @@ import {
   type WorkingManifestV3,
   checkSvg,
   fileKind,
+  addonAllowsPublish,
   isPage,
   isSvgPath,
   statusOf,
@@ -312,9 +313,11 @@ export async function runPublish(i: PublishInput, w: WorkingSide, pub: PublicSid
   const htmlAsText: string[] = [];
   // Placed files only: a chapter file whose chapter isn't listed is unplaced (kept in the course, not published).
   const placed = (u: Unit) => u.kind !== "none" && u.kind !== "orphan" && !(u.kind === "chapter" && !chapters.has(u.slug));
+  // The course-website add-on: its home page and term files go out only while it is on, term files only for the
+  // current term (course-website-addon §2, K1.30).
   const toRead = tree.entries.filter((e) => e.type !== "tree" && e.mode !== "040000" && fileKind(e.path) !== null)
     .map((e) => ({ e, u: unitOf(e.path, chapters, everPublished) }))
-    .filter(({ u }) => placed(u));
+    .filter(({ e, u }) => placed(u) && addonAllowsPublish(e.path, manifest));
   // Only what goes out as it is now is read and checked: completed pages and other public files. A draft or
   // withdrawn file's current text never reaches the website (its last published version, or nothing, does).
   const goesOut = (path: string) => { const st = statusOf(manifest.status, path); return isPage(path) ? st === "completed" : st !== "withdrawn"; };

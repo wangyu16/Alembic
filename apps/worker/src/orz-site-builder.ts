@@ -54,7 +54,8 @@ export function siteInputFiles(files: Map<string, Uint8Array>): { files: Map<str
   // The course's own index, from its chapters in order (RC.16), unless the course has its own site settings or index.
   const ownIndex = ownConfig !== null || out.has("index.md") || out.has("index.html");
   if (!ownIndex && manifest) {
-    out.set("index.md", new TextEncoder().encode(courseIndexText(manifest, [...out.keys()])));
+    const home = files.get("home.md");
+    out.set("index.md", new TextEncoder().encode(courseIndexText(manifest, [...out.keys()], home ? new TextDecoder().decode(home) : null)));
     out.set("index.html", new TextEncoder().encode('<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0; url=index.md.html"><title>Course</title><a href="index.md.html">Open the course</a>\n'));
   }
   return { files: out, ownConfig, title, ownIndex, ...(settingsIgnored ? { settingsIgnored: true as const } : {}) };
@@ -66,12 +67,29 @@ const PART_LINKS: ReadonlyArray<[string, (s: string) => string]> = [
 ];
 
 /** The course website's front page: title, description, then each chapter in order with its parts (only those published). */
-export function courseIndexText(m: { title?: unknown; description?: unknown; chapters?: unknown }, paths: readonly string[]): string {
+export function courseIndexText(m: { title?: unknown; description?: unknown; chapters?: unknown; terms?: unknown; currentTerm?: unknown }, paths: readonly string[], home: string | null = null): string {
   const has = new Set(paths);
   const clean = (t: string) => t.replace(/[\r\n]+/g, " ").replace(/\}\}/g, "} }").trim();
   const title = typeof m.title === "string" && m.title.trim() ? clean(m.title) : "Course";
   const lines = ["{{nyml", "kind: document", "format: 1", `title: ${title}`, "}}", "", `# ${title}`, ""];
   if (typeof m.description === "string" && m.description.trim()) lines.push(clean(m.description), "");
+  // The course-website add-on (course-website-addon §3): the home page's own content first, then this term's pages.
+  if (home) {
+    const body = home.replace(/^\{\{nyml[\s\S]*?\n\}\}\n?/, "").replace(/^\s*#\s+[^\n]*\n/, "").trim();
+    if (body) lines.push(body, "");
+  }
+  const term = typeof m.currentTerm === "string" ? m.currentTerm : null;
+  const termPages = term ? paths.filter((p) => p.startsWith(`current/${term}/`) && /\.md$/i.test(p)).sort() : [];
+  if (termPages.length) {
+    const terms = Array.isArray(m.terms) ? (m.terms as Array<{ slug?: unknown; title?: unknown }>) : [];
+    const title = terms.find((t) => t.slug === term)?.title;
+    lines.push(`## This semester${typeof title === "string" ? `: ${clean(title)}` : ""}`, "");
+    for (const p of termPages) {
+      const name = (p.split("/").pop() ?? p).replace(/\.(slides|paged)?\.?md$/i, "").replace(/[-_]+/g, " ").replace(/^\w/, (c) => c.toUpperCase());
+      lines.push(`- [${clean(name)}](${p})`);
+    }
+    lines.push("");
+  }
   const chapters = Array.isArray(m.chapters) ? (m.chapters as Array<{ slug?: unknown; title?: unknown }>) : [];
   const listed = chapters.filter((c) => typeof c.slug === "string" && PART_LINKS.some(([, p]) => has.has(p(c.slug as string))));
   if (listed.length) {
@@ -83,6 +101,7 @@ export function courseIndexText(m: { title?: unknown; description?: unknown; cha
     lines.push("");
   }
   for (const [name, p] of [["README", "README.md"], ["Course map", "concepts/course.md"]] as const) if (has.has(p)) lines.push(`[${name}](${p})  `);
+  // The home page is shown above; its own page is not linked again.
   return lines.join("\n") + "\n";
 }
 

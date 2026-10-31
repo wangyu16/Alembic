@@ -8,7 +8,7 @@
  * Validity is the content profile's (FD-09, FD-10): the manifest schema, the
  * licence list and the tree-aware unit rule.
  */
-import { activeProfile, isPage, normalizePath, setStatuses, statusOf, takesStatus, WorkingManifestV3Schema, type StatusChange, type WorkingManifestV3 } from "@alembic/package-contract";
+import { activeProfile, COURSE_WEBSITE, HOME_PAGE, homePageStarter, termFolder, termSlug, isPage, normalizePath, setStatuses, statusOf, takesStatus, WorkingManifestV3Schema, type StatusChange, type WorkingManifestV3 } from "@alembic/package-contract";
 import { addChapters, chapterPartPath, chapterPartText, CHAPTER_PARTS } from "./chapter-parts";
 import { licenseFileContent } from "./license-file";
 
@@ -24,7 +24,11 @@ export type CourseOp =
   /** Files' status (family SITE-TYPE-CONTRACT §7), many at once: mark pages draft or completed; take files off the website or bring them back. */
   | { op: "setStatus"; paths: string[]; status: StatusChange }
   /** A course option (owner/deputy): `editReturnsToDraft` — a saved edit to a completed page makes it a draft again. */
-  | { op: "setOption"; option: "editReturnsToDraft"; value: boolean };
+  | { op: "setOption"; option: "editReturnsToDraft"; value: boolean }
+  /** The course-website add-on (course-website-addon): on/off, terms, the current term. */
+  | { op: "setAddon"; addon: "course-website"; on: boolean }
+  | { op: "addTerm"; title: string; copyFrom?: string; makeCurrent?: boolean }
+  | { op: "setCurrentTerm"; slug: string };
 
 /** The most files one status change may name (a whole course at once). */
 export const MAX_STATUS_PATHS = 1000;
@@ -81,6 +85,16 @@ export function parseCourseOp(raw: unknown): CourseOp | null {
       }
       return { op: "setStatus", paths: [...new Set(paths)], status: r.status };
     }
+    case "setAddon":
+      return r.addon === COURSE_WEBSITE && typeof r.on === "boolean" ? { op: "setAddon", addon: COURSE_WEBSITE, on: r.on } : null;
+    case "addTerm": {
+      const title = oneLine(r.title, 100);
+      if (!title) return null;
+      if (r.copyFrom !== undefined && !slugOk(r.copyFrom)) return null;
+      return { op: "addTerm", title, ...(r.copyFrom ? { copyFrom: r.copyFrom as string } : {}), ...(r.makeCurrent === true ? { makeCurrent: true } : {}) };
+    }
+    case "setCurrentTerm":
+      return slugOk(r.slug) ? { op: "setCurrentTerm", slug: r.slug } : null;
     case "setOption":
       return r.option === "editReturnsToDraft" && typeof r.value === "boolean" ? { op: "setOption", option: r.option, value: r.value } : null;
     case "restoreChapter":
@@ -102,6 +116,9 @@ function describe(op: CourseOp, m: WorkingManifestV3): string {
     case "setCourseDetails": return "Changed the course details";
     case "setLicense": return `Changed the licence to ${op.license}`;
     case "restoreChapter": return `Restored chapter “${op.slug}”`;
+    case "setAddon": return op.on ? "Turned on the course website (home page, this semester, exams)" : "Turned off the course website";
+    case "addTerm": return `Added the term “${op.title}”${op.copyFrom ? " from the last term's pages" : ""}`;
+    case "setCurrentTerm": return `Made “${m.terms?.find((t) => t.slug === op.slug)?.title ?? op.slug}” the current term`;
     case "setOption": return op.value ? "An edit now returns a completed page to draft" : "An edit no longer changes a page's status";
     case "setStatus": {
       const what = op.paths.length === 1 ? (op.paths[0]!.split("/").pop() ?? op.paths[0]!) : `${op.paths.length} files`;
@@ -115,7 +132,7 @@ function describe(op: CourseOp, m: WorkingManifestV3): string {
  * mints document ids for started parts. Refuses (nothing written) when the
  * operation no longer applies or the result isn't valid under the profile.
  */
-export function applyCourseOp(manifestText: string | null, paths: ReadonlySet<string>, op: CourseOp, newUid: () => string, ctx: { snapshot?: ChapterSnapshot; citation?: string | null } = {}): CourseOpResult {
+export function applyCourseOp(manifestText: string | null, paths: ReadonlySet<string>, op: CourseOp, newUid: () => string, ctx: { snapshot?: ChapterSnapshot; citation?: string | null; termFiles?: Array<{ path: string; content: string }> } = {}): CourseOpResult {
   let m: WorkingManifestV3;
   try {
     m = WorkingManifestV3Schema.parse(JSON.parse(manifestText ?? "null"));
@@ -185,6 +202,37 @@ export function applyCourseOp(manifestText: string | null, paths: ReadonlySet<st
         if (activeProfile.licences.open.includes(op.license)) lines.splice(Math.max(1, lines.findIndex((l) => /^title:/.test(l)) + 1), 0, `license: ${op.license}`);
         writes.push({ path: "CITATION.cff", content: lines.join("\n") });
       }
+      break;
+    }
+    case "setAddon": {
+      const addons = (m.addons ?? []).filter((a) => a !== op.addon);
+      next = { ...m, addons: op.on ? [...addons, op.addon] : addons };
+      if (!next.addons!.length) delete (next as { addons?: unknown }).addons;
+      if (op.on) {
+        // A home page (a draft) and a first term, if the course has none yet.
+        if (!paths.has(HOME_PAGE)) writes.push({ path: HOME_PAGE, content: homePageStarter(m.title, newUid()) });
+        if (!m.terms?.length) {
+          const now = new Date();
+          const title = `${now.getMonth() < 5 ? "Spring" : now.getMonth() < 7 ? "Summer" : "Fall"} ${now.getFullYear()}`;
+          next = { ...next, terms: [{ slug: termSlug(title), title }], currentTerm: termSlug(title) };
+        }
+      }
+      break;
+    }
+    case "addTerm": {
+      const slug = termSlug(op.title);
+      if (m.terms?.some((t) => t.slug === slug)) return { ok: false, reason: `there is already a term called “${op.title}”` };
+      next = { ...m, terms: [...(m.terms ?? []), { slug, title: op.title }], ...(op.makeCurrent || !m.currentTerm ? { currentTerm: slug } : {}) };
+      // The last term's pages, copied as drafts (never over a file that is there).
+      for (const f of ctx.termFiles ?? []) {
+        const path = `${termFolder(slug)}${f.path.slice(termFolder(op.copyFrom ?? "").length)}`;
+        if (op.copyFrom && f.path.startsWith(termFolder(op.copyFrom)) && !paths.has(path)) writes.push({ path, content: f.content });
+      }
+      break;
+    }
+    case "setCurrentTerm": {
+      if (!m.terms?.some((t) => t.slug === op.slug)) return { ok: false, reason: "that term isn't in the course" };
+      next = { ...m, currentTerm: op.slug };
       break;
     }
     case "setOption": {

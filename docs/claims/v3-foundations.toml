@@ -278,4 +278,23 @@ bound_to = [
 id = "K1.29"
 claim = "Sharing and stopping need the right to edit the page (re-checked in the server action); shared-element rows are written only by the server (no API-role write grant); the element page always carries the course, its authors, the licence and the source page, and shows a section in a frame where no script runs."
 oracle = "human"
+bound_to = []
 note = "Server-side checks in apps/web share-actions.ts and the 0068 grants (covered by P5.S.15's write inventory); the element page checked live."
+
+[[claim]]
+id = "K1.30"
+claim = "The course-website add-on (course-website-addon): with it on, the home page goes out by its status and only the current term's term files go out; with it off, none of them; the website's front page shows the home page's content first, then this semester's pages, then the chapters."
+oracle = "conformance"
+bound_to = [
+  "packages/package-ops/src/publish-job.test.ts :: with the add-on on, the home page and only the current term's pages go out; with it off, none of them",
+  "apps/worker/src/site-build.real.test.ts :: the front page shows the home page's content first, then this semester's pages, then the chapters",
+]
+
+[[claim]]
+id = "K1.31"
+claim = "Switching the add-on on starts a home page (draft) and a first term, never overwriting; a term's slug comes from its title; a new term can start from the last term's pages (drafts), never over a file; the current term must be one of the course's; these are the owner's or deputy's (course settings)."
+oracle = "conformance"
+bound_to = [
+  "packages/package-ops/src/course-ops.test.ts :: switching it on starts a home page (a draft) and a first term; nothing is overwritten",
+  "packages/package-ops/src/course-ops.test.ts :: a term's slug comes from its title; a new term can start from the last term's pages, never over a file; the current term must exist",
+]

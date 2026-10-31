@@ -77,3 +77,23 @@ describe("the course's own site settings (SITE-TYPE-CONTRACT §5, §8)", () => {
   }, 60_000);
 });
 
+
+describe("the course-website add-on's front page (course-website-addon §3)", () => {
+  it("[K1.30] the front page shows the home page's content first, then this semester's pages, then the chapters", async () => {
+    const site = await inProcessBuilder();
+    const doc = (t: string, body = "") => enc(`{{nyml\nkind: document\nformat: 1\ntitle: ${t}\n}}\n\n# ${t}\n\n${body}`);
+    const manifest = { title: "Chem", chapters: [{ slug: "gases", title: "Gases" }], terms: [{ slug: "fall-2026", title: "Fall 2026" }], currentTerm: "fall-2026" };
+    const files = new Map<string, Uint8Array>([
+      ["alembic.json", enc(JSON.stringify(manifest))], ["home.md", doc("Chem", "Welcome to Chem, a friendly course.")],
+      ["current/fall-2026/syllabus.md", doc("Syllabus")], ["study-guide/gases.md", doc("Gases")],
+    ]);
+    const input = siteInputFiles(files);
+    const built = await site.build(input.files, { ownConfig: input.ownConfig, title: input.title, baseUrl: "https://x.github.io/y/", courseIndex: !input.ownIndex });
+    expect(built.ok).toBe(true);
+    const index = new TextDecoder().decode(built.files.get("index.md.html")!);
+    const at = (s: string) => index.indexOf(s);
+    expect(at("Welcome to Chem")).toBeGreaterThan(0);
+    expect(at("This semester")).toBeGreaterThan(at("Welcome to Chem"));
+    expect(at("Gases")).toBeGreaterThan(at("This semester"));
+  }, 60_000);
+});

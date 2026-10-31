@@ -48,6 +48,24 @@ function bringingStore(pub: FakePublic, files: Record<string, string>, onBring?:
   return st;
 }
 
+describe("the course-website add-on at Publish (K1.30)", () => {
+  const files = (addon: Record<string, unknown>) => ({
+    ...W, "home.md": "# Welcome", "current/fall-2026/syllabus.md": "fall syllabus", "current/spring-2026/syllabus.md": "old syllabus",
+    "alembic.json": JSON.stringify({ ...JSON.parse(manifest(CH, { ...ALL, "home.md": "completed", "current/fall-2026/syllabus.md": "completed", "current/spring-2026/syllabus.md": "completed" })), ...addon }),
+  });
+  it("[K1.30] with the add-on on, the home page and only the current term's pages go out; with it off, none of them", async () => {
+    const pub = new FakePublic();
+    await runPublish(input(), working(files({ addons: ["course-website"], terms: [{ slug: "spring-2026", title: "Spring 2026" }, { slug: "fall-2026", title: "Fall 2026" }], currentTerm: "fall-2026" })), pub, new FakeStore());
+    expect(pub.file("home.md")).toBe("# Welcome");
+    expect(pub.file("current/fall-2026/syllabus.md")).toBe("fall syllabus");
+    expect(pub.file("current/spring-2026/syllabus.md")).toBeUndefined();
+    const pub2 = new FakePublic();
+    await runPublish(input(), working(files({})), pub2, new FakeStore());
+    expect(pub2.file("home.md")).toBeUndefined();
+    expect(pub2.file("current/fall-2026/syllabus.md")).toBeUndefined();
+  });
+});
+
 describe("runPublish", () => {
   it("[K1.20] Publish writes each Markdown text as its clean copy, lists the files whose HTML became text, and leaves out one it can't clean", async () => {
     const st = new FakeStore(); const pub = new FakePublic();

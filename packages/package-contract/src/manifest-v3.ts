@@ -40,6 +40,11 @@ const v3Fields = {
   coursewerk: z.object({ version: z.string().min(1) }).optional(),
   /** Each file's status (family SITE-TYPE-CONTRACT §7): path → completed | withdrawn; a page not listed is a draft. Never public. */
   status: z.record(z.string().min(1).max(300), z.enum(["completed", "withdrawn"])).optional(),
+  /** Add-ons switched on (course-website-addon), by id. */
+  addons: z.array(z.string().regex(/^[a-z0-9-]{1,40}$/)).max(10).optional(),
+  /** The course's terms, and the current one (course-website-addon §2). */
+  terms: z.array(z.object({ slug: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/).max(60), title: z.string().min(1).max(100) }).strict()).max(60).optional(),
+  currentTerm: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/).max(60).optional(),
   /** Alembic's per-course options (owner/deputy). `editReturnsToDraft`: a saved edit to a completed page makes it a draft again. Never public. */
   options: z.object({ editReturnsToDraft: z.boolean().optional() }).strict().optional(),
 };

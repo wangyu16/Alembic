@@ -626,6 +626,12 @@ async function processCourseOp(row: QueueRow, store: QueueStore, repo: WorkingRe
       const ctx: Parameters<typeof applyCourseOp>[4] = {};
       if (op.op === "restoreChapter") ctx.snapshot = await chapterAt(repo, op.fromCommit, op.slug);
       if (op.op === "setLicense") ctx.citation = await repo.readFile(head, "CITATION.cff");
+      // A new term from the last term's pages: their text files (figures stay where they are, still linked).
+      if (op.op === "addTerm" && op.copyFrom) {
+        const from = `current/${op.copyFrom}/`;
+        const texts = paths.filter((p) => p.startsWith(from) && fileKind(p) === "text").slice(0, 200);
+        ctx.termFiles = (await Promise.all(texts.map(async (p) => ({ path: p, content: (await repo.readFile(head, p)) ?? "" })))).filter((f) => f.content);
+      }
       // A withdrawn file's status is the lead's while it stays withdrawn (SITE-TYPE-CONTRACT §7).
       if (op.op === "setStatus" && !can(role, "edit.course-files")) {
         let status: StatusMap | undefined;
