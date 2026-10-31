@@ -76,7 +76,6 @@ export class FakeStore implements PublishStore {
   ack: string | null = null;
   runs = new Map<string, { status: string; intended: PublishedRecord[]; publicSha?: string }>();
   files: PublishedRecord[] = [];
-  approvals = new Set<string>();
   drift: string[][] = [];
   async acknowledged() { return this.ack; }
   async acknowledge(_p: string, sha: string) { this.ack = sha; }
@@ -89,10 +88,7 @@ export class FakeStore implements PublishStore {
     this.files = files.map((f) => ({ path: f.path, unit: f.unit, blobSha: f.blobSha, version: f.version, sourceBlob: f.sourceBlob ?? null }));
   }
   async publishedFiles() { return this.files; }
-  async approvedAt(_p: string, parts: Array<{ path: string; version: string }>) { return new Set(parts.filter((x) => this.approvals.has(`${x.path}@${x.version}`)).map((x) => x.path)); }
-  async approve(_p: string, _by: string, _role: Role, parts: Array<{ path: string; version: string }>) { for (const x of parts) this.approvals.add(`${x.path}@${x.version}`); }
   async bringInDrift(_p: string, _s: string, paths: string[]) { this.drift.push(paths); return "done" as const; }
   isCommitted?: (packageId: string, runId: string, publicSha: string) => Promise<boolean>;
   markStopped?: (runId: string, reason: string) => Promise<void>;
-  approveText(path: string, text: string) { this.approvals.add(`${path}@${h(text)}`); }
 }

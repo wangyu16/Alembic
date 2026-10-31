@@ -107,10 +107,6 @@ export interface PublishStore {
   insertPendingRun(run: { id: string; packageId: string; by: string; workingSha: string; publicParent: string | null; choices: unknown; intendedFiles: PublishedRecord[] }): Promise<void>;
   markCommitted(runId: string, publicSha: string, files: PublishedRecord[], results: unknown): Promise<void>;
   publishedFiles(packageId: string): Promise<PublishedRecord[]>;
-  /** Paths approved at exactly these versions (course-plan parts). */
-  approvedAt(packageId: string, parts: Array<{ path: string; version: string }>): Promise<Set<string>>;
-  /** Record approvals (approve-and-publish), each bound to its version at W. */
-  approve(packageId: string, by: string, role: Role, parts: Array<{ path: string; version: string }>): Promise<void>;
   /** Bring public drift into the working repo (a system queue row); resolves when it ended. */
   bringInDrift(packageId: string, publicSha: string, paths: string[]): Promise<"done" | "not-done">;
   /** A run that stopped after being recorded pending (e.g. the public copy kept changing). */
@@ -137,12 +133,6 @@ export interface PublishInput {
   by: string;
   /** The publisher's role, resolved by the server at execution. */
   role: Role;
-  /**
-   * Bound to what the person saw (review H2): `approveAndPublish` holds
-   * `approvalKey(path, version)` of the plan parts as shown, `publishAnyway`
-   * holds `anywayKey(slug, digest)` of the problems as shown. A part that
-   * changed since, or a chapter whose problems changed, is not covered.
-   */
   choices?: unknown; // retired (family SITE-TYPE-CONTRACT §7: no approvals or "publish anyway"); recorded as given
   /** Set on the second pass after public changes were brought in (internal). */
   broughtIn?: string[];
@@ -182,15 +172,6 @@ export async function mapLimit<T, R>(items: readonly T[], limit: number, fn: (it
   };
   await Promise.all(Array.from({ length: Math.min(limit, items.length) }, lane));
   return out;
-}
-
-/** A course-plan part approved as it was shown: `path@version`. */
-export const approvalKey = (path: string, version: string) => `${path}@${version}`;
-/** "Publish anyway" for exactly the problems that were shown: `slug@digest`. */
-export const anywayKey = (slug: string, digest: string) => `${slug}@${digest}`;
-/** The digest of a chapter's overridable problems (check, path, message), order-free. */
-export async function findingsDigest(fs: Finding[]): Promise<string> {
-  return sha256Hex(JSON.stringify(fs.map((f) => [f.check, f.path ?? "", f.message]).sort()));
 }
 
 /** Workflow files are the repo owner's: Publish never writes or deletes them (review M3; the App has no Workflows permission). */

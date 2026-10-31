@@ -92,23 +92,6 @@ export class SqlPublishStore implements PublishStore {
     return rows.map((r) => ({ path: r.path, unit: r.unit, blobSha: r.blob_sha, version: r.version, sourceBlob: r.source_blob }));
   }
 
-  async approvedAt(packageId: string, parts: Array<{ path: string; version: string }>): Promise<Set<string>> {
-    if (parts.length === 0) return new Set();
-    const { rows } = await this.sql.query<{ part_path: string }>(
-      `select a.part_path from public.approvals a
-         join jsonb_to_recordset($2::text::jsonb) as x(path text, version text) on a.part_path = x.path and a.version = x.version
-        where a.package_id = $1`, [packageId, json(parts)]);
-    return new Set(rows.map((r) => r.part_path));
-  }
-
-  async approve(packageId: string, by: string, role: Role, parts: Array<{ path: string; version: string }>): Promise<void> {
-    if (role !== "owner" && role !== "deputy") throw new Error("Only the owner or deputy approves the course plan");
-    for (const p of parts) {
-      await this.sql.query(
-        `insert into public.approvals (package_id, part_path, version, approver_id, approver_role) values ($1, $2, $3, $4, $5) on conflict do nothing`,
-        [packageId, p.path, p.version, by, role]);
-    }
-  }
 
   /**
    * One system row writes the public copy's changes into the working repo,
