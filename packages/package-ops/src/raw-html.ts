@@ -52,7 +52,7 @@ function safeHtml(html: string): boolean {
  * - `{{attrs[...]}}` that set an attribute able to run script (`attrs`);
  * - a container's title holding markup (`::: spoil <img …>` renders its title raw: `title`).
  */
-type Piece = { lines: [number, number]; html: string; block: boolean; kind?: "attrs" | "title" };
+type Piece = { lines: [number, number]; html: string; block: boolean; kind?: "attrs" | "title" | "span" };
 function unsafePieces(tokens: readonly MdToken[]): Piece[] {
   const out: Piece[] = [];
   let around: [number, number] | null = null;
@@ -66,6 +66,8 @@ function unsafePieces(tokens: readonly MdToken[]): Piece[] {
       for (const c of t.children) {
         if (c.type === "html_inline" && !safeHtml(c.content)) out.push({ lines, html: c.content, block: false });
         if (c.attrs?.some(unsafeAttr)) out.push({ lines, html: "{{attrs[", block: false, kind: "attrs" });
+        // {{span …}} / {{sp …}} bodies are rendered on their own, with raw HTML on (round 4 audit): any "<" there is text.
+        if (c.type === "plugin_inline" && (c.info === "span" || c.info === "sp") && /</.test(c.content)) out.push({ lines, html: "", block: false, kind: "span" });
       }
     }
   }
@@ -78,17 +80,37 @@ export type CleanText = { ok: true; text: string; escaped: number } | { ok: fals
  * The text as Publish writes it: every raw HTML piece outside the list turned
  * into text (its "<" written as "&lt;"). `parse` is orz-markdown's `md.parse`.
  */
+/** Decode every character reference (numeric and the named ones that matter for addresses). */
+function decodeRefs(v: string): string {
+  return v.replace(/&#x([0-9a-f]+);?/gi, (_m, h: string) => String.fromCodePoint(parseInt(h, 16) % 0x110000))
+    .replace(/&#(\d+);?/g, (_m, d: string) => String.fromCodePoint(Number(d) % 0x110000))
+    .replace(/&(colon|tab|newline|lpar|rpar|amp|quot|apos|lt|gt);/gi, (_m, n: string) => ({ colon: ":", tab: "\t", newline: "\n", lpar: "(", rpar: ")", amp: "&", quot: '"', apos: "'", lt: "<", gt: ">" } as Record<string, string>)[n.toLowerCase()]!);
+}
+
+/** Elements the course text never needs and that can load or run things (YouTube's own player is the one exception). */
+const REFUSED_TAGS = new Set(["script", "iframe", "object", "embed", "base", "meta", "link", "form", "frame", "frameset", "applet", "portal"]);
+const YOUTUBE = /^https:\/\/(www\.)?(youtube\.com|youtube-nocookie\.com)\/embed\//i;
+
 /**
- * Tags in rendered HTML that can run script: an attribute named `on…`, `srcdoc` or `formaction`, or a `javascript:`
- * address (quoted values compared, never text between tags). The backstop for constructs the token walk doesn't know.
+ * Markup in rendered HTML that can run script or load a page, as a browser would read it (round 4 audit): tags with
+ * attributes split by spaces or "/", every character reference decoded, the constructs browsers re-read
+ * (`<?`, `<![CDATA[`, `--!>`) refused outright. The backstop for constructs the token walk doesn't know.
  */
 export function liveMarkup(html: string): string | null {
-  for (const m of html.matchAll(/<([a-z][a-z0-9-]*)\b((?:\s+[^\s=>\/]+(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]*))?)*)\s*\/?>/gi)) {
-    for (const a of m[2]!.matchAll(/\s+([^\s=>\/]+)(?:\s*=\s*("[^"]*"|'[^']*'|[^\s>]*))?/g)) {
-      const name = a[1]!.toLowerCase();
-      const value = (a[2] ?? "").replace(/^["']|["']$/g, "").replace(/&#x?0*(58|3a);?/gi, ":").replace(/[\s\u0000-\u001f]+/g, "").toLowerCase();
-      if (/^on/.test(name) || name === "srcdoc" || name === "formaction") return `<${m[1]} ${name}=…>`;
-      if (/^(href|src|action|xlink:href|data)$/.test(name) && /^(javascript|vbscript):/.test(value)) return `<${m[1]} ${name}="${value.slice(0, 20)}">`;
+  if (/<\?|<!\[CDATA\[|--!>/i.test(html)) return "a processing instruction or CDATA";
+  for (const m of html.matchAll(/<([a-z][a-z0-9-]*)([^>]*)>/gi)) {
+    const tag = m[1]!.toLowerCase();
+    const attrs = [...m[2]!.matchAll(/[\s\/]+([^\s=>\/"']+)(?:\s*=\s*("[^"]*"|'[^']*'|[^\s>]*))?/g)].map((a) => [a[1]!.toLowerCase(), decodeRefs((a[2] ?? "").replace(/^["']|["']$/g, ""))] as const);
+    if (tag === "script") {
+      // orz-markdown's own data blocks only (never executable).
+      if (attrs.some(([k, v]) => k === "type" && /^application\/(ld\+)?json$/i.test(v))) continue;
+      return "<script>";
+    }
+    if (REFUSED_TAGS.has(tag) && !(tag === "iframe" && attrs.some(([k, v]) => k === "src" && YOUTUBE.test(v)))) return `<${tag}>`;
+    for (const [name, value] of attrs) {
+      const v = value.replace(/[\s\u0000-\u001f]+/g, "").toLowerCase();
+      if (/^on/.test(name) || name === "srcdoc" || name === "formaction") return `<${tag} ${name}=…>`;
+      if (/^(href|src|action|xlink:href|data|poster|background)$/.test(name) && /^(javascript|vbscript|data):/.test(v) && !(tag === "img" && /^data:image\/(png|jpe?g|gif|webp);/.test(v))) return `<${tag} ${name}="${v.slice(0, 20)}">`;
     }
   }
   return null;
@@ -108,6 +130,10 @@ export function cleanRawHtml(text: string, parse: (src: string) => MdToken[], re
     if (p.kind === "attrs") {
       // Every attribute block on those lines becomes text (`{{` written as entities).
       for (let k = p.lines[0]; k < p.lines[1]; k++) lines[k] = lines[k]!.split("{{attrs[").join("&#123;&#123;attrs[");
+      continue;
+    }
+    if (p.kind === "span") {
+      for (let k = p.lines[0]; k < p.lines[1]; k++) lines[k] = lines[k]!.replace(/\{\{(span|sp)\b[\s\S]*?\}\}/g, (m) => m.replace(/</g, "&lt;"));
       continue;
     }
     if (p.kind === "title") {

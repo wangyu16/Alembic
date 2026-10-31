@@ -89,3 +89,21 @@ describe("the render backstop (overnight round 3)", () => {
     expect(cleanR(page)).toEqual({ ok: true, text: page, escaped: 0 });
   });
 });
+
+describe("round 4: span bodies and a browser-faithful backstop", () => {
+  const cleanR = (t: string) => cleanRawHtml(t, parse, (src) => md.render(src));
+  it("[K1.20] raw HTML inside {{span …}} or {{sp …}} becomes text", () => {
+    for (const t of ['{{span[a] <?x > <img/src="x"/onerror=alert(1)> ?>}}', '{{span[a] <a href="&#106;avascript:alert(1)">x</a>}}', '{{sp <iframe src="data:text/html,x"></iframe>}}']) {
+      const r = cleanR(t);
+      expect(r.ok, t).toBe(true);
+      expect(r.ok && md.render(r.text), t).not.toMatch(/<(img|a|iframe)\b/);
+    }
+  });
+  it("[K1.20] the backstop reads tags as a browser does: '/' separators, encoded addresses, re-read constructs, frames and <base>", async () => {
+    const { liveMarkup } = await import("@alembic/package-ops");
+    for (const h of ['<img/src="x"/onerror=alert(1)>', '<a href="&#106;avascript:alert(1)">x</a>', '<a href="java&#x09;script:x">x</a>', '<?x > <b>', '<iframe src="data:text/html,x">', '<base href="https://e.example/">', '<object data="x">'])
+      expect(liveMarkup(h), h).not.toBeNull();
+    for (const h of ['<iframe src="https://www.youtube-nocookie.com/embed/abc">', '<script type="application/json">{}</script>', '<img src="data:image/png;base64,AAAA">', '<a href="https://example.org">x</a>'])
+      expect(liveMarkup(h), h).toBeNull();
+  });
+});
