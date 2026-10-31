@@ -38,7 +38,7 @@ export function SharePanel({ packageId, page, rows: initial, canEdit }: { packag
   return (
     <details className="relative" data-testid="share-panel">
       <summary className="btn btn-ghost btn-sm cursor-pointer list-none">Share…</summary>
-      <div className="panel absolute right-0 z-20 mt-1 w-[26rem] max-w-[90vw] p-3 text-sm shadow-lg">
+      <div className="panel absolute right-0 z-20 mt-1 w-[26rem] max-w-[calc(100vw-1.5rem)] p-3 text-sm shadow-lg">
         <p className="text-muted">Share a figure or a section on its own, with a permanent address that credits this course.</p>
         <ul className="mt-2 space-y-1.5">
           {rows.map((r) => (

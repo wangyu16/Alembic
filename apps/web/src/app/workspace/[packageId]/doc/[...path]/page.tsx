@@ -75,11 +75,11 @@ async function DocPageInner({ params }: { params: Promise<{ packageId: string; p
 
   return (
     <main className="flex h-[calc(100dvh-3.75rem)] flex-col">
-      <div className="flex items-center gap-3 border-b px-3 py-2 text-sm">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b px-3 py-2 text-sm">
         <Link prefetch={false} href={`/workspace/${packageId}/course`} className="underline">← Course</Link>
         <Link prefetch={false} href={`/workspace/${packageId}/history/${path.split("/").map(encodeURIComponent).join("/")}`} className="underline" data-testid="history-link">History</Link>
-        <span className="font-medium">{docTitle(text) ?? path}</span>
-        {docTitle(text) ? <span className="text-xs text-muted">{path}</span> : null}
+        <span className="min-w-0 max-w-full truncate font-medium">{docTitle(text) ?? path}</span>
+        {docTitle(text) ? <span className="hidden text-xs text-muted md:inline">{path}</span> : null}
         {isPage(path) ? (
           <StatusControl packageId={packageId} path={path} status={statusOf(statusMap, path)} published={!!pubRow}
             canEdit={canWritePath(role as Role, path)} lead={can(role as Role, "edit.course-files")} editReturnsToDraft={editReturnsToDraft} />

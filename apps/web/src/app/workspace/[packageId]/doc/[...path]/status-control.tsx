@@ -25,7 +25,7 @@ export function StatusControl({ packageId, path, status: initial, published, can
     : status === "withdrawn" ? <span className="badge badge-warn">Off the website</span>
     : <span className="badge">Draft</span>;
   return (
-    <span className="ml-auto flex items-center gap-2" data-testid="doc-status">
+    <span className="ml-auto flex flex-wrap items-center gap-2" data-testid="doc-status">
       {badge}
       {pending ? <span className="text-xs text-muted">saving…</span> : null}
       {canEdit && status === "draft" ? <button type="button" className="btn btn-primary btn-sm" disabled={pending} onClick={() => change("completed")}>Mark completed</button> : null}
