@@ -31,7 +31,7 @@ async function main(): Promise<void> {
   const sql = postgres(url, { ssl: "require", max: 1, prepare: false, onnotice: () => {} });
   const db: SqlClient = { query: async <T>(text: string, params: unknown[] = []) => ({ rows: (await sql.unsafe(text, params as never[])) as unknown as T[] }) };
   try {
-    if (grantFrom) await db.query(`select public.ledger_grant($1, $2, 5, now() + interval '7 days', 'C4 spike (testing)')`, [grantFrom, invoker]);
+    if (grantFrom) await db.query(`select public.ledger_grant($1, $2, 150, now() + interval '7 days', 'C4 spike (testing)')`, [grantFrom, invoker]);
     const acct = (await db.query<{ a: string }>(`select public.ledger_user_account($1)::text as a`, [invoker])).rows[0]!.a;
     let session = (await db.query<{ id: string }>(`select id from public.agent_sessions where package_id = $1`, [pkg])).rows[0]?.id;
     if (!session) {
@@ -43,11 +43,11 @@ async function main(): Promise<void> {
     await db.query(`update public.agent_jobs set status = 'cancelled', ended_at = now() where session_id = $1 and status in ('starting','running')`, [session]);
     const aiJob = (await db.query<{ id: string }>(
       `insert into public.ai_jobs (package_id, payer_account_id, invoker_id, kind) values ($1, $2, $3, 'request') returning id::text`, [pkg, acct, invoker])).rows[0]!.id;
-    await db.query(`select public.ledger_hold($1, $2, 2)`, [invoker, aiJob]);
+    await db.query(`select public.ledger_hold($1, $2, 120)`, [invoker, aiJob]);
     const job = id("aj");
     await db.query(
       `insert into public.agent_jobs (id, session_id, package_id, invoker_id, payer, task, status, budget_credits, ai_job_id, signing_kid)
-       values ($1, $2, $3, $4, 'invoker', $5, 'running', 2, $6, $7)`, [job, session, pkg, invoker, task, aiJob, key.kid]);
+       values ($1, $2, $3, $4, 'invoker', $5, 'running', 120, $6, $7)`, [job, session, pkg, invoker, task, aiJob, key.kid]);
     const gw = await mintGatewayKey(db, aiJob, ["claude-sonnet-5", "claude-haiku-4-5"], 60);
     secret("ALEMBIC_GW_KEY", gw);
     secret("ALEMBIC_AGENT_TOKEN", signAgentToken({ package_id: pkg, session_id: session, job_id: job, invoker_id: invoker }, key));

@@ -72,6 +72,16 @@ describe("handleMessages", () => {
     expect(d.upstream).not.toHaveBeenCalled();
   });
 
+  it("passes the betas the Claude Code harness sends (they change no billing) and forwards them; any other beta in the list is refused", async () => {
+    const d = deps();
+    const harness = "claude-code-20250219,interleaved-thinking-2025-05-14,mid-conversation-system-2026-04-07,effort-2025-11-24";
+    expect((await handleMessages(req(ok, { "anthropic-beta": harness }), d)).status).toBe(200);
+    expect(d.upstream).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ "anthropic-beta": harness }), expect.anything());
+    const d2 = deps();
+    expect((await handleMessages(req(ok, { "anthropic-beta": `${harness},files-api-2025-04-14` }), d2)).status).toBe(400);
+    expect(d2.upstream).not.toHaveBeenCalled();
+  });
+
   it("refuses a call whose worst case exceeds what is left of the hold (review H1)", async () => {
     const d = deps({}, undefined, 200, 0.5);
     // Opus 5.5: 32k output tokens could cost 32_000 × $20/M = $0.64 = 64 credits

@@ -39,6 +39,14 @@ const ALLOWED_FIELDS = new Set([
   "temperature", "top_p", "top_k", "tools", "tool_choice", "thinking", "output_config", "cache_control",
 ]);
 
+/**
+ * Betas that change no billing (everything they do is counted in the usage fields): what the official Claude Code
+ * harness sends (C4, agent-runtime §16; captured from Claude Code 2.1.288). Any other beta is refused.
+ */
+export const ALLOWED_BETAS: ReadonlySet<string> = new Set([
+  "claude-code-20250219", "interleaved-thinking-2025-05-14", "effort-2025-11-24", "mid-conversation-system-2026-04-07",
+]);
+
 export const keyHash = (token: string) => createHash("sha256").update(token, "utf8").digest("hex");
 
 const json = (status: number, message: string) =>
@@ -137,7 +145,9 @@ export async function handleMessages(req: Request, deps: GatewayDeps): Promise<R
   const key = await deps.checkKey(keyHash(token));
   if (!key) return json(401, "this key is not valid now (expired, revoked, or its job ended)");
   const jobId = key.jobId;
-  if (req.headers.get("anthropic-beta")) return json(400, "beta features are not available through the gateway");
+  const betas = (req.headers.get("anthropic-beta") ?? "").split(",").map((b) => b.trim()).filter(Boolean);
+  const unknownBeta = betas.find((b) => !ALLOWED_BETAS.has(b));
+  if (unknownBeta) return json(400, `beta feature ${unknownBeta.slice(0, 80)} is not available through the gateway`);
 
   // Lock the job first, then read the body and re-check the credit under the lock (review r2 H1).
   if (inFlight.has(key.jobId)) return json(429, "this job already has a call in progress");
@@ -197,7 +207,7 @@ export async function handleMessages(req: Request, deps: GatewayDeps): Promise<R
 
   let up: Response;
   try {
-    up = await deps.upstream(outBody, { "content-type": "application/json", "anthropic-version": "2023-06-01" }, AbortSignal.timeout(10 * 60_000));
+    up = await deps.upstream(outBody, { "content-type": "application/json", "anthropic-version": "2023-06-01", ...(betas.length ? { "anthropic-beta": betas.join(",") } : {}) }, AbortSignal.timeout(10 * 60_000));
   } catch (e) {
     release();
     throw e;
