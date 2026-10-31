@@ -305,3 +305,17 @@ Verified H1, M1–M3 and L1–L3 as fixed. **1 HIGH, 1 MEDIUM, 6 LOW**; fixed in
   for files still gone; no status sweep from a cut-short listing; the fallback round also drops other failing pages.
 - **Dismissed, L6:** drafts kept at their published version aren't cleaned again. Only someone who can write the public
   repository could exploit it, and they already control its site.
+
+### Round 3 (overnight)
+
+Round 2's fixes verified (front page, term folders, statuses). **1 HIGH, 1 MEDIUM, 2 LOW**; fixed in `3d2379d` and
+`a635de3`.
+
+- **HIGH (older than tonight):** Publish's raw-HTML cleaner missed three orz-markdown paths: `{{attrs[...]}}` setting a
+  handler attribute, raw HTML in table cells (their tokens carry no lines), and a container's title (`::: spoil <img …>`).
+  These affected every published page. **Now:** all three are cleaned. A **render backstop** also refuses any page whose
+  rendering (the same orz-markdown) holds a tag that can run script; such a page is left out, and a completed page
+  keeps its last published version. All 99 General Chemistry pages pass unchanged; a live Publish changed nothing.
+- **MEDIUM:** a course that never used the add-on keeps its own `current/` subfolders as ordinary files.
+- **LOW:** a new document id is also written for headers with a BOM or Windows line endings. `onlyIfGone` is covered by
+  the round-2 review's runs; a unit test is left as a gap.
