@@ -351,3 +351,22 @@ bound_to = [
   "packages/package-ops/src/course-committer.test.ts :: a chapter is restored only from a version in the course's own history",
 ]
 
+
+[[claim]]
+id = "K1.38"
+claim = "The agent runtime's records (0069): one session per course and at most one live job per session; an automatic job is paid by the course and capped at co-author (a missing cap is refused); event kinds are a closed list with payloads ≤ 64 KiB; members read their course's records, others nothing; no API role writes any of them."
+oracle = "conformance"
+bound_to = [
+  "apps/web/src/lib/agent-runtime.sql.test.ts :: one session per course, at most one live job per session; automatic jobs are paid by the course and capped at co-author",
+  "apps/web/src/lib/agent-runtime.sql.test.ts :: event kinds are a closed list and a payload is at most 64 KiB",
+  "apps/web/src/lib/agent-runtime.sql.test.ts :: members read their course's agent records; others read nothing; no API role writes",
+]
+
+[[claim]]
+id = "K1.39"
+claim = "The agent token is HS256 on a dedicated agent key with `typ alembic-agent` and audience `alembic-agent-api`, carries the package, session, job and invoker, and lives at most 15 minutes; another key, algorithm, type or audience, a tampered body, a longer lifetime or malformed ids are refused."
+oracle = "conformance"
+bound_to = [
+  "packages/package-ops/src/agent-token.test.ts :: a token signed with the agent key verifies, carries the job's ids, and lives at most 15 minutes",
+  "packages/package-ops/src/agent-token.test.ts :: refused: another key, another algorithm or type, another audience, a forged or tampered body, a long lifetime, bad ids",
+]
