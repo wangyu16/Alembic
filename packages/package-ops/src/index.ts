@@ -52,3 +52,4 @@ export * from "./raw-html";
 export * from "./diff-lines";
 export * from "./history";
 export * from "./shared-elements";
+export * from "./course-import";

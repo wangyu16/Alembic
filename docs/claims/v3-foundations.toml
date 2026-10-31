@@ -298,3 +298,21 @@ bound_to = [
   "packages/package-ops/src/course-ops.test.ts :: switching it on starts a home page (a draft) and a first term; nothing is overwritten",
   "packages/package-ops/src/course-ops.test.ts :: a term's slug comes from its title; a new term can start from the last term's pages, never over a file; the current term must exist",
 ]
+
+[[claim]]
+id = "K1.32"
+claim = "A course package from a type package (e.g. Coursewerk's layout-3 delivery) comes in as a new course: a checksum mismatch, a listed file missing or an unlisted file refuses the whole package; Alembic's own files, unsafe or misnamed files and stray chapters are left out with a reason; Alembic rebuilds the settings (chapters from the study guides' own headers when the package lists none); every page starts as a draft and the package's ready list is only a suggestion."
+oracle = "conformance"
+bound_to = [
+  "packages/package-ops/src/course-import.test.ts :: a clean package becomes one first commit; Alembic rebuilds its settings; pages start as drafts with the ready list only suggested",
+  "packages/package-ops/src/course-import.test.ts :: a checksum that doesn't match, a listed file missing, or an unlisted file refuses the whole package",
+  "packages/package-ops/src/course-import.test.ts :: Alembic's own files, unsafe files and stray chapters are left out with a reason, never imported",
+  "packages/package-ops/src/course-import.test.ts :: the real General Chemistry files plan cleanly (only old evidence pages left out)",
+]
+
+[[claim]]
+id = "K1.33"
+claim = "A new course's first commit (made by course creation or an import, outside the queue) is recorded as Alembic's own, so Door C never undoes it as a change made on GitHub."
+oracle = "human"
+bound_to = []
+note = "Found 2026-10-31: since the owner-only settings rule (overnight), creation's first commit was undone by Door C. Fixed by SqlQueueStore.recordOwnCommit in v3-actions and the import tool; live-checked with an import of the General Chemistry files (no undo; 19 chapters)."

@@ -95,6 +95,18 @@ export class SqlQueueStore implements Omit<QueueStore, "baseText"> {
   }
 
   /** Insert a row (service role): returns its id. */
+  /**
+   * Record a commit Alembic made outside the queue (a new course's first commit, from creation or an import) as its
+   * own, so Door C never treats it as a change made on GitHub.
+   */
+  async recordOwnCommit(packageId: string, sha: string, summary: string): Promise<void> {
+    await this.sql.query(
+      `insert into public.write_queue (package_id, kind, idem_key, payload, status, result)
+       values ($1, 'system', $2, $3::text::jsonb, 'done', $4::text::jsonb) on conflict do nothing`,
+      [packageId, `own:${sha}`, JSON.stringify({ files: [], summary }), JSON.stringify({ head: sha, commits: [sha], files: [] })],
+    );
+  }
+
   async insert(i: { packageId: string; kind: RowKind; idem: string; payload: QueueRow["payload"]; actorId?: string | null; invokerId?: string | null; pusher?: string | null; priority?: 0 | 1; dependsOn?: string | null }): Promise<string> {
     const { rows } = await this.sql.query<{ id: string }>(
       `select public.queue_insert($1, $2, $3, $4::text::jsonb, $5, $6, $7, $8::smallint, $9) as id`,

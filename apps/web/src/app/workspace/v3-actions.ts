@@ -2,13 +2,13 @@
 
 import { redirect } from "next/navigation";
 import { LicenseSchema } from "@alembic/package-contract";
-import { createCourseRepoV3 } from "@alembic/package-ops";
+import { createCourseRepoV3, SqlQueueStore } from "@alembic/package-ops";
 import { findUserInstallation } from "@alembic/github-bridge";
 import { githubUserIdOf, installationOwnership } from "@/lib/github-installation-owner";
 import { clientForInstallation, githubConfig } from "@/lib/github";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
-import { v3Enabled } from "@/lib/db";
+import { directDb, v3Enabled } from "@/lib/db";
 import { recordDocVersion } from "@/lib/course-v3";
 
 /**
@@ -74,6 +74,9 @@ export async function createCourseV3Action(formData: FormData): Promise<void> {
   });
   if (error) { console.error("createCourseV3 insert:", error.message); redirect("/workspace?v3=failed"); }
   await admin.from("course_installations").insert({ package_id: created.packageId, installation_id: installationId });
+  // The first commit is Alembic's own: Door C must never undo it as a change made on GitHub.
+  const sqlOwn = directDb();
+  if (sqlOwn) await new SqlQueueStore(sqlOwn).recordOwnCommit(created.packageId, created.head, `Created “${title}”`);
   const guide = created.files.find((f) => f.startsWith("study-guide/"));
   if (guide) {
     const c = await clientForInstallation(cfg, installationId);
