@@ -51,3 +51,4 @@ export * from "./both-changed-items";
 export * from "./raw-html";
 export * from "./diff-lines";
 export * from "./history";
+export * from "./shared-elements";

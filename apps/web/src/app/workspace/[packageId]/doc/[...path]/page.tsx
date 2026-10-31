@@ -11,6 +11,8 @@ import { can, type Role } from "@alembic/package-contract";
 import { kindOfPath } from "@/lib/orz-editor/kit";
 import { DocEditor } from "./doc-editor";
 import { StatusControl } from "./status-control";
+import { SharePanel, type ShareRow } from "./share-panel";
+import { shareablesOf } from "@alembic/package-ops";
 
 export const dynamic = "force-dynamic";
 
@@ -51,6 +53,23 @@ async function DocPageInner({ params }: { params: Promise<{ packageId: string; p
     editReturnsToDraft = m.options?.editReturnsToDraft === true;
   } catch { statusMap = undefined; }
   const { data: pubRow } = await supabase.from("published_files").select("path").eq("package_id", packageId).eq("path", path).maybeSingle();
+  // What of this page can be shared on its own (element-sharing-v3): its figures and its sections with a block id.
+  const shareables = isPage(path) ? shareablesOf(path, text) : [];
+  let shareRows: ShareRow[] = [];
+  if (shareables.length) {
+    const figurePaths = shareables.filter((x) => x.kind === "figure").map((x) => x.path);
+    const [{ data: pubFigures }, { data: shared }] = await Promise.all([
+      figurePaths.length ? supabase.from("published_files").select("path").eq("package_id", packageId).in("path", figurePaths) : Promise.resolve({ data: [] as Array<{ path: string }> }),
+      supabase.from("shared_elements").select("id, path, anchor").eq("package_id", packageId).is("stopped_at", null).in("path", [path, ...figurePaths]),
+    ]);
+    const onSite = new Set(((pubFigures ?? []) as Array<{ path: string }>).map((r) => r.path));
+    const active = new Map(((shared ?? []) as Array<{ id: string; path: string; anchor: string | null }>).map((r) => [`${r.path}#${r.anchor ?? ""}`, r.id]));
+    shareRows = shareables.map((x) => ({
+      kind: x.kind, path: x.path, anchor: x.anchor ?? null, title: x.title,
+      published: x.kind === "figure" ? onSite.has(x.path) : !!pubRow,
+      id: active.get(`${x.path}#${x.anchor ?? ""}`) ?? null,
+    }));
+  }
   const secret = assetSecret();
   const assets = secret ? assetUrlMap(packageId, tree.entries.filter((e) => e.type === "blob"), can(role as Role, "edit.private"), secret) : new Map<string, string>();
 
@@ -65,6 +84,7 @@ async function DocPageInner({ params }: { params: Promise<{ packageId: string; p
           <StatusControl packageId={packageId} path={path} status={statusOf(statusMap, path)} published={!!pubRow}
             canEdit={canWritePath(role as Role, path)} lead={can(role as Role, "edit.course-files")} editReturnsToDraft={editReturnsToDraft} />
         ) : null}
+        <SharePanel packageId={packageId} page={path} rows={shareRows} canEdit={canWritePath(role as Role, path)} />
       </div>
       <div className="min-h-0 flex-1">
         <DocEditor kind={kind} packageId={packageId} path={path} text={text} version={version} renderedAt={renderedAt} isPrivate={path.startsWith("private/")} assets={[...assets]} nonce={(await headers()).get("x-nonce") ?? undefined} />
