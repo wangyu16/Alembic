@@ -58,6 +58,21 @@ describe("reading the agent's hand-in (agent-runtime §11, §14, §15)", () => {
     expect(parseDigest({ questions: Array.from({ length: 21 }, (_, k) => ({ id: `q${k}`, text: "Why?" })) }).ok).toBe(false);
   });
 
+  it("[K1.40] a figure is base64, at most 4 MB, never a record; it is held apart until stored through the upload checks", () => {
+    const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]).toString("base64");
+    const r = ok({ changesetId: "cs-fig-0001", files: [{ path: "assets/gases/fig.png", encoding: "base64", content: png }] });
+    expect(r.ok && r.value.figures.map((f) => [f.path, f.bytes.length, f.baseBlob])).toEqual([["assets/gases/fig.png", 11, null]]);
+    expect(r.ok && r.value.files).toEqual([]);
+    for (const bad of [
+      { path: "assets/gases/fig.png", encoding: "base64", content: "not base64!" },
+      { path: "assets/gases/fig.png", encoding: "base64", content: "" },
+      { path: "assets/gases/fig.png", encoding: "base64", content: Buffer.alloc(4 * 1024 * 1024 + 1).toString("base64") },
+      { path: "provenance/coursewerk/x.png", encoding: "base64", content: png },
+      { path: "assets/gases/fig.png", encoding: "base64", content: png, baseBlob: "HEAD" },
+      { path: "alembic.json", encoding: "base64", content: png },
+    ]) expect(ok({ changesetId: "cs-fig-0002", files: [bad] }).ok).toBe(false);
+  });
+
   it("[K1.40] questions are plain one-line text with unique ids and a recommendation among the choices", () => {
     expect(parseDigest({ questions: [{ id: "q1", text: "A?" }, { id: "q1", text: "B?" }] }).ok).toBe(false);
     expect(parseDigest({ questions: [{ id: "q1", text: "x".repeat(501) }] }).ok).toBe(false);

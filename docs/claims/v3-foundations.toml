@@ -379,6 +379,7 @@ bound_to = [
   "packages/package-ops/src/agent-api.test.ts :: a hand-in of edits, records, appends, proposals and questions is read as the agent's writes",
   "packages/package-ops/src/agent-api.test.ts :: refused: files the agent may not write, records deleted or moved, appends outside .jsonl records, unclean paths, repeats, bad ids",
   "packages/package-ops/src/agent-api.test.ts :: every list is bounded: content files, records, record bytes, operations, questions",
+  "packages/package-ops/src/agent-api.test.ts :: a figure is base64, at most 4 MB, never a record; it is held apart until stored through the upload checks",
   "packages/package-ops/src/agent-api.test.ts :: questions are plain one-line text with unique ids and a recommendation among the choices",
   "packages/package-ops/src/agent-api.test.ts :: events: a closed list of kinds (no questions, no approvals), payloads at most 64 KiB",
   "packages/package-ops/src/agent-api.test.ts :: an append lands only on the log version it was read at",
@@ -437,3 +438,18 @@ bound_to = [
   "apps/web/src/lib/agent-endpoint.sql.test.ts :: a sandbox with more jobs running than it may hold acts for none of them",
 ]
 
+[[claim]]
+id = "K1.45"
+claim = "A figure in a hand-in goes through exactly a person's upload path: base64, at most 4 MB each and 40 MB per hand-in, never a record; the upload checks (kind, magic bytes, safe SVG, size, rates and the course total counted against the asker), the blob and the ledger row under the asker, with the agent's rights capped by its asker's; only then is it queued as a blob entry; an unsafe figure is refused and stores nothing."
+oracle = "conformance"
+bound_to = [
+  "apps/web/src/lib/agent-endpoint.sql.test.ts :: a figure goes through a person's upload path: checked, stored, in the ledger under the asker, then queued as a blob; an unsafe one is refused",
+]
+
+[[claim]]
+id = "K1.46"
+claim = "A hand-in touching a page a person saved in the last 2 minutes waits (pending), as does one depending on a pending hand-in; records-only hand-ins never wait; the worker queues pending hand-ins once their pages are quiet for 2 minutes or after 30 minutes, never ahead of what they depend on."
+oracle = "conformance"
+bound_to = [
+  "apps/web/src/lib/agent-endpoint.sql.test.ts :: a change to a page someone is typing in waits; a records-only one never does; it goes in once they pause, in order",
+]

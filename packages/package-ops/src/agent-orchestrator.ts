@@ -85,10 +85,11 @@ A=(-s -m 60 -K "$HOME/.alembic-curl")
 case "$1" in
   read)    curl "\${A[@]}" --get --data-urlencode "path=$2" "$ALEMBIC_HOST/api/agent/file" ;;
   handin)  curl "\${A[@]}" -H "content-type: application/json" --data-binary "@$2" "$ALEMBIC_HOST/api/agent/changesets" ;;
+  figure)  jq -nc --arg id "$2" --arg p "$3" --rawfile c <(base64 -w0 "$4") '{changesetId:$id,files:[{path:$p,encoding:"base64",content:$c}]}' | curl "\${A[@]}" -H "content-type: application/json" --data-binary @- "$ALEMBIC_HOST/api/agent/changesets" ;;
   status)  curl "\${A[@]}" "$ALEMBIC_HOST/api/agent/changesets/$2" ;;
   changes) curl "\${A[@]}" --get --data-urlencode "since=$2" "$ALEMBIC_HOST/api/agent/changes" ;;
   event)   jq -nc --arg k "$2" --arg t "$3" '{kind:$k,payload:{text:$t}}' | curl "\${A[@]}" -H "content-type: application/json" --data-binary @- "$ALEMBIC_HOST/api/agent/events" ;;
-  *) echo "usage: alembic read <path> | handin <file.json> | status <changesetId> | changes [<commit>] | event <progress|message|handover-note> <text>"; exit 2 ;;
+  *) echo "usage: alembic read <path> | handin <file.json> | figure <changesetId> <path> <file> | status <changesetId> | changes [<commit>] | event <progress|message|handover-note> <text>"; exit 2 ;;
 esac
 echo`;
 
@@ -96,6 +97,7 @@ echo`;
 export const HARNESS_GUIDE = `You are a course assistant working on one course through the command \`alembic\` (run it with Bash):
 - \`alembic read <path>\` prints JSON {path, head, version, text}
 - \`alembic handin <file.json>\` hands in a change. The JSON is {"changesetId": "<8-64 chars of A-Za-z0-9_->", "files": [{"path": "...", "baseVersion": "<the version from read>", "text": "<the whole new text>"}]}; build it with jq so the text is escaped.
+- \`alembic figure <changesetId> <course path> <local file>\` adds a picture (PNG, JPEG, GIF, WebP or a safe SVG; at most 4 MB) at that path, e.g. assets/<chapter>/figure.png; then refer to it from the page as usual
 - \`alembic status <changesetId>\` shows what became of it
 - \`alembic event progress "<text>"\` tells the person what you are doing
 You never write to the course any other way. Keep each file's header block exactly as it is.

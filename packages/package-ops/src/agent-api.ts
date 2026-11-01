@@ -9,7 +9,7 @@
  *     appends?: [{ path, baseVersion, append }],   // `.jsonl` records only: text added at the end, never combined
  *     courseOps?: [<course operation>],             // proposals for the owner or deputy, never writes
  *     digest?: { questions: [{ id, text, choices?, recommended? }] } }
- * Figures (binary entries) come in a later step.
+ * A figure: { path, encoding: "base64", content, baseBlob? } — the upload checks apply (agent-runtime §11.1).
  */
 import { canWritePath, isRecordsPath, normalizePath, type Role } from "@alembic/package-contract";
 import { parseCourseOp, type CourseOp } from "./course-ops";
@@ -24,6 +24,9 @@ export const HANDIN_LIMITS = {
   fileBytes: 4 * 1024 * 1024,
   /** Record text in one hand-in (§15 M2). */
   recordBytes: 4 * 1024 * 1024,
+  /** Figures (non-text files) per hand-in, decoded: each as an upload, all together (§11.1, §12 M6). */
+  figureBytes: 4 * 1024 * 1024,
+  figuresTotalBytes: 40 * 1024 * 1024,
   courseOps: 10,
   /** Questions in a digest; one open digest per person (§14.1, §15 M5), so this is also the open-question cap. */
   questions: 20,
@@ -50,6 +53,8 @@ export interface HandIn {
   changesetId: string;
   dependsOn: string | null;
   files: RowFile[];
+  /** Figures, stored through the upload checks before the change is queued (§11.1). */
+  figures: Array<{ path: string; bytes: Uint8Array; baseBlob: string | null }>;
   appends: Array<{ path: string; baseVersion: string; append: string }>;
   courseOps: CourseOp[];
   questions: DigestQuestion[];
@@ -89,7 +94,8 @@ export function parseHandIn(body: unknown, invoker: Role): ParseResult<HandIn> {
   const writable = (p: string) => { try { return isRecordsPath(p) || canWritePath("agent", p, { invoker }); } catch { return false; } };
 
   const files: RowFile[] = [];
-  let content = 0, records = 0, recordBytes = 0;
+  const figures: HandIn["figures"] = [];
+  let content = 0, records = 0, recordBytes = 0, figureBytes = 0;
   const rawFiles = body["files"] ?? [];
   if (!Array.isArray(rawFiles)) return { ok: false, reason: "files: a list" };
   for (const [k, f] of rawFiles.entries()) {
@@ -101,6 +107,22 @@ export function parseHandIn(body: unknown, invoker: Role): ParseResult<HandIn> {
     if (!writable(p)) return { ok: false, reason: `${p}: the assistant may not change this file` };
     const base = f["baseVersion"] ?? null;
     if (base !== null && (typeof base !== "string" || !VERSION.test(base))) return { ok: false, reason: `${p}: baseVersion is the sha256 of the text read, or null for a new file` };
+    if (f["encoding"] === "base64") {
+      // A figure: a non-text file, stored through the upload checks before anything is queued (§11.1).
+      if (isRecordsPath(p)) return { ok: false, reason: `${p}: records are text` };
+      const raw = f["content"];
+      if (typeof raw !== "string" || !/^[A-Za-z0-9+/]*={0,2}$/.test(raw) || raw.length % 4 !== 0) return { ok: false, reason: `${p}: content is base64` };
+      const bytes = new Uint8Array(Buffer.from(raw, "base64"));
+      if (!bytes.length) return { ok: false, reason: `${p}: the file is empty` };
+      if (bytes.length > HANDIN_LIMITS.figureBytes) return { ok: false, reason: `${p}: larger than 4 MB` };
+      figureBytes += bytes.length;
+      if (figureBytes > HANDIN_LIMITS.figuresTotalBytes) return { ok: false, reason: "at most 40 MB of figures per hand-in" };
+      const bb = f["baseBlob"] ?? null;
+      if (bb !== null && (typeof bb !== "string" || !/^[0-9a-f]{40}$/.test(bb))) return { ok: false, reason: `${p}: baseBlob is the id of the file it replaces` };
+      figures.push({ path: p, bytes, baseBlob: bb as string | null });
+      content++;
+      continue;
+    }
     if ("movedFrom" in f) {
       const from = path(f["movedFrom"], `files[${k}].movedFrom`);
       if (typeof from !== "string") return { ok: false, reason: from.error };
@@ -153,8 +175,8 @@ export function parseHandIn(body: unknown, invoker: Role): ParseResult<HandIn> {
 
   const q = parseDigest(body["digest"]);
   if (!q.ok) return q;
-  if (!files.length && !appends.length && !courseOps.length && !q.value.length) return { ok: false, reason: "the hand-in is empty" };
-  return { ok: true, value: { changesetId, dependsOn: dependsOn as string | null, files, appends, courseOps, questions: q.value, recordBytes } };
+  if (!files.length && !figures.length && !appends.length && !courseOps.length && !q.value.length) return { ok: false, reason: "the hand-in is empty" };
+  return { ok: true, value: { changesetId, dependsOn: dependsOn as string | null, files, figures, appends, courseOps, questions: q.value, recordBytes } };
 }
 
 /** A question digest (§14.1, §15 M5): bounded, plain text, unique ids, a recommendation among the choices. */

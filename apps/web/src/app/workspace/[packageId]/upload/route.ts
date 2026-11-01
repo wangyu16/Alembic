@@ -1,14 +1,11 @@
 import { randomUUID } from "node:crypto";
-import { gitBlobSha } from "@alembic/github-bridge";
 import { SqlQueueStore } from "@alembic/package-ops";
 import type { Role } from "@alembic/package-contract";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { requestOrigin } from "@/lib/request-origin";
 import { directDb } from "@/lib/db";
-import { courseRepo } from "@/lib/course-v3";
-import { githubBusy } from "@/lib/github-busy";
-import { checkBytes, checkUpload, COURSE_WARN_BYTES } from "@/lib/upload";
-import { checkPackageRateLimit, checkUserRateLimit } from "@/lib/rate-limit-server";
+import { checkUpload } from "@/lib/upload";
+import { storeFigure } from "@/lib/store-figure";
 
 export const dynamic = "force-dynamic";
 
@@ -42,41 +39,19 @@ export async function POST(req: Request, { params }: { params: Promise<{ package
   if (path === null || fromDoc === null) return json(400, { ok: false, message: "That file name can't be used." });
   const baseBlob = req.headers.get("x-alembic-base-blob");
   if (baseBlob !== null && !/^[0-9a-f]{40}$/.test(baseBlob)) return json(400, { ok: false, message: "Bad request." });
-  // Every attempt counts (round 1 audit M1: re-sending the same file used to add no ledger row).
-  const [mine, course] = await Promise.all([checkUserRateLimit("upload", user.id), checkPackageRateLimit("uploadCourse", packageId)]);
-  const { rows } = await sql.query<{ bytes: string }>(`select coalesce(sum(size), 0)::text as bytes from public.course_blobs where package_id = $1`, [packageId]);
-  const counts = { byPersonLastHour: mine.ok ? 0 : Infinity, byCourseLastHour: course.ok ? 0 : Infinity, courseBytes: Number(rows[0]?.bytes ?? 0) };
-  const check = checkUpload({ path, size: length, role: role as Role, counts, fromDoc });
-  if (!check.ok) return json(check.status, { ok: false, message: check.message });
+  // An early refusal before reading the body: the size the request declares (the stored check runs on the bytes too).
+  const early = checkUpload({ path, size: length, role: role as Role, counts: { byPersonLastHour: 0, byCourseLastHour: 0, courseBytes: 0 }, fromDoc });
+  if (!early.ok && early.status !== 429 && early.status !== 507) return json(early.status, { ok: false, message: early.message });
   const bytes = new Uint8Array(await req.arrayBuffer());
   if (bytes.length !== length) return json(400, { ok: false, message: "The file didn't arrive whole. Try again." });
-  const bad = checkBytes(check.kind, bytes);
-  if (bad) return json(415, { ok: false, message: bad });
-  const sha = gitBlobSha(bytes);
-  // A different file already has this name (round 1 audit M3): never replace someone's figure by accident.
-  const { rows: taken } = await sql.query<{ sha: string }>(`select sha from public.course_blobs where package_id = $1 and path = $2 and sha <> $3 limit 1`, [packageId, check.path, sha]);
-  if (taken.length && !baseBlob) return json(409, { ok: false, message: "A different file already has that name. Rename yours and add it again." });
-  // The same bytes already uploaded to this course: no second GitHub call (round 1 audit M1).
-  const { rows: known } = await sql.query<{ n: number }>(`select count(*)::int as n from public.course_blobs where package_id = $1 and sha = $2`, [packageId, sha]);
-  if (!known[0]?.n) {
-    const c = await courseRepo(packageId);
-    if (!c) return json(503, { ok: false, message: "This course can't be reached right now. Try again in a few minutes." });
-    let made: string;
-    try {
-      made = await c.client.uploadBlob({ owner: c.owner, repo: c.name }, bytes);
-    } catch (e) {
-      const busy = githubBusy(e);
-      return json(503, { ok: false, message: busy ? "GitHub is busy right now. Try again in a few minutes." : "Couldn't upload now. Try again in a few minutes." });
-    }
-    if (made !== sha) return json(502, { ok: false, message: "The file didn't arrive whole. Try again." });
-  }
-  await sql.query(
-    `insert into public.course_blobs (package_id, sha, size, kind, path, uploaded_by) values ($1, $2, $3, $4, $5, $6) on conflict do nothing`,
-    [packageId, sha, bytes.length, check.kind, check.path, user.id]);
+  const stored = await storeFigure({ sql, packageId, uploader: user.id, role: role as Role, path, bytes, baseBlob, fromDoc });
+  if (!stored.ok) return json(stored.status, { ok: false, message: stored.message });
+  const check = { path: stored.path };
+  const sha = stored.sha;
   const syncId = randomUUID();
   await new SqlQueueStore(sql).insert({
     packageId, kind: "sync", idem: syncId, actorId: user.id,
     payload: { files: [{ path: check.path, baseVersion: null, text: null, blob: { sha, size: bytes.length }, baseBlob }], fromOpenEditor: false, summary: `Added ${check.path.split("/").pop()}` },
   });
-  return json(200, { ok: true, path: check.path, sha, syncId, nearLimit: counts.courseBytes + bytes.length > COURSE_WARN_BYTES });
+  return json(200, { ok: true, path: check.path, sha, syncId, nearLimit: stored.nearLimit });
 }

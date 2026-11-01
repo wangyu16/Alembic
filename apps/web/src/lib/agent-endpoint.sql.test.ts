@@ -10,6 +10,8 @@ import { sandboxKeyHash, sealForJob, signAgentToken, SqlQueueStore } from "@alem
 import { freshDatabase, seedPackage, seedUser } from "./discovery-pglite";
 
 vi.mock("server-only", () => ({}));
+vi.mock("@/lib/rate-limit-server", () => ({ checkUserRateLimit: async () => ({ ok: true }), checkPackageRateLimit: async () => ({ ok: true }) }));
+const uploaded: Uint8Array[] = [];
 let db: PGlite;
 vi.mock("@/lib/db", () => ({
   directDb: () => ({ query: async (text: string, params?: unknown[]) => ({ rows: (await db.query(text, params ?? [])).rows }) }),
@@ -19,7 +21,7 @@ vi.mock("@/lib/course-v3", () => ({
   courseRepo: async () => ({
     owner: "o", name: "r",
     repo: { head: async () => "f".repeat(40), readFile: async (_ref: string, p: string) => files.get(p) ?? null },
-    client: { listTreeEntries: async () => ({ truncated: false, entries: [...files].map(([path, t]) => ({ path, mode: "100644", type: "blob", sha: "x", size: Buffer.byteLength(t) })) }), isAncestor: async (_coords: unknown, c: string) => c === "e".repeat(40), compareCommits: async () => [{ path: "study-guide/gases.md", status: "modified" }, { path: "private/sources/s1.json", status: "added" }] },
+    client: { uploadBlob: async (_c: unknown, b: Uint8Array) => { uploaded.push(b); const { gitBlobSha } = await import("@alembic/github-bridge"); return gitBlobSha(b); }, listTreeEntries: async () => ({ truncated: false, entries: [...files].map(([path, t]) => ({ path, mode: "100644", type: "blob", sha: "x", size: Buffer.byteLength(t) })) }), isAncestor: async (_coords: unknown, c: string) => c === "e".repeat(40), compareCommits: async () => [{ path: "study-guide/gases.md", status: "modified" }, { path: "private/sources/s1.json", status: "added" }] },
   }),
 }));
 
@@ -190,3 +192,46 @@ describe("the C4 attack round's budgets and re-checks (agent-runtime §14–§15
   });
 });
 
+describe("figures in a hand-in (agent-runtime §11.1, R.20)", () => {
+  it("[K1.45] a figure goes through a person's upload path: checked, stored, in the ledger under the asker, then queued as a blob; an unsafe one is refused", async () => {
+    await db.query(`update public.agent_sessions set state = 'running' where id = $1`, [SESSION]);
+    const c = await ctx();
+    // A real 1×1 PNG.
+    const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "base64");
+    const r = await handIn(c, { changesetId: "cs-figure-01", files: [{ path: "assets/gases/one.png", encoding: "base64", content: png.toString("base64") }] });
+    expect(r).toMatchObject({ status: 202, body: { status: "queued" } });
+    const ledger = await db.query<{ uploaded_by: string; kind: string; size: number }>(`select uploaded_by::text, kind, size from public.course_blobs where package_id = $1 and path = 'assets/gases/one.png'`, [pkg]);
+    expect(ledger.rows[0]).toMatchObject({ uploaded_by: co, kind: "png", size: png.length });
+    const row = await db.query<{ payload: { files: Array<{ blob?: { sha: string } }> } }>(`select payload from public.write_queue where idem_key = 'changeset:cs-figure-01'`);
+    expect(row.rows[0]!.payload.files[0]!.blob?.sha).toMatch(/^[0-9a-f]{40}$/);
+    const svg = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)"><rect/></svg>').toString("base64");
+    expect(await handIn(c, { changesetId: "cs-figure-02", files: [{ path: "assets/gases/bad.svg", encoding: "base64", content: svg }] })).toMatchObject({ status: 409, body: { status: "refused" } });
+    const fake = Buffer.from("not really a png").toString("base64");
+    expect(await handIn(c, { changesetId: "cs-figure-03", files: [{ path: "assets/gases/fake.png", encoding: "base64", content: fake }] })).toMatchObject({ status: 409, body: { status: "refused" } });
+    expect((await db.query(`select 1 from public.course_blobs where package_id = $1 and path in ('assets/gases/bad.svg', 'assets/gases/fake.png')`, [pkg])).rows).toHaveLength(0);
+  });
+});
+
+
+describe("a hand-in waits while a person types (agent-runtime §4.1, §14.5)", () => {
+  it("[K1.46] a change to a page someone is typing in waits; a records-only one never does; it goes in once they pause, in order", async () => {
+    const { promotePending } = await import("@alembic/package-ops");
+    const sqlc = { query: async (text: string, params?: unknown[]) => ({ rows: (await db.query(text, params ?? [])).rows as never[] }) };
+    const c = await ctx();
+    // The co-author is typing in practice/typing.md (their editor saved it just now).
+    await db.query(`select public.queue_insert($1, 'sync', 'typing-1', $2::jsonb, $3::uuid, null, null, 0::smallint, null)`,
+      [pkg, JSON.stringify({ files: [{ path: "practice/typing.md", baseVersion: null, text: "draft" }], fromOpenEditor: true }), co]);
+    const a = await handIn(c, { changesetId: "cs-typing-01", files: [{ path: "practice/typing.md", baseVersion: null, text: "assistant" }] });
+    expect(a).toMatchObject({ status: 202, body: { status: "pending" } });
+    const b = await handIn(c, { changesetId: "cs-typing-02", dependsOn: "cs-typing-01", files: [{ path: "practice/other.md", baseVersion: null, text: "x" }] });
+    expect(b).toMatchObject({ body: { status: "pending" } }); // after a pending one: it waits too
+    expect(await handIn(c, { changesetId: "cs-typing-03", files: [{ path: "private/coursewerk/notes.json", baseVersion: null, text: "{}" }] })).toMatchObject({ body: { status: "queued" } });
+    expect(await promotePending(sqlc)).toBe(0); // still typing
+    await db.query(`update public.write_queue set created_at = now() - interval '5 minutes' where idem_key = 'sync:typing-1'`);
+    expect(await promotePending(sqlc)).toBe(2); // they paused: both go in, the first first
+    const q = await db.query<{ idem_key: string; depends_on: string | null; id: string }>(`select idem_key, depends_on::text, id::text from public.write_queue where idem_key in ('changeset:cs-typing-01', 'changeset:cs-typing-02') order by seq`);
+    expect(q.rows.map((r) => r.idem_key)).toEqual(["changeset:cs-typing-01", "changeset:cs-typing-02"]);
+    expect(q.rows[1]!.depends_on).toBe(q.rows[0]!.id);
+    expect(await changesetStatus(c, "cs-typing-01")).toMatchObject({ body: { status: "queued" } });
+  });
+});

@@ -15,7 +15,7 @@ export interface UploadCounts { byPersonLastHour: number; byCourseLastHour: numb
 
 export type UploadCheck = { ok: true; path: string; kind: MediaKind } | { ok: false; status: number; message: string };
 
-export function checkUpload(i: { path: string; size: number; role: Role; counts: UploadCounts; fromDoc?: string }): UploadCheck {
+export function checkUpload(i: { path: string; size: number; role: Role; counts: UploadCounts; fromDoc?: string; mayWrite?: (path: string) => boolean }): UploadCheck {
   let path: string;
   try {
     path = normalizePath(i.path);
@@ -26,7 +26,7 @@ export function checkUpload(i: { path: string; size: number; role: Role; counts:
   if (i.fromDoc?.startsWith("private/") && !path.startsWith("private/")) return { ok: false, status: 403, message: "A figure for an instructor-only document stays instructor-only." };
   const kind = fileKind(path);
   if (!kind || kind === "text") return { ok: false, status: 415, message: "This kind of file can't be added to a course (pictures: PNG, JPEG, GIF, WebP, SVG)." };
-  if (!canWritePath(i.role, path)) return { ok: false, status: 403, message: "You can't add files there." };
+  if (!(i.mayWrite ? i.mayWrite(path) : canWritePath(i.role, path))) return { ok: false, status: 403, message: "You can't add files there." };
   if (i.size <= 0) return { ok: false, status: 400, message: "The file is empty." };
   if (i.size > MAX_UPLOAD_BYTES) return { ok: false, status: 413, message: "The file is larger than 4 MB. Make it smaller (for example, save the picture at a lower resolution) and try again." };
   if (i.counts.byPersonLastHour >= UPLOADS_PER_PERSON_HOUR) return { ok: false, status: 429, message: "You've added many files in the last hour. Please wait a little and try again." };

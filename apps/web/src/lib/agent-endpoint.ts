@@ -8,10 +8,11 @@ import "server-only";
  */
 import { createHash } from "node:crypto";
 import {
-  appliedAppend, openForJob, parseEvent, parseHandIn, sandboxKeyHash, SqlQueueStore, verifyAgentToken, HANDIN_LIMITS,
+  appliedAppend, openForJob, parseEvent, someoneTyping, parseHandIn, sandboxKeyHash, SqlQueueStore, verifyAgentToken, HANDIN_LIMITS,
   type AgentClaims, type AgentKey, type HandIn, type RowFile, type SqlClient,
 } from "@alembic/package-ops";
-import { fileKind, isRecordsPath, isServerOnlyPath, normalizePath, type Role } from "@alembic/package-contract";
+import { canWritePath, fileKind, isRecordsPath, isServerOnlyPath, normalizePath, type Role } from "@alembic/package-contract";
+import { storeFigure } from "@/lib/store-figure";
 import { directDb } from "@/lib/db";
 import { courseRepo } from "@/lib/course-v3";
 
@@ -111,7 +112,7 @@ export async function handIn(ctx: AgentCtx, raw: unknown): Promise<Reply> {
   const ins = await sql.query<Registry>(
     `insert into public.agent_changesets (id, package_id, job_id, invoker_id, status, files, record_bytes)
      values ($1, $2, $3, $4::uuid, 'pending', $5, $6) on conflict (id) do nothing returning id`,
-    [h.changesetId, claims.package_id, claims.job_id, claims.invoker_id, h.files.length + h.appends.length, h.recordBytes],
+    [h.changesetId, claims.package_id, claims.job_id, claims.invoker_id, h.files.length + h.figures.length + h.appends.length, h.recordBytes],
   );
   if (!ins.rows.length) {
     const { rows } = await sql.query<Registry>(`select id, package_id, job_id, status, queue_row_id::text, reason from public.agent_changesets where id = $1`, [h.changesetId]);
@@ -179,6 +180,16 @@ export async function handIn(ctx: AgentCtx, raw: unknown): Promise<Reply> {
   }
 
   const files: RowFile[] = [...h.files];
+  // Figures go through exactly a person's upload path: the checks, the blob, the ledger (counted against the asker
+  // and the course), with the agent's rights capped by its asker's (§11.1, R.20).
+  for (const fig of h.figures) {
+    const stored = await storeFigure({
+      sql, packageId: claims.package_id, uploader: claims.invoker_id, role: ctx.invoker, path: fig.path, bytes: fig.bytes, baseBlob: fig.baseBlob,
+      mayWrite: (p) => { try { return canWritePath("agent", p, { invoker: ctx.invoker }); } catch { return false; } },
+    });
+    if (!stored.ok) return refuse(`${fig.path}: ${stored.message}`);
+    files.push({ path: stored.path, baseVersion: null, text: null, blob: { sha: stored.sha, size: stored.size }, baseBlob: fig.baseBlob });
+  }
   if (h.appends.length) {
     const course = await courseRepo(claims.package_id);
     if (!course) return refuse("the course's files can't be reached now; try again");
@@ -226,11 +237,20 @@ export async function handIn(ctx: AgentCtx, raw: unknown): Promise<Reply> {
     if (!d || d.package_id !== claims.package_id) return refuse("hand in the change this one depends on first");
     if (d.status === "refused" || d.status === "failed") return refuse("the change this one depends on didn't land");
     dependsOnRow = d.queue_row_id;
-    if (!dependsOnRow && d.status !== "done" && d.status !== "proposed") return refuse("hand in the change this one depends on first");
+    if (!dependsOnRow && d.status !== "done" && d.status !== "proposed" && d.status !== "pending") return refuse("hand in the change this one depends on first");
+  }
+  const payload = { files, ...(ctx.rightsCap ? { rightsCap: ctx.rightsCap } : {}), summary: "Changes by the assistant" };
+  // A person typing in one of its files: the hand-in waits (§4.1); records-only hand-ins never do (§14.5).
+  const contentPaths = files.filter((f) => !isRecordsPath(f.path)).flatMap((f) => (f.movedFrom ? [f.path, f.movedFrom] : [f.path]));
+  const afterPending = h.dependsOn !== null && dependsOnRow === null && (await sql.query<{ s: string }>(`select status as s from public.agent_changesets where id = $1`, [h.dependsOn])).rows[0]?.s === "pending";
+  if (afterPending || (await someoneTyping(sql, claims.package_id, contentPaths))) {
+    await sql.query(`update public.agent_changesets set status = 'pending', depends_on = $2, pending_payload = $3::text::jsonb, pending_paths = $4, updated_at = now() where id = $1`,
+      [h.changesetId, h.dependsOn, JSON.stringify(payload), contentPaths]);
+    return { status: 202, body: { changesetId: h.changesetId, status: "pending", reason: "someone is typing in one of these pages; it goes in once they pause" } };
   }
   const rowId = await new SqlQueueStore(sql).insert({
     packageId: claims.package_id, kind: "changeset", idem: h.changesetId, invokerId: claims.invoker_id,
-    payload: { files, ...(ctx.rightsCap ? { rightsCap: ctx.rightsCap } : {}), summary: "Changes by the assistant" },
+    payload,
     dependsOn: dependsOnRow,
   });
   await sql.query(`update public.agent_changesets set depends_on = $2 where id = $1`, [h.changesetId, h.dependsOn]);

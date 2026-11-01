@@ -3,7 +3,7 @@
  * go through instabox's REST API with an API key that can only run commands in the sandbox (machines:*); the
  * sandbox's own key for Alembic is an instabox Secret the worker never sees.
  */
-import { orchestratorPass, type AgentKey, type SandboxExec, type SqlClient } from "@alembic/package-ops";
+import { orchestratorPass, promotePending, type AgentKey, type SandboxExec, type SqlClient } from "@alembic/package-ops";
 
 export function instaboxSandbox(apiKey: string, machineId: string, base = "https://api.instabox.sh"): SandboxExec {
   const call = async (path: string, body: unknown, timeoutMs: number) => {
@@ -33,5 +33,6 @@ export function agentKeysFromEnv(v: string | undefined): AgentKey[] {
 }
 
 export async function agentPass(d: { sql: SqlClient; sandbox: SandboxExec; keys: AgentKey[]; host: string; holder: string; log: (m: string) => void }): Promise<void> {
+  await promotePending(d.sql);
   await orchestratorPass({ sql: d.sql, sandbox: d.sandbox, keys: d.keys, host: d.host, holder: d.holder, models: ["claude-sonnet-5", "claude-haiku-4-5"], maxMinutes: 30, log: d.log });
 }
