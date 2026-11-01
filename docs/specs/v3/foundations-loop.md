@@ -384,3 +384,20 @@ were invisible to recovery).** All fixed in `c9ffb12`:
 Verified live: a planted `~/.claude/settings.json` and a leftover file were gone at the next job; with `hidepid=invisible` the
 sandbox's own user sees none of the course user's processes; no process (seen as root) carries a job secret on its command
 line; the job finished with a plain answer. Round 2 still had HIGH findings, so a short round 3 on the orchestrator follows.
+
+### C4 attack round 3 (2026-10-31): the orchestrator, and where the loop stops
+
+One fresh reviewer, orchestrator only. Every round-2 fix held except the kill loop. **1 HIGH, 2 MEDIUM, 2 LOW.** The HIGH: the kill
+loop failed open (a process that keeps forking could slip past `pkill`, and the launch went on anyway). Fixed in `638b98b`
+and live-probed on the instabox VM with a real fork-hopper: schedules removed first; `kill -9 -1` run by bash as the
+course user (atomic in the kernel; the probe showed util-linux `/usr/bin/kill` rejecting the form, and that `pgrep` must
+run as root under `hidepid`); the launch stops if any process survives. MEDIUM: one course could fill the disk or fork-bomb
+the VM → its `/tmp`, `/var/tmp`, `/dev/shm` files and home are wiped at every job end, `TMPDIR` is in the job's home, hard
+process and file-size limits. LOW: loopback only for DNS; a claim always sets its session's sandbox. Job folders are made by
+the user, never root (closing the `install -d` link question). Verified live: a job ran under the limits and left no process,
+no home entry and no temporary file.
+
+**Stop (owner's closed-loop rule: trust boundaries over endless rounds).** The remaining risks are the testing arrangement
+itself — one shared free-plan VM where all course users share the provider's placeholder and its disk (no per-user quota),
+accepted for a handful of known testers (O22) — and are removed by design in production (one sandbox, key and disk per
+course, §16–§18). No further orchestrator rounds for the testing phase; a production round runs on the per-course sandbox.
