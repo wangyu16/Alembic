@@ -105,7 +105,7 @@ describe("the agent orchestrator (agent-runtime §16–§18, C4 attack round)", 
     expect(r.finished).toBe(1);
     const j = await row("aj-000000000001");
     expect([j["status"], j["summary"], j["gateway_key_sealed"], j["job_secret_hash"]]).toEqual(["done", "Added one sentence to Atoms.", null, null]);
-    expect(ran.slice(before).some((c) => c.includes(`sudo -u ${courseUser(pkg)} bash -c 'kill -9 -1'`) && c.includes(`crontab -r -u ${courseUser(pkg)}`) && c.includes(`sudo find /home/${courseUser(pkg)} -mindepth 1 -delete`))).toBe(true); // H1
+    expect(ran.slice(before).some((c) => c.includes(`sudo -u ${courseUser(pkg)} /bin/bash -c 'kill -9 -1'`) && c.includes(`crontab -r -u ${courseUser(pkg)}`) && c.includes(`sudo find /home/${courseUser(pkg)} -mindepth 1 -delete`))).toBe(true); // H1
     const ai = String(j["ai_job_id"]);
     expect((await db.query(`select 1 from public.gateway_keys where job_id = $1 and revoked_at is null`, [ai])).rows).toHaveLength(0);
     expect((await hold(ai)).status).toBe("open"); // a call in flight may still be charged (M4)
@@ -122,7 +122,7 @@ describe("the agent orchestrator (agent-runtime §16–§18, C4 attack round)", 
     await db.query(`update public.agent_jobs set started_at = now() - interval '2 hours' where id = 'aj-000000000002'`);
     await orchestratorPass(cfg());
     expect([(await row("aj-000000000002"))["status"], (await row("aj-000000000002"))["summary"]]).toEqual(["failed", "Stopped: the job ran past its time limit."]);
-    expect(ran.some((c) => c.includes(`sudo -u ${courseUser(pkg2)} bash -c 'kill -9 -1'`))).toBe(true);
+    expect(ran.some((c) => c.includes(`sudo -u ${courseUser(pkg2)} /bin/bash -c 'kill -9 -1'`))).toBe(true);
   });
 
   it("[K1.43] without enough credit a job fails to start, holding nothing; a start that fails says so plainly", async () => {
