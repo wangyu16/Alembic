@@ -17,7 +17,8 @@ import { headingsWithoutId, shareablesOf } from "@alembic/package-ops";
 export const dynamic = "force-dynamic";
 
 /** One course document in the embedded 1.x editor (K4), read from the working repo's head. */
-async function DocPageInner({ params }: { params: Promise<{ packageId: string; path: string[] }> }) {
+async function DocPageInner({ params, searchParams }: { params: Promise<{ packageId: string; path: string[] }>; searchParams?: Promise<{ m?: string }> }) {
+  const message = (await searchParams)?.m?.slice(0, 300);
   const { packageId, path: parts } = await params;
   if (!v3Enabled()) redirect(`/workspace/${packageId}`);
   let path: string;
@@ -86,6 +87,7 @@ async function DocPageInner({ params }: { params: Promise<{ packageId: string; p
         ) : null}
         <SharePanel packageId={packageId} page={path} rows={shareRows} canEdit={canWritePath(role as Role, path)} unnamed={isPage(path) ? headingsWithoutId(text).slice(0, 40) : []} />
       </div>
+      {message ? <p className="notice mx-3 mt-2 text-sm" role="status" data-testid="doc-message">{message}</p> : null}
       <div className="min-h-0 flex-1">
         <DocEditor kind={kind} packageId={packageId} path={path} text={text} version={version} renderedAt={renderedAt} isPrivate={path.startsWith("private/")} assets={[...assets]} nonce={(await headers()).get("x-nonce") ?? undefined} />
       </div>

@@ -1,6 +1,6 @@
 # Sharing elements (v3) — mini-spec
 
-**Status:** draft 1, 2026-10-30 (overnight). Owner ruling (2026-10-30): "Element
+**Status:** step 2 built 2026-10-31 (K1.47; live-checked: an element found in Discover was used in another course, its figure copied through the upload path and the page given the figure and its credit). Draft 1, 2026-10-30 (overnight). Owner ruling (2026-10-30): "Element
 level sharing is allowed. A nice graphic illustration, a chart/diagram, a block
 of math of important proof, etc. can be shared as individual elements allowing
 other people to use." Defaults approved the same evening: anyone who may edit a
@@ -69,3 +69,8 @@ Discover ranks nothing by content (contract §11).
   sharing ends that address for good.
 - **K1.29** Sharing and stopping need the right to edit the page; the element
   page always carries the course, its authors, the licence and the source page.
+- **K1.47** (step 2) Using an element copies a figure through the upload path and shows it from where it was copied,
+  with its credit; a section carries no source block id and its links point at the source website; open licences
+  only; a heading gets an id only while it is still that heading; Discover lists only active shares on a website, of
+  courses not archived, newest first, matching the search text literally.
+
