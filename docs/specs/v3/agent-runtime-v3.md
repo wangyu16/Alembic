@@ -467,3 +467,16 @@ sandbox has room (hold, sealed key, the course's own user with its egress rule, 
 time limit), and for each running job reads its exit file: finished → the result is the hand-over note, the key is
 revoked, the hold released; past the limit → stopped. Verified live 2026-10-31: job `aj-fec123a01873` ran by itself,
 its change landed (`d5494cd`), 28 credits, hold released, no live key left.
+
+## 19. Figures, the typing wait, and the counted bound (2026-10-31)
+
+- **Figures in a hand-in** (§11.1): `{path, encoding: "base64", content, baseBlob?}`, at most 4 MB each and 40 MB per
+  hand-in, never a record. They go through exactly a person's upload path (`storeFigure`, shared with the upload route):
+  the checks, the GitHub blob, the ledger row under the asker (rates and the course total counted against them), with the
+  agent's rights capped by its asker's; only then is the change queued. The helper adds `alembic figure`. K1.45.
+- **The typing wait** (§4.1): a hand-in touching a page a person's editor saved in the last 2 minutes is `pending`; the
+  worker queues it after 2 quiet minutes or 30 at most, never ahead of what it depends on; records-only hand-ins never
+  wait (§14.5). K1.46.
+- **§17.4 amended: the counted bound.** The gateway bounds a request over 16 KB by Anthropic's own count of its input
+  (count_tokens, free), never above the byte bound, any failure keeping the byte bound. Live: a figure job that ran out of
+  headroom at 52 of 120 credits under the byte bound finished at 35 credits with the counted bound.
