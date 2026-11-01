@@ -61,7 +61,8 @@ delete table inet alembic_${user}
 table inet alembic_${user} {
   chain out {
     type filter hook output priority 0; policy accept;
-    meta skuid $U oif lo accept
+    meta skuid $U oif lo udp dport 53 accept
+    meta skuid $U oif lo tcp dport 53 accept
     meta skuid $U ip daddr { $NS } udp dport 53 accept
     meta skuid $U ip daddr { $NS } tcp dport 53 accept
     meta skuid $U ip daddr { $IPS } tcp dport 443 accept
@@ -102,7 +103,13 @@ End with one or two plain sentences for the teacher who asked: what you changed,
 `;
 
 /** End everything a course user runs or has scheduled (attack round H1: nothing outlives its job). */
-export const killScript = (user: string) => `for i in 1 2 3 4 5 6 7 8 9 10; do sudo pkill -KILL -u ${user} 2>/dev/null || true; pgrep -u ${user} >/dev/null || break; sleep 0.5; done; sudo crontab -r -u ${user} 2>/dev/null || true; for a in $(sudo -u ${user} atq 2>/dev/null | awk '{print $1}'); do sudo atrm "$a"; done 2>/dev/null || true`;
+// Schedules first (nothing can start again), then kill(-1) as the user: the kernel signals all of that user's processes at
+// once, so a process that keeps forking can't slip between listing and signalling (round 3, H1). If anything is left, it
+// fails: a launch never goes on beside a survivor. The user's files outside its home go too (round 3, M1).
+export const killScript = (user: string) => `sudo crontab -r -u ${user} 2>/dev/null || true; for a in $(sudo -u ${user} atq 2>/dev/null | awk '{print $1}'); do sudo atrm "$a"; done 2>/dev/null || true
+for i in 1 2 3 4 5; do sudo -u ${user} /bin/bash -c 'kill -9 -1' 2>/dev/null || true; sudo pgrep -u ${user} >/dev/null || break; sleep 0.5; done
+if sudo pgrep -u ${user} >/dev/null; then echo "processes of ${user} are still running" >&2; exit 4; fi
+sudo find /tmp /var/tmp /dev/shm -xdev -user ${user} -delete 2>/dev/null || true`;
 
 /**
  * A job's workspace and launch (attack round H1, H2, M2). Root never writes into the course user's home through a
@@ -119,7 +126,9 @@ export function launchScript(user: string, job: string, maxMinutes: number): str
 ${killScript(user)}
 # A fresh home for every job: nothing a previous job left (settings, hooks, files) runs in this one (attack round 2, H2).
 sudo find ${home} -mindepth 1 -delete
-sudo install -d -o ${user} -g ${user} -m 700 ${home}/jobs ${dir}
+sudo chown ${user}:${user} ${home} && sudo chmod 700 ${home}
+# Created by the user, never by root (round 3, H1: root following a link the user raced in).
+${asUser} mkdir -m 700 ${home}/jobs ${dir} ${home}/tmp
 . /run/instabox/secrets/env
 # The job's secret arrives as the first line of stdin, the task after it: never in a command (attack round 2, H1).
 IFS= read -r ALEMBIC_JOB_SECRET_VALUE
@@ -132,6 +141,9 @@ ${HARNESS_GUIDE}GUIDE_EOF
 ${asUser} sh -c 'cat > ${dir}/run.sh' <<'RUN_EOF'
 #!/bin/bash
 cd "$(dirname "$0")"
+# Hard limits the user can't raise: processes, file size (round 3, M2, M1).
+ulimit -Hu 512 -Su 512; ulimit -Hf 2097152 -Sf 2097152
+export TMPDIR="$HOME/tmp"
 . "$HOME/.alembic-env"
 export ANTHROPIC_BASE_URL="$ALEMBIC_HOST/api/agent/ai" ANTHROPIC_API_KEY=sandbox
 export ANTHROPIC_CUSTOM_HEADERS="x-alembic-sandbox: $ALEMBIC_SANDBOX
@@ -211,8 +223,9 @@ async function startOne(c: OrchestratorConfig): Promise<string | null> {
                      order by j2.started_at limit 1 for update of j2 skip locked)
       returning j.id, j.session_id, j.package_id, j.invoker_id::text, j.task, j.budget_credits::text, j.payer, j.started_at::text, j.ai_job_id::text, j.course_user)
      -- The session's sandbox is set in the same statement: a crash can't leave a claim recovery doesn't see (round 2, M1).
-     , sess as (update public.agent_sessions s set sandbox_ref = $1, state = 'running', updated_at = now()
-                 from claimed where s.id = claimed.session_id and s.state not like 'paused%' returning s.id)
+     , sess as (update public.agent_sessions s set sandbox_ref = $1, updated_at = now(),
+                        state = case when s.state like 'paused%' then s.state else 'running' end
+                 from claimed where s.id = claimed.session_id returning s.id)
      select * from claimed`,
     [sandbox.ref],
   );
@@ -274,7 +287,8 @@ async function checkRunning(c: OrchestratorConfig): Promise<number> {
       continue;
     }
     const end = async (status: "done" | "failed" | "cancelled", summary: string, note?: Record<string, unknown>) => {
-      await sandbox.exec({ cmd: killScript(j.course_user!), timeoutSeconds: 30 }); // nothing outlives its job (H1)
+      // Nothing outlives its job (H1): its processes, schedules, temporary files and home (round 3, M1).
+      await sandbox.exec({ cmd: `set -e\n${killScript(j.course_user!)}\nsudo find /home/${j.course_user} -mindepth 1 -delete`, timeoutSeconds: 60 });
       await finishJob(c, j, status, summary, note);
       finished++;
     };
