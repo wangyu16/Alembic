@@ -12,7 +12,7 @@ import { kindOfPath } from "@/lib/orz-editor/kit";
 import { DocEditor } from "./doc-editor";
 import { StatusControl } from "./status-control";
 import { SharePanel, type ShareRow } from "./share-panel";
-import { shareablesOf } from "@alembic/package-ops";
+import { headingsWithoutId, shareablesOf } from "@alembic/package-ops";
 
 export const dynamic = "force-dynamic";
 
@@ -84,7 +84,7 @@ async function DocPageInner({ params }: { params: Promise<{ packageId: string; p
           <StatusControl packageId={packageId} path={path} status={statusOf(statusMap, path)} published={!!pubRow}
             canEdit={canWritePath(role as Role, path)} lead={can(role as Role, "edit.course-files")} editReturnsToDraft={editReturnsToDraft} />
         ) : null}
-        <SharePanel packageId={packageId} page={path} rows={shareRows} canEdit={canWritePath(role as Role, path)} />
+        <SharePanel packageId={packageId} page={path} rows={shareRows} canEdit={canWritePath(role as Role, path)} unnamed={isPage(path) ? headingsWithoutId(text).slice(0, 40) : []} />
       </div>
       <div className="min-h-0 flex-1">
         <DocEditor kind={kind} packageId={packageId} path={path} text={text} version={version} renderedAt={renderedAt} isPrivate={path.startsWith("private/")} assets={[...assets]} nonce={(await headers()).get("x-nonce") ?? undefined} />

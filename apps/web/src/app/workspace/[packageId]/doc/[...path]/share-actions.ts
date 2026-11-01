@@ -1,7 +1,9 @@
 "use server";
 
 import { canWritePath, normalizePath, type Role } from "@alembic/package-contract";
-import { newElementId } from "@alembic/package-ops";
+import { randomUUID } from "node:crypto";
+import { addHeadingId, enqueueSync, headingsWithoutId, newBlockId, newElementId, SyncRefused } from "@alembic/package-ops";
+import { courseRepo, recordDocVersion } from "@/lib/course-v3";
 import { revalidatePath } from "next/cache";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { directDb } from "@/lib/db";
@@ -47,4 +49,36 @@ export async function stopSharingAction(packageId: string, id: string): Promise<
   revalidatePath(`/e/${id}`);
   revalidatePath(`/e/${id}/file`);
   return { ok: true };
+}
+
+/**
+ * Give a section an address (element-sharing-v3 §1, step 2): a block id added to its heading, as an ordinary edit of
+ * the person (combined with their typing by the version rule). It can be shared once that is on the website.
+ */
+export async function giveSectionIdAction(packageId: string, page: string, line: number, title: string): Promise<{ ok: boolean; message?: string }> {
+  const supabase = await createSupabaseServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { ok: false, message: "Please sign in again." };
+  const { data: roleRaw } = await supabase.rpc("course_role", { p: packageId });
+  let pagePath: string;
+  try { pagePath = normalizePath(page); } catch { return { ok: false, message: "That can't be changed." }; }
+  if (!canWritePath((roleRaw ?? "none") as Role, pagePath)) return { ok: false, message: "Only people who may edit this page do this." };
+  const sql = directDb();
+  const course = await courseRepo(packageId);
+  if (!sql || !course) return { ok: false, message: "That can't be changed right now." };
+  const head = await course.repo.head();
+  const current = await course.repo.readFile(head, pagePath);
+  if (current === null) return { ok: false, message: "The page isn't there any more." };
+  // The heading must still be on that line with that title (the page may have changed since it was shown).
+  const h = headingsWithoutId(current).find((x) => x.line === line && x.title === title);
+  if (!h) return { ok: false, message: "The page changed; reload it and try again." };
+  const next = addHeadingId(current, line, newBlockId());
+  if (next === null) return { ok: false, message: "The page changed; reload it and try again." };
+  const baseVersion = await recordDocVersion(packageId, pagePath, current, head);
+  try {
+    await enqueueSync(sql, { actorId: user.id, packageId, syncId: randomUUID(), files: [{ path: pagePath, baseVersion, text: next }], fromOpenEditor: false });
+  } catch (e) {
+    return { ok: false, message: e instanceof SyncRefused ? e.reason : "That can't be changed right now." };
+  }
+  return { ok: true, message: "Done. It can be shared once the page is published again." };
 }

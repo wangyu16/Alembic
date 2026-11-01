@@ -20,6 +20,7 @@ import { signInHref } from "@/lib/safe-next";
 import { reportOutcomeFor } from "@/lib/report-return";
 import type { AdaptTarget } from "./element-adapt";
 import { CourseResult, ElementResult, Pager, ResultCount, SearchForm } from "./discovery-ui";
+import { SharedFromSites } from "./shared-from-sites";
 
 export const dynamic = "force-dynamic";
 
@@ -112,6 +113,7 @@ export default async function PortalPage({
         <ItemListJsonLd courses={page.hits as CourseHit[]} />
       )}
       <SearchForm query={query} facets={page.facets} />
+      {query.scope === "elements" ? <SharedFromSites q={query.q ?? null} /> : null}
       <ResultCount query={query} total={page.facets.total} />
       {page.hits.length === 0 ? (
         nothingListed ? (

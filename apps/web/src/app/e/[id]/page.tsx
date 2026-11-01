@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
-import { LICENSE_URLS, licenseLabel, type License } from "@alembic/package-contract";
+import Link from "next/link";
+import { activeProfile, LICENSE_URLS, licenseLabel, type License } from "@alembic/package-contract";
 import { renderMarkdown } from "@alembic/renderer";
 import { sectionText } from "@alembic/package-ops";
 import { loadElement } from "@/lib/shared-element";
@@ -54,6 +55,9 @@ export default async function ElementPage({ params }: { params: Promise<{ id: st
         <p className="mt-1"><strong>Licence:</strong> {LICENSE_URLS[lic] ? <a className="underline" href={LICENSE_URLS[lic]}>{licLabel}</a> : licLabel}</p>
         <p className="mt-1"><strong>Cite:</strong> <span className="select-all">{citation}</span></p>
       </section>
+      {activeProfile.licences.open.includes(e.course.licence) ? (
+        <p className="mt-4"><Link prefetch={false} className="btn btn-primary btn-sm" href={`/e/${e.id}/use`} data-testid="use-this">Use this element in my course</Link></p>
+      ) : null}
     </main>
   );
 }

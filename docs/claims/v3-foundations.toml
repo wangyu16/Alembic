@@ -453,3 +453,14 @@ oracle = "conformance"
 bound_to = [
   "apps/web/src/lib/agent-endpoint.sql.test.ts :: a change to a page someone is typing in waits; a records-only one never does; it goes in once they pause, in order",
 ]
+
+[[claim]]
+id = "K1.47"
+claim = "Element sharing step 2: a used figure is copied through the upload path and shown from where it was copied, with its credit; a used section carries no source block id and its links point at the source website; a heading gets an id only while it is still that heading, never in code; Discover lists only active shares on a website, of courses not archived, newest first, matching the search text literally."
+oracle = "conformance"
+bound_to = [
+  "packages/package-ops/src/shared-elements.test.ts :: a used figure is shown from where it was copied, with its credit; a used section carries no source block id and its links point at the source website",
+  "packages/package-ops/src/shared-elements.test.ts :: a heading without an id can be given one, only while it is still that heading (never in code)",
+  "apps/web/src/lib/shared-from-sites.sql.test.ts :: lists only active shares that are on a website, of courses not archived, newest first; the search text is literal",
+]
+
