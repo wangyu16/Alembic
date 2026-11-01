@@ -82,6 +82,19 @@ describe("handleMessages", () => {
     expect(d2.upstream).not.toHaveBeenCalled();
   });
 
+  it("bounds a large call by Anthropic's count of its input, never above the byte bound; without a count, the byte bound stays", async () => {
+    const big = { ...ok, max_tokens: 8000, messages: [{ role: "user", content: "x".repeat(170_000) }] };
+    // 170 KB as one token per byte is about $0.35 + 8000 output tokens; the hold (10 credits = $0.10) is too small for that.
+    const byBytes = deps({}, undefined, 200, 10);
+    expect((await handleMessages(req(big), byBytes)).status).toBe(402);
+    const counted = deps({ countTokens: async () => 1000 }, undefined, 200, 10);
+    expect((await handleMessages(req(big), counted)).status).toBe(200);
+    const lying = deps({ countTokens: async () => 10_000_000 }, undefined, 200, 10_000); // a count above the byte bound never raises it
+    expect((await handleMessages(req(big), lying)).status).toBe(200);
+    const failing = deps({ countTokens: async () => { throw new Error("down"); } }, undefined, 200, 10);
+    expect((await handleMessages(req(big), failing)).status).toBe(402);
+  });
+
   it("refuses a call whose worst case exceeds what is left of the hold (review H1)", async () => {
     const d = deps({}, undefined, 200, 0.5);
     // Opus 5.5: 32k output tokens could cost 32_000 × $20/M = $0.64 = 64 credits

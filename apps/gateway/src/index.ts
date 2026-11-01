@@ -40,6 +40,14 @@ const deps: GatewayDeps = {
   },
   upstream: (body, headers, signal) =>
     fetch("https://api.anthropic.com/v1/messages", { method: "POST", body, headers: { ...headers, "x-api-key": master }, ...(signal ? { signal } : {}) }),
+  async countTokens(body) {
+    const r = await fetch("https://api.anthropic.com/v1/messages/count_tokens", {
+      method: "POST", body, headers: { "content-type": "application/json", "anthropic-version": "2023-06-01", "x-api-key": master }, signal: AbortSignal.timeout(10_000),
+    });
+    if (!r.ok) return null;
+    const n = Number(((await r.json()) as { input_tokens?: unknown }).input_tokens);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  },
   log: (m) => console.log(`[alembic-gateway] ${m}`),
 };
 

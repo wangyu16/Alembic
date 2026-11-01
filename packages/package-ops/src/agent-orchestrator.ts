@@ -307,10 +307,10 @@ async function checkRunning(c: OrchestratorConfig): Promise<number> {
     if (look.exitCode !== 0 || !look.stdout.startsWith("BEGIN\n") || !look.stdout.trimEnd().endsWith("END")) continue;
     const [code, result, err] = look.stdout.slice(6).split("\n---\n");
     if ((code ?? "").trim() === "running") continue;
-    let parsed: { result?: string; is_error?: boolean; num_turns?: number } = {};
+    let parsed: { result?: string; is_error?: boolean; num_turns?: number; subtype?: string } = {};
     try { parsed = JSON.parse((result ?? "").trim() || "{}"); } catch { /* the harness wrote no result */ }
     const ok = (code ?? "").trim() === "0" && parsed.is_error !== true && typeof parsed.result === "string";
-    if (!ok) c.log?.(`agent job ${j.id} failed: exit ${(code ?? "").trim()} ${(err ?? "").slice(-300)}`);
+    if (!ok) c.log?.(`agent job ${j.id} failed: exit ${(code ?? "").trim()} ${JSON.stringify({ subtype: parsed.subtype ?? null, result: (parsed.result ?? "").slice(0, 300), turns: parsed.num_turns ?? null })} ${(err ?? "").slice(-300)}`);
     await end(ok ? "done" : "failed", ok ? parsed.result!.slice(0, 4000) : PLAIN.failed, { result: ok ? parsed.result : null, turns: parsed.num_turns ?? null });
     c.log?.(`agent job ${j.id} ${ok ? "done" : "failed"}`);
     } catch (e) {

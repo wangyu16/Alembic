@@ -27,6 +27,11 @@ export interface GatewayDeps {
   /** USD per credit now. */
   usdPerCredit(): Promise<number>;
   upstream(body: string, headers: Record<string, string>, signal?: AbortSignal): Promise<Response>;
+  /**
+   * Anthropic's own count of a request's input tokens (the free count_tokens endpoint), or null if it can't be had.
+   * Used to bound a large call's worst case by its real input instead of one token per byte (C4 §17.4).
+   */
+  countTokens?(body: string): Promise<number | null>;
   log?(m: string): void;
 }
 
@@ -88,6 +93,8 @@ export function refuseFields(b: Record<string, unknown>): string | null {
 export const IMAGE_TOKEN_CEILING = 5000;
 /** Tool definitions and structured outputs add a system prompt not in the body. */
 const HIDDEN_PROMPT_TOKENS = 1000;
+/** Requests larger than this are counted by Anthropic before their worst case is bounded. */
+export const COUNT_ABOVE_BYTES = 16 * 1024;
 
 /**
  * Content the estimate can't bound (review r2 H2): a url or file source makes
@@ -180,7 +187,14 @@ export async function handleMessages(req: Request, deps: GatewayDeps): Promise<R
     if (!fresh || fresh.jobId !== key.jobId) return json(401, "this key is not valid now");
     const perCredit = await deps.usdPerCredit();
     const textBytes = Buffer.byteLength(outBody, "utf8") - content.base64Bytes;
-    const inputTokens = textBytes + content.images * IMAGE_TOKEN_CEILING + HIDDEN_PROMPT_TOKENS;
+    let inputTokens = textBytes + content.images * IMAGE_TOKEN_CEILING + HIDDEN_PROMPT_TOKENS;
+    // A large request: bound it by Anthropic's own count of its input (never above the byte bound; any failure keeps it).
+    if (deps.countTokens && textBytes > COUNT_ABOVE_BYTES) {
+      const forCount: Record<string, unknown> = {};
+      for (const k of ["model", "messages", "system", "tools", "tool_choice", "thinking"]) if (k in parsed) forCount[k] = parsed[k];
+      const counted = await deps.countTokens(JSON.stringify(forCount)).catch(() => null);
+      if (typeof counted === "number" && counted > 0) inputTokens = Math.min(inputTokens, counted + HIDDEN_PROMPT_TOKENS);
+    }
     const worstCredits = (inputTokens * worstInputRate(model) + maxTokens * worstOutputRate(model)) / perCredit;
     if (worstCredits > fresh.remaining) {
       return json(402, `this call could cost up to ${worstCredits.toFixed(4)} credits; ${Math.max(0, fresh.remaining).toFixed(4)} are left for this job (lower max_tokens or shorten the request)`);
