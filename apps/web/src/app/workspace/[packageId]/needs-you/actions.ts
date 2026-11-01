@@ -5,6 +5,7 @@ import { can, type Role } from "@alembic/package-contract";
 import { parseCourseOp } from "@alembic/package-ops";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { queueCourseOp } from "@/lib/course-op";
+import { directDb } from "@/lib/db";
 
 /** Answer an item through needs_you_answer (the role checks live there). */
 export async function answerItemAction(formData: FormData): Promise<void> {
@@ -109,11 +110,14 @@ export async function decideProposalAction(packageId: string, id: string, approv
   const { error } = await supabase.rpc("needs_you_answer", { p_id: id, p_answer: { decision: approve ? "approved" : "declined" } });
   if (error) return;
   if (approve) {
+    let queued = false;
     try {
-      await queueCourseOp(packageId, user.id, op, op.op, `item-${id}`);
+      queued = await queueCourseOp(packageId, user.id, op, op.op, `item-${id}`);
     } catch (e) {
       console.error("decideProposal: approved but not queued", (e as Error).message);
     }
+    // Not queued: the item opens again, so the approval isn't silently lost (round 2, L2).
+    if (!queued) await directDb()?.query(`update public.needs_you set state = 'waiting', answer = null, answered_by = null, answered_at = null where id = $1::uuid and package_id = $2`, [id, packageId]);
   }
   revalidatePath(`/workspace/${packageId}/needs-you`);
 }

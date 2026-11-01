@@ -204,6 +204,12 @@ export async function handIn(ctx: AgentCtx, raw: unknown): Promise<Reply> {
     for (const f of recordWrites) size.set(f.path, Buffer.byteLength(f.text!, "utf8"));
     let all = 0, pub = 0;
     for (const [p, n] of size) { all += n; if (!p.startsWith("private/")) pub += n; }
+    // Records handed in but not yet in the course count too (round 2, L3): sent together they can't pass the caps.
+    const pending = await sql.query<{ b: string }>(
+      `select coalesce(sum(record_bytes), 0)::text as b from public.agent_changesets where package_id = $1 and status = 'queued' and id <> $2`,
+      [claims.package_id, h.changesetId]);
+    all += Number(pending.rows[0]?.b ?? 0);
+    pub += Number(pending.rows[0]?.b ?? 0);
     if (pub > HANDIN_LIMITS.publicRecordBytes) return refuse("the public records would be larger than 1 MB in all");
     if (all > HANDIN_LIMITS.siteRecordBytes) return refuse("the records would be larger than 50 MB in all");
   }

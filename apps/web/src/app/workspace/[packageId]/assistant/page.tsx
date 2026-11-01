@@ -11,7 +11,7 @@ import { JOB_SIZES, MAX_TASK } from "./sizes";
 
 export const dynamic = "force-dynamic";
 
-type Job = { id: string; task: string; status: string; summary: string | null; spent_credits: number; budget_credits: number; started_at: string; ended_at: string | null };
+type Job = { id: string; task: string; status: string; summary: string | null; spent_credits: number; budget_credits: number; started_at: string; ended_at: string | null; settled_at: string | null };
 const STATUS: Record<string, string> = {
   starting: "Getting ready…", running: "Working…", done: "Finished", failed: "Didn't finish", cancelled: "Stopped", paused: "Paused",
 };
@@ -29,7 +29,7 @@ export default async function AssistantPage({ params, searchParams }: { params: 
   const mayAsk = can(role as Role, "agent.talk");
   const [{ data: course }, { data: jobRows }, { data: account }] = await Promise.all([
     supabase.from("packages").select("title").eq("id", packageId).maybeSingle(),
-    supabase.from("agent_jobs").select("id, task, status, summary, spent_credits, budget_credits, started_at, ended_at").eq("package_id", packageId).order("started_at", { ascending: false }).limit(10),
+    supabase.from("agent_jobs").select("id, task, status, summary, spent_credits, budget_credits, started_at, ended_at, settled_at").eq("package_id", packageId).order("started_at", { ascending: false }).limit(10),
     supabase.from("ledger_accounts").select("id, debt").eq("kind", "user").eq("user_id", user.id).maybeSingle(),
   ]);
   const jobs = (jobRows ?? []) as Job[];
@@ -109,7 +109,7 @@ export default async function AssistantPage({ params, searchParams }: { params: 
               <li key={j.id} className="p-4 text-sm">
                 <div className="flex flex-wrap items-baseline justify-between gap-2">
                   <span className={j.status === "done" ? "text-ok" : "text-muted"}>{STATUS[j.status] ?? j.status}</span>
-                  <span className="text-xs text-muted"><LocalTime at={j.started_at} /> · {Number(j.spent_credits).toFixed(1)} credits{landed(j.id) ? ` · ${landed(j.id)} change${landed(j.id) === 1 ? "" : "s"} saved` : ""}</span>
+                  <span className="text-xs text-muted"><LocalTime at={j.started_at} /> · {j.settled_at ? `${Number(j.spent_credits).toFixed(1)} credits` : "credit being settled (a few minutes)"}{landed(j.id) ? ` · ${landed(j.id)} change${landed(j.id) === 1 ? "" : "s"} saved` : ""}</span>
                 </div>
                 <p className="mt-1 line-clamp-2 text-muted">{j.task}</p>
                 {j.summary ? <p className="mt-2 whitespace-pre-wrap">{j.summary}</p> : null}

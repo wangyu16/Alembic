@@ -71,7 +71,7 @@ if (databaseUrl && appId && appKey) {
       { name: "site-build", everyMs: 10_000, run: () => siteBuildPass({ sql, appId, privateKey: appKey, log, site }) },
       // The course assistant (C4): on only where a sandbox, the agent keys and the public host are set.
       ...(agentSandbox && agentKeys.length && agentHost
-        ? [{ name: "agent", everyMs: 15_000, run: () => agentPass({ sql, sandbox: agentSandbox, keys: agentKeys, host: agentHost, log }) }]
+        ? [{ name: "agent", everyMs: 15_000, run: () => agentPass({ sql, sandbox: agentSandbox, keys: agentKeys, host: agentHost, holder, log }) }]
         : []),
     ],
     log,

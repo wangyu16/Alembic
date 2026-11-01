@@ -15,11 +15,15 @@ const ran: string[] = [];
 const outcome = new Map<string, string>(); // job → what the sandbox reports for it
 const report = (code: string, result = "", err = "") => `BEGIN\n${code}\n---\n${result}\n---\n${err}\nEND\n`;
 let failLaunch = false;
+const stdins: string[] = [];
+const throwFor = new Set<string>(); // jobs whose check makes the sandbox call throw
 const sandbox: SandboxExec = {
   ref: "instabox:m_test",
-  async exec({ cmd }) {
+  async exec({ cmd, stdin }) {
     ran.push(cmd);
+    if (stdin !== undefined) stdins.push(stdin);
     const look = /\/jobs\/(aj-[a-z0-9]{12})\/exit\.code/.exec(cmd);
+    if (look && throwFor.has(look[1]!)) throw new Error("instabox exec: 504 timeout");
     if (look) return { exitCode: 0, stdout: outcome.get(look[1]!) ?? report("running"), stderr: "" };
     if (cmd.includes("echo started") && failLaunch) return { exitCode: 1, stdout: "", stderr: "nft: something technical" };
     return { exitCode: 0, stdout: cmd.includes("echo started") ? "started\n" : "ok\n", stderr: "" };
@@ -67,7 +71,12 @@ describe("the agent orchestrator (agent-runtime §16–§18, C4 attack round)", 
     expect(String(j["job_secret_hash"])).toMatch(/^[0-9a-f]{64}$/);
     expect([Number((await hold(j["ai_job_id"])).drawn), (await hold(j["ai_job_id"])).status]).toEqual([50, "open"]);
     const launch = ran.find((c) => c.includes("echo started"))!;
-    expect(launch).toContain(`sudo rm -rf /home/${courseUser(pkg)}/jobs /home/${courseUser(pkg)}/.alembic-env`); // never through the user's links (H2)
+    expect(launch).toContain(`sudo find /home/${courseUser(pkg)} -mindepth 1 -delete`); // a fresh home: nothing of an earlier job runs (round 2 H2), never through the user's links (H2)
+    expect(launch).not.toMatch(/ALEMBIC_JOB_SECRET_VALUE=['"A-Za-z0-9]/); // the secret never in a command (round 2 H1)
+    expect(stdins.at(-1)!.split("\n")[0]).toMatch(/^[A-Za-z0-9_-]{40,}$/); // it arrives on stdin, before the task
+    expect(stdins.at(-1)).toContain("check chapter 6");
+    expect(launch).toContain("cat > /home/" + courseUser(pkg) + "/.alembic-curl"); // the helper's headers from a 600 file
+    expect(ran.some((c) => c.includes("hidepid=2"))).toBe(true); // users can't see each other's processes
     expect(launch).toContain(`sudo -u ${courseUser(pkg)} -H tee /home/${courseUser(pkg)}/jobs/aj-000000000001/task.txt`); // written as the user
     expect(launch).not.toContain("chown -R");
     expect(launch).toContain("< task.txt"); // the task on stdin, never a command line (H1, M2)
@@ -169,4 +178,37 @@ describe("the agent orchestrator (agent-runtime §16–§18, C4 attack round)", 
     for (const h of hashes) expect(ran.join("\n")).not.toContain(String(h));
     expect(sandboxKeyHash("x")).toMatch(/^[0-9a-f]{64}$/);
   });
+
+  it("[K1.43] a job whose files never read still ends at its time limit; one job's sandbox error doesn't stop the pass", async () => {
+    await job("aj-000000000009", pkg, co);
+    await orchestratorPass(cfg());
+    expect((await row("aj-000000000009"))["status"]).toBe("running");
+    throwFor.add("aj-000000000009");
+    await orchestratorPass(cfg()); // the check throws: nothing else breaks
+    expect((await row("aj-000000000009"))["status"]).toBe("running");
+    await db.query(`update public.agent_jobs set started_at = now() - interval '2 hours' where id = 'aj-000000000009'`);
+    await orchestratorPass(cfg());
+    expect((await row("aj-000000000009"))["status"]).toBe("failed");
+    throwFor.clear();
+  });
+
+  it("[K1.43] a claim whose session never got its sandbox is recovered; a paused course is never claimed", async () => {
+    const p3 = await seedPackage(db, { owner });
+    await db.query(`insert into public.course_members (package_id, user_id, role) values ($1, $2, 'co-author')`, [p3, co]);
+    await db.query(`insert into public.agent_sessions (id, package_id) values ('as-cccccccccccc', $1)`, [p3]);
+    await job("aj-00000000000a", p3, co);
+    await db.query(`update public.agent_jobs set status = 'running', started_at = now() - interval '6 minutes' where id = 'aj-00000000000a'`);
+    await orchestratorPass(cfg());
+    expect((await row("aj-00000000000a"))["status"]).toBe("failed");
+    await db.query(`update public.agent_sessions set state = 'paused:owner' where package_id = $1`, [p3]);
+    await job("aj-00000000000b", p3, co);
+    expect((await orchestratorPass(cfg())).started).toBeNull();
+    expect((await row("aj-00000000000b"))["status"]).toBe("starting");
+    expect((await db.query<{ state: string }>(`select state from public.agent_sessions where package_id = $1`, [p3])).rows[0]!.state).toBe("paused:owner");
+  });
+
+  it("[K1.43] the orchestrator needs this worker's own name for its lease", async () => {
+    await expect(orchestratorPass({ ...cfg(), holder: undefined } as never)).rejects.toThrow(/holder/);
+  });
 });
+

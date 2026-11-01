@@ -52,8 +52,12 @@ U=$(id -u ${user})
 # DNS only to the sandbox's own resolvers (a resolver on loopback is covered by the loopback rule).
 NS=$(awk '/^nameserver/{print $2}' /etc/resolv.conf | grep -E '^[0-9]+(\.[0-9]+){3}$' | grep -v '^127\.' | sort -u | paste -sd, -)
 [ -n "$NS" ] || NS=127.0.0.53
-sudo nft delete table inet alembic_${user} 2>/dev/null || true
+# Users can't see each other's processes (attack round 2, H1: arguments and environments).
+grep -qE '\bhidepid=(2|invisible)\b' /proc/mounts || sudo mount -o remount,hidepid=2 /proc
+# The rule is replaced in one step: the user is never without one (attack round 2, L5).
 sudo nft -f - <<EOF
+table inet alembic_${user}
+delete table inet alembic_${user}
 table inet alembic_${user} {
   chain out {
     type filter hook output priority 0; policy accept;
@@ -75,7 +79,8 @@ echo ok`;
 /** The course assistant's one way to Alembic (every request carries the sandbox key placeholder and the job). */
 const HELPER = `#!/bin/bash
 . "$HOME/.alembic-env"
-A=(-s -m 60 -H "x-alembic-sandbox: $ALEMBIC_SANDBOX" -H "x-alembic-job: $ALEMBIC_JOB" -H "x-alembic-job-secret: $ALEMBIC_JOB_SECRET")
+# The job's headers come from a mode-600 file, never a command line (attack round 2, H1).
+A=(-s -m 60 -K "$HOME/.alembic-curl")
 case "$1" in
   read)    curl "\${A[@]}" --get --data-urlencode "path=$2" "$ALEMBIC_HOST/api/agent/file" ;;
   handin)  curl "\${A[@]}" -H "content-type: application/json" --data-binary "@$2" "$ALEMBIC_HOST/api/agent/changesets" ;;
@@ -97,7 +102,7 @@ End with one or two plain sentences for the teacher who asked: what you changed,
 `;
 
 /** End everything a course user runs or has scheduled (attack round H1: nothing outlives its job). */
-export const killScript = (user: string) => `sudo pkill -KILL -u ${user} 2>/dev/null || true; sudo crontab -r -u ${user} 2>/dev/null || true; for a in $(sudo -u ${user} atq 2>/dev/null | awk '{print $1}'); do sudo atrm "$a"; done 2>/dev/null || true`;
+export const killScript = (user: string) => `for i in 1 2 3 4 5 6 7 8 9 10; do sudo pkill -KILL -u ${user} 2>/dev/null || true; pgrep -u ${user} >/dev/null || break; sleep 0.5; done; sudo crontab -r -u ${user} 2>/dev/null || true; for a in $(sudo -u ${user} atq 2>/dev/null | awk '{print $1}'); do sudo atrm "$a"; done 2>/dev/null || true`;
 
 /**
  * A job's workspace and launch (attack round H1, H2, M2). Root never writes into the course user's home through a
@@ -112,10 +117,15 @@ export function launchScript(user: string, job: string, maxMinutes: number): str
   const asUser = `sudo -u ${user} -H`;
   return `set -euo pipefail
 ${killScript(user)}
-sudo rm -rf ${home}/jobs ${home}/.alembic-env ${home}/.claude.json
+# A fresh home for every job: nothing a previous job left (settings, hooks, files) runs in this one (attack round 2, H2).
+sudo find ${home} -mindepth 1 -delete
 sudo install -d -o ${user} -g ${user} -m 700 ${home}/jobs ${dir}
 . /run/instabox/secrets/env
+# The job's secret arrives as the first line of stdin, the task after it: never in a command (attack round 2, H1).
+IFS= read -r ALEMBIC_JOB_SECRET_VALUE
 printf 'export ALEMBIC_SANDBOX=%s\\nexport ALEMBIC_JOB=%s\\nexport ALEMBIC_JOB_SECRET=%s\\nexport ALEMBIC_HOST=%s\\n' "$ALEMBIC_SANDBOX_KEY" ${q(job)} "$ALEMBIC_JOB_SECRET_VALUE" "$ALEMBIC_HOST_URL" | ${asUser} sh -c 'umask 077; cat > ${home}/.alembic-env'
+printf 'header = "x-alembic-sandbox: %s"\\nheader = "x-alembic-job: %s"\\nheader = "x-alembic-job-secret: %s"\\n' "$ALEMBIC_SANDBOX_KEY" ${q(job)} "$ALEMBIC_JOB_SECRET_VALUE" | ${asUser} sh -c 'umask 077; cat > ${home}/.alembic-curl'
+unset ALEMBIC_JOB_SECRET_VALUE
 ${asUser} tee ${dir}/task.txt >/dev/null
 ${asUser} sh -c 'cat > ${dir}/CLAUDE.md' <<'GUIDE_EOF'
 ${HARNESS_GUIDE}GUIDE_EOF
@@ -192,18 +202,23 @@ async function startOne(c: OrchestratorConfig): Promise<string | null> {
        select b.max_jobs - (select count(*) from public.agent_jobs j join public.agent_sessions s on s.id = j.session_id
                              where j.status = 'running' and s.sandbox_ref = b.ref) as free
          from public.agent_sandboxes b where b.ref = $1 and b.retired_at is null)
+     , claimed as (
      update public.agent_jobs j set status = 'running', started_at = now()
       where j.id = (select j2.id from public.agent_jobs j2 join public.agent_sessions s2 on s2.id = j2.session_id
                      where j2.status = 'starting' and (s2.sandbox_ref is null or s2.sandbox_ref = $1)
+                       and s2.state not like 'paused%'
                        and (select free from room) > 0
                      order by j2.started_at limit 1 for update of j2 skip locked)
-      returning j.id, j.session_id, j.package_id, j.invoker_id::text, j.task, j.budget_credits::text, j.payer, j.started_at::text, j.ai_job_id::text, j.course_user`,
+      returning j.id, j.session_id, j.package_id, j.invoker_id::text, j.task, j.budget_credits::text, j.payer, j.started_at::text, j.ai_job_id::text, j.course_user)
+     -- The session's sandbox is set in the same statement: a crash can't leave a claim recovery doesn't see (round 2, M1).
+     , sess as (update public.agent_sessions s set sandbox_ref = $1, state = 'running', updated_at = now()
+                 from claimed where s.id = claimed.session_id and s.state not like 'paused%' returning s.id)
+     select * from claimed`,
     [sandbox.ref],
   );
   const j = claimed.rows[0];
   if (!j) return null;
   try {
-    await sql.query(`update public.agent_sessions set sandbox_ref = $2, state = 'running', updated_at = now() where id = $1`, [j.session_id, sandbox.ref]);
     if (j.payer !== "invoker") throw Object.assign(new Error("automatic jobs paid by the course come later"), { plain: PLAIN.start });
     const role = (await sql.query<{ r: string | null }>(`select public.course_role_of($1, $2::uuid) as r`, [j.package_id, j.invoker_id])).rows[0]?.r;
     if (role !== "owner" && role !== "deputy" && role !== "co-author") throw Object.assign(new Error("the asker is no longer an editor"), { plain: PLAIN.removed });
@@ -224,7 +239,7 @@ async function startOne(c: OrchestratorConfig): Promise<string | null> {
     if (prep.exitCode !== 0) throw new Error(`prepare: ${prep.stderr.slice(-300)}`);
     // The task arrives on stdin; the script reads it into the user's task file (never on a command line).
     const script = launchScript(user, j.id, c.maxMinutes ?? 30);
-    const run = await sandbox.exec({ cmd: `export ALEMBIC_HOST_URL=${q(c.host)} ALEMBIC_JOB_SECRET_VALUE=${q(secret)}\n${script}`, stdin: j.task, timeoutSeconds: 120 });
+    const run = await sandbox.exec({ cmd: `export ALEMBIC_HOST_URL=${q(c.host)}\n${script}`, stdin: `${secret}\n${j.task}`, timeoutSeconds: 120 });
     if (run.exitCode !== 0 || !run.stdout.includes("started")) throw new Error(`launch: ${run.stderr.slice(-300)}`);
     await sql.query(`insert into public.agent_session_events (session_id, job_id, kind, payload) values ($1, $2, 'progress', '{"text":"The assistant started."}'::jsonb)`, [j.session_id, j.id]);
     c.log?.(`agent job ${j.id} started for ${j.package_id}`);
@@ -233,6 +248,8 @@ async function startOne(c: OrchestratorConfig): Promise<string | null> {
     const why = e instanceof Error ? e.message : String(e);
     c.log?.(`agent job ${j.id} failed to start: ${why}`);
     const plain = (e as { plain?: string }).plain ?? (/credit|balance/i.test(why) ? PLAIN.credit : PLAIN.start);
+    // Whatever the launch may have started ends too (round 2, L5).
+    await sandbox.exec({ cmd: killScript(courseUser(j.package_id)), timeoutSeconds: 60 }).catch(() => {});
     await finishJob(c, j, "failed", plain);
     return null;
   }
@@ -245,7 +262,7 @@ async function checkRunning(c: OrchestratorConfig): Promise<number> {
     `select j.id, j.session_id, j.package_id, j.ai_job_id::text, j.course_user, j.status, extract(epoch from now() - j.started_at) / 60 as minutes,
             public.course_role_of(j.package_id, j.invoker_id) as role
        from public.agent_jobs j join public.agent_sessions s on s.id = j.session_id
-      where s.sandbox_ref = $1 and (j.status = 'running' or (j.status = 'cancelled' and j.ended_at is null))`,
+      where (s.sandbox_ref = $1 or s.sandbox_ref is null) and (j.status = 'running' or (j.status = 'cancelled' and j.ended_at is null))`,
     [sandbox.ref],
   );
   let finished = 0;
@@ -261,32 +278,39 @@ async function checkRunning(c: OrchestratorConfig): Promise<number> {
       await finishJob(c, j, status, summary, note);
       finished++;
     };
+    try {
     if (j.status === "cancelled") { await end("cancelled", PLAIN.stopped); continue; }
     if (j.role !== "owner" && j.role !== "deputy" && j.role !== "co-author") { await end("cancelled", PLAIN.removed); continue; }
+    // Past its time limit, a job ends whatever its files say (round 2, H1: a file that never reads can't keep it alive).
+    if (Number(j.minutes) > (c.maxMinutes ?? 30) + 5) { await end("failed", PLAIN.overdue); continue; }
     const dir = `/home/${j.course_user}/jobs/${j.id}`;
-    const look = await sandbox.exec({ cmd: `echo BEGIN; sudo -u ${j.course_user} cat ${dir}/exit.code 2>/dev/null || echo running; echo ---; sudo -u ${j.course_user} head -c 200000 ${dir}/result.json 2>/dev/null; echo; echo ---; sudo -u ${j.course_user} tail -c 2000 ${dir}/harness.err 2>/dev/null; echo; echo END`, timeoutSeconds: 60 });
+    // Only regular files, read with a time limit, as the user (never through a link, a pipe or a device).
+    const read = (f: string, how: string) => `timeout 10 sudo -u ${j.course_user} sh -c '[ -f ${dir}/${f} ] && [ ! -L ${dir}/${f} ] && ${how} ${dir}/${f} < /dev/null' 2>/dev/null`;
+    const look = await sandbox.exec({ cmd: `echo BEGIN; ${read("exit.code", "head -c 16")} || echo running; echo ---; ${read("result.json", "head -c 200000")}; echo; echo ---; ${read("harness.err", "tail -c 2000")}; echo; echo END`, timeoutSeconds: 60 });
     // A check that didn't come back whole tells nothing (attack round L8): look again next pass.
     if (look.exitCode !== 0 || !look.stdout.startsWith("BEGIN\n") || !look.stdout.trimEnd().endsWith("END")) continue;
     const [code, result, err] = look.stdout.slice(6).split("\n---\n");
-    if ((code ?? "").trim() === "running") {
-      if (Number(j.minutes) > (c.maxMinutes ?? 30) + 5) await end("failed", PLAIN.overdue);
-      continue;
-    }
+    if ((code ?? "").trim() === "running") continue;
     let parsed: { result?: string; is_error?: boolean; num_turns?: number } = {};
     try { parsed = JSON.parse((result ?? "").trim() || "{}"); } catch { /* the harness wrote no result */ }
     const ok = (code ?? "").trim() === "0" && parsed.is_error !== true && typeof parsed.result === "string";
     if (!ok) c.log?.(`agent job ${j.id} failed: exit ${(code ?? "").trim()} ${(err ?? "").slice(-300)}`);
     await end(ok ? "done" : "failed", ok ? parsed.result!.slice(0, 4000) : PLAIN.failed, { result: ok ? parsed.result : null, turns: parsed.num_turns ?? null });
     c.log?.(`agent job ${j.id} ${ok ? "done" : "failed"}`);
+    } catch (e) {
+      // One job's sandbox trouble never stops the pass for the others (round 2, H1).
+      c.log?.(`agent job ${j.id}: check failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
   }
   return finished;
 }
 
-/** One worker acts on a sandbox at a time (attack round L1): a 60-second lease, renewed each pass. */
+/** One worker acts on a sandbox at a time (attack round L1): a 15-minute lease (longer than a pass), renewed each pass; a worker that dies frees it when it runs out. */
 async function lease(c: OrchestratorConfig): Promise<boolean> {
-  const holder = c.holder ?? "worker";
+  if (!c.holder) throw new Error("the orchestrator needs this worker's own name (holder)");
+  const holder = c.holder;
   const r = await c.sql.query<{ ref: string }>(
-    `update public.agent_sandboxes set lease_holder = $2, lease_until = now() + interval '60 seconds'
+    `update public.agent_sandboxes set lease_holder = $2, lease_until = now() + interval '15 minutes'
       where ref = $1 and (lease_until is null or lease_until < now() or lease_holder = $2) returning ref`,
     [c.sandbox.ref, holder]);
   return r.rows.length > 0;

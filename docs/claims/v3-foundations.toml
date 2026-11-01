@@ -421,6 +421,9 @@ bound_to = [
   "apps/web/src/lib/agent-orchestrator.sql.test.ts :: a job a person stopped: its process is ended and its key revoked; its credit settles later",
   "apps/web/src/lib/agent-orchestrator.sql.test.ts :: a claim that never got started (a crash mid-start) is failed after five minutes and frees the sandbox",
   "apps/web/src/lib/agent-orchestrator.sql.test.ts :: the job of someone who is no longer an editor ends",
+  "apps/web/src/lib/agent-orchestrator.sql.test.ts :: a job whose files never read still ends at its time limit; one job's sandbox error doesn't stop the pass",
+  "apps/web/src/lib/agent-orchestrator.sql.test.ts :: a claim whose session never got its sandbox is recovered; a paused course is never claimed",
+  "apps/web/src/lib/agent-orchestrator.sql.test.ts :: the orchestrator needs this worker's own name for its lease",
 ]
 
 [[claim]]
