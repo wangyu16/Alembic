@@ -367,3 +367,20 @@ Orchestrator and pages: 3 HIGH, 4 MEDIUM, 8 LOW.** All fixed in `bcfa5a7` except
   Cloudflare site — production: per-course sandbox with the provider's egress policy).
 Verified live after deploy: a job whose task begins with "-" ran by itself, its plain summary reads for a teacher, no
 process of the course user survived, and a request naming the job id without its secret is refused.
+
+### C4 attack round 2 (2026-10-31): the round-1 fixes
+
+One fresh reviewer. **2 new HIGH, 1 MEDIUM, 5 LOW; two round-1 fixes broken (the job secret leaked on curl's command line;
+the lease named every worker "worker") and two partly broken (files survived between jobs; claims without a session sandbox
+were invisible to recovery).** All fixed in `c9ffb12`:
+- the secret never on a command line (the helper reads a mode-600 curl config; the secret arrives on stdin; `/proc` mounted
+  `hidepid`); a fresh home per job, the kill repeated until no process is left;
+- the time limit checked before any file is read; only regular files read, with a time limit; one job's sandbox error never
+  stops the pass;
+- the lease per worker, 15 minutes; the claim and its session's sandbox set in one statement; recovery of claims without one;
+  paused sessions never claimed or overwritten; a failed start kills; the firewall replaced atomically;
+- "credit being settled" on the Assistant page (0074); an approval that couldn't be queued opens again; queued records count
+  toward the records caps.
+Verified live: a planted `~/.claude/settings.json` and a leftover file were gone at the next job; with `hidepid=invisible` the
+sandbox's own user sees none of the course user's processes; no process (seen as root) carries a job secret on its command
+line; the job finished with a plain answer. Round 2 still had HIGH findings, so a short round 3 on the orchestrator follows.
