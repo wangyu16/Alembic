@@ -58,3 +58,4 @@ export * from "./agent-api";
 export * from "./agent-seal";
 export * from "./agent-orchestrator";
 export * from "./agent-pending";
+export * from "./course-update";

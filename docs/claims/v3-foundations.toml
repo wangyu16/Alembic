@@ -472,3 +472,12 @@ bound_to = [
   "packages/package-ops/src/version-rule.test.ts :: the course's definition decides: plans never combine, study guides and practice by section, anything else whole; figures never",
 ]
 
+[[claim]]
+id = "K1.49"
+claim = "A type package's new delivery updates a course imported from an earlier one: checked exactly as an import (checksums fail closed); every added or changed file is based on the version imported, so later course edits combine; files no longer delivered are deleted, records never; different chapters are refused (a course operation); the course's settings are never taken from a delivery."
+oracle = "conformance"
+bound_to = [
+  "packages/package-ops/src/course-update.test.ts :: changed files carry the imported version as their base (so later course edits combine); new files are added; files no longer delivered are deleted, records never",
+  "packages/package-ops/src/course-update.test.ts :: refused: a checksum mismatch, or different chapters (a course operation, not a file update)",
+]
+
