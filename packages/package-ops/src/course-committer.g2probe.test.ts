@@ -163,7 +163,7 @@ describe("G2 probes", () => {
 
   it("MEDIUM: decideFile — both sides made the same block edit (plus a disjoint one) → should combine", async () => {
     const d = await decideFile({
-      path: PATH, kind: "study-guide", baseVersion: h(base), baseText: base,
+      path: PATH, kind: "sections", baseVersion: h(base), baseText: base,
       currentText: sg("ONE", "two", "three"), incomingText: sg("ONE", "two", "THREE"), fromOpenEditor: false,
     });
     expect(d.outcome).toBe("combined");

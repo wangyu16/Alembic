@@ -8,7 +8,7 @@
  * so it is tested with fakes and runs unchanged on the worker.
  */
 
-import { activeProfile, can, canWritePath, fileKind, isRecordsPath, isServerOnlyPath, isSvgPath, mediaProblems, newDocId, normalizePath, svgProblems, unitPartForPath, sha256Hex, followFiles, WorkingManifestV3Schema, type Role, type StatusMap } from "@alembic/package-contract";
+import { activeProfile, can, canWritePath, editsForPath, fileKind, isRecordsPath, isServerOnlyPath, isSvgPath, mediaProblems, newDocId, normalizePath, svgProblems, unitPartForPath, sha256Hex, followFiles, WorkingManifestV3Schema, type Role, type StatusMap } from "@alembic/package-contract";
 import { applyCourseOp, parseCourseOp, type ChapterSnapshot } from "./course-ops";
 import { decideFile, type FileDecision, type FileKind } from "./version-rule";
 
@@ -139,14 +139,12 @@ export const MAX_ATTEMPTS = 8;
 export const MAX_REDECIDE = 5;
 export const TRAILER_SCAN = 50;
 
+/** How a file combines: from the site type definition (`edits`), never from the core's own idea of folders (FD-10). */
 export function kindForPath(path: string): FileKind {
-  if (path.startsWith("study-guide/")) return "study-guide";
-  if (path.startsWith("slides/")) return "slides";
-  if (path.startsWith("practice/")) return "practice";
-  if (path.startsWith("concepts/")) return "concept-map";
-  if (path.startsWith("assessment-support/")) return "assessment-guide";
-  if (/\.(png|jpe?g|gif|webp|pdf|zip|mp4|mp3|woff2?)$/i.test(path)) return "binary";
-  return "other-text";
+  const k = fileKind(path);
+  if (k !== null && k !== "text" && !/\.svg$/i.test(path)) return "binary";
+  if (/\.(pdf|zip|mp4|mp3|woff2?)$/i.test(path)) return "binary";
+  return editsForPath(path);
 }
 
 function trailers(row: QueueRow, extra: Record<string, string> = {}): string {

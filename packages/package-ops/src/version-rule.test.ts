@@ -8,7 +8,7 @@ import { createHash } from "node:crypto";
 const h = (t: string) => createHash("sha256").update(t, "utf8").digest("hex");
 const input = (o: Partial<FileChangeInput> & Pick<FileChangeInput, "currentText" | "incomingText">): FileChangeInput => ({
   path: "study-guide/gases.md",
-  kind: "study-guide",
+  kind: "sections",
   baseVersion: o.baseText ? h(o.baseText) : null,
   fromOpenEditor: false,
   ...o,
@@ -17,13 +17,13 @@ const input = (o: Partial<FileChangeInput> & Pick<FileChangeInput, "currentText"
 describe("splitBlocks", () => {
   it("concatenates back exactly, for any study guide", async () => {
     const texts = [sg("a", "b", "c"), "", "no headings\n", "## A\n```\n## not a heading\n```\n## B\nx", "x\r\n## A\r\nb\r\n"];
-    for (const t of texts) expect(splitBlocks(t, "study-guide").join("")).toBe(t);
+    for (const t of texts) expect(splitBlocks(t, "sections").join("")).toBe(t);
   });
   it("does not split inside code fences", async () => {
-    expect(splitBlocks("## A\n```\n## inside\n```\n## B\n", "study-guide")).toHaveLength(2);
+    expect(splitBlocks("## A\n```\n## inside\n```\n## B\n", "sections")).toHaveLength(2);
   });
   it("treats other kinds as one block", async () => {
-    expect(splitBlocks("---\nslide\n---\nslide2\n", "slides")).toHaveLength(1);
+    expect(splitBlocks("---\nslide\n---\nslide2\n", "whole")).toHaveLength(1);
   });
 });
 
@@ -84,7 +84,7 @@ describe("decideFile", () => {
   });
 
   it("A4.4 course-plan files never combine and current stays on top, even from an open editor", async () => {
-    const d = await decideFile({ ...input({ baseText: "a\n\nb\n", currentText: "A\n\nb\n", incomingText: "a\n\nB\n", fromOpenEditor: true }), kind: "concept-map", path: "concepts/gases.md" });
+    const d = await decideFile({ ...input({ baseText: "a\n\nb\n", currentText: "A\n\nb\n", incomingText: "a\n\nB\n", fromOpenEditor: true }), kind: "keep-both", path: "concepts/gases.md" });
     expect(d).toMatchObject({ outcome: "both-changed", top: "A\n\nb\n", kept: "a\n\nB\n", reason: "plan-file" });
   });
 
@@ -127,5 +127,20 @@ describe("decideFile", () => {
       if (d.outcome !== "both-changed") throw new Error("expected both-changed");
       expect(new Set([d.top, d.kept])).toEqual(new Set([cur, inc]));
     }
+  });
+});
+
+describe("how a file combines comes from the site type definition (FD-10, contract §5 `edits`)", () => {
+  it("[K1.48] the course's definition decides: plans never combine, study guides and practice by section, anything else whole; figures never", async () => {
+    const { kindForPath } = await import("./course-committer");
+    expect(kindForPath("concepts/gases.md")).toBe("keep-both");
+    expect(kindForPath("concepts/course.md")).toBe("keep-both");
+    expect(kindForPath("assessment-support/gases.md")).toBe("keep-both");
+    expect(kindForPath("study-guide/gases.md")).toBe("sections");
+    expect(kindForPath("practice/gases.md")).toBe("sections");
+    expect(kindForPath("slides/gases.slides.md")).toBe("whole");
+    expect(kindForPath("README.md")).toBe("whole");
+    expect(kindForPath("assets/gases/fig.png")).toBe("binary");
+    expect(kindForPath("assets/gases/mol.ketcher.svg")).toBe("whole"); // an editor-made SVG is text
   });
 });

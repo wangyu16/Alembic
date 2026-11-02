@@ -4,10 +4,11 @@
  * three texts (base, current at the working-repo head, incoming) and acts on
  * the decision.
  *
- * Block splitting (A5) is interim until orz-markdown exports `splitBlocks`
- * (request K3): study guides split at H2 headings outside code fences (the
- * same boundaries as `@alembic/package-contract` block-source); every other
- * kind is one block, so any concurrent change to it becomes "both changed".
+ * How a file combines comes from the site type definition (`edits`, contract
+ * §5): `sections` split at H2 headings outside code fences (block splitting is
+ * interim until orz-markdown exports `splitBlocks`, request K3); `whole` is one
+ * block, so a concurrent change keeps both versions; `keep-both` never
+ * combines; `binary` (figures) never combines.
  */
 
 import { isRecordsPath, sha256Hex } from "@alembic/package-contract";
@@ -16,11 +17,12 @@ import { isRecordsPath, sha256Hex } from "@alembic/package-contract";
  * Blocks
  * -------------------------------------------------------------------------- */
 
-export type FileKind = "study-guide" | "slides" | "practice" | "concept-map" | "assessment-guide" | "other-text" | "binary";
+/** How a file combines: the definition's `edits`, or `binary` for a figure. */
+export type FileKind = "sections" | "whole" | "keep-both" | "binary";
 
 /** Split into segments that concatenate back to the exact input. */
 export function splitBlocks(text: string, kind: FileKind): string[] {
-  if (kind !== "study-guide") return text === "" ? [] : [text];
+  if (kind !== "sections") return text === "" ? [] : [text];
   const lines = text.split(/(?<=\n)/); // keep line endings
   const out: string[] = [];
   let cur = "";
@@ -175,7 +177,7 @@ export type BothReason =
   | "create-exists"
   | "invalid-combination";
 
-const PLAN_KINDS: readonly FileKind[] = ["concept-map", "assessment-guide"];
+const NEVER_COMBINED: readonly FileKind[] = ["keep-both"];
 
 const v = async (t: string | null): Promise<string | null> => (t === null ? null : sha256Hex(t));
 
@@ -214,7 +216,7 @@ export async function decideFile(c: FileChangeInput): Promise<FileDecision> {
   if (c.baseVersion === null) return both("create-exists");
 
   // Rule 4: course-plan files never combine, and current always stays on top.
-  if (PLAN_KINDS.includes(c.kind)) return both("plan-file", false);
+  if (NEVER_COMBINED.includes(c.kind)) return both("plan-file", false);
   // Rule 6: binary files never combine.
   if (c.kind === "binary") return both("binary");
   // Rule 2: no base text, no combination.

@@ -464,3 +464,11 @@ bound_to = [
   "apps/web/src/lib/shared-from-sites.sql.test.ts :: lists only active shares that are on a website, of courses not archived, newest first; the search text is literal",
 ]
 
+[[claim]]
+id = "K1.48"
+claim = "How concurrent edits to a file combine comes only from the site type definition's `edits` (FD-10): `keep-both` never combines, `sections` combines section by section, anything else is one block; figures never combine. The core names no course folder for it."
+oracle = "conformance"
+bound_to = [
+  "packages/package-ops/src/version-rule.test.ts :: the course's definition decides: plans never combine, study guides and practice by section, anything else whole; figures never",
+]
+

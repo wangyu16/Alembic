@@ -10,6 +10,8 @@ export { ALEMBIC_PATHS, parseSiteType, SITE_TYPE_SCHEMA, SiteTypeSchema, siteTyp
 export { docKey, fillStarter, profileFromDefinition } from "./profile-bridge";
 export * from "./addon-course-website";
 export { fillCitation, siteStartFiles, type SiteStart } from "./start";
+import { editsFor } from "./edits";
+export { editsFor, type Edits } from "./edits";
 export { followFiles, isPage, setStatuses, statusOf, takesStatus, type FileStatus, type StatusChange, type StatusMap } from "./status";
 
 export interface LoadedSiteType {
@@ -45,3 +47,9 @@ export function siteType(key: string): LoadedSiteType {
   if (!t) throw new Error(`Alembic doesn't carry site type ${key}`);
   return t;
 }
+
+/** How concurrent edits to a file of the default site type are combined (its definition's `edits`). */
+export function editsForPath(path: string): import("./edits").Edits {
+  return editsFor(siteType(DEFAULT_SITE_TYPE).definition, path);
+}
+
