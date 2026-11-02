@@ -5,12 +5,9 @@
  * core in the same step; later steps make the core read the definition
  * directly and remove the bridge (contract §14). Pure.
  *
- * Bridge-only behaviour, removed with those steps (each marked BRIDGE):
- * - documents never combined (`edits: keep-both`) are the "plan" class, so
- *   today's course-plan approval keeps working until it is removed;
- * - `current/` and `metadata/` stay placed until the testing copy is migrated;
- * - a file in a document folder that matches no document or unit folder is
- *   still "material", as today.
+ * The bridge's temporary behaviours are gone (2026-11-01): documents never combined are ordinary documents (the
+ * definition's `edits` decides combining), no legacy folders, and a file the definition doesn't place is a course-wide
+ * file (the owner's or deputy's). What remains maps the definition onto the core's types.
  */
 import { PACKAGE_SPACES, type PackageSpace } from "../spaces";
 import type { ContentProfile, MediaKind, PathClass, UnitPart } from "../profile/types";
@@ -20,11 +17,8 @@ import { EXAMS_FOLDER, HOME_PAGE, TERM_ROOT } from "./addon-course-website";
 /** The figure kinds Alembic accepts (contract §8: Alembic's list, not the type package's). */
 const MEDIA: Readonly<Record<string, MediaKind>> = { png: "png", jpg: "jpeg", jpeg: "jpeg", gif: "gif", webp: "webp", svg: "svg" };
 
-/** BRIDGE: folders a site already holds that the definition no longer places, until the migration moves them. */
-const LEGACY_FOLDERS: Readonly<Record<string, { space: PackageSpace; cls: PathClass }>> = {
-  current: { space: "current", cls: "material" },
-  metadata: { space: "metadata", cls: "project-file" },
-};
+/** The course-website add-on's own folder (its term pages: course-website-addon §1), placed in every course. */
+const ADDON_FOLDERS: Readonly<Record<string, PackageSpace>> = { [TERM_ROOT]: "current" };
 
 /** One line, safe inside a document header and a heading (as the hand-written profile did). */
 const oneLine = (t: string, fallback: string) => t.replace(/\}\}/g, "} }").replace(/[\r\n]+/g, " ").trim().slice(0, 200) || fallback;
@@ -67,7 +61,6 @@ export function profileFromDefinition(def: SiteType, files: Readonly<Record<stri
       label: d.label,
       path: (slug: string) => `${pre}${slug}${post}`,
       published: true,
-      plan: d.edits === "keep-both", // BRIDGE
       starter: (title: string, uid: string) => (starter !== undefined ? fillStarter(starter, title, uid) : `{{nyml\nkind: document\nformat: 1\ntitle: ${oneLine(title, "Untitled chapter")}\nuid: ${uid}\n}}\n`),
     };
   });
@@ -85,7 +78,7 @@ export function profileFromDefinition(def: SiteType, files: Readonly<Record<stri
   if (def.figures) addFolder(topDir(def.figures.public));
   if (def.records) addFolder(topDir(def.records.public));
   addFolder("private");
-  for (const [dir, l] of Object.entries(LEGACY_FOLDERS)) folders[dir] = l.space; // BRIDGE
+  for (const [dir, space] of Object.entries(ADDON_FOLDERS)) folders[dir] = space;
 
   const licenceFiles = new Set<string>();
   for (const c of def.licences?.choices ?? []) for (const n of Object.keys(c.files)) licenceFiles.add(n);
@@ -113,18 +106,16 @@ export function profileFromDefinition(def: SiteType, files: Readonly<Record<stri
   }
 
   const docClass = (path: string): PathClass | null => {
-    for (const d of siteDocs) if (d.path === path) return d.edits === "keep-both" ? "plan" : d.who === "lead" || d.who === "fixed" ? "project-file" : "material";
+    for (const d of siteDocs) if (d.path === path) return d.who === "lead" || d.who === "fixed" ? "project-file" : "material";
     for (const d of unitDocs) {
       const { pre, post } = around(d.path, "unit");
       if (path.startsWith(pre) && path.endsWith(post) && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(path.slice(pre.length, path.length - post.length))) {
-        return d.edits === "keep-both" ? "plan" : d.who === "lead" || d.who === "fixed" ? "project-file" : "material"; // BRIDGE: keep-both is "plan"
+        return d.who === "lead" || d.who === "fixed" ? "project-file" : "material";
       }
     }
     for (const f of def.unitFolders ?? []) if (path.startsWith(around(f.path, "unit").pre)) return "material";
     return null;
   };
-  const docTopDirs = new Set([...unitDocs.map((d) => topDir(d.path)), ...(def.unitFolders ?? []).map((f) => topDir(f.path))]);
-  const planTopDirs = new Set(unitDocs.filter((d) => d.edits === "keep-both").map((d) => topDir(d.path)));
 
   return {
     id: def.type,
@@ -164,10 +155,6 @@ export function profileFromDefinition(def: SiteType, files: Readonly<Record<stri
       }
       const folder = (def.folders ?? []).find((f) => under(path, f.path));
       if (folder) return folder.who === "editor" ? "material" : "project-file";
-      const legacy = LEGACY_FOLDERS[topDir(path)];
-      if (legacy) return legacy.cls; // BRIDGE
-      if (planTopDirs.has(topDir(path))) return "plan"; // BRIDGE: as today
-      if (docTopDirs.has(topDir(path))) return "material"; // BRIDGE: as today
       return "project-file";
     },
     unitProblems(units, present) {

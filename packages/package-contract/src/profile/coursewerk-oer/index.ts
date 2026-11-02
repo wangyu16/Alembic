@@ -24,7 +24,7 @@ export function firstStudyGuide(chapterTitle: string, uid: string): string {
 // INTERIM (D-126 item 5): starter structures follow the shape of Coursewerk's parts; Coursewerk to confirm.
 const PARTS: readonly UnitPart[] = [
   {
-    id: "concepts", label: "Concept map", published: false, plan: true,
+    id: "concepts", label: "Concept map", published: false,
     path: (s) => `concepts/${s}.md`,
     starter: (title, uid) => {
       const t = oneLine(title);
@@ -56,13 +56,13 @@ Where students usually get stuck, and why.
     },
   },
   {
-    id: "study-guide", label: "Study guide", published: true, plan: false,
+    id: "study-guide", label: "Study guide", published: true,
     path: (s) => `study-guide/${s}.md`,
     starter: (title, uid) => firstStudyGuide(oneLine(title), uid),
   },
   {
     // INTERIM (D-126 item 1): `.slides.md` with an FC-18 header; Coursewerk still writes `slides/<slug>.md` with a deck block.
-    id: "slides", label: "Slides", published: true, plan: false,
+    id: "slides", label: "Slides", published: true,
     path: (s) => `slides/${s}.slides.md`,
     starter: (title, uid) => {
       const t = oneLine(title);
@@ -80,7 +80,7 @@ Where students usually get stuck, and why.
     },
   },
   {
-    id: "assessment-support", label: "Assessment guide", published: false, plan: true,
+    id: "assessment-support", label: "Assessment guide", published: false,
     path: (s) => `assessment-support/${s}.md`,
     starter: (title, uid) => {
       const t = oneLine(title);
@@ -108,7 +108,7 @@ What a student who has met this objective understands.
     },
   },
   {
-    id: "practice", label: "Practice", published: true, plan: false,
+    id: "practice", label: "Practice", published: true,
     path: (s) => `practice/${s}.md`,
     starter: (title, uid) => {
       const t = oneLine(title);
@@ -141,7 +141,6 @@ const FOLDERS: Readonly<Record<string, PackageSpace>> = {
   "assessment-support": "assessment-support",
   assets: "assets",
   current: "current",
-  metadata: "metadata",
   provenance: "provenance",
   private: "private",
 };
@@ -177,12 +176,11 @@ export const coursewerkOerProfile: ContentProfile = {
   pathClass(path: string, space: PackageSpace): PathClass {
     if (path === "alembic.json") return "settings";
     if (path.startsWith("private/coursewerk/") || path.startsWith("provenance/coursewerk/")) return "records";
-    if (path === "concepts/course.md") return "plan";
     if (!path.includes("/")) return "project-file";
     switch (space) {
       case "concepts":
       case "assessment-support":
-        return "plan";
+        return "material";
       case "private":
         return path.startsWith("private/instructor/") ? "private-editable" : "private-protected";
       case "study-guide":

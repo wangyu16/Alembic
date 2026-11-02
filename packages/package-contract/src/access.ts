@@ -12,11 +12,9 @@ export type Role = (typeof ROLES)[number];
 
 export const ACTIONS = [
   "edit.materials",
-  "edit.plan",
   "edit.private",
   "delete.private", // delete or move out of private/ (contract v3 §11.6)
   "edit.course-files",
-  "approve.plan",
   "publish.first",
   "publish.later",
   "publish.anyway",
@@ -85,11 +83,9 @@ const isMaterialsPath = (c: AccessContext) => c.path !== undefined && editAction
 /** The matrix. Every action has an entry for every role (tested). */
 export const ACCESS_MATRIX: Readonly<Record<Action, Readonly<Record<Role, Rule>>>> = {
   "edit.materials":            { owner: Y, deputy: Y, "co-author": Y, agent: Y, operator: N, none: N },
-  "edit.plan":                 { owner: Y, deputy: Y, "co-author": Y, agent: Y, operator: N, none: N },
   "edit.private":              { owner: Y, deputy: Y, "co-author": Y, agent: Y, operator: N, none: N },
   "delete.private":            { owner: Y, deputy: Y, "co-author": N, agent: N, operator: N, none: N },
   "edit.course-files":         { owner: Y, deputy: Y, "co-author": N, agent: N, operator: N, none: N },
-  "approve.plan":              { owner: Y, deputy: Y, "co-author": N, agent: N, operator: N, none: N },
   "publish.first":             { owner: Y, deputy: N, "co-author": N, agent: N, operator: N, none: N },
   "publish.later":             { owner: Y, deputy: Y, "co-author": N, agent: N, operator: N, none: N },
   "publish.anyway":            { owner: Y, deputy: Y, "co-author": N, agent: N, operator: N, none: N },
@@ -153,7 +149,7 @@ export function canAgent(invoker: Role, action: Action, ctx: AccessContext = {})
  * agent write may touch it at all (server-generated files, source pointers,
  * Coursewerk records, the manifest — those have their own paths).
  */
-export function editActionForPath(path: string): "edit.materials" | "edit.plan" | "edit.private" | "edit.course-files" | null {
+export function editActionForPath(path: string): "edit.materials" | "edit.private" | "edit.course-files" | null {
   const p = normalizePath(path);
   // The core's own mechanics files (Alembic's, FD-09): server-generated, harness records, the licence files.
   if (isServerOnlyPath(p) || isRecordsPath(p)) return null;
@@ -163,9 +159,8 @@ export function editActionForPath(path: string): "edit.materials" | "edit.plan" 
 }
 
 /** The core's permission for each class of path a profile names. */
-const ACTION_FOR_CLASS: Record<PathClass, "edit.materials" | "edit.plan" | "edit.private" | "edit.course-files" | null> = {
+const ACTION_FOR_CLASS: Record<PathClass, "edit.materials" | "edit.private" | "edit.course-files" | null> = {
   material: "edit.materials",
-  plan: "edit.plan",
   "project-file": "edit.course-files",
   "private-editable": "edit.private",
   "private-protected": null,

@@ -26,7 +26,7 @@ describe("instructor documents and the core's own files (contract v3 §12)", () 
     expect(editActionForPath("LICENSE")).toBeNull();
     expect(editActionForPath("alembic.json")).toBeNull();
     expect(editActionForPath("README.md")).toBe("edit.course-files");
-    expect(editActionForPath("concepts/course.md")).toBe("edit.plan");
+    expect(editActionForPath("concepts/course.md")).toBe("edit.materials");
     expect(editActionForPath("slides/gases.slides.md")).toBe("edit.materials");
   });
   it("[K1.13] deleting in private/ is the owner's and deputy's only", () => {

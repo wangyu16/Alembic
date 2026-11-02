@@ -16,7 +16,6 @@ export type MediaKind = "png" | "jpeg" | "gif" | "webp" | "svg";
 
 export type PathClass =
   | "material"          // what readers see (study guides, slides, practice, figures)
-  | "plan"              // the unit's plan (concept map, assessment guide): approved before publishing
   | "project-file"      // project-wide files the owner/deputy maintain (README, records, site config)
   | "private-editable"  // instructor-only documents members may write
   | "private-protected" // private files only the server or a harness writes
@@ -32,8 +31,6 @@ export interface UnitPart {
   path(slug: string): string;
   /** Shown on the published site (vs. kept in the public copy only). */
   readonly published: boolean;
-  /** Part of the unit's plan (approved before the unit is published). */
-  readonly plan: boolean;
   /** The text a newly started part begins with. */
   starter(unitTitle: string, uid: string): string;
 }

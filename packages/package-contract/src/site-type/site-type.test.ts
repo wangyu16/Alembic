@@ -58,7 +58,7 @@ describe("the bridge reproduces today's Coursewerk profile (only the intended ch
     "alembic.json", "README.md", "LICENSE", "CITATION.cff", ".gitignore", "orz-site.json",
     "concepts/gases.md", "concepts/course.md", "assessment-support/gases.md", "study-guide/gases.md", "slides/gases.slides.md", "practice/gases.md",
     "study-guide/chapters/gases/extra.md", "slides/chapters/gases/deck.slides.md", "practice/other.md", "study-guide/notes.md",
-    "assets/gases/fig.png", "assets/fig.svg", "current/syllabus.md", "metadata/PROVENANCE.json", "provenance/coursewerk/ATTRIBUTION.md",
+    "assets/gases/fig.png", "assets/fig.svg", "current/syllabus.md", "provenance/coursewerk/ATTRIBUTION.md",
     "private/instructor/key.md", "private/instructor/figures/gases/f.png", "private/coursewerk/LOG.jsonl", "private/legacy/old.md", "private/README.md",
   ];
   it("[K1.21] classifies every kind of path the same way", () => {

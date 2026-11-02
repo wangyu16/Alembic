@@ -14,7 +14,7 @@ describe("A2.1 the matrix", () => {
       expect(can("owner", a), a).toBe(true);
       for (const r of ["deputy", "co-author", "agent", "none"] as const) expect(can(r, a), `${a}/${r}`).toBe(false);
     }
-    for (const a of ["approve.plan", "publish.later", "publish.anyway", "obligation.confirm", "suggestion.decide", "update.take"] as const) {
+    for (const a of ["publish.later", "publish.anyway", "obligation.confirm", "suggestion.decide", "update.take"] as const) {
       expect(can("deputy", a), a).toBe(true);
       expect(can("co-author", a), a).toBe(false);
     }
@@ -27,7 +27,7 @@ describe("A2.1 the matrix", () => {
       expect(can("operator", a)).toBe(true);
       expect(can("owner", a)).toBe(false);
     }
-    for (const a of ["edit.materials", "edit.plan", "edit.private", "publish.later"] as const) expect(can("operator", a)).toBe(false);
+    for (const a of ["edit.materials", "edit.private", "publish.later"] as const) expect(can("operator", a)).toBe(false);
   });
 
   it("`none` may do nothing", () => {
@@ -46,7 +46,8 @@ describe("A2.1 the matrix", () => {
     expect(can("co-author", "both-changed.decide", { actorId: "a", addressedTo: ["b"] })).toBe(false);
     expect(can("co-author", "both-changed.decide", { actorId: "a", addressedTo: ["a"] })).toBe(true);
     expect(can("co-author", "edited-elsewhere.accept-undo", { path: "study-guide/x.md" })).toBe(true);
-    expect(can("co-author", "edited-elsewhere.accept-undo", { path: "concepts/x.md" })).toBe(false);
+    expect(can("co-author", "edited-elsewhere.accept-undo", { path: "concepts/x.md" })).toBe(true); // course material since the plan class went (approvals are the type package's)
+    expect(can("co-author", "edited-elsewhere.accept-undo", { path: "README.md" })).toBe(false); // a course-wide file: the lead's
     expect(can("co-author", "github.direct")).toBe(false);
     expect(can("co-author", "github.direct", { githubCollaborator: true })).toBe(true);
   });
@@ -76,8 +77,8 @@ describe("path → edit action", () => {
   it("maps spaces and refuses server-only, harness and manifest paths", () => {
     expect(editActionForPath("study-guide/x.md")).toBe("edit.materials");
     expect(editActionForPath("slides/x.slides.md")).toBe("edit.materials");
-    expect(editActionForPath("concepts/x.md")).toBe("edit.plan");
-    expect(editActionForPath("assessment-support/x.md")).toBe("edit.plan");
+    expect(editActionForPath("concepts/x.md")).toBe("edit.materials");
+    expect(editActionForPath("assessment-support/x.md")).toBe("edit.materials");
     expect(editActionForPath("private/instructor/key.md")).toBe("edit.private");
     expect(editActionForPath("README.md")).toBe("edit.course-files");
     for (const p of ["alembic.json", "LICENSE", "CITATION.cff", ".github/workflows/x.yml", ".alembic/a.json", ".gitignore",

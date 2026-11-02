@@ -20,7 +20,7 @@ import {
   spaceForPathV3,
 } from "./contract-v3";
 
-const PUBLIC_DIRS = ["study-guide", "slides", "practice", "concepts", "assessment-support", "assets", "current", "metadata", "provenance"];
+const PUBLIC_DIRS = ["study-guide", "slides", "practice", "concepts", "assessment-support", "assets", "current", "provenance"];
 const ROOT_FILES = ["alembic.json", "README.md", "LICENSE", "CITATION.cff", ".gitignore", "orz-site.json"];
 
 /** Deterministic generator of hostile path variants around a target. */
@@ -89,7 +89,8 @@ describe("K1.2 the working repo accepts exactly the classifiable paths", () => {
     }
   });
   it("rejects unknown directories and root files", () => {
-    for (const p of ["materials/x.md", "private-instructor/key.md", "notes.md", "src/index.ts"]) {
+    // metadata/ was a legacy folder of the bridge; the definition doesn't place it (2026-11-01).
+    for (const p of ["materials/x.md", "private-instructor/key.md", "notes.md", "src/index.ts", "metadata/PROVENANCE.json"]) {
       expect(() => assertPathAllowedInWorkingRepo(p), p).toThrow();
     }
   });

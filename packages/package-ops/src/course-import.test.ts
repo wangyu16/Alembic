@@ -51,7 +51,8 @@ describe("importing a course package (K1.32)", () => {
     const r = planCourseImport({ files, packageId: "pkg-gc-abc123", title: "General Chemistry" });
     expect(r.ok).toBe(true);
     if (!r.ok) return;
-    const reasons = new Set(r.plan.leftOut.filter((x) => !/^metadata\/evidence\/.*\.html$/.test(x.path) && x.path !== ".gitignore").map((x) => `${x.path}: ${x.why}`));
+    // metadata/ (this old copy's folder) is placed by no definition any more (2026-11-01): left out, with the rest kept.
+    const reasons = new Set(r.plan.leftOut.filter((x) => !x.path.startsWith("metadata/") && x.path !== ".gitignore").map((x) => `${x.path}: ${x.why}`));
     expect([...reasons]).toEqual([]);
     // No chapter list in this copy: the 19 chapters come from the study guides' own headers, in their order.
     expect(r.plan.manifest.chapters.length).toBe(19);

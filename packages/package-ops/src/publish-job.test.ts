@@ -113,10 +113,10 @@ describe("runPublish", () => {
 
   it("[K1.11] a file the website can't serve safely (.html, .js) is left out and said so; never reaches the public copy (audit r3 HIGH-1)", async () => {
     const pub = new FakePublic(); const st = new FakeStore();
-    const out = await runPublish(input(), working({ ...W, "metadata/evidence/page.html": "<script>x()</script>", "assets/run.js": "x()" }), pub, st);
+    const out = await runPublish(input(), working({ ...W, "assets/evidence/page.html": "<script>x()</script>", "assets/run.js": "x()" }), pub, st);
     expect(out.status).toBe("committed");
-    expect(out.status === "committed" && [...(out.leftOut ?? [])].sort()).toEqual(["assets/run.js", "metadata/evidence/page.html"]);
-    expect(pub.file("metadata/evidence/page.html")).toBeUndefined();
+    expect(out.status === "committed" && [...(out.leftOut ?? [])].sort()).toEqual(["assets/evidence/page.html", "assets/run.js"]);
+    expect(pub.file("assets/evidence/page.html")).toBeUndefined();
     expect(pub.file("assets/run.js")).toBeUndefined();
   });
 
