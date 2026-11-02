@@ -66,7 +66,9 @@ export function siteInputFiles(files: Map<string, Uint8Array>): { files: Map<str
     const full = cleanIndex(courseIndexText(manifest, [...out.keys()], home ? new TextDecoder().decode(home) : null));
     const plain = cleanIndex(courseIndexText({ ...manifest, terms: undefined, currentTerm: undefined }, [...out.keys()], null));
     out.set("index.md", new TextEncoder().encode(full ?? plain ?? `# ${title ?? "Course"}\n`));
-    out.set("index.html", new TextEncoder().encode('<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0; url=index.md.html"><title>Course</title><a href="index.md.html">Open the course</a>\n'));
+    // The bare address opens the course's front page; the stub carries the course's own title (escaped).
+    const t = (title ?? "Course").replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+    out.set("index.html", new TextEncoder().encode(`<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0; url=index.md.html"><title>${t}</title><a href="index.md.html">Open ${t}</a>\n`));
   }
   // A plain front page to fall back on if the home page's content can't be built (round 1 audit L1).
   const indexFallback = !ownIndex && manifest ? (cleanIndex(courseIndexText({ ...manifest, terms: undefined, currentTerm: undefined }, [...out.keys()], null)) ?? undefined) : undefined;

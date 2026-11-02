@@ -111,6 +111,10 @@ describe("the generated front page never carries markup from names (round 1 audi
     const built = await site.build(input.files, { ownConfig: input.ownConfig, title: input.title, baseUrl: "https://x.github.io/y/", courseIndex: !input.ownIndex });
     const index = new TextDecoder().decode(input.files.get("index.md")!);
     expect(index).not.toMatch(/<img/);
+    // The bare address's stub carries the course's title, escaped.
+    const stub = new TextDecoder().decode(input.files.get("index.html")!);
+    expect(stub).toContain("<title>Chem &#60;b&#62;x&#60;/b&#62;</title>");
+    expect(stub).not.toContain("<b>");
     expect(built.ok).toBe(true);
   }, 60_000);
 });

@@ -480,3 +480,44 @@ its change landed (`d5494cd`), 28 credits, hold released, no live key left.
 - **§17.4 amended: the counted bound.** The gateway bounds a request over 16 KB by Anthropic's own count of its input
   (count_tokens, free), never above the byte bound, any failure keeping the byte bound. Live: a figure job that ran out of
   headroom at 52 of 120 credits under the byte bound finished at 35 credits with the counted bound.
+
+## 20. The sandbox contract for a type package (published 2026-11-01)
+
+What a type package's assistant (Coursewerk's skills now, `coursewerk-agent` later) can rely on inside an Alembic job.
+Mechanism only (FD-09/FD-10): Alembic runs the job and checks every write; what the assistant does is the type package's.
+
+**The job.** One course user per course (no sudo, home mode 700, a fresh home for every job), a job folder
+`~/jobs/<job id>/` that is the working directory, the person's request in `task.txt` (also on the harness's stdin), and
+`CLAUDE.md` with the `alembic` tool's description. Hard limits: 30 minutes, 512 processes, 2 GB per file; `TMPDIR` is
+in the home. Nothing survives the job: processes, schedules, temporary files and the home are removed when it ends.
+
+**The network.** Only the Alembic host (HTTPS) and DNS. No other internet, no package installs, no git. Everything about
+the course goes through `alembic`:
+
+| Command | What it does |
+|---|---|
+| `alembic read <path>` | `{path, head, version, text}` of a text file now; `version` is the base for a change |
+| `alembic changes [<commit>]` | files changed since a commit of the course's history, and the answers to this session's questions |
+| `alembic handin <file.json>` | a changeset: `{changesetId, dependsOn?, files: [{path, baseVersion, text} \| {path, baseVersion, text: null} \| {path, movedFrom, baseVersion} \| {path, encoding: "base64", content, baseBlob?}], appends?: [{path, baseVersion, append}], courseOps?: [...], digest?: {questions: [...]}}` |
+| `alembic figure <changesetId> <path> <file>` | one picture (PNG, JPEG, GIF, WebP, safe SVG; ≤ 4 MB) |
+| `alembic status <changesetId>` | `pending` (a person is typing), `queued`, `done`, `refused` (with the reason) |
+| `alembic event progress "<text>"` | a line the person sees while the job runs |
+
+Limits per hand-in: 50 content files, 200 records, 4 MB per file, 4 MB of record text, 40 MB of figures, 10 course
+operations, 20 questions; per job and hour: 120 hand-ins, 30 records hand-ins, 20 MB of records; records per site 100 MB
+(public records 1 MB); `.jsonl` logs in parts of at most 4 MB. Records are never combined: a stale one refuses the
+hand-in (read it again). Course operations become proposals for the owner or deputy; questions become one digest for the
+person who asked; their answers come back through `alembic changes`.
+
+**The AI.** An Anthropic Messages API at `$ANTHROPIC_BASE_URL` (`<host>/api/agent/ai`), already set in the harness's
+environment with the job's headers (`ANTHROPIC_CUSTOM_HEADERS`); any program started inside the job (e.g. a blind
+verifier `claude -p`) inherits them and is charged to the same job. Models: `claude-sonnet-5`, `claude-haiku-4-5`.
+`max_tokens` ≤ 8000 (`CLAUDE_CODE_MAX_OUTPUT_TOKENS`). Betas: only the four Claude Code sends (§17). **One call at a
+time per job**: a second program calling while another call runs gets 429 and must wait and retry (Claude Code does).
+No key is ever visible in the sandbox; the job's hold bounds its spending.
+
+**The end.** The harness's last message is the job's result, shown to the person: one or two plain sentences, no
+technical terms. What was handed in stays whether the job finishes or not.
+
+**Not yet (next):** the type package's own files in the job (skills and scripts from its release, placed read-only in the
+job folder); until then the type package's instructions arrive in the request or as a course file the assistant reads.
