@@ -16,6 +16,7 @@ import {
   DEFAULT_SITE_TYPE,
   fileKind,
   isPage,
+  isRecordsPath,
   isTextBytes,
   MAX_UPLOAD_BYTES,
   mediaProblems,
@@ -38,6 +39,11 @@ export interface ImportInput {
   license?: string;
   /** Paths the type package says are ready (a suggestion shown to the owner). */
   ready?: readonly string[];
+  /**
+   * The type package's records may be up to 16 MB each (owner, 2026-11-01: General Chemistry's 7.4 MB LOG.jsonl, accepted
+   * as one file for that import; the agreed rule from then on is .jsonl parts of at most 4 MB). Off by default.
+   */
+  largeRecords?: boolean;
 }
 
 export interface ImportPlan {
@@ -50,6 +56,7 @@ export interface ImportPlan {
   leftOut: Array<{ path: string; why: string }>;
 }
 
+const LARGE_RECORD_BYTES = 16 * 1024 * 1024;
 const ALEMBIC_OWN = (p: string) => p === "alembic.json" || p.startsWith(".github/") || p.startsWith(".alembic/") || p === ".gitignore" || p.startsWith("private/sources/");
 const HIDDEN = (p: string) => p.split("/").some((seg) => seg.startsWith(".")) && p !== ".gitignore";
 
@@ -119,7 +126,8 @@ export function planCourseImport(i: ImportInput): ImportResult {
     try { spaceForPathV3(path); assertPathAllowedInWorkingRepo(path); } catch { leftOut.push({ path, why: "outside the places this kind of course has" }); continue; }
     const part = unitPartForPath(path);
     if (part && !slugs.has(part.slug) && !activeProfile.reservedUnitSlugs.includes(part.slug)) { leftOut.push({ path, why: `belongs to a chapter "${part.slug}" the course doesn't list` }); continue; }
-    if (bytes.length > MAX_UPLOAD_BYTES) { leftOut.push({ path, why: "larger than 4 MB" }); continue; }
+    const limit = i.largeRecords && isRecordsPath(path) ? LARGE_RECORD_BYTES : MAX_UPLOAD_BYTES;
+    if (bytes.length > limit) { leftOut.push({ path, why: limit === MAX_UPLOAD_BYTES ? "larger than 4 MB" : "larger than 16 MB" }); continue; }
     const kind = fileKind(path);
     if (kind === null) { leftOut.push({ path, why: "a kind of file a course can't hold" }); continue; }
     if (kind === "text" || /\.svg$/i.test(path)) {

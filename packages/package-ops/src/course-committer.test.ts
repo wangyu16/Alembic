@@ -651,6 +651,8 @@ describe("the agent's changesets: C4 entry conditions (agent-runtime §15)", () 
     expect(isRecordsPath("provenance/other.md")).toBe(false);
     const { fileKind } = await import("@alembic/package-contract");
     expect([fileKind(LOG), fileKind("assets/gases/x.jsonl")]).toEqual(["text", null]); // .jsonl only under records
+    // Saved web pages as rights evidence: only in the private records' evidence folder, never anywhere published.
+    expect([fileKind("private/coursewerk/evidence/a.html"), fileKind("provenance/coursewerk/evidence/a.html"), fileKind("study-guide/a.html"), fileKind("private/coursewerk/a.html")]).toEqual(["text", null, null, null]);
     const { repo, q } = setup();
     q.add(sync("s1", "owner", REC, null, "{}", false));
     await drainCourse(P, "w", q, repo);

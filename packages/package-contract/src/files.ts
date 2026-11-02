@@ -25,6 +25,8 @@ export function fileKind(path: string): "text" | MediaKind | null {
   if (TEXT_EXTENSIONS.has(ext) || name === "LICENSE") return "text";
   // `.jsonl` only under the type package's records (SITE-TYPE-CONTRACT §8): its tools' logs.
   if (ext === "jsonl" && activeProfile.recordsFolders.some((f) => path.startsWith(`${f}/`))) return "text";
+  // Saved web pages as rights evidence, only in the PRIVATE records folder: never published or rendered (2026-11-01).
+  if (ext === "html" && activeProfile.recordsFolders.some((f) => f.startsWith("private/") && path.startsWith(`${f}/evidence/`))) return "text";
   return activeProfile.media[ext] ?? null;
 }
 

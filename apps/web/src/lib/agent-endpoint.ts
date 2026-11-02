@@ -222,7 +222,7 @@ export async function handIn(ctx: AgentCtx, raw: unknown): Promise<Reply> {
     all += Number(pending.rows[0]?.b ?? 0);
     pub += Number(pending.rows[0]?.b ?? 0);
     if (pub > HANDIN_LIMITS.publicRecordBytes) return refuse("the public records would be larger than 1 MB in all");
-    if (all > HANDIN_LIMITS.siteRecordBytes) return refuse("the records would be larger than 50 MB in all");
+    if (all > HANDIN_LIMITS.siteRecordBytes) return refuse("the records would be larger than 100 MB in all");
   }
 
   if (!files.length) {

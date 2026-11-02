@@ -37,7 +37,7 @@ async function main(): Promise<void> {
   const ready = flag("ready") ? readFileSync(flag("ready")!, "utf8").split("\n").map((l) => l.trim()).filter(Boolean) : [];
   const title = flag("title");
   const packageId = newPackageId(title ?? "course");
-  const r = planCourseImport({ files, sums, packageId, ...(title ? { title } : {}), ready });
+  const r = planCourseImport({ files, sums, packageId, ...(title ? { title } : {}), ready, largeRecords: has("large-records") });
   if (!r.ok) { console.error("Can't import:\n- " + r.problems.slice(0, 30).join("\n- ")); process.exit(1); }
   const { plan } = r;
   console.log(`${plan.manifest.title}: ${plan.manifest.chapters.length} chapters, ${plan.files.length} files${sums ? " (checksums matched)" : " (no checksums given)"}`);
@@ -60,7 +60,13 @@ async function main(): Promise<void> {
   for (const ms of [500, 1000, 2000, 3000, 4000, 5000, 8000]) { try { head = (await client.getBranchHead(coords)).commitSha; break; } catch { await new Promise((res) => setTimeout(res, ms)); } }
   if (!head) throw new Error("the new repository did not become ready");
   const chain: ChainFile[] = [];
-  for (const f of plan.files) chain.push("text" in f ? { path: f.path, content: f.text } : { path: f.path, blobSha: await client.uploadBlob(coords, f.bytes) });
+  // Large texts (records, logs) are uploaded as blobs first: a tree request carrying tens of MB inline is refused by GitHub
+  // (it answered 401 "Bad credentials" for General Chemistry's 42 MB of records). Small texts stay inline.
+  const INLINE = 256 * 1024;
+  for (const f of plan.files) {
+    if ("text" in f && Buffer.byteLength(f.text, "utf8") <= INLINE) chain.push({ path: f.path, content: f.text });
+    else chain.push({ path: f.path, blobSha: await client.uploadBlob(coords, "text" in f ? new TextEncoder().encode(f.text) : f.bytes) });
+  }
   const out = await client.commitChain({ coords, branch: "main", expectedHead: head, steps: [{ message: `Brought in “${plan.manifest.title}”`, files: chain }] });
   console.log(`committed ${chain.length} files to ${coords.owner}/${coords.repo} (${out.head.slice(0, 7)})`);
 

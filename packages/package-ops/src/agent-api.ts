@@ -44,7 +44,7 @@ export const HANDIN_LIMITS = {
   recordBytesPerHour: 20 * 1024 * 1024,
   /** Public records in total (§14, "public records"), and all records of a site (§13). */
   publicRecordBytes: 1024 * 1024,
-  siteRecordBytes: 50 * 1024 * 1024,
+  siteRecordBytes: 100 * 1024 * 1024, // owner 2026-11-01 (was 50 MB)
 } as const;
 
 export interface DigestQuestion { id: string; text: string; choices?: string[]; recommended?: string }
