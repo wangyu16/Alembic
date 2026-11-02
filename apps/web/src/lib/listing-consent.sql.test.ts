@@ -321,5 +321,5 @@ describe("H1 upgrade: 0025 removes registration rows the package owner did not w
     } finally {
       await old.close();
     }
-  }, 60_000);
+  }, 180_000); // two databases and a replay of every later migration (as loop-r2-sec's upgrade test)
 });

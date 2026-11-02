@@ -42,6 +42,8 @@ export const DEFAULT_ROUTING: ModelRouting = {
     "formatting-tidy": "gemini-2.5-flash",
     "course-metadata": "gemini-2.5-flash",
     "spelling-grammar": "gemini-2.5-flash",
+    // Sorting contact-form messages (worker, daily-capped) → cheapest.
+    "contact-triage": "gemini-2.5-flash",
     // Content generation → stronger model.
     "draft-section": "gemini-2.5-pro",
     "editor-ai-edit": "gemini-2.5-pro",

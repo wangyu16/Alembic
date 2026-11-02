@@ -11,9 +11,19 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@alembic/ai-assist": "workspace:*",
+    "@alembic/generators": "workspace:*",
+    "@alembic/github-bridge": "workspace:*",
+    "@alembic/notify": "workspace:*",
     "@alembic/package-contract": "workspace:*",
+    "@alembic/package-ops": "workspace:*",
     "@alembic/renderer": "workspace:*",
-    "@alembic/generators": "workspace:*"
+    "orz-markdown": "2.5.0",
+    "orz-mdhtml": "1.1.0",
+    "orz-paged": "1.1.0",
+    "orz-site": "0.1.0",
+    "orz-slides": "1.1.0",
+    "postgres": "^3.4.9"
   },
   "devDependencies": {
     "tsx": "^4.22.4"

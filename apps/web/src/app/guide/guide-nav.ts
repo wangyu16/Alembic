@@ -1,8 +1,10 @@
 /**
  * The guide's information architecture — one source of truth for the sidebar,
- * the home card hub, and per-page prev/next. Two groups: Understand (the mental
- * model) and Do (task walkthroughs). Do pages are Phase B; they appear in the
- * structure as "soon" so the shape of the guide is visible and honest.
+ * the home card hub, and per-page prev/next. Two layers (owner's brief,
+ * 2026-10-29): "Start here" (the first hour, and a fast path for people who
+ * already know their course) and "Everything in detail" (one page per area).
+ * Every page describes only what works today; designed-but-not-built features
+ * live on "Coming later".
  */
 
 export type GuideStatus = "live" | "soon";
@@ -26,85 +28,92 @@ export interface GuideGroup {
 
 export const GUIDE_GROUPS: GuideGroup[] = [
   {
-    key: "understand",
-    label: "Understand",
-    caption: "The ideas Alembic is built on — read these once and the rest is obvious.",
+    key: "start",
+    label: "Start here",
+    caption: "New to Alembic? Take the first hour. Already know your course? Take the fast path.",
     pages: [
       {
-        slug: "ideas",
-        href: "/guide/ideas",
-        title: "Core ideas",
-        blurb: "The three ideas Alembic is built on — and why your work stays yours.",
+        slug: "start",
+        href: "/guide/start",
+        title: "Quick start: your first hour",
+        blurb: "Sign in, make a course, write a study guide and slides, and publish a course website.",
         status: "live",
       },
       {
-        slug: "building",
-        href: "/guide/building",
-        title: "How a course gets built",
-        blurb: "What you decide, what AI handles, and what Alembic guarantees — clean provenance, accessibility, and a course that stays consistent.",
-        status: "live",
-      },
-      {
-        slug: "anatomy",
-        href: "/guide/anatomy",
-        title: "Anatomy of a package",
-        blurb: "Everything a course package holds, and what each part is for.",
-        status: "live",
-      },
-      {
-        slug: "structure",
-        href: "/guide/structure",
-        title: "Documents & collections",
-        blurb: "The blueprint you plan, the course materials assembled from it, and the three collections.",
-        status: "live",
-      },
-      {
-        slug: "permalinks",
-        href: "/guide/permalinks",
-        title: "Citing, versions & links",
-        blurb: "Stable links that survive edits, inserting a figure, and naming each term's version.",
+        slug: "fast-path",
+        href: "/guide/fast-path",
+        title: "Fast path for experienced users",
+        blurb: "Your whole table of contents in one step, every part started, ready, published.",
         status: "live",
       },
     ],
   },
   {
-    key: "do",
-    label: "Do",
-    caption: "Step-by-step walkthroughs for each part of the workflow.",
+    key: "detail",
+    label: "Everything in detail",
+    caption: "One page per part of the work. Read them in any order.",
     pages: [
       {
-        slug: "start",
-        href: "/guide/start",
-        title: "Getting started",
-        blurb: "Your first package: create, write, preview, publish.",
+        slug: "courses",
+        href: "/guide/courses",
+        title: "Courses and chapters",
+        blurb: "Making a course, the five parts of a chapter, adding chapters, and the course page.",
         status: "live",
       },
       {
-        slug: "authoring",
-        href: "/guide/authoring",
-        title: "Creating & editing",
-        blurb: "The in-file editors, AI help, inserting figures, and the download → replace round-trip.",
+        slug: "writing",
+        href: "/guide/writing",
+        title: "Writing and saving",
+        blurb: "The editor, its three views, and exactly when your words reach the course.",
         status: "live",
       },
       {
-        slug: "offline",
-        href: "/guide/offline",
-        title: "Work offline & upload",
-        blurb: "Edit a document offline, or build a whole package and upload it as a .zip.",
+        slug: "together",
+        href: "/guide/together",
+        title: "Working together",
+        blurb: "Owner, deputy and co-author; inviting people; writing in the same document.",
         status: "live",
       },
       {
         slug: "publish",
         href: "/guide/publish",
-        title: "Publishing",
-        blurb: "What publishing does, your course website, and “this term.”",
+        title: "Publishing and your website",
+        blurb: "When a chapter is ready, approving the course plan, Publish, and your course website.",
         status: "live",
       },
       {
-        slug: "share",
-        href: "/guide/share",
-        title: "Share & adapt",
-        blurb: "Discover others' work, adapt it for your students, and suggest changes back.",
+        slug: "download",
+        href: "/guide/download",
+        title: "Download and present",
+        blurb: "Take a document with you as one file, and show your slides in class.",
+        status: "live",
+      },
+      {
+        slug: "formats",
+        href: "/guide/formats",
+        title: "Writing formats",
+        blurb: "Headings, tables, math, chemistry, boxes, tabs, questions and slides — with examples.",
+        status: "live",
+      },
+      {
+        slug: "try",
+        href: "/guide/try",
+        title: "Try it without an account",
+        blurb: "A sample chapter on any topic in about a minute. Nothing is kept.",
+        status: "live",
+      },
+      {
+        slug: "coming-later",
+        href: "/guide/coming-later",
+        title: "Coming later",
+        blurb: "What is planned but not here yet, and what to do in the meantime.",
+        status: "live",
+      },
+      {
+        slug: "help",
+        href: "/guide/help",
+        title: "Help and contact",
+        blurb: "Write to us, workshops, and answers to common questions.",
         status: "live",
       },
     ],

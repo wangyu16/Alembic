@@ -2,10 +2,25 @@
 
 > **orz family:** this repo is one member of the orz family — before changing anything another member depends on, read the family docs via [`../CLAUDE.md`](../CLAUDE.md) (contracts, shared rules, release order, and drift ledger in `../docs/`).
 
-Alembic is an educator-facing OER (open educational resource) authoring and
-publishing platform for STEM: educators organize knowledge and pedagogy; the
-platform handles structure, versioning, GitHub publication, provenance, and
-reuse. Educators are NOT developers — never surface Git/developer concepts in
+Alembic is an authoring and publishing platform (GitHub as storage, GitHub
+Pages as the website engine, a workspace, an AI assistant, discovery); its first
+use is open educational resources, with Coursewerk as the content profile.
+Educators organize knowledge and pedagogy; the platform handles saving,
+versioning, publication and reuse.
+
+**Alembic and Coursewerk: the boundary (owner, FD-09/FD-10, restated 2026-10-30 after
+recurring mix-ups).** Alembic provides only the *tooling and mechanism* for authoring and
+publishing: workspace, editors, saving and history, people and permissions, storage on
+GitHub, Publish and the website, the AI assistant's plumbing, discovery. It has **no
+opinion about content**. Anything about what a course says or contains (structure, quality,
+licence, accessibility, copyright, attribution, answer keys, what counts as ready) is
+Coursewerk's: Coursewerk defines it, and Alembic only runs what the Coursewerk profile hands
+it. A file is public or private by where it is, never by its text. Before adding any check,
+rule or message that looks at content, stop: it belongs in Coursewerk, not Alembic.
+The current Coursewerk lives on `manyu-oracle2` (ask that project); the family root's
+`coursewerk/` folder is an old copy.
+
+Educators are NOT developers — never surface Git/developer concepts in
 educator-facing UI or messages (use save, preview, publish, snapshot, restore,
 adapt, cite, share).
 

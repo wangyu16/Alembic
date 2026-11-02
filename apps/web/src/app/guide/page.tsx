@@ -4,7 +4,7 @@ import { GUIDE_GROUPS, type GuidePage as GuidePageMeta } from "./guide-nav";
 export const metadata = {
   title: "Guide — Alembic",
   description:
-    "Learn Alembic: the core ideas, what a package holds, how documents and collections are organized, and how to create, publish, share, and adapt.",
+    "Learn Alembic: a quick start for your first hour, a fast path for experienced users, and detailed help on courses, writing, working together, publishing and formats.",
 };
 
 /* Small two-tone line vignettes: base strokes inherit the muted color from
@@ -173,18 +173,48 @@ function CopySourceVignette() {
   );
 }
 
+
+function LaterVignette() {
+  return (
+    <svg viewBox="0 0 48 48" className={vg} aria-hidden>
+      <g {...stroke}>
+        <circle cx="22" cy="25" r="14" />
+        <path d="M22 17v8l5 3" />
+      </g>
+      <g {...stroke} className="text-[var(--accent)]">
+        <path d="M37 9v6m-3-3h6" />
+      </g>
+    </svg>
+  );
+}
+
+function HelpVignette() {
+  return (
+    <svg viewBox="0 0 48 48" className={vg} aria-hidden>
+      <g {...stroke}>
+        <path d="M8 11h24a3 3 0 0 1 3 3v12a3 3 0 0 1-3 3H18l-7 6v-6H8a3 3 0 0 1-3-3V14a3 3 0 0 1 3-3z" />
+      </g>
+      <g {...stroke} className="text-[var(--accent)]">
+        <path d="M17 17.5a3 3 0 1 1 4 2.8c-.7.3-1 .8-1 1.5" />
+        <path d="M20 24.5v.1" />
+      </g>
+    </svg>
+  );
+}
+
 /** A small line vignette per guide page, reused as card art on the hub. */
 const CARD_ART: Record<string, React.ReactNode> = {
-  ideas: <TruthVignette />,
-  building: <AssuranceVignette />,
-  anatomy: <PackageVignette />,
-  structure: <StudentCopyVignette />,
-  permalinks: <CopySourceVignette />,
-  start: <PencilVignette />,
-  authoring: <SmallPieceVignette />,
-  offline: <StudentCopyVignette />,
+  start: <AssuranceVignette />,
+  "fast-path": <SmallPieceVignette />,
+  courses: <PackageVignette />,
+  writing: <PencilVignette />,
+  together: <AdaptVignette />,
   publish: <KeepVignette />,
-  share: <AdaptVignette />,
+  download: <StudentCopyVignette />,
+  formats: <CopySourceVignette />,
+  try: <TruthVignette />,
+  "coming-later": <LaterVignette />,
+  help: <HelpVignette />,
 };
 
 function GuideCard({ page }: { page: GuidePageMeta }) {
@@ -227,7 +257,7 @@ function GuideCard({ page }: { page: GuidePageMeta }) {
   );
 }
 
-/** The guide home — an illustrated hub into the sections. */
+/** The guide home — what Alembic is, then the two layers as card hubs. */
 export default function GuidePage() {
   return (
     <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-14 px-6 py-16">
@@ -238,11 +268,20 @@ export default function GuidePage() {
           </span>
           Learn Alembic.
         </h1>
-        <p className="max-w-2xl text-lg leading-relaxed text-muted text-pretty">
-          Alembic turns your course materials into open, reusable resources. You
-          organize the knowledge; it handles structure, versions, publication,
-          and attribution. Start with the ideas, then walk through the workflow.
-        </p>
+        <div className="flex max-w-2xl flex-col gap-3 text-lg leading-relaxed text-muted text-pretty">
+          <p>
+            Alembic helps you build a course chapter by chapter: for each chapter a
+            concept map, a study guide, slides, an assessment guide and practice
+            questions. Your course is kept privately in your own GitHub account, and
+            your words are saved to it as you write. When chapters are ready, one
+            Publish puts them on an open course website for your students.
+          </p>
+          <p>
+            New here? Start with the <Link href="/guide/start" className="link">Quick start</Link>.
+            Know your course already? Take the <Link href="/guide/fast-path" className="link">fast path</Link>.
+            Everything else is in the detailed pages below.
+          </p>
+        </div>
       </header>
 
       {GUIDE_GROUPS.map((group) => (
@@ -263,22 +302,14 @@ export default function GuidePage() {
 
       <aside className="panel flex items-start gap-4 p-5">
         <span aria-hidden className="mt-0.5 shrink-0 text-faint">
-          <CopySourceVignette />
+          <HelpVignette />
         </span>
         <div className="flex min-w-0 flex-col gap-1.5">
-          <h2 className="font-serif text-xl tracking-tight text-ink">
-            One last bit of magic: copy as source
-          </h2>
+          <h2 className="font-serif text-xl tracking-tight text-ink">Questions?</h2>
           <p className="text-[0.95rem] leading-relaxed text-muted">
-            Every Alembic document is rendered by{" "}
-            <a href="https://markdown.orz.how" target="_blank" rel="noreferrer" className="link">
-              orz-markdown
-            </a>
-            , which comes with a unique trick: when you copy from someone&rsquo;s
-            page, you can copy the <em>markdown source</em> — not just the text
-            but the rich formatting, equations, tables, and chemical structures —
-            ready to paste straight into your own materials, with attribution
-            traveling along.
+            <Link href="/contact" className="link">Write to us</Link>: the people who run
+            Alembic read every message and reply by email. Workshops are planned but not
+            yet scheduled; write to us to hear about them.
           </p>
         </div>
       </aside>
@@ -287,11 +318,11 @@ export default function GuidePage() {
         <Link href="/workspace" className="btn btn-primary">
           Open your workspace
         </Link>
-        <Link href="/portal" className="btn btn-ghost">
-          Browse Discover
+        <Link href="/try" className="btn btn-ghost">
+          Try it without an account
         </Link>
         <span className="text-sm text-faint">
-          Sign in with GitHub — it&rsquo;s where your materials will live.
+          Sign in with GitHub: it&rsquo;s where your course will live.
         </span>
       </div>
     </main>

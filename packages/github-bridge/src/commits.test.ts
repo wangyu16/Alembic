@@ -20,7 +20,7 @@ describe("listCommits", () => {
     };
     const client = new GitHubClient("t", fetchImpl);
     const res = await client.listCommits(coords, { perPage: 15, path: "study-guide/02-acids.md" });
-    expect(res).toEqual([{ sha: "AAA", message: "Edit ch1", date: "2026-06-18T10:00:00Z" }]);
+    expect(res).toEqual([{ sha: "AAA", message: "Edit ch1", date: "2026-06-18T10:00:00Z", login: null }]);
     expect(calledUrl).toContain("per_page=15");
     expect(calledUrl).toContain("path=study-guide%2F02-acids.md");
   });

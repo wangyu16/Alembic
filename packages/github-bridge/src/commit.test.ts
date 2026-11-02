@@ -71,6 +71,19 @@ describe("commitFiles", () => {
     expect((commit.body as { message: string }).message).toBe("Update study guide");
   });
 
+  it("puts a large text in as a blob uploaded first, never inline; small texts stay inline", async () => {
+    const { fetchImpl, calls } = commitMock();
+    const client = new GitHubClient("ghs_x", fetchImpl);
+    const big = "x".repeat(300 * 1024);
+    await commitFiles(client, coords, { repo: "public", summary: "records", changes: [{ path: "study-guide/big.md", content: big }, { path: "study-guide/01.md", content: "# Ch1" }] });
+    const blob = calls.find((c) => c.url.endsWith("/git/blobs"))!;
+    expect(blob.body).toEqual({ content: big, encoding: "utf-8" });
+    const tree = (calls.find((c) => c.url.endsWith("/git/trees"))!.body as { tree: Array<Record<string, unknown>> }).tree;
+    expect(tree).toContainEqual({ path: "study-guide/big.md", mode: "100644", type: "blob", sha: "BLOBSHA" });
+    expect(tree).toContainEqual({ path: "study-guide/01.md", mode: "100644", type: "blob", content: "# Ch1" });
+    expect(JSON.stringify(tree).length).toBeLessThan(10_000);
+  });
+
   it("encodes a deletion as a null-sha tree entry", async () => {
     const { fetchImpl, calls } = commitMock();
     const client = new GitHubClient("ghs_x", fetchImpl);

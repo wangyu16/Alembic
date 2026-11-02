@@ -46,6 +46,12 @@ export async function getInstallationToken(opts: {
   appId: string;
   privateKey: string;
   installationId: string | number;
+  /**
+   * Limit the token to these repositories (names, without owner) — workspace
+   * v3 permissions §4.4: a course's token reaches only that course's repos.
+   * Omitted only for repository creation.
+   */
+  repositories?: readonly string[];
   fetchImpl?: FetchLike;
   nowMs?: number;
   retry?: Partial<RetryPolicy>;
@@ -62,7 +68,9 @@ export async function getInstallationToken(opts: {
         Authorization: `Bearer ${jwt}`,
         Accept: "application/vnd.github+json",
         "X-GitHub-Api-Version": "2022-11-28",
+        ...(opts.repositories ? { "Content-Type": "application/json" } : {}),
       },
+      ...(opts.repositories ? { body: JSON.stringify({ repositories: [...opts.repositories] }) } : {}),
     },
     { replayable: true, policy: opts.retry },
   );
@@ -158,6 +166,7 @@ export function installationTokenSource(opts: {
   appId: string;
   privateKey: string;
   installationId: string | number;
+  repositories?: readonly string[];
   fetchImpl?: FetchLike;
   now?: () => number;
   refreshBeforeMs?: number;
@@ -173,6 +182,7 @@ export function installationTokenSource(opts: {
       appId: opts.appId,
       privateKey: opts.privateKey,
       installationId: opts.installationId,
+      ...(opts.repositories ? { repositories: opts.repositories } : {}),
       fetchImpl: opts.fetchImpl,
       nowMs: now(),
       retry: opts.retry,
@@ -202,4 +212,53 @@ export function installationTokenSource(opts: {
       return mint();
     },
   };
+}
+
+/**
+ * GitHub's numeric id for a user name (public data; GET /users/{login}).
+ * Invitations are matched on this id, never on the login, which can change
+ * and be taken by someone else. Returns null for no such user, or an
+ * organization.
+ */
+export async function lookupGithubUser(
+  login: string,
+  fetchImpl: FetchLike = defaultFetch,
+): Promise<{ id: string; login: string } | null> {
+  if (!/^[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38}$/.test(login)) return null;
+  const res = await fetchImpl(`https://api.github.com/users/${encodeURIComponent(login)}`, {
+    method: "GET",
+    headers: { Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" },
+  });
+  if (res.status === 404) return null;
+  if (!res.ok) throw new GitHubError("Could not look up the GitHub user", res.status, await res.text().catch(() => undefined));
+  const data = (await res.json()) as { id?: unknown; login?: unknown; type?: unknown };
+  if (typeof data.id !== "number" || typeof data.login !== "string" || data.type !== "User") return null;
+  return { id: String(data.id), login: data.login };
+}
+
+/**
+ * The App's installation on a user account, asked as the App (JWT), or null if
+ * the App isn't installed there (GET /users/{login}/installation). Used to
+ * connect an account where the App is already installed, which GitHub does
+ * not redirect back for.
+ */
+export async function findUserInstallation(opts: {
+  appId: string;
+  privateKey: string;
+  login: string;
+  fetchImpl?: FetchLike;
+  nowMs?: number;
+}): Promise<{ id: number; account: { login: string; type: string; id: number | null } } | null> {
+  if (!/^[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38}$/.test(opts.login)) return null;
+  const jwt = mintAppJwt(opts.appId, opts.privateKey, opts.nowMs);
+  const f = opts.fetchImpl ?? defaultFetch;
+  const res = await f(`https://api.github.com/users/${encodeURIComponent(opts.login)}/installation`, {
+    method: "GET",
+    headers: { Authorization: `Bearer ${jwt}`, Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" },
+  });
+  if (res.status === 404) return null;
+  if (!res.ok) throw new GitHubError("Could not look up the installation", res.status, await res.text().catch(() => undefined));
+  const d = (await res.json()) as { id?: unknown; account?: { login?: unknown; type?: unknown; id?: unknown } };
+  if (typeof d.id !== "number" || typeof d.account?.login !== "string") return null;
+  return { id: d.id, account: { login: d.account.login, type: String(d.account.type ?? ""), id: typeof d.account.id === "number" ? d.account.id : null } };
 }

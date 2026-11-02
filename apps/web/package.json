@@ -17,14 +17,19 @@
     "@alembic/carriers": "workspace:*",
     "@alembic/editor-kit": "workspace:*",
     "@alembic/github-bridge": "workspace:*",
+    "@alembic/notify": "workspace:*",
     "@alembic/package-contract": "workspace:*",
     "@alembic/package-ops": "workspace:*",
     "@alembic/renderer": "workspace:*",
     "@alembic/research-events": "workspace:*",
+    "@anthropic-ai/sdk": "^1.3.0",
     "@supabase/ssr": "^0.12.0",
     "@supabase/supabase-js": "^2.108.1",
     "fflate": "^0.8.3",
     "next": "16.2.9",
+    "orz-mdhtml-browser": "^1.1.0",
+    "orz-paged-browser": "^1.1.0",
+    "orz-slides-browser": "^1.1.0",
     "react": "19.2.4",
     "react-dom": "19.2.4"
   },
@@ -36,6 +41,8 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.2.9",
+    "orz-slides": "1.1.0",
+    "postgres": "^3.4.9",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

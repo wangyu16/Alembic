@@ -41,6 +41,63 @@ export function GuidePageShell({
 }
 
 /**
+ * A screenshot of the real product (captured from the testing site, kept under
+ * public/guide/). Width and height are the image's own, so the page doesn't
+ * jump while it loads; the alt text says what the picture shows.
+ */
+export function GuideShot({
+  src,
+  alt,
+  width,
+  height,
+  caption,
+}: {
+  src: string;
+  alt: string;
+  width: number;
+  height: number;
+  caption?: string;
+}) {
+  return (
+    <figure className="my-1 flex flex-col gap-2">
+      {/* Static screenshots: a plain img keeps them as they are (no resizing service). */}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={src}
+        alt={alt}
+        width={width}
+        height={height}
+        loading="lazy"
+        decoding="async"
+        className="h-auto w-full rounded-lg border border-edge bg-surface"
+      />
+      {caption && <figcaption className="text-sm text-muted">{caption}</figcaption>}
+    </figure>
+  );
+}
+
+/** A short aside inside a section: a tip, or something to watch for. */
+export function GuideNote({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="rounded-lg border border-edge bg-surface px-4 py-3 text-[0.95rem] leading-relaxed text-muted">
+      {children}
+    </div>
+  );
+}
+
+/** A small block of example text, shown exactly as you would type it. */
+export function GuideExample({ children, label }: { children: string; label?: string }) {
+  return (
+    <figure className="flex flex-col gap-1.5">
+      {label && <figcaption className="text-sm text-faint">{label}</figcaption>}
+      <pre className="overflow-x-auto rounded-lg border border-edge bg-surface px-4 py-3 font-mono text-[0.85rem] leading-relaxed text-ink">
+        {children}
+      </pre>
+    </figure>
+  );
+}
+
+/**
  * One section of a guide article: an optional line figure, a serif subhead, and
  * prose. The figure sits in a quiet framed panel so the line art has room to
  * breathe. `wide` drops the panel for a full-measure block of prose.
@@ -69,7 +126,7 @@ export function GuideSection({
           )}
         </figure>
       )}
-      <div className="flex flex-col gap-4 text-[0.975rem] leading-relaxed text-muted [&_a]:text-[var(--accent)] [&_a:hover]:underline [&_strong]:text-ink">
+      <div className="flex flex-col gap-4 text-[0.975rem] leading-relaxed text-muted [&_a]:text-[var(--accent)] [&_a:hover]:underline [&_strong]:text-ink [&_ol]:list-decimal [&_ol]:pl-6 [&_ul]:list-disc [&_ul]:pl-6 [&_li]:mt-1.5 [&_kbd]:rounded [&_kbd]:border [&_kbd]:border-edge [&_kbd]:px-1 [&_kbd]:font-mono [&_kbd]:text-[0.85em] [&_p_code]:rounded [&_p_code]:bg-surface [&_p_code]:px-1 [&_p_code]:font-mono [&_p_code]:text-[0.88em] [&_p_code]:text-ink [&_li_code]:rounded [&_li_code]:bg-surface [&_li_code]:px-1 [&_li_code]:font-mono [&_li_code]:text-[0.88em] [&_li_code]:text-ink">
         {children}
       </div>
     </section>

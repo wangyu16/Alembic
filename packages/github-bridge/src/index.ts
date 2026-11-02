@@ -84,3 +84,4 @@ export async function commitFiles(
     ...(opts.unchangedSince !== undefined ? { unchangedSince: opts.unchangedSince } : {}),
   });
 }
+export * from "./working-repo";

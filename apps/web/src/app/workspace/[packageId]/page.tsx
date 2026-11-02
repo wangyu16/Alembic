@@ -1,4 +1,6 @@
 import { redirect } from "next/navigation";
+import { v3Enabled } from "@/lib/db";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 /**
  * The classic editor is retired (2026-07 workspace framework): the shell at
@@ -16,6 +18,12 @@ export default async function PackagePage({
 }) {
   const { packageId } = await params;
   const sp = await searchParams;
+  // v3 courses (where enabled) have their own home.
+  if (v3Enabled()) {
+    const supabase = await createSupabaseServerClient();
+    const { data } = await supabase.from("packages").select("schema:manifest->schemaVersion").eq("id", packageId).maybeSingle();
+    if ((data as { schema?: unknown } | null)?.schema === 3) redirect(`/workspace/${packageId}/course`);
+  }
 
   const qs = new URLSearchParams();
   for (const [key, value] of Object.entries(sp)) {

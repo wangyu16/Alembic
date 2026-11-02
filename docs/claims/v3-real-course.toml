@@ -1,0 +1,300 @@
+# Workspace v3 — real-course claims (closed loop, rounds on the testing site
+# with the owner's General Chemistry copied as a v3 course, 2026-10-29).
+#
+# Same format as phase5.toml (see scripts/claims-check.mjs). Ids RC.<n>.
+# Live oracles (crawls, timings on testing) are recorded in the note and the
+# round entry in docs/specs/v3/real-course-loop.md.
+
+[registry]
+name = "Alembic workspace v3, real course"
+round = "r1"
+baseline = "4411cc9"
+
+[[claim]]
+id = "RC.1"
+claim = "Moving a 0.x course leaves no 0.x deck block in any slides file: a 0.x deck goes through orz-slides' own upgrade, and the website build accepts the result (it refuses a deck that only got a header)."
+oracle = "scenario"
+bound_to = [
+  "apps/web/src/lib/course-move.test.ts :: a 0.x deck is recognised, and orz-slides' upgrade leaves no deck block, keeps every slide and moves the settings into the header",
+  "apps/worker/src/site-build.real.test.ts :: a 0.x deck with only a header added is left out of the website (the rest builds, the link to it doesn't stop it); the same deck after orz-slides' upgrade builds",
+]
+note = "Found live: all 19 GenChem decks broke the website build after a clean Publish. The carrier's readDocument does not lint the block; orz-site does (family discrepancy, reported)."
+
+[[claim]]
+id = "RC.2"
+claim = "Publish reads a course's files in parallel, never more than READ_CONCURRENCY (8) at once, each file once, with the same result as reading them one by one."
+oracle = "conformance"
+bound_to = [
+  "packages/package-ops/src/publish-job.test.ts :: a real-size course is read in parallel, never more than READ_CONCURRENCY at once, with the same result",
+]
+note = "Before: ~450 sequential GitHub reads per GenChem Publish (1m42s first, 2m37s second). The website build's blob downloads and the instructor-file reads got the same bounded parallelism."
+
+[[claim]]
+id = "RC.3"
+claim = "When the website build fails, the Publish page names each problem with its file (up to 20), not only that it failed."
+oracle = "conformance"
+bound_to = [
+  "apps/web/src/lib/publish-view.test.ts :: a failed website build names each problem with its file (at most 20)",
+]
+
+[[claim]]
+id = "RC.4"
+claim = "No link to a course document is prefetched (each prefetch would render a document page on the server with its own GitHub reads; a 19-chapter course home has ~100 such links)."
+oracle = "conformance"
+bound_to = [
+  "apps/web/src/app/workspace/doc-links.scan.test.ts :: every <Link> to a course document, a Publish page or a course page turns prefetching off",
+]
+note = "Found live: the GenChem course home took ~10 s to settle and 9 of 95 document opens timed out during a crawl, while server time per page was 2-3 s."
+
+[[claim]]
+id = "RC.5"
+claim = "Every document of the real course (95: 19 chapters x 5 parts) opens in its editor with no page error and no CSP report."
+oracle = "human"
+bound_to = []
+note = "Live crawl /tmp/pgcheck/genchem-crawl.cjs on testing. r1 before fixes: 86/95 clean, 9 timeouts. After RC.4: 90/95, 5 practice pages timing out at network-idle, each opening in ~3.5 s alone (3 tries): not reproduced (docs/specs/v3/real-course-loop.md)."
+
+[[claim]]
+id = "RC.6"
+claim = "The Publish copy checks at real-course size (95 documents of 4,000 words, 188 images of 300 KB, 19 answer keys) finish in bounded time and still catch a copied answer, including one hidden in an image's text."
+oracle = "scenario"
+bound_to = [
+  "packages/package-ops/src/copy-check.scale.test.ts :: 95 documents of 4,000 words and 188 images of 300 KB against 19 answer keys run in bounded time, and still catch a copied answer, also one hidden in an image",
+]
+note = "Since 2026-10-30 (owner rulings) Publish runs neither the answer-key nor the copying check: content checks are Coursewerk's (FD-09). The checks and this bound stay as library tests only. Audit r1 F1 (HIGH). Before: key shingles rebuilt per public file and images checked as windows-1252 noise; the scale run passed 15 min unfinished. After: 10.4 s locally (incl. generating 56 MB of test images)."
+
+[[claim]]
+id = "RC.7"
+claim = "Door C handles a push GitHub's compare can't list (more than 300 files) by comparing trees, so forbidden content in it is still undone, and a push of many edits raises one item, not one per file."
+oracle = "conformance"
+bound_to = [
+  "apps/worker/src/door-c-loop.test.ts :: a push of more than 300 files is compared tree to tree (GitHub's compare can't list it), so forbidden content in it is still found",
+  "apps/worker/src/door-c-loop.test.ts :: more than EDITED_ITEMS_MAX edited files raise one item naming the count, not one item per file",
+]
+note = "Audit r1 F2 (HIGH): before, such a push stayed unprocessed and was retried every 5 s forever; a manual course move of 300+ files triggers it."
+
+[[claim]]
+id = "RC.8"
+claim = "A Publish page render reads the course plan's versions from one tree listing; each plan file is read once ever (cached by its blob id), not on every render."
+oracle = "conformance"
+bound_to = [
+  "apps/web/src/lib/course-v3-versions.test.ts :: a 19-chapter page lists the tree once per commit; each file is read once ever (cached by its blob id)",
+]
+note = "Audit r1 F3: ~40 GitHub calls per render, re-rendered every 3 s while publishing."
+
+[[claim]]
+id = "RC.9"
+claim = "A course's own images show in the workspace editor: each is served from an address only a course member is given (signed for exactly that file, expiring; or the member's session), instructor-only files only to those allowed; SVG sandboxed, no sniffing."
+oracle = "conformance"
+bound_to = [
+  "apps/web/src/lib/course-assets.test.ts :: every course image gets a members-only address; instructor-only files only for those allowed; other files none",
+  "apps/web/src/lib/course-assets.test.ts :: a signature opens exactly its course file at that version until it expires; another file, version or course, a forged or expired one doesn't",
+]
+note = "Audit r1 F4: the editor was never given asset addresses, so every relative image was broken. Live check on the GenChem copy after relinking its figures (RC.10)."
+
+[[claim]]
+id = "RC.10"
+claim = "Moving a 0.x course with --resolve-permalinks turns every figure named by a 0.x permalink into a relative path to the course's own file (matched by content); unmatched ones are listed, never dropped."
+oracle = "scenario"
+bound_to = [
+  "apps/web/src/lib/course-move.test.ts :: figures named by 0.x permalinks become relative course paths, keeping the size hint; unknown ids are listed, never dropped",
+]
+note = "Audit r1 F5. GenChem: 157 permalinks in 38 documents, 157 matched; the testing copy was relinked through the sync queue."
+
+[[claim]]
+id = "RC.11"
+claim = "Publish and the website build read a whole tree with one GitHub request (an archive), not one per file, with exact bytes: a 19-chapter Publish no longer spends the owner's hourly GitHub budget."
+oracle = "scenario"
+bound_to = [
+  "packages/github-bridge/src/tar.test.ts :: a real .tar.gz gives every regular file by its path under the top folder, long and non-ASCII names included, bytes exact",
+  "packages/github-bridge/src/tree-reader.test.ts :: a course-size tree costs one listing and one archive for all its files; each file is checked against its blob id",  "packages/github-bridge/src/tree-reader.test.ts :: a rate-limited archive is reported as busy, not worked around with one request per file",
+]
+note = "Blind r1 (B5/A9): the installation's 5,000 requests/hour ran out at 04:03 UTC after a few GenChem Publishes plus normal use; every course page of the owner returned 500 for ~10 min. Live: the GenChem working tree, 331 files in one request (3.6 s), every blob id matching the tree; a full GenChem Publish plus its website then used 8 GitHub requests (before: ~1,000)."
+
+[[claim]]
+id = "RC.12"
+claim = "When GitHub rate-limits Alembic, the course, document and Publish pages show a calm 'busy, try again after HH:MM' page instead of an error, and a Publish stopped by it says so and when to publish again."
+oracle = "conformance"
+bound_to = [
+  "apps/web/src/lib/github-busy.test.tsx :: only a GitHub rate limit becomes the calm busy page, and the course, document and Publish pages all use it",
+  "apps/worker/src/publish-loop.test.ts :: a GitHub rate limit is named, with when to publish again; other failures stay general",
+]
+
+[[claim]]
+id = "RC.13"
+claim = "The editor never says Saved for text that is only on this device: the status says 'kept on this device — not in the course yet' until the course has it; a stop in typing sends it within 30 s, leaving the page still sends it, and closing with unsent text asks first."
+oracle = "conformance"
+bound_to = [
+  "apps/web/src/lib/device-save/scheduler.test.ts :: the status never says Saved for text that is only on this device; it says so plainly, and when the course has it",
+]
+note = "Blind r1 A3 (FAIL): 'Saved' meant this browser only; leaving within ~2 min lost the sync (a server action from an unmounting component). Now a keepalive request to a sync route; idle 30 s (design §7.1 said 2 min — owner to confirm). Live re-check by a fresh verifier."
+
+[[claim]]
+id = "RC.14"
+claim = "The course page reads as a course: chapters in the course's order with their titles and parts by name; course-wide and instructor-only files after, collapsed."
+oracle = "conformance"
+bound_to = [
+  "apps/web/src/lib/course-outline.test.ts :: chapters come in the course's order with their titles and parts by name; course-wide and instructor-only files come after, never a raw file list",
+]
+note = "Blind r1 A1 (PARTIAL): raw file names, alphabetical, a 'metadata' group."
+
+[[claim]]
+id = "RC.15"
+claim = "The Publish page says what each chapter really is (Draft, ready once the plan is approved, Ready), shows a status change as saving until it lands, approves a course plan at once with one button, and names chapters by title."
+oracle = "human"
+bound_to = []
+note = "Blind r1 B1/B4/B5. Verified by a fresh blind re-verifier (round 2)."
+
+[[claim]]
+id = "RC.16"
+claim = "The course website opens on the course: its title, then the chapters in the course's order with their parts by name (not folders in file-name order)."
+oracle = "scenario"
+bound_to = [
+  "apps/worker/src/site-build.real.test.ts :: the website opens on the course: title, then chapters in the course's order with their parts by name, not folders in file-name order",
+]
+note = "Blind r1 B3 friction."
+
+[[claim]]
+id = "RC.17"
+claim = "Text typed on a device is never silently lost: text that never reached the course wins when the document is reopened and is sent again on its own base (the course merges it), and our own sync coming back moves the editor's base forward instead of raising a false conflict; an ended session says sign in again."
+oracle = "conformance"
+bound_to = [
+  "apps/web/src/lib/device-save/store.test.ts :: text on this device that never reached the course wins on reopening and is sent again with its own base, even after the course moved on; text the course already has never comes back",
+  "apps/web/src/lib/device-save/scheduler.test.ts :: after the course echoes our own text, typing still unsent is sent on the new version, not the old one (no false 'both changed')",
+  "apps/web/src/lib/device-save/scheduler.test.ts :: syncNow during a sync waits for it, then sends what was typed meanwhile; nothing is dropped",
+  "apps/web/src/lib/device-save/store.test.ts :: resume asks only about the sync that carried exactly the kept text; a revert never sent is resent, never taken for an arrival",
+  "apps/web/src/lib/device-save/store.test.ts :: a text the course accepted but hasn't written yet is asked about on reopening, so the editor shows it rather than the older course text",
+  "apps/web/src/lib/device-save/store.test.ts :: update reads and writes one record together: an older text never overwrites a newer one",
+  "apps/web/src/lib/sync-entry.sql.test.ts :: queues a member's allowed change, idempotently, under the key the editor asks about on reopening",
+]
+note = "Audit r2 #1 (HIGH), #3, #5a, #9; audit r3 HIGH-1 (a resumed text now edits from its own base and is sent at once; records from before the synced flag are resumed only if the course hasn't moved) and MEDIUM-4; audit r4 H-1 (a device text the course already holds at any version is never resumed: the editor checks the course for its hash first) and M-1 (no edit is queued while a resume is being decided); audit r5 MEDIUM-1 (resume asks whether the recorded sync of exactly the kept text arrived, not whether the course ever held that text, so a revert is never dropped), MEDIUM-2 (others' versions that land before the editor opens, or before it listens, are caught up) and LOW-2 (device records change in one transaction); re-verifier r4 A3/j (a reopen within seconds of Saved showed the older course text: an accepted, unwritten sync is now shown and its echo taken as ours)."
+
+[[claim]]
+id = "RC.18"
+claim = "Reading many files of a tree is bounded: up to 80 MB in one archive request, bigger trees blob by blob; every archived file is checked against its blob id."
+oracle = "conformance"
+bound_to = [
+  "packages/github-bridge/src/tree-reader.test.ts :: a course-size tree costs one listing and one archive for all its files; each file is checked against its blob id",
+  "packages/github-bridge/src/tree-reader.test.ts :: a tree bigger than the archive limit is read blob by blob (bounded memory), never as one archive",
+  "packages/github-bridge/src/tree-reader.test.ts :: a failed archive (too big unpacked, LFS, outage) falls back to blob reads, without asking for the archive again",
+]
+note = "Audit r2 #2 (HIGH): the archive was unbounded against the worker's 512 MB; #10 (no blob check, no retry)."
+
+[[claim]]
+id = "RC.19"
+claim = "Everyday use stays well inside the owner's GitHub budget: a sync that landed isn't read back, the Publish page's refresh asks GitHub only where the course is now (manifest and tree cached by commit), and images are addressed by version and cached by the browser."
+oracle = "conformance"
+bound_to = [
+  "apps/web/src/lib/course-v3-versions.test.ts :: a 19-chapter page lists the tree once per commit; each file is read once ever (cached by its blob id)",
+  "apps/web/src/lib/course-assets.test.ts :: a signature opens exactly its course file at that version until it expires; another file, version or course, a forged or expired one doesn't",
+]
+note = "Audit r2 #4 and #8. Open: a request ledger per installation with tests counting requests per view/sync/job (audit's improvement 1)."
+
+[[claim]]
+id = "RC.20"
+claim = "A course member sees each write-queue row's status, never another member's queued text, its result or its error."
+oracle = "invariant"
+bound_to = [
+  "apps/web/src/lib/write-queue-columns.sql.test.ts :: a co-author sees each row's status but not another member's queued text or its result",
+]
+note = "Audit r2 #11; migration 0060 (column-level grant)."
+
+[[claim]]
+id = "RC.21"
+claim = "A button's meaning reaches its server action: no submit button carries both a formAction and its own name/value (Next replaces the name), so 'Approve it as it is now' approves exactly what was shown."
+oracle = "conformance"
+bound_to = [
+  "apps/web/src/app/workspace/form-action-buttons.scan.test.ts :: no button carries both a formAction and its own name (its value would be lost)",
+]
+note = "Blind r2 re-verifier (c) FAIL and critic #1: the approval button approved nothing ('Nothing to approve.'); reproduced live, then fixed by binding the value."
+
+[[claim]]
+id = "RC.22"
+claim = "One Save, and it tells the truth: the editor's Save sends to the course and shows Saved only if the course has the text; the status says Opening… before the editor is there; pages show Opening… at once; slides can be presented from the workspace."
+oracle = "human"
+bound_to = []
+note = "Critic #2, #3, #5, #6. Fresh re-verifier (round 3)."
+
+[[claim]]
+id = "RC.23"
+claim = "A downloaded document stands on its own: the course's figures are embedded in the file; web images and unknown figures stay as they are; the course text is untouched."
+oracle = "conformance"
+bound_to = [
+  "apps/web/src/lib/orz-editor/download-figures.test.ts :: the course's own figures are embedded in the file (size hints kept); web images and unknown figures stay as they are; the course text is untouched",
+]
+note = "Blind r2 A8: all 9 figures broken in a downloaded study guide. Re-verifier r3: embedded SVG figures showed as base64 text, because the renderer refuses data: addresses in Markdown image syntax; embedded figures are now written as <img> tags (checked against the real renderer). Re-verifier r4: an <img> starting a line opened an HTML block and printed the caption as raw Markdown; a zero-width space now comes first."
+
+[[claim]]
+id = "RC.24"
+claim = "The Publish page can't publish a chapter's old status (Publish waits while a status change is saving, the server refuses meanwhile), says which chapters changed since the last Publish, gives times in the course's time zone, and the course page says what the person can do."
+oracle = "human"
+bound_to = [
+  "apps/web/src/lib/publish-store.sql.test.ts :: a Publish can't be asked for while a chapter status change is on its way; a non-member can't approve a plan part",
+]
+note = "Blind r2 B4 trap, critic #7, #8. Fresh re-verifier (round 3)."
+
+[[claim]]
+id = "RC.25"
+claim = "Presenting slides from the workspace never runs course content as Alembic: the deck is served to a member's same-site post as its own document under a sandbox policy (opaque origin, no opener), and it still plays."
+oracle = "conformance"
+bound_to = [
+  "apps/web/src/app/workspace/[packageId]/present/route.test.ts :: the deck is served to a member's same-site post as its own sandboxed document (no Alembic origin); other sites and non-members get nothing",
+  "apps/web/src/lib/orz-editor/download-figures.test.ts :: a deck shown away from the course points its figures at their absolute signed addresses (nothing embedded); figures in ~~~ code blocks are left alone",
+]
+note = "Audit r3 HIGH-2 (stored XSS across members through Present). Audit r4 M-2: the deck is posted as multipart with CDN delivery and linked (not embedded) figures, so a figure-heavy deck stays under the size cap. Open: a course over 80 MB is read blob by blob (audit r3 MEDIUM-6; a streaming archive parse would fix it); signed image addresses outlive a member's removal by up to 48 h (L11, accepted)."
+
+[[claim]]
+id = "RC.26"
+claim = "A course is built in the browser without the agent: chapters are added (many at once, as drafts, slugs never colliding), and each missing part starts from a text its editor accepts; someone who knows their table of contents gets every chapter, and optionally every part, when the course is created."
+oracle = "conformance"
+bound_to = [
+  "packages/package-ops/src/chapter-parts.test.ts :: several chapters are added at once, in order, as drafts, with slugs that never collide (existing, repeated, reserved, non-Latin titles)",
+  "packages/package-ops/src/chapter-parts.test.ts :: a pasted list longer than the limit is refused, not cut silently",
+  "apps/web/src/lib/chapter-parts.lint.test.ts :: every part starts as a document its editor accepts (no lint errors), at the path the course page expects",
+  "packages/package-ops/src/course-create-v3.test.ts :: someone who knows their table of contents gets every chapter, and with startParts every part, in the first commit",
+]
+note = "Owner, 2026-10-29: before the guides; experienced users must not walk through the basic steps each time (one-step skeleton at creation, many chapters at once, start all parts)."
+
+# Contact form with automatic sorting (owner, 2026-10-29: "a contact form ...,
+# letting an Agent process and sort in the backend, so I can handle many
+# digested questions at once"). Migration 0062; /contact, /admin/messages,
+# the worker's contact-triage schedule.
+
+[[claim]]
+id = "RC.27"
+claim = "Contact messages are the operator's alone: visitors and signed-in people can neither read nor file them directly (nor call the functions); the server files them through the service role, and only an operator (profiles.is_admin) can read or change them."
+oracle = "invariant"
+bound_to = [
+  "apps/web/src/lib/contact-messages.sql.test.ts :: visitors and signed-in people can neither read nor file messages directly; only the operator reads them",
+]
+
+[[claim]]
+id = "RC.28"
+claim = "The contact form checks every field (name, email, topic from the fixed list, message up to 4000 characters, a page on this site only), silently drops a filled honeypot without counting or keeping it, and refuses past 5 an hour per network and 3 an hour per email, filing nothing; the network is kept only as a keyed hash."
+oracle = "conformance"
+bound_to = [
+  "apps/web/src/lib/contact.test.ts :: checks name, email, topic and message lengths; keeps only a path on this site as the page it came from",
+  "apps/web/src/lib/contact.test.ts :: a filled honeypot gets the normal confirmation and nothing is counted or kept",
+  "apps/web/src/lib/contact.test.ts :: is limited per network (5 an hour) and per email (3 an hour, any capitalisation); past either, nothing is filed",
+]
+
+[[claim]]
+id = "RC.29"
+claim = "The AI's answer can only choose four fields: malformed answers are refused, an unknown category becomes Other, the summary is one line of at most 300 characters with web addresses blanked, and anything else in the answer (actions, addresses, extra keys) is dropped, even when the message's injected instructions are obeyed."
+oracle = "probe"
+bound_to = [
+  "packages/ai-assist/src/contact-triage.test.ts :: a malformed or shapeless answer is refused (the message stays unsorted); chatter and code fences around a good answer are ignored",
+  "packages/ai-assist/src/contact-triage.test.ts :: an unknown category becomes other, an unknown urgency normal, and only a real true marks spam",
+  "packages/ai-assist/src/contact-triage.test.ts :: an oversized or multi-line summary becomes one line of at most 300 characters, with web addresses blanked",
+  "packages/ai-assist/src/contact-triage.test.ts :: instructions injected in the message can only choose the four fields: extra keys and actions in the answer are dropped",
+]
+
+[[claim]]
+id = "RC.30"
+claim = "Sorting runs on the low-cost model under a hard daily cap kept in the database (CONTACT_TRIAGE_DAILY_CAP, default 200, never above 1000), writes back only the four checked fields, and a message the AI can't sort (down, bad answer, cap reached) stays open and listed unsorted, never lost."
+oracle = "scenario"
+bound_to = [
+  "apps/web/src/lib/contact-messages.sql.test.ts :: sorting takes at most the day's cap, writes only the four fields, and a message it can't sort stays open and listed",
+  "apps/worker/src/contact-triage-job.test.ts :: asks the low-cost model for each taken message within the daily cap and writes back only the four checked fields",
+  "apps/worker/src/contact-triage-job.test.ts :: when the AI is down or answers badly, nothing is written (the message stays new, shown unsorted) and no message text is logged",
+]
+note = "Not verified live: the real model's answers to real messages, and the worker's AI settings on testing."

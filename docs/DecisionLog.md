@@ -7,6 +7,141 @@ design, and what is deferred to the future. Complements [Status.md](Status.md)
 ---
 
 
+
+## 2026-10-31 — Agent harness: Claude Code first, then `coursewerk-agent` on pi; Alembic harness-neutral
+
+**Decision (owner).** The hosted assistant starts with Claude Code (headless, the Agent SDK form) running Coursewerk's
+skills. Coursewerk then builds `coursewerk-agent` on pi (minimal TypeScript harness, many providers) and Alembic switches to
+it once it is complete. Production sandboxes: Fly Sprites, with instabox kept as a working second provider behind
+`SandboxProvider`; a one-day comparison on the real C4 harness decides before production.
+
+| # | Ruling | Why |
+|---|---|---|
+| 1 | **Alembic is harness-neutral.** C4's contract with a harness: a command started in the sandbox with the gateway key, the job budget and the hand-in endpoint; results only through the hand-in; questions only through the digest. | Mechanism vs content (FD-09/FD-10): a harness tuned for course authoring is the type package's; switching harnesses never needs an Alembic release; future site types bring their own. |
+| 2 | **Coursewerk's skills stay harness-neutral** (instructions + command-line scripts; nothing that only one harness can run in the core). | The same skills run under Claude Code now, `coursewerk-agent` later, and locally. To raise with the Coursewerk project. |
+| 3 | **Switch by evaluation:** the same GenChem tasks under both harnesses, scored by Coursewerk's own checks, cost and time per task. | Choose by numbers, not taste. |
+
+Supersedes the "harness selection" open item of 2026-08-28.
+
+---
+
+## 2026-10-30 — Owner rulings: whole-course restore; public or private by place, not by text
+
+Guiding principle (owner): **easy authoring over strict rules.**
+
+1. **Whole-course restore (history-v3 §8), as recommended:**
+   - it brings back the documents that existed at the snapshot to their text
+     then; documents and chapters added since are **kept** (listed as "added
+     since the snapshot", each removable in one click);
+   - a snapshot "Before restoring to <name>" is made first, so undoing it is
+     one more restore;
+   - **no lock and no agent pause:** edits made meanwhile follow the usual
+     version rule (the newer text on top, the other version kept);
+   - course plans come back approved only if that exact text was approved
+     (approvals follow content); no batch Approve;
+   - the licence, the Coursewerk version and the mechanics stay as they are now.
+2. **Whether a file is public depends only on where it is** (O23, and wider):
+   a file is public unless the author puts it in the private category. Its
+   text is never compared with private files to decide. So Publish no longer
+   runs the answer-key check, and a restore no longer refuses a version
+   because it repeats private text or because the file was later moved into
+   `private/`. Supersedes the "always block" part of R27 for answer keys,
+   and history-v3 H.8's private-move rule.
+3. **Content is not Alembic's business** (owner, later the same day):
+   "Coursewerk is responsible to check copyright issues. Anything about
+   contents is not Alembic's business." Publish no longer runs the copying
+   check against sources either; it runs no content checks at all. It keeps
+   platform safety (safe figures, raw HTML cleaned), the profile's structure
+   rules and privacy by place. Family FD-09 is clarified to match.
+4. **The person publishes, and is responsible** (owner, same day): "Alembic
+   does not need to see the verdict for publication. The human user clicks
+   'publish', the platform publishes it. It is the user's responsibility for
+   published contents." Alembic asks the type package (Coursewerk) nothing at
+   Publish. Interface draft: family `docs/SITE-TYPE-CONTRACT.md`.
+5. **No checkpoints of Alembic's own** (owner, same day): "asking users to
+   approve the course plan and alike are Coursewerk's job. It does so. But if
+   a user creates contents completely without agent, without Coursewerk, and
+   decides to publish at any stage, the user has freedom to do so. Alembic
+   does not add additional warnings or checkpoints." Today's course-plan gate
+   and draft hold-back in Publish are to be removed with the site type
+   contract (inventory: family `docs/ALEMBIC-CONTENT-LOGIC.md`).
+6. **Draft or completed per file** (owner, same day): "it should be explicit
+   that a file is in draft stage or completed. When publishing a course,
+   only completed will be published."
+7. **Element-level sharing** (owner): "a nice graphic illustration, a
+   chart/diagram, a block of math of important proof, etc. can be shared as
+   individual elements allowing other people to use."
+8. **Course-website add-ons** (owner): "for course materials development,
+   not in Coursewerk, per semester items, private items such as exams,
+   should be added as add-on features to make it convenient to use as
+   course websites." All three are written into the site type contract
+   (family `docs/SITE-TYPE-CONTRACT.md` draft 6, §7, §9, §10).
+9. **Answers (owner, same day):** a new document starts as draft; the
+   course-website add-on is a small side package within Alembic; and "there
+   should be a way for user to retract a published file completely to draft
+   status, i.e., not to list that file in the published site" (status
+   `withdrawn`, taken off at once; contract draft 7 §7).
+10. **Draft keeps the last published version** (owner, same day: "A"): a
+    published page set back to draft keeps its last published version on
+    the website until it is completed again; "Take off the website" is the
+    complete retraction, taking effect at the next Publish (contract
+    draft 9 §7).
+11. **On Coursewerk's review** (owner, same day): concept map and
+    assessment guide are required in every chapter; Coursewerk works inside
+    an Alembic site only through the hand-in; the definition schema is
+    published in Alembic's repository. Asked whether npm publishing of the
+    definition is necessary (proposed instead: a vendored copy from a tagged
+    Coursewerk release). Answered: the vendored copy. And (family FD-11):
+    Alembic, Coursewerk and the orz-markdown series are sibling projects,
+    designed together, each with a clear boundary and usable on its own.
+12. **Overnight 2026-10-30/31** (owner): Coursewerk is bringing the whole
+    General Chemistry package up to its new version and delivers it once as a
+    new testing course (Alembic doesn't touch the testing copy's content
+    meanwhile). An optional course setting "an edit returns a completed page
+    to draft" (default off). Element sharing defaults as proposed. The
+    current-semester area is flexible: a per-term place where the instructor
+    adds any files, with recommended ones offered as starters; the course home
+    page is an editable page the instructor (or the assistant, on their
+    instructions) arranges. AI spending as needed within the owner's 5-hour
+    usage window.
+13. **Morning 2026-10-31** (owner, "both agreed"): (a) orz-markdown's option to
+    turn raw HTML off for shared authoring (D-127) becomes the next
+    orz-markdown change; Alembic will use it for every course page, with the
+    cleaner and render backstop kept as a second layer. (b) The type package's
+    public records (Coursewerk's attribution page and CHECKED.json) are
+    published as they are, without "completed", limited to 1 MB and the kinds
+    the type package declares; the person can still take them off the website.
+
+## 2026-10-29 (evening) — Owner rulings for the overnight foundations run
+
+1. **History restore rights:** anyone who may edit a document may restore an
+   earlier version of it (a restore is an edit; both versions stay in
+   history). Restoring a whole course to an earlier date is owner/deputy only.
+2. **History depth:** a document's history lists its last 50 versions; older
+   ones remain reachable on GitHub.
+3. **Contact-form sorting on testing:** a dedicated AI key with a small daily
+   budget (the 200-a-day cap already holds).
+4. **Order:** foundations step 2 (history and restore) first, then Alembic's
+   half of the agent hand-in format; if time remains, UI polish (with the
+   impeccable skill).
+5. **Raw HTML in Markdown:** Publish writes a clean copy (K1.20); the
+   orz-markdown option rides along with its next planned release (D-127).
+
+## 2026-10-29 — Owner rulings after the real-course loop (v3 workspace)
+
+1. **Idle sync: 30 seconds.** A document goes to the course 30 s after the
+   last keystroke (still at most 2 min while typing goes on). This replaces
+   design §7.1's 2 minutes. Teachers who stop typing expect the course to
+   have it within seconds (RC.13).
+2. **Assessment guides stay public.** The v3 contract publishes them with
+   their chapter. Answer keys remain instructor-only (`private/`).
+3. **Multiple-choice options go on their own lines in 1.x.** The move helper
+   does this by default for documents (not slides). `A. …`, `(A) …` and the
+   escaped `\(C) …` runs get Markdown hard breaks; `--keep-option-lines`
+   opts out. It was applied to the GenChem testing copy: 53 runs in 19
+   practice pages, checked in the live preview.
+4. **Workshop contact:** asked of the owner; open.
+
 ## 2026-10-27 — Owner rulings after blind-critique round 2
 
 | # | Decision | Why |

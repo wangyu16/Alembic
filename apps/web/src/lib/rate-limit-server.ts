@@ -30,7 +30,7 @@ import {
 const memory = new MemoryRateStore();
 
 /** Buckets counted in Postgres (shared across server instances) when possible. */
-const SHARED: ReadonlySet<RateBucket> = new Set<RateBucket>(["report", "preview", "reconcile", "a11yAuto", "a11yCheck"]);
+const SHARED: ReadonlySet<RateBucket> = new Set<RateBucket>(["report", "preview", "reconcile", "a11yAuto", "a11yCheck", "contact", "contactEmail", "upload", "uploadCourse"]);
 
 function storeFor(bucket: RateBucket): RateStore {
   if (!SHARED.has(bucket)) return memory;
@@ -71,6 +71,19 @@ export async function checkUserRateLimit(bucket: RateBucket, userId: string): Pr
 export async function checkPackageRateLimit(bucket: RateBucket, packageId: string): Promise<RateDecision> {
   try {
     const key = rateKey(bucket, `package:${packageId}`, rateSecret());
+    return await consumeRateLimit(storeFor(bucket), bucket, key);
+  } catch {
+    return { ok: true };
+  }
+}
+
+/**
+ * Per arbitrary SUBJECT (e.g. `email:someone@school.edu` for the contact
+ * form). The subject only enters the HMAC'd key; it is never stored. Never throws.
+ */
+export async function checkSubjectRateLimit(bucket: RateBucket, subject: string): Promise<RateDecision> {
+  try {
+    const key = rateKey(bucket, subject, rateSecret());
     return await consumeRateLimit(storeFor(bucket), bucket, key);
   } catch {
     return { ok: true };
