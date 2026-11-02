@@ -511,7 +511,7 @@ person who asked; their answers come back through `alembic changes`.
 
 **The AI.** An Anthropic Messages API at `$ANTHROPIC_BASE_URL` (`<host>/api/agent/ai`), already set in the harness's
 environment with the job's headers (`ANTHROPIC_CUSTOM_HEADERS`); any program started inside the job (e.g. a blind
-verifier `claude -p`) inherits them and is charged to the same job. Models: `claude-sonnet-5` (the harness's default), `claude-haiku-5-5` (owner 2026-11-02: Coursewerk's blind verifier uses it, set in its verifier command), `claude-haiku-4-5`.
+verifier `claude -p`) inherits them and is charged to the same job. Models (owner, 2026-11-02): `claude-haiku-5-5`, the default for the harness and for programs it starts (e.g. Coursewerk's blind verifier), and `claude-sonnet-5-5` when a task needs it (`--model claude-sonnet-5-5`). No other model is accepted.
 `max_tokens` ≤ 8000 (`CLAUDE_CODE_MAX_OUTPUT_TOKENS`). Betas: only the four Claude Code sends (§17). **One call at a
 time per job**: a second program calling while another call runs gets 429 and must wait and retry (Claude Code does).
 No key is ever visible in the sandbox; the job's hold bounds its spending.

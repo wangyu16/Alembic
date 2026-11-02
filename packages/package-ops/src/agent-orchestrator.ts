@@ -151,7 +151,8 @@ export ANTHROPIC_BASE_URL="$ALEMBIC_HOST/api/agent/ai" ANTHROPIC_API_KEY=sandbox
 export ANTHROPIC_CUSTOM_HEADERS="x-alembic-sandbox: $ALEMBIC_SANDBOX
 x-alembic-job: $ALEMBIC_JOB
 x-alembic-job-secret: $ALEMBIC_JOB_SECRET"
-export ANTHROPIC_MODEL=claude-sonnet-5 ANTHROPIC_SMALL_FAST_MODEL=claude-haiku-4-5 CLAUDE_CODE_MAX_OUTPUT_TOKENS=8000
+# Models (owner, 2026-11-02): Haiku 5.5 by default; Sonnet 5.5 allowed when a task needs it (\`--model claude-sonnet-5-5\`).
+export ANTHROPIC_MODEL=claude-haiku-5-5 ANTHROPIC_SMALL_FAST_MODEL=claude-haiku-5-5 CLAUDE_CODE_MAX_OUTPUT_TOKENS=8000
 export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 DISABLE_TELEMETRY=1 DISABLE_ERROR_REPORTING=1 CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1
 timeout ${Math.round(maxMinutes * 60)} claude -p --allowedTools "Bash(alembic:*),Bash(jq:*),Bash(cat:*),Write,Read" --output-format json < task.txt > result.json 2> harness.err
 echo $? > exit.code

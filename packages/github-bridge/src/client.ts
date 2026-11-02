@@ -216,6 +216,9 @@ export type ChainFile =
   | { path: string; blobSha: string; mode?: "100644" | "100755" }
   | { path: string; content: null };
 
+/** Text larger than this goes into a tree as a blob uploaded first, never inline. */
+export const INLINE_TEXT_MAX_BYTES = 256 * 1024;
+
 export class GitHubClient {
   private readonly tokens: TokenSource;
   private readonly retry: Partial<RetryPolicy> | undefined;
@@ -357,6 +360,12 @@ export class GitHubClient {
       }
       if (f.encoding === "base64") {
         const sha = await this.createBlob(coords, f.content, "base64");
+        return { path: f.path, mode: "100644", type: "blob", sha };
+      }
+      // Large text is uploaded as a blob first: a tree request carrying tens of MB inline is refused by GitHub
+      // (it answered 401 "Bad credentials" for a course's 42 MB of records, 2026-11-01).
+      if (Buffer.byteLength(f.content, "utf8") > INLINE_TEXT_MAX_BYTES) {
+        const sha = await this.createBlob(coords, f.content, "utf-8");
         return { path: f.path, mode: "100644", type: "blob", sha };
       }
       return { path: f.path, mode: "100644", type: "blob", content: f.content };
